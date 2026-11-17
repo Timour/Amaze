@@ -12,7 +12,7 @@ from amaze.render import nodes
 
 
 class OnlineImport:
-    """One panel's online import doors; the panel holds it as `online_import`."""
+    """One panel's online import commands; the panel holds it as `online_import`."""
 
     def __init__(self, panel) -> None:
         self.panel = panel
@@ -92,9 +92,9 @@ class OnlineImport:
         )
         if not ok:
             return (False, reason or messages.ONLINE_IMPORT_FAILED)
-        self.panel.category_model.check_add_category(record.category)    # no relayout wrapper: it announces its own insert
+        self.panel.category_model.check_add_category(record.category)    # no relayout wrapper: it emits its own row-insert signals
         self.panel.refresh_sidebar_categories()
-        return (True, library.ListNotSaved(reason) if reason else "")    # a name: landed, unlisted
+        return (True, library.ListNotSaved(reason) if reason else "")    # a reason: files saved, list entry not saved
 
     def source_for(self, record):
         """The record's source and the resolution to fetch it at: (source, resolution, error)."""
@@ -171,7 +171,7 @@ class OnlineImport:
                     built.append(builder.name())
                     last = builder
                 if last is not None:
-                    last.setCurrent(True, True)    # fronts the new material
+                    last.setCurrent(True, True)    # makes the new material the only selected node
         debug.event("import", "to scene finished", built=len(built),
                     failed=len(failures), stopped_after=stopped_after)
         if ui is not None and failures:

@@ -13,7 +13,7 @@ from amaze.panel import delegates
 
 
 def _resolve(context, name, indexes, current, default):
-    """A named fact on the context: an attribute as is, or a method called with the selection."""
+    """A named value on the section: an attribute as is, or a method called with the selection."""
     if not name:
         return default
     fact = getattr(context, name, None)
@@ -115,7 +115,7 @@ def _fill(menu, panel, context, entries, indexes, current, verbs) -> None:
                 menu.addMenu(submenu)
             else:
                 submenu = menu.addMenu(label)
-            submenu.menuAction().setEnabled(enabled)    # the PARENT carries the enabled state - an openable submenu with nothing to pick reads as broken
+            submenu.menuAction().setEnabled(enabled)    # the parent action holds the enabled state: an openable submenu with nothing to pick looks broken
             for child in children:    # (label, payload, icon, live[, checked]); None is a divider
                 if child is None:
                     submenu.addSeparator()
@@ -151,7 +151,7 @@ def _fill(menu, panel, context, entries, indexes, current, verbs) -> None:
 
 
 def build_grid_menu(panel, context, indexes, current):
-    """The Grid's table, kept as its own name - the tests and docs speak of the grid menu specifically."""
+    """The Grid's menu table under its own name: the tests and docs refer to the grid menu."""
     return build_menu(panel, context, context.GRID_MENU, indexes, current)
 
 
@@ -169,11 +169,11 @@ def open_catlist_menu(panel, context) -> None:
         return
     _open(panel, context, getattr(context, "SIDEBAR_MENU", ()),
           context.sidebar_selection(), panel.cat_list)
-    context.stand_again()    # the right press moved only the highlight, picked or not
+    context.stand_again()    # the right-click moved only the highlight; restore it, picked or not
 
 
 def selected_current(view, indexes):
-    """The row a selection is ABOUT: the current one while selected, else the first, else None."""
+    """The row a menu acts on: the current one while selected, else the first, else None."""
     current = ui_helpers.live_current_index(view)
     if current is None or not current.isValid() or current not in indexes:
         current = indexes[0] if indexes else None    # Qt keeps a current row OUTSIDE the selection
@@ -181,7 +181,7 @@ def selected_current(view, indexes):
 
 
 def selected_current_in(view, selection):
-    """`selected_current` asked of the selection MODEL: one row tested, the list built only on a miss."""
+    """`selected_current` from the selection model: tests one row; builds the list if needed."""
     current = ui_helpers.live_current_index(view)
     if current is not None and selection is not None \
             and selection.isSelected(current):
@@ -205,7 +205,7 @@ def _open(panel, context, entries, indexes, view) -> None:
         return
     live = [QtCore.QModelIndex(index) for index in held if index.isValid()]
     if held and not live and _needs(entries, verb) != "always":
-        return    # every row the menu was opened on has left the model
+        return    # every row the menu was opened on was removed from the model
     if held_current is not None and held_current.isValid():
         current = QtCore.QModelIndex(held_current)
     else:
@@ -214,12 +214,12 @@ def _open(panel, context, entries, indexes, view) -> None:
 
 
 def _needs(entries, verb) -> str:
-    """What the entry naming `verb` needs; its submenu rows carry the same verb."""
+    """What the entry naming `verb` needs; its submenu rows use the same verb."""
     return next((entry.needs for entry in entries if entry.verb == verb), "any")
 
 
 def restore_drag_mode(panel) -> None:
-    """Re-arm Qt's native file-path drag; call after any setViewMode() ▸r/static-kills-drag"""
+    """Re-enable Qt's native file-path drag; call after any setViewMode() ▸r/static-kills-drag"""
     panel.thumblist.setDragEnabled(True)
     panel.thumblist.setDragDropMode(
         QtWidgets.QAbstractItemView.DragDropMode.DragOnly
@@ -243,12 +243,12 @@ def sidebar_row_height(panel, table) -> int:
     ).height()
 
 
-ALWAYS_SHOWN = "always-shown"    # distinct objects: absence, always and never are three answers, and two once shared None
+ALWAYS_SHOWN = "always-shown"    # distinct objects: missing, always and never are three cases; two of them once both used None
 NEVER_SHOWN = "never-shown"
 
 
 def visible_view(panel):
-    """The grid view the user is looking at, by isHidden, which also answers headless."""
+    """The grid view the user is looking at, by isHidden, which also works headless."""
     table = getattr(panel, "thumbtable", None)
     if table is not None and not table.isHidden():
         return table
@@ -266,7 +266,7 @@ def show_table(panel, showing: bool) -> None:
             QtWidgets.QHeaderView.ResizeMode.Fixed)
         model = table.model()
         if model is not None and model.rowCount():
-            hint = sidebar_row_height(panel, table)    # the CATEGORY list decides the row height - two delegates measuring independently sat 2px apart
+            hint = sidebar_row_height(panel, table)    # the CATEGORY list sets the row height: two delegates measuring separately differed by 2px
             header.setMinimumSectionSize(hint)    # the minimum FIRST, or the default is silently clamped to the style's 19 ▸r/min-section-first
             header.setDefaultSectionSize(hint)
         table_palette = QtGui.QPalette(panel.thumblist.palette())    # a QTableView brings the platform's palette: white rows on a dark panel without this
@@ -276,14 +276,14 @@ def show_table(panel, showing: bool) -> None:
         table.setFont(panel.thumblist.font())
         table.viewport().setAutoFillBackground(True)    # never a QProxyStyle here ▸r/no-proxystyle
         sync_table_columns(panel)
-    page = getattr(panel, "empty_page", None)    # a blank showing must survive a view-mode change, so ask what is up rather than assume
+    page = getattr(panel, "empty_page", None)    # a visible empty page stays visible across a view-mode change, so read its state here
     blank_up = page is not None and not page.isHidden()
     panel._table_mode = bool(showing)
     apply_grid_face(panel, blank_up)
 
 
 def grid_pane_layout(panel):
-    """The layout holding the grid views - the empty page joins it."""
+    """The layout holding the grid views; the empty page is added to it."""
     root = getattr(panel, "ui", None)
     if root is None:
         return None
@@ -291,7 +291,7 @@ def grid_pane_layout(panel):
 
 
 def apply_grid_face(panel, blank_up: bool) -> None:
-    """The one writer of the grid pane's visibility: exactly one of table, list and empty page."""
+    """The only function that sets the grid pane's visibility: one of table, list and empty page."""
     table = getattr(panel, "thumbtable", None)
     page = getattr(panel, "empty_page", None)
     showing_table = bool(getattr(panel, "_table_mode", False))
@@ -318,11 +318,11 @@ def bind_table_cell_delegates(panel, tile_delegate) -> None:
             previous.setParent(None)    # leaves the child list at once; deleteLater then frees it under the real event loop
             previous.deleteLater()
         except RuntimeError:
-            pass          # already gone with a rebuilt table
+            pass          # already deleted with a rebuilt table
     installed = []
 
     keys = grid_columns.KEYS
-    grid_cell = delegates.GridCellDelegate(table)    # the cell padding and hover words; selection is the host stylesheet's
+    grid_cell = delegates.GridCellDelegate(table)    # the cell padding and hover text; the host stylesheet draws the selection
     installed.append(grid_cell)
     table.setItemDelegate(grid_cell)
     sources = {    # what each tick column reads and draws
@@ -341,7 +341,7 @@ def bind_table_cell_delegates(panel, tile_delegate) -> None:
             colour, table)
         installed.append(tick)
         table.setItemDelegateForColumn(keys.index(key), tick)
-    table._amaze_cell_delegates = installed    # what this bind owns, for the next one to drop
+    table._amaze_cell_delegates = installed    # the delegates this call installed, for the next call to remove
 
 
 def sync_table_columns(panel) -> None:
@@ -358,10 +358,10 @@ def sync_table_columns(panel) -> None:
         "open": "_open_role", "comments": "_notes_role",
         "version": "_active_version_role",
         "thumb": NEVER_SHOWN,    # no picture column
-        "name": ALWAYS_SHOWN,    # every column NAMED, the always-up pair included - absence once doubled as always-shown
+        "name": ALWAYS_SHOWN,    # every column listed, these two included: a missing key once also meant always-shown
         "type": ALWAYS_SHOWN,
     }
-    source = table.model()    # a column shows only if the delegate paints it and the model answers it
+    source = table.model()    # a column shows only if the delegate paints it and the model has a role for it
     inner = getattr(source, "sourceModel", None)
     source = (inner() if inner is not None else None) or source
     column_role = getattr(source, "_column_role", None)
@@ -384,7 +384,7 @@ def sync_table_columns(panel) -> None:
                  or (getattr(delegate, attribute, None) is not None
                      and fills))
         table.setColumnHidden(column, not shown)
-    if not getattr(table, "_widths_seeded", False):    # widths seeded once per view; then the user's
+    if not getattr(table, "_widths_seeded", False):    # default widths set once per view; after that the user's
         table._widths_seeded = True
         header.setSectionResizeMode(
             QtWidgets.QHeaderView.ResizeMode.Interactive)    # never ResizeToContents ▸r/resize-mode-forbids-drag
@@ -397,7 +397,7 @@ def sync_table_columns(panel) -> None:
 
 
 def sync_sort_indicator(panel) -> None:
-    """Point the one header's arrow at the order the bound MODEL keeps. ▸r/one-header-many-proxies"""
+    """Set the shared header's sort arrow to the bound model's order. ▸r/one-header-many-proxies"""
     table = getattr(panel, "thumbtable", None)
     proxy = table.model() if table is not None else None
     model = proxy.sourceModel() if proxy is not None else None
@@ -444,7 +444,7 @@ def apply_view_mode(panel) -> None:
     try:
         if panel.prefs.view_mode == "list":
             restore_drag_mode(panel)    # list mode is the table; the QListView stays in IconMode
-            show_table(panel, True)    # whose own last statement is the column sync
+            show_table(panel, True)    # show_table ends with sync_table_columns
         else:
             panel.thumblist.setViewMode(QtWidgets.QListView.ViewMode.IconMode)
             restore_drag_mode(panel)
@@ -494,7 +494,7 @@ def sync_view_mode_controls(panel) -> None:
 
 
 def active_thumbsize(panel) -> int:
-    """The size in force: list's fixed one, else the remembered one - its nearest mark under Step Size."""
+    """The thumbnail size in use: list's fixed one, else the saved one, snapped under Step Size."""
     if panel.prefs.view_mode == "list":
         return panel.LIST_THUMB_SIZE
     if panel.prefs.step_size:

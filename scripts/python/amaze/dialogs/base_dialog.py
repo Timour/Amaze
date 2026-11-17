@@ -21,7 +21,7 @@ def fill_categories(combo, stored_names, current: str = "",
     if row >= 0:
         combo.setCurrentIndex(row)
     elif blank:
-        combo.insertItem(0, "", "")    # leads and means UNCHANGED: `chosen_category` answers ""
+        combo.insertItem(0, "", "")    # first row, meaning UNCHANGED: `chosen_category` returns an empty string
         combo.setCurrentIndex(0)
 
 
@@ -33,10 +33,10 @@ def chosen_category(combo) -> str:
 class AssetDialog(QtWidgets.QDialog):
     """Base form dialog; `canceled` stays True until accepted, fields are read in `_on_accept()`."""
 
-    FORM_WIDTH = None    # a shared width in logical px, or None to hug the content ▸p/save-dialog-rows
+    FORM_WIDTH = None    # a shared width in logical px, or None to fit the content ▸p/save-dialog-rows
     FIELD_WIDTH = None   # the drawn field width every `add_*` row takes exactly ▸p/save-dialog-rows
     FIELD_HEIGHT = amazetheme.SAVE_FIELD_H   # the field height every `add_*` row takes ▸p/save-dialog-rows
-    HEADER_BAND = False  # the drawn strip over the content: only D11 wears one ▸p/one-design-document
+    HEADER_BAND = False  # the drawn strip over the content: only D11 has one ▸p/one-design-document
     FRAME_KEY = ""       # the drawn frame that sizes every `add_*` row and OK/Cancel ▸p/one-design-document
 
     def __init__(self, title: str = "", fixed_size: bool = True,
@@ -61,7 +61,7 @@ class AssetDialog(QtWidgets.QDialog):
         self._content = None
 
     def header_band_text(self) -> str:
-        """What the drawn band says: the window title unless overridden. ▸p/one-design-document"""
+        """The drawn band's text: the window title unless overridden. ▸p/one-design-document"""
         return self.windowTitle()
 
     def build_header_band(self):
@@ -88,7 +88,7 @@ class AssetDialog(QtWidgets.QDialog):
     def add_combo(
         self, label: str, items, current: str = "", editable: bool = False
     ):
-        combo = ui_helpers.DesignedComboBox()    # its dropdown holds the box's width ▸r/combo-popup-width
+        combo = ui_helpers.DesignedComboBox()    # its dropdown keeps the box's width ▸r/combo-popup-width
         combo.setEditable(editable)
         for item in items:
             combo.addItem(item)
@@ -97,7 +97,7 @@ class AssetDialog(QtWidgets.QDialog):
         return self.add_row(label, combo)
 
     def set_content(self, widget) -> None:
-        """Adopt a prebuilt central widget in place of form rows; never use both."""
+        """Use a prebuilt central widget in place of form rows; never use both."""
         self._content = widget
 
     def finish(self, ok_cancel: bool = True, margins: int | tuple | None = None) -> None:
@@ -127,7 +127,7 @@ class AssetDialog(QtWidgets.QDialog):
             layout.addWidget(self._content)
             if self._buttons is not None:
                 layout.addWidget(self._buttons)
-        elif form:    # every margin and gap is the frame's ▸p/save-dialog-rows
+        elif form:    # every margin and gap comes from the drawn frame ▸p/save-dialog-rows
             self._form.setHorizontalSpacing(theme.ui_px(form["label_gap"]))
             self._form.setVerticalSpacing(theme.ui_px(form["row_gap"]))
             layout.setSpacing(0)
@@ -234,7 +234,7 @@ class AssetDialog(QtWidgets.QDialog):
         self.accept()
 
     def exec(self) -> int:
-        """Run modally, then `deleteLater`; read the answers `_on_accept` stored. ▸r/deferred-delete"""
+        """Run modally, then `deleteLater`; read the values `_on_accept` stored. ▸r/deferred-delete"""
         try:
             return super().exec()
         finally:
@@ -242,7 +242,7 @@ class AssetDialog(QtWidgets.QDialog):
 
 
 class NameDialog(AssetDialog):
-    """One text field and a title, in place of `hou.ui.readInput`; the answer is `name`."""
+    """One text field and a title, in place of `hou.ui.readInput`; the result is `name`."""
 
     FORM_WIDTH = SAVE_WIDTH
     FIELD_WIDTH = amazetheme.NAME_FIELD_WIDTH

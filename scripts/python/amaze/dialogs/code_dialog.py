@@ -21,7 +21,7 @@ NEW_VERSION = 0      # `version` once New Version is picked, until an Apply save
 def _code_font() -> QtGui.QFont:
     family, px = amazetheme.CODE_FONT
     font = QtGui.QFont(family)
-    font.setStyleHint(QtGui.QFont.StyleHint.Monospace)    # where the face is missing: still fixed
+    font.setStyleHint(QtGui.QFont.StyleHint.Monospace)    # when the font family is missing: still monospace
     font.setPixelSize(theme.ui_px(px))
     return font
 
@@ -39,7 +39,7 @@ class _LineNumberArea(QtWidgets.QWidget):
 
 
 class _VersionTabs(QtWidgets.QWidget):
-    """The band's version tabs as drawn: each as wide as its name and its ×, the front one lit."""
+    """The band's version tabs as drawn: each as wide as its name and ×, the front one lighter."""
 
     picked = QtCore.Signal(int)    # a tab clicked, by its place in the row
     closed = QtCore.Signal(int)    # a tab's × clicked
@@ -103,7 +103,7 @@ class _VersionTabs(QtWidgets.QWidget):
             painter.setBrush(QtGui.QColor(amazetheme.CODE_TAB if index == self._front
                                           else amazetheme.CODE_BAND))
             painter.drawRoundedRect(QtCore.QRectF(box.x(), 0, box.width(), box.height() + radius),
-                                    radius, radius)    # its lower corners fall below the band
+                                    radius, radius)    # its lower corners are below the clip rect
             room = box.width() - inset - close_w
             painter.setPen(QtGui.QColor(amazetheme.CODE_TAB_INK))
             painter.drawText(QtCore.QRectF(box.x() + inset, top, room, high),
@@ -127,7 +127,7 @@ class _VersionTabs(QtWidgets.QWidget):
 
 
 class CodeEditor(QtWidgets.QPlainTextEdit):
-    """The drawn editor: its ground, the line numbers, the current line's band, the shared colours."""
+    """The drawn editor: background, line numbers, current-line highlight, the shared colours."""
 
     def __init__(self, text="", read_only=False, parent=None):
         super().__init__(parent)
@@ -187,7 +187,7 @@ class CodeEditor(QtWidgets.QPlainTextEdit):
         super().paintEvent(event)
 
     def _paint_current_line(self, painter, offset_x: int) -> None:
-        """The drawn band under the line the cursor is on, inset at both ends, across the gutter."""
+        """The drawn highlight under the cursor's line, inset at both ends, across the gutter."""
         block = self.textCursor().block()
         if not block.isVisible():
             return
@@ -227,10 +227,10 @@ class CodeEditor(QtWidgets.QPlainTextEdit):
 
 
 class CodeDialog(base_dialog.AssetDialog):
-    """D11 on the house shell: version tabs and their + menu, the form, the editor, Apply, Cancel."""
+    """D11 on AssetDialog: version tabs and their + menu, the form, the editor, Apply, Cancel."""
 
     FORM_WIDTH = amazetheme.D11_FORM_WIDTH
-    HEADER_BAND = True    # D11 draws a band that carries the version tabs
+    HEADER_BAND = True    # D11 draws a header band that holds the version tabs
     FRAME_KEY = "D11"
     applied = QtCore.Signal()    # Apply: the fields are read, the caller saves, the window stays
 
@@ -246,13 +246,13 @@ class CodeDialog(base_dialog.AssetDialog):
                  versions_on: bool = True, parent=None) -> None:
         super().__init__(title, fixed_size=False, parent=parent)    # the one resizable dialog
         drawn = self._drawn = amazetheme.drawn_code_dialog()
-        self._versions = list(versions)        # [{n, name, ...}] oldest first, as the ledger
+        self._versions = list(versions)        # [{n, name, ...}] oldest first, as in the ledger
         self._load_version = load_version      # n -> the version's text, or None when unreadable
         self._tabs = [{"n": active if self._versions else NO_VERSION, "name": name, "code": code}]
         self._front = 0                        # the tab the fields and the editor show
         self.name = self.language = self.category = self.tags = self.code = ""
         self._versions_on = versions_on    # the library's Versions switch, in Preferences
-        self.can_add_version = saved and versions_on    # and a snippet in the library to belong to
+        self.can_add_version = saved and versions_on    # and the snippet is already saved in the library
 
         form = QtWidgets.QGridLayout()
         form.setContentsMargins(0, 0, 0, 0)
@@ -267,12 +267,12 @@ class CodeDialog(base_dialog.AssetDialog):
 
         self._line_name = QtWidgets.QLineEdit(name)
         self._line_name.setToolTip(ui_helpers.tooltip_text(tooltips.CODE_NAME))
-        self._combo_lang = ui_helpers.DesignedComboBox()    # its dropdown holds the box's width
+        self._combo_lang = ui_helpers.DesignedComboBox()    # its dropdown keeps the box's width
         for lang in LANGUAGES:
             self._combo_lang.addItem(lang)
         if language in LANGUAGES:
             self._combo_lang.setCurrentText(language)
-        self._combo_category = ui_helpers.DesignedComboBox()    # the sidebar's Add mints new ones
+        self._combo_category = ui_helpers.DesignedComboBox()    # new categories are added in the sidebar
         base_dialog.fill_categories(self._combo_category, categories, category)
         self._line_tags = QtWidgets.QLineEdit(tags)
         field_w, field_h = (theme.ui_px(v) for v in drawn["field"])
@@ -304,7 +304,7 @@ class CodeDialog(base_dialog.AssetDialog):
         stack.setSpacing(0)
         stack.addLayout(form)
         stack.addSpacing(theme.ui_px(drawn["stack_gap"]))
-        stack.addWidget(self._editor, 1)    # the editor is what the window's resize grows
+        stack.addWidget(self._editor, 1)    # the editor takes the extra size when the window is resized
         stack.addSpacing(theme.ui_px(drawn["button_gap"]))
         stack.addLayout(buttons)
 
@@ -319,7 +319,7 @@ class CodeDialog(base_dialog.AssetDialog):
         return self._line_name.text().strip() or amazetheme.BAND_UNTITLED
 
     def paintEvent(self, event):
-        """The window's drawn ground; painted here, so no child inherits it as its own colour."""
+        """The window's drawn background; painted here so no child inherits it as its colour."""
         painter = QtGui.QPainter(self)
         painter.fillRect(self.rect(), QtGui.QColor(amazetheme.CODE_GROUND))
         painter.end()
@@ -352,7 +352,7 @@ class CodeDialog(base_dialog.AssetDialog):
         _x, _y, side, high = (theme.ui_px(v) for v in drawn["plus"])
         art, dpr = amaze.package_file("ui", "icon_version_add.svg"), theme.screen_ratio(self)
         icon = QtGui.QIcon(ui_helpers.device_pixmap(art, side, dpr))
-        icon.addPixmap(ui_helpers.device_pixmap(art, side, dpr,    # Houdini's style dims nothing
+        icon.addPixmap(ui_helpers.device_pixmap(art, side, dpr,    # Houdini's style does not dim a disabled icon
                                                 opacity=ui_helpers.DISABLED_OPACITY),
                        QtGui.QIcon.Mode.Disabled)
         self._plus.setIcon(icon)
@@ -402,7 +402,7 @@ class CodeDialog(base_dialog.AssetDialog):
         del self._tabs[index]
         if index < self._front:
             self._front -= 1
-        elif index == self._front:    # its unsaved edits go with it
+        elif index == self._front:    # its unsaved edits are discarded
             self._bring_forward(min(index, len(self._tabs) - 1))
             return
         self._name_changed()
@@ -451,7 +451,7 @@ class CodeDialog(base_dialog.AssetDialog):
         self._open_tab({"n": number, "code": text, "name": version_store.version_label(entry)})
 
     def versions_saved(self, versions, active: int) -> None:
-        """What the caller's save left: the ledger and the version that is now active."""
+        """Update after the caller's save: the new ledger and the version that is now active."""
         kept_before = bool(self._versions)
         self._versions = list(versions) if self._versions_on else []    # off: the snippet alone
         self._tabs[self._front]["n"] = active if self._versions else NO_VERSION
@@ -476,7 +476,7 @@ class CodeDialog(base_dialog.AssetDialog):
         return True
 
     def _apply(self) -> None:
-        """Read the fields and hand them to the caller, which saves; the window stays open."""
+        """Read the fields and emit `applied`; the caller saves, the window stays open."""
         if self._harvest():
             self.canceled = False
             self.applied.emit()

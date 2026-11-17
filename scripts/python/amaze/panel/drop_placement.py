@@ -1,4 +1,4 @@
-"""The drop placement: where a release or a click lands in Houdini, for one panel."""
+"""The drop placement: where a drop or a click creates nodes in Houdini, for one panel."""
 
 import os
 
@@ -11,7 +11,7 @@ from amaze.helpers import helpers, wording
 
 
 class DropPlacement:
-    """Where one panel's releases land; the panel holds it as `drop_placement`."""
+    """Where one panel's drops create nodes; the panel holds it as `drop_placement`."""
 
     def __init__(self, panel) -> None:
         self.panel = panel
@@ -70,7 +70,7 @@ class DropPlacement:
                     raise hou.OperationFailed("no /obj network")
                 container = obj.createNode("geo", name)
                 loader = container.createNode(loader_type)
-        except hou.Error as exc:    # hou.Error: a locked asset raises PermissionError, a sibling
+        except hou.Error as exc:    # hou.Error: a locked asset raises PermissionError, not OperationFailed
             if container is not None:
                 try:
                     container.destroy()
@@ -117,14 +117,14 @@ class DropPlacement:
         if pane_tab is None:
             return None
         if (
-            include_viewports    # a viewport release resolves to its pwd
+            include_viewports    # a drop on a Scene Viewer returns the viewer's pwd
             and pane_type == hou.paneTabType.SceneViewer
         ):
             try:
                 return pane_tab.pwd()
             except AttributeError:
                 return None
-        if pane_type != hou.paneTabType.NetworkEditor:    # the canvas takes no native node drops
+        if pane_type != hou.paneTabType.NetworkEditor:    # only a network editor takes node drops
             return None
         node = self.panel.first_node_at_cursor(pane_tab)
         if node is not None:
@@ -158,7 +158,7 @@ class DropPlacement:
             target_lop = children[-1] if children else None
 
         stage = target_lop.stage() if target_lop is not None else None
-        choices = lop_assign.drop_choices(stage, primpath)    # what to offer is lop_assign's
+        choices = lop_assign.drop_choices(stage, primpath)    # lop_assign decides what the menu offers
         if not choices:
             return False
         cmenu = QtWidgets.QMenu(self.panel)
@@ -184,13 +184,13 @@ class DropPlacement:
             try:    # Houdini's own library picker and its own assign ▸r/houdini-after-create
                 if target_lop is not None:
                     node2, liblop, _vop = stock.getMaterialLibraryLop(target_lop)
-                else:    # an empty network: the library Houdini's own branch makes, unwired
+                else:    # an empty network: a Material Library LOP as Houdini's code makes it, unwired
                     liblop = lopnet.createNode("materiallibrary")
                     helpers.auto_place(liblop)
                     liblop.setDisplayFlag(True)
                     liblop.setCurrent(True, True)
                     node2 = liblop
-            except hou.Error as refusal:    # a locked asset raises PermissionError, a sibling
+            except hou.Error as refusal:    # a locked asset raises PermissionError, not OperationFailed
                 debug.event("drag", "the network refused a material "
                             "library", dest=lopnet.path(),
                             error=str(refusal))
@@ -215,7 +215,7 @@ class DropPlacement:
                         amaze=liblop.path(), assign=str(assign_path),
                         swap=bool(swap_targets))
             if pressed_vop is not None and swap_targets is not None:
-                reason = lop_assign.swap_assignments(    # the module does the USD and reports; the panel says it
+                reason = lop_assign.swap_assignments(    # lop_assign edits the USD and returns a reason; the panel shows it
                     stock, lopnet, liblop, node2, swap_targets,
                     pressed_vop
                 )
@@ -246,7 +246,7 @@ class DropPlacement:
                 context, ids, position)
 
     def network_under_release(self) -> hou.Node | None:
-        """The network a no-node release happened inside, or None off any editor."""
+        """The network of a drop that hit no node, or None outside a network editor."""
         return self.context_under_cursor(lambda _node: False)
 
     def release_position_in(self, net):
@@ -260,14 +260,14 @@ class DropPlacement:
         try:
             if pane_tab.type() != hou.paneTabType.NetworkEditor:
                 return None
-            if pane_tab.pwd() != net:    # cross-space: the cursor is in another plane
+            if pane_tab.pwd() != net:    # the editor under the cursor shows another network
                 debug.event("interact", "no drop point - the editor "
                             "shows another network",
                             showing=pane_tab.pwd().path(),
                             destination=net.path())
                 return None
             spot = dragengine.ghost_snap_position() \
-                or pane_tab.cursorPosition()    # the ghost promised the SNAPPED point, so the release lands there
+                or pane_tab.cursorPosition()    # the drag preview showed the snapped point, so the node goes there
             debug.event("interact", "drop point",
                         at=[round(spot.x(), 3), round(spot.y(), 3)],
                         net=net.path())
@@ -291,7 +291,7 @@ class DropPlacement:
             return None
         try:
             node = dest.createNode(type_name)
-        except hou.Error as refusal:    # Houdini's refusal is logged; the walk moves on
+        except hou.Error as refusal:    # the hou.Error is logged and None returned
             debug.event("interact", "the network refused the carrier",
                         carrier=type_name, dest=dest.path(),
                         error=str(refusal))

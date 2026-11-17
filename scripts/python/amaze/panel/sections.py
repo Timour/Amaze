@@ -35,7 +35,7 @@ DropRule = collections.namedtuple(
     "on_node on_space resolve click_on_node click_resolve "
     "carrier_type context",
     defaults=(None, None, None, None, None, "", ""),
-)    # context: the childTypeCategory a network must hold for this drag to land ("" gates nothing)
+)    # context: the childTypeCategory a network must have to accept this drop ("" = any network)
 
 
 MenuEntry = collections.namedtuple(
@@ -47,7 +47,7 @@ MenuEntry = collections.namedtuple(
 SEPARATOR = MenuEntry("")  # the empty label is what makes it a divider
 
 GRID_MENU_TAIL = (
-    MenuEntry("Thumbnail", verb="menu_thumbnail", children="thumbnail_actions"),    # the tile's picture: render, capture, customize
+    MenuEntry("Thumbnail", verb="menu_thumbnail", children="thumbnail_actions"),    # the tile's thumbnail: render, capture, customize
     MenuEntry("Favorite", verb="menu_favourite"),
     MenuEntry("Delete", verb="menu_delete", shown="deletes_rows"),
 )
@@ -59,7 +59,7 @@ UNDO_MOVE = (    # first in both File menus while the last move can be undone
 
 
 def _file_count(count: int) -> str:
-    """`1 file` or `3 files`, for the move's sentences."""
+    """`1 file` or `3 files`, for the move messages."""
     return messages.MOVE_ONE_FILE if count == 1 else messages.MOVE_FILES % count
 
 
@@ -70,27 +70,27 @@ class Section:
     label = ""            # the tab's human label, read from section_list by key
 
     takes_comments = True    # a comment needs a library asset; online has none
-    takes_favourites = True  # online rows answer False, so the star empties it
+    takes_favourites = True  # online rows return False, so the favourites filter empties the grid
     takes_filter_menu = True  # the entries describe the LOCAL section under it
-    kind_filter_menu = False  # the online world answers True: the eye offers All/Materials/Colors/Nodes/Code there
-    takes_capture = True    # Capture puts the Scene View on a tile ▸r/tile-captures
-    exports_categories = False    # the View menu's Export Category is live where the sidebar holds categories
+    kind_filter_menu = False  # True for online: the filter menu offers All/Materials/Colors/Nodes/Code there
+    takes_capture = True    # Capture saves the Scene View image as a tile's thumbnail ▸r/tile-captures
+    exports_categories = False    # the View menu's Export Category is enabled where the sidebar holds categories
 
-    empty_noun = "items"  # what the shared empty-state blanks call these
+    empty_noun = "items"  # the noun the shared empty-state texts use for these
     EMPTY: dict = {}      # `nothing-yet`: (headline, sentence, button, verb)
 
     sidebar_attr = ""
     delegate_attr = ""
     tile_badges: tuple = ()    # the badge IDs this section's tile shows ▸r/tile-from-frame
-    library_model_attrs: tuple = ()  # re-pointed on a library switch; () is real
+    library_model_attrs: tuple = ()  # re-pointed on a library switch; () is a valid value
     selection_attr = ""   # a menu acts on THIS section's selection
     activate_method = ""  # panel method pointing the widgets at these models
     GRID_MENU: tuple = ()     # MenuEntry rows; empty = no menu opens
     SIDEBAR_MENU: tuple = ()  # same shape, same builder
     DROP = None           # one DropRule, or None for a section that never drags
-    DROP_BY_KIND: dict = {}  # File declares per row KIND; non-empty wins over DROP
+    DROP_BY_KIND: dict = {}  # File declares per row KIND; non-empty takes precedence over DROP
 
-    carrier_type = ""     # what the space door creates, when that is a constant
+    carrier_type = ""     # the node type a drop on empty network space creates, when constant
     carrier_type_verb = ""  # names a method instead, where it is not
     search_hint = ""      # per-ARCHETYPE: the archetype decides what is MATCHED
     FILTER_CHOICES: tuple = ()  # FilterEntry rows after the everything-entry
@@ -103,7 +103,7 @@ class Section:
         sidebar = self._p(self.sidebar_attr)
         if sidebar is None:
             return
-        self._restand = QtCore.QTimer(panel)    # restarted by every signal, so it fires once a turn
+        self._restand = QtCore.QTimer(panel)    # restarted by every signal, so it fires once per event loop pass
         self._restand.setSingleShot(True)
         self._restand.setInterval(0)
         self._restand.timeout.connect(self._stand_again_if_shown)
@@ -111,7 +111,7 @@ class Section:
             moved.connect(self._sidebar_moved)
 
     def drop_takes_nothing(self) -> bool:
-        """A release nothing takes: the red cross, and a status line saying it was canceled; False."""
+        """A drop no target accepts: the red cross and a status line that it was canceled; False."""
         debug.refuse(messages.DROP_CANCELED)
         return False
 
@@ -127,7 +127,7 @@ class Section:
         return grid_columns.selected_rows(self.grid_selection_model())
 
     def grid_selection_model(self):
-        """This section's grid selection MODEL, for a question about one row."""
+        """This section's grid selection MODEL, for a query about one row."""
         return self._p(self.selection_attr)
 
     def tile_models(self):
@@ -135,7 +135,7 @@ class Section:
         return None, None
 
     def _model_and_rows(self, indexes):
-        """(tile model, SOURCE rows) behind proxy indexes; one that no longer maps is no row."""
+        """(tile model, SOURCE rows) behind proxy indexes; one that no longer maps is skipped."""
         model, proxy = self.tile_models()
         if model is None or proxy is None:
             return None, []
@@ -157,10 +157,10 @@ class Section:
         """Preferences just closed: re-scan live filesystem or render state here. Default: nothing."""
         pass
 
-    takes_language = False    # D09's Language row is live only for a section that stores one
+    takes_language = False    # D09's Language row is enabled only for a section that stores one
 
     def can_save(self, nodes) -> bool:
-        """Could a save of these scene nodes land here? ▸p/save-section-row"""
+        """Whether these scene nodes can be saved into this section. ▸p/save-section-row"""
         return False
 
     def save_categories(self) -> tuple:
@@ -168,7 +168,7 @@ class Section:
         return [], ""
 
     def commit_save(self, nodes, node, dialog) -> None:
-        """Save into this section from an accepted D09; `node` is the one aimed at, among `nodes`."""
+        """Save into this section from an accepted D09; `node` is the target node, among `nodes`."""
         raise NotImplementedError
 
     @classmethod
@@ -177,22 +177,22 @@ class Section:
         return 99
 
     def stack(self):
-        """The AssetStack for the curated machinery, or None for sections that do not use it."""
+        """The AssetStack of the asset-library models, or None for sections that do not use them."""
         return None
 
     def library_switched(self) -> None:
-        """The models now serve another library: a grid they do not re-point is shown afresh here."""
+        """The models now hold another library: a grid they do not re-point is refreshed here."""
 
-    exports_selection = False    # the View menu's Export Package is live on this grid's selection
+    exports_selection = False    # the View menu's Export Package is enabled on this grid's selection
 
     def export_selection(self, indexes) -> None:
-        """Ask half of the grid export: the panel picks the destination, `export_package_to` acts."""
+        """Grid export: the user picks the destination, then `export_package_to` writes it."""
         path = self.panel.package_import.ask_destination()
         if path:
             self._say_export(lambda: self.export_package_to(list(indexes), path), path)
 
     def _say_export(self, export, path: str) -> None:
-        """Run one export and say what it wrote, that it wrote nothing, or why it could not."""
+        """Run one export and show what it wrote, that it wrote nothing, or why it failed."""
         from amaze.core import packages
         warning = hou.severityType.Warning
         try:
@@ -229,18 +229,18 @@ class Section:
         pass
 
     def nothing_yet(self, source) -> bool:
-        """Is this section's first-run blank true? `source` is the grid's model, nothing in it."""
+        """Whether to show the first-run empty state: `source`, the grid's model, is empty."""
         return not (source.rowCount() if source is not None else 0)
 
     def select_category(self, index) -> None:
         pass
 
     def standing_key(self) -> str:
-        """The sidebar key the GRID stands on, "" for All - a right press moves only the sidebar."""
+        """The sidebar key the GRID shows, "" for All; a right press moves only the sidebar."""
         return ""
 
     def stand_again(self) -> None:
-        """The highlight back on the row the grid shows; both on All once that row is gone."""
+        """Re-highlight the sidebar row the grid is filtered to; both go to All once it is gone."""
         view, model = self._sidebar_view()
         if model is None:
             return
@@ -252,31 +252,31 @@ class Section:
         self._highlight(view, target)
 
     def _sidebar_moved(self, *_args) -> None:
-        """Rows reset, moved or removed under the sidebar, maybe by another panel: stand again."""
+        """Sidebar rows reset, moved or removed, maybe by another panel: queue `stand_again`."""
         try:
             self._restand.start()
-        except RuntimeError:    # the panel is gone, and File's shared model outlives it
+        except RuntimeError:    # the panel was deleted, and File's shared model outlives it
             pass
 
     def _stand_again_if_shown(self) -> None:
-        """The watcher's stand: only while this section is shown, never under a press-hold reorder."""
+        """Run `stand_again` only while this section is shown and no press-hold reorder runs."""
         reorder = getattr(self.panel, "sidebar_reorder", None)
         if self.panel.active_section() is self and not (reorder is not None and reorder.reordering()):
             self.stand_again()
 
     def stand_after_removal(self, removed) -> None:
-        """Rows in `removed` left the sidebar: stand both on the row the grid stood on, or on All."""
+        """Rows in `removed` left the sidebar: reselect the grid's row in both, or All if gone."""
         standing = self.standing_key()
         self.stand_on_key("" if standing in removed else standing)
 
     def stand_on_key(self, key: str) -> None:
-        """Stand the sidebar and the grid on the row keyed `key`, or on All when no row is."""
+        """Select the row keyed `key` in sidebar and grid; All when no row has that key."""
         view, model = self._sidebar_view()
         if model is None:
             return
         target = self._row_keyed(model, key) if key else None
         if target is None:
-            target = model.index(0, 0)    # All heads every sidebar
+            target = model.index(0, 0)    # All is the first row of every sidebar
         self._highlight(view, target)
         self.select_category(target)
 
@@ -301,7 +301,7 @@ class Section:
                 return model.index(row, 0)
         return None
 
-    reorders_sidebar = False  # the five below are the CATEGORY form; File overrides
+    reorders_sidebar = False  # the five methods below are the CATEGORY version; File overrides them
 
     def _sidebar_categories(self):
         """(proxy, source Categories) behind this sidebar, or (None, None) where it has none."""
@@ -312,7 +312,7 @@ class Section:
         return proxy, source
 
     def sidebar_movable(self, index) -> bool:
-        """May THIS row be picked up? Everything below All may."""
+        """Whether THIS row can be dragged to reorder; every row below All can."""
         if not self.reorders_sidebar:
             return False
         if index is None or not index.isValid() or index.row() < 1:
@@ -336,7 +336,7 @@ class Section:
         return source.move_category(from_source, to_source)
 
     def sidebar_order_snapshot(self):
-        """The order before the gesture - what Esc puts back."""
+        """The order before the drag, which Esc restores."""
         _proxy, source = self._sidebar_categories()
         return None if source is None else source.order_snapshot()
 
@@ -346,16 +346,16 @@ class Section:
             source.restore_order(snapshot)
 
     def commit_sidebar_order(self) -> None:
-        """One write per gesture, on release."""
+        """One write per drag, on mouse release."""
         _proxy, source = self._sidebar_categories()
         if source is not None:
             source.save()
 
     def double_click(self, index) -> None:
-        """The click walker, aimed by the row's own declaration; the online world answers its own."""
+        """Run `click_on_row` with the row's own DropRule; the online section overrides this."""
         self.panel.click_on_row(self, index)
 
-    deletes_rows = False  # File says no: its rows are files it only browses
+    deletes_rows = False  # False for File: its rows are files it only browses
 
     @staticmethod
     def delete_prompt(count: int, name: str = "") -> str:
@@ -365,7 +365,7 @@ class Section:
     def delete_rows(self, indexes) -> None:
         """Remove these source rows, highest first; never wrap in layoutAboutToBeChanged/layoutChanged."""
 
-    colour_title = "Category Color"  # the colour picker's title, the one place
+    colour_title = "Category Color"  # the colour picker's title, defined only here
 
     def label_colours(self, indexes, current) -> tuple:
         """Label ▸: the four chips, then Custom (the picker) and Remove (no colour)."""
@@ -374,7 +374,7 @@ class Section:
         return chips + (None, ("Custom", True, "", True), ("Remove", "", "", True))
 
     def menu_label_colour(self, indexes, current, payload=None) -> None:
-        if payload is True:    # Custom: the panel's ONE colour gesture opens the picker
+        if payload is True:    # Custom: the panel's `sidebar_set_colour` opens the colour picker
             self.panel.sidebar_set_colour(True)
         else:
             self.panel.sidebar_set_colour(False, payload or "")
@@ -383,7 +383,7 @@ class Section:
     takes_file_drops = False  # a tile dropped on a folder row MOVES its file there; FolderSection sets it
 
     def accepts_category_drop(self, index, name: str) -> bool:
-        """Is this row a legal drop target beyond being a category? Asked after the shared rules."""
+        """Whether this category row accepts a drop; called after the shared checks."""
         return True
 
     def sidebar_key(self, index) -> str:
@@ -398,7 +398,7 @@ class Section:
         """Colour one sidebar row or clear it with ""; writes the store and repaints the models."""
 
     def toggle_favourite(self, indexes) -> None:
-        """Flip the star on every row in `indexes` (this section's proxy indexes). Base: nothing."""
+        """Toggle the favourite on each row in `indexes` (this section's proxy). Base: nothing."""
 
     offers_preview_update = False  # False where a preview is DERIVED, not rendered
 
@@ -406,7 +406,7 @@ class Section:
         """Re-render the thumbnail for every row in `indexes`."""
 
     def menu_offers_preview(self, indexes, current) -> bool:
-        """Does this selection have anything to re-render? `offers_preview_update` answers per section."""
+        """Whether the selection has anything to re-render, per `offers_preview_update`."""
         return bool(self.offers_preview_update)
 
     def menu_update_preview(self, indexes, current, payload=None) -> None:
@@ -420,7 +420,7 @@ class Section:
                                   categories=self.save_categories()[0])    # THIS section's list
 
     def menu_capture_enabled(self, indexes, current) -> bool:
-        """One tile at a time: a capture is one picture."""
+        """One tile at a time: a capture is one image."""
         return len(indexes) == 1
 
     def menu_capture(self, indexes, current, payload=None) -> None:
@@ -521,37 +521,37 @@ class AssetSection(Section):
         if st is None or not name:
             return
         name = ",".join(st.categories.stored_name(part) for part in name.split(","))    # WIP is `_WIP`
-        st.categories.check_add_category(name)    # no relayout wrapper: begin/endInsertRows announce it, and pairing the two segfaults
+        st.categories.check_add_category(name)    # no relayout wrapper: begin/endInsertRows notify the view, and pairing the two segfaults
 
     def menu_rename_category(self, indexes, current, payload=None) -> None:
         st = self.stack()
-        old = self.sidebar_key(indexes[0]) if indexes else ""    # the field opens on what is renamed
+        old = self.sidebar_key(indexes[0]) if indexes else ""    # the field starts with the current name
         new_name = self.panel.ask_category_name(
             "Rename Category", "" if category.is_all(old) else category.display_name(old))
         if st is None or not new_name:
             return
-        new_name = st.categories.stored_name(new_name)    # a typed WIP is the `_WIP` already there
+        new_name = st.categories.stored_name(new_name)    # a typed WIP maps to the existing `_WIP`
         if category.is_all(new_name):
             return    # the All row is a view of everything, never a category to rename onto
-        names = []    # STORED names: "_WIP" reads WIP, and its label matches no asset
+        names = []    # STORED names: `_WIP` displays as WIP, and that label matches no asset
         for index in indexes:
             name = self.sidebar_key(index)
             if name and not category.is_all(name):
                 names.append(name)
         standing = self.standing_key()    # the grid's row: a right press moved only the sidebar
-        with ui_helpers.relayout(st.model):    # the asset rows change IN PLACE, the pair's one job
+        with ui_helpers.relayout(st.model):    # the asset rows change IN PLACE, the only case for this pair
             for name in names:
                 st.model.rename_category(name, new_name)
-        st.model.save()    # AFTER the pair: a save adopts a peer's rows, and an insert in it segfaults H21
+        st.model.save()    # AFTER the pair: a save merges rows another Houdini wrote, and an insert inside segfaults H21
         for name in names:
             st.categories.rename_category(name, new_name)    # after the rows: its save must not undo them
-        self.stand_on_key(new_name if standing in names else standing)    # a renamed row by its new name
-        self.panel.refresh_sidebar_categories()    # counts and empty-category hiding follow the rename
+        self.stand_on_key(new_name if standing in names else standing)    # a renamed row is found by its new name
+        self.panel.refresh_sidebar_categories()    # updates counts and empty-category hiding after the rename
 
     exports_selection = True
 
     def export_package_to(self, indexes, path: str) -> int:
-        """Act half: the selected rows leave as one `.amazepkg`; answers the entry count."""
+        """Write the selected rows into one `.amazepkg`; returns the entry count."""
         from amaze.core import packages
         model, rows = self._model_and_rows(indexes)
         items = [packages.collect_asset(model, model.assets[row].mat_id) for row in rows]
@@ -560,7 +560,7 @@ class AssetSection(Section):
         return packages.write_package(path, items)
 
     def export_category_to(self, category, path: str) -> int:
-        """Act half of the sidebar export: assets in `category` (None: all) leave as one package."""
+        """Sidebar export: write the assets in `category` (None: all) into one package."""
         st = self.stack()
         from amaze.core import packages
         if st is None:
@@ -586,7 +586,7 @@ class AssetSection(Section):
         return None if not name or category.is_all(name) else name
 
     def export_category(self, name) -> None:
-        """Ask half: `name` is the category (None exports the whole section); the panel picks where."""
+        """Export `name`'s category (None: the whole section) to a path the user picks."""
         path = self.panel.package_import.ask_destination()
         if path:
             self._say_export(lambda: self.export_category_to(name, path), path)
@@ -595,7 +595,7 @@ class AssetSection(Section):
         st = self.stack()
         if st is None:
             return
-        names = []    # stored names: removing by the label leaves the row where it was
+        names = []    # stored names: removing by the label would leave the row in place
         for index in indexes:
             name = self.sidebar_key(index)
             if name and not category.is_all(name):
@@ -604,16 +604,16 @@ class AssetSection(Section):
             return
         if st.selection is not None:
             st.selection.clearSelection()
-        with ui_helpers.relayout(st.model):    # the asset rows change IN PLACE, the pair's one job
+        with ui_helpers.relayout(st.model):    # the asset rows change IN PLACE, the only case for this pair
             for name in names:
                 st.model.remove_category(name)
-        st.model.save()    # AFTER the pair: a save adopts a peer's rows, and an insert in it segfaults H21
+        st.model.save()    # AFTER the pair: a save merges rows another Houdini wrote, and an insert inside segfaults H21
         for name in names:
-            st.categories.remove_category(name)    # outside the relayout wrapper: begin/endRemoveRows announce it; pairing them segfaults
+            st.categories.remove_category(name)    # outside the relayout wrapper: begin/endRemoveRows notify the view; pairing them segfaults
         self.stand_after_removal(names)
 
     def menu_sort_categories(self, indexes, current, payload=None) -> None:
-        """The one-off Sort by name: the whole list below All, whatever row was pressed."""
+        """The one-off Sort by name: sorts every row below All, whichever row was clicked."""
         _proxy, source = self._sidebar_categories()
         if source is None:
             return
@@ -662,7 +662,7 @@ class AssetSection(Section):
         self.panel.refresh_sidebar_categories()
 
     def sidebar_key(self, index) -> str:
-        return self.panel.raw_category_name(index)    # the ONE reader of a category row's stored name; the underscore strip lives in Categories.data
+        return self.panel.raw_category_name(index)    # the ONE reader of a category row's stored name; Categories.data strips the underscore
 
     def sidebar_colour(self, name: str) -> str:
         st = self.stack()
@@ -676,7 +676,7 @@ class AssetSection(Section):
             return
         st.categories.set_color(name, colour)
         if st.model is not None:
-            st.model.repaint_category_colours()    # the grid reads the colour off the same document
+            st.model.repaint_category_colours()    # the grid reads the colour from the same document
 
     offers_preview_update = True
 
@@ -691,7 +691,7 @@ class AssetSection(Section):
         if not asset_id:
             return None
         return CommentSubject(
-            key=notes.note_key(st.model.NOTES_SECTION, asset_id),    # the MODEL's store: shared by three sections
+            key=notes.note_key(st.model.NOTES_SECTION, asset_id),    # the MODEL's notes section: shared by three sections
             name=source.data(QtCore.Qt.ItemDataRole.DisplayRole) or "",
             type=source.data(st.model.RendererLabelRole) or "",
         )
@@ -700,14 +700,14 @@ class AssetSection(Section):
         st = self.stack()
         if st is None:
             return
-        needle, tags_only = multifilterproxy_model.split_search(text)    # no invalidate() or sort() around these; `one_pass` holds them to one pass ▸p/filter-pass-cost
+        needle, tags_only = multifilterproxy_model.split_search(text)    # no invalidate() or sort() around these; `one_pass` limits them to one pass ▸p/filter-pass-cost
         with st.proxy.one_pass():
             if tags_only:
                 st.proxy.removeFilter(QtCore.Qt.ItemDataRole.DisplayRole)
                 if needle:
                     st.proxy.setFilter(st.model.TagRole, needle)
                 else:
-                    st.proxy.removeFilter(st.model.TagRole)    # a BARE COLON is a tag search with no tag yet, so it must narrow nothing
+                    st.proxy.removeFilter(st.model.TagRole)    # a BARE COLON is a tag search with no tag yet, so it must filter nothing
             else:
                 st.proxy.removeFilter(st.model.TagRole)
                 st.proxy.setFilter(QtCore.Qt.ItemDataRole.DisplayRole, needle)
@@ -726,17 +726,17 @@ class AssetSection(Section):
             st.proxy.removeFilter(st.model.RendererRole)    # remove, never an accept-all value, which costs a data() call per row
         else:
             st.proxy.setFilter(st.model.RendererRole, value)    # every asset section keeps its kind in this role; a filter on any other role is ignored
-        st.categories.set_renderer_filter(value or "")    # the sidebar too, given the proxy's value, never the menu's label
+        st.categories.set_renderer_filter(value or "")    # the sidebar too, with the proxy's value, never the menu's label
         self.panel.refresh_sidebar_categories()
 
     def select_category(self, index) -> None:
-        """Narrow the grid to the clicked row's category, always by the STORED name."""
+        """Filter the grid to the clicked row's category, always by the STORED name."""
         st = self.stack()
         if st is None:
             return
-        stored = self.panel.raw_category_name(index)    # never index.data(): a category stored _WIP displays "WIP"
+        stored = self.panel.raw_category_name(index)    # never index.data(): a category stored `_WIP` displays `WIP`
         st.proxy.setFilter(st.model.CategoryRole,
-                        "" if category.is_all(stored) else stored)    # "" keeps _All meaning everything rather than a literal category nobody has
+                        "" if category.is_all(stored) else stored)    # `""` makes `_All` match everything, not a literal category no asset has
 
     def standing_key(self) -> str:
         st = self.stack()
@@ -747,7 +747,7 @@ class MaterialSection(AssetSection):
     key = "material"
     label = section_list.label(key)
     empty_noun = "material"
-    EMPTY = amazetheme.EMPTY_MATERIAL    # no button: save_asset needs a selected node and says so when there is none ▸p/one-design-document
+    EMPTY = amazetheme.EMPTY_MATERIAL    # no button: save_asset needs a selected node and shows a message without one ▸p/one-design-document
     QUOTE = amazetheme.QUOTE_MATERIAL
 
     @staticmethod
@@ -760,7 +760,7 @@ class MaterialSection(AssetSection):
                 "go for good. Materials already used in a scene are "
                 "not affected." % count)
 
-    GRID_MENU = (    # the section's work, a divider, then the shared tail - drawn C01/C01b
+    GRID_MENU = (    # the section's entries, a divider, then GRID_MENU_TAIL, as in the C01/C01b frames
         MenuEntry("Load Asset to", verb="menu_copy_to", children="copy_to_targets"),
         MenuEntry("Convert", verb="menu_convert_to",
                   children="convert_targets",
@@ -768,17 +768,17 @@ class MaterialSection(AssetSection):
         SEPARATOR,
     ) + GRID_MENU_TAIL
 
-    DROP = DropRule(resolve="drop_material_at_release",    # a material import finds its own landing at the release
+    DROP = DropRule(resolve="drop_material_at_release",    # a material import finds its own destination at the release
                     click_resolve="click_import_material",
-                    context="Vop")    # only a Vop-holding network accepts the release
+                    context="Vop")    # only a network that holds Vop nodes accepts the drop
 
     def click_import_material(self, _index) -> bool:
-        """Materials aim themselves: the import reads the selection and the network under the cursor."""
+        """The material import reads the selection and the network under the cursor itself."""
         self.panel.import_asset("auto")
         return True
 
     def drop_material_at_release(self, index) -> bool:
-        """Land a released material drag; True for a hit, False for a miss, "menu" when a menu took it."""
+        """Import a dropped material; True on a target, False on none, `menu` if a menu showed."""
         from amaze.core import dragengine
         panel = self.panel
         if not panel.material_model or index is None or not index.isValid():
@@ -800,7 +800,7 @@ class MaterialSection(AssetSection):
             return self.drop_takes_nothing()
         context = panel.drop_placement.context_under_cursor("materiallibrary")
         if context is None or not cop_nodes.accepts_context(
-                context, self.DROP.context):    # the wrong network is a miss and creates nothing; the declaration gates
+                context, self.DROP.context):    # the wrong network is a miss and creates nothing; DROP.context decides
             debug.event("drag", "material release", target="miss",
                         context=context.path() if context else "")
             return self.drop_takes_nothing()
@@ -811,9 +811,9 @@ class MaterialSection(AssetSection):
         return True
 
     def copy_to_targets(self, indexes, current) -> tuple:
-        """Where the saved material lands, named the way Houdini writes the path: /stage."""
+        """Where the saved material is loaded, named the way Houdini writes the path: /stage."""
         return (("/mat", "mat", "", True),
-                ("/stage/materiallibrary", "lop", "", True))    # names the LANDING: the copy goes INSIDE a material library under /stage, never stage root
+                ("/stage/materiallibrary", "lop", "", True))    # names the DESTINATION: the copy goes INSIDE a material library under /stage, never stage root
 
     def menu_copy_to(self, indexes, current, payload=None) -> None:
         if payload == "lop":
@@ -822,7 +822,7 @@ class MaterialSection(AssetSection):
             self.panel.import_asset_to_mat()
 
     def _sources_held(self, indexes) -> frozenset:
-        """The renderers among these rows that convert: one walk per menu."""
+        """The renderers among these rows that convert: one loop over the rows per menu."""
         from amaze.render.material_conversion import engine as conversion_engine
         held = getattr(self, "_held", None)
         if held is not None and held[0] is indexes:
@@ -840,11 +840,11 @@ class MaterialSection(AssetSection):
         return self._held[1]
 
     def selection_is_convertible(self, indexes, current) -> bool:
-        """The parent greys when no child would be live: a submenu with nothing to pick reads as broken."""
+        """The parent is disabled when no child is enabled: an empty submenu looks broken."""
         return any(live for *_child, live in self.convert_targets(indexes, current))
 
     def convert_targets(self, indexes, current) -> tuple:
-        """What the selection can BECOME: a child is live when a held material converts to it here."""
+        """Renderers to convert TO: a child is enabled when a selected material converts to it."""
         from amaze.render.material_conversion import engine as conversion_engine
         held = self._sources_held(indexes)
         return tuple(
@@ -869,7 +869,7 @@ class MaterialSection(AssetSection):
     FILTER_ALL_ICON = "filter_all"
 
     def filter_entries(self) -> tuple:
-        """Rebuilt, never hidden: the panel falls back to All for a choice no longer offered."""
+        """Rebuilt, never hidden: the panel uses All for a saved choice no longer offered."""
         return (FilterEntry(self.ALL_ID, self.ALL_LABEL, None, self.FILTER_ALL_ICON),) + tuple(
             FilterEntry(renderer.key, renderer.label, renderer.key, renderer.icon)
             for renderer in renderers.offered(self.panel.prefs))
@@ -894,7 +894,7 @@ class MaterialSection(AssetSection):
                 for asset in nodes:
                     op.updateLongProgress(done / total,
                                           "%d/%d  %s" % (done + 1, total, asset.name()))
-                    try:    # a raise out of the save chain joins the per-material report
+                    try:    # an exception from the save is added to the per-material report
                         renderer = material_actions.add_asset(
                             self.panel.material_model, asset, dialog.categories, dialog.tags,
                             dialog.fav, name=dialog.name or None
@@ -907,7 +907,7 @@ class MaterialSection(AssetSection):
                         done += 1
                         continue
                     done += 1
-                    if not renderer:    # "" is a refused save that already spoke; name which one
+                    if not renderer:    # `""` is a failed save that already showed its message; list its name
                         failures.append(messages.SAVE_DID_NOT_COMPLETE_LINE % asset.name())
                         continue
                     renderers.append(renderer)
@@ -926,7 +926,7 @@ class MaterialSection(AssetSection):
         self.panel.prefs.save()
         self.panel.update_renderer_toggles()
         self.panel.refresh_sidebar_categories()
-        library.say_unlisted(unlisted)    # the status line, last: nothing after it writes the line
+        library.say_unlisted(unlisted)    # the status line, last, so nothing after it overwrites the line
 
     def update_preview(self, indexes) -> None:
         """Update Render on Material tiles: the whole selection in one render batch."""
@@ -959,12 +959,12 @@ class CopSection(AssetSection):
     empty_noun = "node asset"
     EMPTY = amazetheme.EMPTY_NODE    # no button, for the same reason as Material
     QUOTE = amazetheme.QUOTE_NODE
-    GRID_MENU = (    # the material menu without renderer-specific entries; Load Asset is live on a multi-selection
+    GRID_MENU = (    # the material menu without renderer-specific entries; Load Asset is enabled on a multi-selection
         MenuEntry("Load Asset", verb="menu_load"),
         SEPARATOR,
     ) + GRID_MENU_TAIL
 
-    DROP = DropRule(resolve="drop_cop_at_release",    # a saved network builds where the context allows, so the verb resolves the destination itself
+    DROP = DropRule(resolve="drop_cop_at_release",    # a saved network is built where its context allows, so the method finds the destination
                     click_resolve="click_import_cop")
 
     def click_import_cop(self, _index) -> bool:
@@ -972,14 +972,14 @@ class CopSection(AssetSection):
         return True
 
     def drop_cop_at_release(self, index) -> bool:
-        """Load a released Nodes drag into the network under the release; a context mismatch refuses."""
+        """Load a dropped Nodes asset into the network under the cursor, if its context matches."""
         from amaze.core import dragengine
         from amaze.helpers import helpers
         panel = self.panel
         if not panel.cop_model:
             return False
         if index is None or not index.isValid():
-            return False    # a drag armed on empty grid space has an invalid index
+            return False    # a drag started on empty grid space has an invalid index
         context = panel.drop_placement.context_under_cursor(
             cop_nodes.is_container)
         if context is None:
@@ -993,7 +993,7 @@ class CopSection(AssetSection):
                 panel.cop_model, source_index, context_node=context
             )
         if not ok and reason:
-            debug.refuse(reason, net=context.path())    # the door marks library damage, which is what picks the dialog over the status line ▸p/refusal-sink
+            debug.refuse(reason, net=context.path())    # the import marks library damage, so a dialog shows, not the status line ▸p/refusal-sink
         if ok:
             helpers.place_nodes(created,
                                 panel.drop_placement.release_position_in(context))
@@ -1039,7 +1039,7 @@ class CopSection(AssetSection):
             self.panel.cop_category_model.check_add_category(dialog.categories)
 
         result = None
-        save_error = None    # no layout wrapper: add_asset announces its own insert
+        save_error = None    # no layout wrapper: add_asset emits its own row-insert signals
         try:
             result = node_actions.add_asset(
                 self.panel.cop_model,
@@ -1069,7 +1069,7 @@ class CopSection(AssetSection):
             debug.refuse(messages.ASSET_ADDED_LIBRARY_NOT_SAVED % (dialog.name.strip() or node.name()))
 
     def update_preview(self, indexes) -> None:
-        """Update Render on Node tiles: each network's picture re-rendered by the Node verbs."""
+        """Update Render on Node tiles: each network's thumbnail re-rendered by `node_actions`."""
         model, rows = self._model_and_rows(indexes)
         if rows:
             node_actions.render_thumbnails(model, rows)
@@ -1082,7 +1082,7 @@ class CopSection(AssetSection):
 class CodeSection(AssetSection):
     """Saved code snippets, each tagged with a language, previewed as rendered text."""
 
-    offers_preview_update = False    # no Update Render: the preview key is content-addressed, so an edit repaints itself
+    offers_preview_update = False    # no Update Render: the preview key is content-addressed, so an edit redraws it
 
     @staticmethod
     def delete_prompt(count: int, name: str = "") -> str:
@@ -1095,8 +1095,8 @@ class CodeSection(AssetSection):
     key = "code"
     label = section_list.label(key)
     empty_noun = "snippet"
-    EMPTY = amazetheme.EMPTY_CODE    # New File acts on nothing, so it always works
-    GRID_MENU = (    # Load Asset and Edit act on one snippet; New File acts on nothing and stays live
+    EMPTY = amazetheme.EMPTY_CODE    # New File needs no selection, so it always works
+    GRID_MENU = (    # Load Asset and Edit act on one snippet; New File needs no selection and stays enabled
         MenuEntry("New File", verb="menu_new_snippet", needs="always"),
         SEPARATOR,
         MenuEntry("Load Asset", verb="menu_apply", needs="one"),
@@ -1104,13 +1104,13 @@ class CodeSection(AssetSection):
         SEPARATOR,
     ) + GRID_MENU_TAIL
 
-    DROP = DropRule(on_node="drop_code_at_release",    # to the node under the release; on empty space the carrier wrangle is created
+    DROP = DropRule(on_node="drop_code_at_release",    # to the node under the cursor; on empty space a carrier node is created
                     on_space="create_code_node_in",
                     click_on_node="drop_code_at_release")
 
-    carrier_type_verb = "code_carrier_type"    # per language AND per network kind, so the answer is a method
+    carrier_type_verb = "code_carrier_type"    # per language AND per network kind, so a method returns it
 
-    CODE_CARRIERS = {    # what is created per language and network kind; an absent pair or missing type refuses
+    CODE_CARRIERS = {    # the node type created per language and network kind; an absent pair creates nothing
         "vex": {"Sop": "attribwrangle", "Lop": "attribwrangle",
                 "Cop": "wrangle"},
         "opencl": {"Sop": "opencl", "Cop": "opencl"},
@@ -1140,7 +1140,7 @@ class CodeSection(AssetSection):
             category.name() if category is not None else "", "")
 
     def code_carrier_type(self, index, dest) -> str:
-        """WHICH carrier a snippet becomes in `dest`: the drag ghost draws the type the drop builds."""
+        """WHICH node type a snippet becomes in `dest`: the drag preview shows this type."""
         return self._carrier_for(self._code_asset(index)[1], dest)
 
     def create_code_node_in(self, index, dest, position=None) -> bool:
@@ -1164,7 +1164,7 @@ class CodeSection(AssetSection):
         return True
 
     def drop_code_at_release(self, index, node: hou.Node) -> bool:
-        """Apply a released snippet to the node under the cursor; a node with no code parm reports why."""
+        """Apply a dropped snippet to the node under the cursor; no code parm shows a reason."""
         from amaze.core import dragengine
         panel = self.panel
         if not panel.code_model or index is None or node is None:
@@ -1179,7 +1179,7 @@ class CodeSection(AssetSection):
             )
         if not ok:
             if reason:
-                debug.refuse(reason)    # the miss indicator carries the refusal, the status line the reason ▸p/refusal-sink
+                debug.refuse(reason)    # the miss icon shows the failure, the status line the reason ▸p/refusal-sink
             return False
         return True
 
@@ -1187,7 +1187,7 @@ class CodeSection(AssetSection):
         self.panel.new_code_snippet()
 
     def menu_apply(self, indexes, current, payload=None) -> None:
-        self.panel.click_on_row(self, current)    # the click door, the same as a double-click
+        self.panel.click_on_row(self, current)    # `click_on_row`, the same call as a double-click
 
     def _code_row(self, current):
         """The code model's row under a grid index, or None."""
@@ -1199,7 +1199,7 @@ class CodeSection(AssetSection):
             self._edit_code_row(row)
 
     def menu_run(self, indexes, current, payload=None) -> None:
-        """Run the snippet in this Houdini; a failure is said on the status line."""
+        """Run the snippet in this Houdini; a failure is shown on the status line."""
         row = self._code_row(current)
         if row is None:
             return
@@ -1217,7 +1217,7 @@ class CodeSection(AssetSection):
         listed, active = model.version_list(row) if on else ([], 0)
         dialog = code_dialog.CodeDialog(
             panel.get_code_category_names(),
-            name=asset.name,    # the snippet's name follows its active version's
+            name=asset.name,    # the snippet's name is its active version's name
             language=asset.renderer,
             category=asset.categories[0] if asset.categories else "",
             tags=", ".join(asset.tags),
@@ -1230,14 +1230,14 @@ class CodeSection(AssetSection):
         self.run_code_dialog(dialog, mat_id)
 
     def run_code_dialog(self, dialog, mat_id: str) -> None:
-        """Every Apply saves the snippet `mat_id`, a new one while it is empty; the window stays."""
+        """Each Apply saves snippet `mat_id`, a new one while it is empty; the window stays open."""
         panel = self.panel
         saved = {"id": mat_id}
 
         def apply():
             if dialog.category:
                 panel.code_category_model.check_add_category(dialog.category)
-            got = panel.code_model.save_from_editor(    # NO layout pair: it announces itself
+            got = panel.code_model.save_from_editor(    # NO layout pair: it emits its own model signals
                 saved["id"], dialog.version, dialog.code, dialog.name, dialog.language,
                 dialog.category, dialog.tags)
             panel.refresh_sidebar_categories()
@@ -1273,12 +1273,12 @@ class CodeSection(AssetSection):
         return parm is not None and bool(parm.eval().strip())    # an empty snippet saves nothing
 
     def commit_save(self, nodes, node, dialog) -> None:
-        """The snippet is the node's code parm as it reads now."""
+        """The snippet is the current value of the node's code parm."""
         from amaze.helpers import helpers
         parm = helpers.find_code_parm(node)
         if dialog.categories:
             self.panel.code_category_model.check_add_category(dialog.categories)
-        self.panel.code_model.add_asset(    # no layout wrapper: add_asset announces its own insert
+        self.panel.code_model.add_asset(    # no layout wrapper: add_asset emits its own row-insert signals
             parm.eval(),
             dialog.name or node.name(),
             dialog.language or helpers.code_parm_language(parm),
@@ -1304,7 +1304,7 @@ class FolderSection(Section):
     selection_attr = ""    # with delegate_attr, what activate() points the shared grid at
     delegate_attr = ""
     search_hint = ""    # files carry no tags or categories, so the name is all there is to match
-    library_model_attrs = ("file_folders_model",)    # the folders live in the library's files.json ▸p/folders-follow-the-library
+    library_model_attrs = ("file_folders_model",)    # the folders are stored in the library's files.json ▸p/folders-follow-the-library
 
     def __init__(self, panel) -> None:
         super().__init__(panel)
@@ -1316,20 +1316,20 @@ class FolderSection(Section):
             left.connect(self._scene_left)
 
     def _scene_left(self, old: str) -> None:
-        """The scene row went: a grid in its folder opens the tab's first row instead."""
+        """The scene row was removed: a grid showing its folder calls `activate` again."""
         try:
             active = self.panel.active_section() is self
-        except RuntimeError:    # the panel is gone, and the shared model outlives it
+        except RuntimeError:    # the panel was deleted, and the shared model outlives it
             return
         shown = self.standing_key()
         if active and shown and (shown.rstrip("/") + "/").startswith(old):
             self.activate()
 
     def _scene_moved(self, old: str, new: str) -> None:
-        """The scene's folder moved: a grid on the scene row, or inside it, follows."""
+        """The scene's folder moved: a grid on the scene row, or inside it, shows the new folder."""
         try:
             view, folders = self._sidebar_view()
-        except RuntimeError:    # the panel is gone, and the shared model outlives it
+        except RuntimeError:    # the panel was deleted, and the shared model outlives it
             return
         if folders is None:
             return
@@ -1358,13 +1358,13 @@ class FolderSection(Section):
         model = self._p(self.sidebar_attr)
         if model is None or index is None or not index.isValid() or index.parent().isValid():
             return False    # a subfolder moves with its location, never alone
-        return model._offset() <= index.row() < model.rowCount()    # All and the scene row stay put
+        return model._offset() <= index.row() < model.rowCount()    # All and the scene row never move
 
     def move_sidebar_row(self, index, to_view_row: int) -> bool:
         model = self._p(self.sidebar_attr)
         if model is None or index is None or not index.isValid():
             return False
-        to_view_row = max(model._offset(), min(int(to_view_row), model.rowCount() - 1))    # parks under $HIP
+        to_view_row = max(model._offset(), min(int(to_view_row), model.rowCount() - 1))    # clamped to below $HIP
         return model.move_folder(index.row(), to_view_row)
 
     def sidebar_order_snapshot(self):
@@ -1399,7 +1399,7 @@ class FolderSection(Section):
             target_row = folders.scene_row()
         else:
             target_row = folders.row_of(last) if last else None
-        inside = ""    # a remembered subfolder: the grid shows it, the sidebar unfolds to it
+        inside = ""    # a remembered subfolder: the grid shows it, the sidebar expands to it
         if target_row is None and last and last not in (folders.ALL_LABEL, folders.SCENE_LABEL):
             owner = folders.top_of(last)
             if owner.rstrip("/") != last.rstrip("/") and os.path.isdir(last):
@@ -1419,7 +1419,7 @@ class FolderSection(Section):
                 self._browse(inside)
                 reveal = getattr(panel.cat_list, "reveal", None)
                 if reveal is not None:
-                    reveal(inside)    # stands on it once the reads above it land
+                    reveal(inside)    # selects it once its parent folders have been read
             else:
                 panel.update_selected_cat()
 
@@ -1440,7 +1440,7 @@ class FolderSection(Section):
 
     def select_category(self, index) -> None:
         folders = self._p(self.folders_attr)
-        remember = folders.SCENE_LABEL if folders.is_scene_row(index) else None    # by token: it moves
+        remember = folders.SCENE_LABEL if folders.is_scene_row(index) else None    # by SCENE_LABEL: the scene's folder can change
         self._browse(index.data(folders.BrowseRole), remember)    # a location's path, or a subfolder's
 
     def standing_key(self) -> str:
@@ -1452,12 +1452,12 @@ class FolderSection(Section):
         return index if index.isValid() else None
 
     def stand_on_key(self, key: str) -> None:
-        """A subfolder with no row stands on its location: until its row arrives, or for good if gone."""
+        """A rowless subfolder selects its location: until its row is read, or always if deleted."""
         view, folders = self._sidebar_view()
         if not (key and folders is not None and self._rowless(folders, key)):
             super().stand_on_key(key)
             return
-        if not os.path.isdir(key):    # gone from disk: the row above it, and its files shown
+        if not os.path.isdir(key):    # deleted from disk: select its location row and show its files
             super().stand_on_key(folders.top_of(key))
             return
         self._highlight(view, folders.index(folders.row_of(folders.top_of(key)), 0))
@@ -1475,7 +1475,7 @@ class FolderSection(Section):
                 and not folders.index_of(path).isValid())
 
     def nothing_yet(self, source) -> bool:
-        folders = self._p(self.folders_attr)    # the grid lists one location; the blank means none
+        folders = self._p(self.folders_attr)    # the grid lists one location; the empty state means none
         return folders is None or not folders._folders()
 
     def tile_models(self):
@@ -1518,7 +1518,7 @@ class FolderSection(Section):
         if files is None or current is None or \
                 current.data(files.KindRole) != locations.KIND_HIP:
             return True
-        path = self._path_of(current)    # another scene open would file the picture under this one
+        path = self._path_of(current)    # with another scene open, the capture would be saved under this one
         return bool(path) and path == scene_captures.current_scene_path()
 
     def menu_import(self, indexes, current, payload=None) -> None:
@@ -1526,7 +1526,7 @@ class FolderSection(Section):
         if files is None:
             return
         if self.selected_kinds(indexes) == {locations.KIND_IMAGE}:
-            self.panel.click_on_row(self, current)    # the click door, the same as a double-click on the row
+            self.panel.click_on_row(self, current)    # `click_on_row`, the same call as a double-click on the row
             return
         for index in indexes:
             if index.data(files.KindRole) == locations.KIND_GEO:
@@ -1556,7 +1556,7 @@ class FolderSection(Section):
         return files.browsing() if files is not None else ""
 
     def _new_name(self, title: str) -> str:
-        """The name the dialog gives: "" for a cancel, a cleared field, or a name with a slash."""
+        """The typed name: "" for a cancel, a cleared field, or a name with a slash."""
         name = (self.panel.ask_category_name(title, "") or "").strip()
         if name and ("/" in name or os.sep in name):
             debug.refuse(messages.NEW_NAME_HAS_A_SLASH % name)
@@ -1613,7 +1613,7 @@ class FolderSection(Section):
             files.toggle_favorites(rows)
 
     takes_file_drops = True    # ▸r/cross-volume-move
-    _last_move = ()    # (source, destination) per file the last move carried, until it is undone
+    _last_move = ()    # (source, destination) per file of the last move, until it is undone
 
     def accepts_file_drop(self, index) -> bool:
         """A location, or a folder inside one; never All."""
@@ -1667,7 +1667,7 @@ class FolderSection(Section):
             debug.status(messages.MOVE_PROGRESS % (_file_count(job["count"]), job["name"], percent))
 
     def _move_landed(self, result) -> None:
-        """Refresh what shows the moved files, offer Undo, and say what happened in one line."""
+        """Refresh the models of the moved files, offer Undo, and show the result on one line."""
         job = self._move_job
         for attr in (self.files_attr, self.folders_attr):
             model = self._p(attr)
@@ -1689,7 +1689,7 @@ class FolderSection(Section):
             debug.status(" ".join(said))
 
     def _taken_lines(self, skipped) -> list:
-        """One sentence per folder that already held a name: the first three, then a count."""
+        """One sentence per folder with names already in use: the first three, then a count."""
         by_folder = {}
         for _source, dest in skipped:
             by_folder.setdefault(os.path.dirname(dest), []).append(os.path.basename(dest))
@@ -1711,7 +1711,7 @@ class FolderSection(Section):
     colour_title = "Location Color"
 
     def sidebar_key(self, index) -> str:
-        folders = self._p(self.folders_attr)    # a location's key is its PATH; the row shows a custom name when one is set, so the label is not it
+        folders = self._p(self.folders_attr)    # a location's key is its PATH; the row may show a custom name, so the label is not the key
         if folders is None or index is None or not index.isValid():
             return ""
         return str(index.data(folders.PathRole) or "")
@@ -1763,7 +1763,7 @@ class FolderSection(Section):
 
 
 class FileSection(FolderSection):
-    """One folder list, every file shown, each row behaving as its kind. ▸o/section-api"""
+    """One folder list, every file shown, each row handled by its kind. ▸o/section-api"""
 
     key = "file"
     label = section_list.label(key)
@@ -1771,13 +1771,13 @@ class FileSection(FolderSection):
     empty_noun = "file"
     EMPTY = amazetheme.EMPTY_FILE    # a button: registering a folder needs nothing selected
 
-    FILTER_CHOICES = (  # the known kinds, in the order kind_for tests them; KIND_OTHER is no kind
+    FILTER_CHOICES = (  # the known kinds, in the order kind_for tests them; KIND_OTHER has no entry
         FilterEntry("Images", "Images", locations.KIND_IMAGE),
         FilterEntry("Geometry", "Geometry", locations.KIND_GEO),
         FilterEntry("Hip", "Hip", locations.KIND_HIP),
     )
 
-    GRID_MENU = UNDO_MOVE + (  # the selection's KINDS pick the actions; no Delete: the user's own files
+    GRID_MENU = UNDO_MOVE + (  # the selection's KINDS decide the actions; no Delete: these are the user's own files
         MenuEntry("New Folder", verb="menu_new_folder", needs="menu_new_enabled"),
         SEPARATOR,
         MenuEntry("Open Scene", verb="menu_load_scene", needs="one",
@@ -1791,14 +1791,14 @@ class FileSection(FolderSection):
         MenuEntry("Show Location", verb="menu_reveal", needs="one"),
     ) + GRID_MENU_TAIL
 
-    _PATH_ONLY = DropRule(on_node="drop_file_path_on_node",    # per row kind: every kind hands its path to the node; the no-node door differs
+    _PATH_ONLY = DropRule(on_node="drop_file_path_on_node",    # per row kind: every kind sets its path on a node; a drop off any node differs
                           click_resolve="click_copy_path")
     DROP_BY_KIND = {
         locations.KIND_IMAGE: DropRule(
             on_node="drop_file_path_on_node",
             on_space="create_image_node_in",
             click_on_node="drop_file_path_on_node",
-            carrier_type="mtlximage"),  # the ghost draws THIS in the air
+            carrier_type="mtlximage"),  # the drag preview shows THIS node type
         locations.KIND_GEO: DropRule(
             on_node="drop_file_path_on_node",
             resolve="drop_geo_at_release",
@@ -1813,7 +1813,7 @@ class FileSection(FolderSection):
 
     exports_selection = True
 
-    def export_package_to(self, indexes, path: str) -> int:    # the File flavour: each selected row's file rides whole under its kind
+    def export_package_to(self, indexes, path: str) -> int:    # the File version: each selected file is packaged whole under its kind
         items = []
         from amaze.core import packages
         for index in indexes:
@@ -1834,7 +1834,7 @@ class FileSection(FolderSection):
         return True
 
     def drop_geo_at_release(self, index: QtCore.QModelIndex) -> bool:
-        """Import a released geometry drag in context at the release point; silent over nothing."""
+        """Import dropped geometry into the network under the cursor; quietly False if none."""
         from amaze.core import dragengine
         from amaze.helpers import helpers
         panel = self.panel
@@ -1879,7 +1879,7 @@ class FileSection(FolderSection):
         debug.event("hip", "scene opened", file=path)
 
     def drop_file_path_on_node(self, index, node) -> bool:
-        """A File row released on a node sets its first file parameter; False if it has none."""
+        """A File row dropped on a node sets its first file parameter; False if it has none."""
         panel = self.panel
         from amaze.core import dragengine
         from amaze.helpers import helpers
@@ -1896,7 +1896,7 @@ class FileSection(FolderSection):
         return True
 
     def create_image_node_in(self, index, dest, position=None) -> bool:
-        """The image creation rule: a mtlximage carrying the path wherever the network can hold one."""
+        """Create a mtlximage node set to the file's path, where the network can contain one."""
         panel = self.panel
         from amaze.core import dragengine
         from amaze.helpers import helpers
@@ -1917,11 +1917,11 @@ class FileSection(FolderSection):
         return True
 
     def click_copy_path(self, index) -> bool:
-        """An unknown file has no scene behaviour - its one action."""
+        """Copy the path: the only click action for a file of unknown kind."""
         self.panel.copy_file_paths([index])
         return True
 
-    SIDEBAR_MENU = UNDO_MOVE + (  # per-location entries need a REAL row: All is synthetic, its key ""
+    SIDEBAR_MENU = UNDO_MOVE + (  # per-location entries need a REAL row: All is no location, its key `""`
         MenuEntry("Add", verb="menu_add_location", needs="always"),
         MenuEntry("Locate", verb="menu_locate_location",
                   needs="on_a_location"),
@@ -1940,12 +1940,12 @@ class FileSection(FolderSection):
                   needs="on_a_location"),
     )
 
-    SHOW_KINDS = (("Images", locations.KIND_IMAGE),    # Show ▸'s kind ticks, in menu order
+    SHOW_KINDS = (("Images", locations.KIND_IMAGE),    # the Show ▸ submenu's kind checkboxes, in menu order
                   ("Geometry", locations.KIND_GEO),
                   ("HIP", locations.KIND_HIP))
 
     def menu_sort_locations(self, indexes, current, payload=None) -> None:
-        """The one-off Sort by name: the locations below All and the scene row, whatever row was pressed."""
+        """Sort by name, once: the locations below All and the scene row, from any row clicked."""
         from amaze.core import locations
         folders = self._p(self.sidebar_attr)
         if folders is None:
@@ -1953,7 +1953,7 @@ class FileSection(FolderSection):
         standing = self.standing_key()    # the grid's folder: a right press moved only the sidebar
         if not folders.sort_folders():    # a model reset, which clears the sidebar's selection
             return
-        locations.commit_registered_order(self.panel.prefs)    # one write, as a drag's release makes
+        locations.commit_registered_order(self.panel.prefs)    # one write, as on a drag's release
         self.stand_on_key(standing)
 
     def _selected_location(self, current) -> str:
@@ -1967,10 +1967,10 @@ class FileSection(FolderSection):
         path = self._selected_location(current)
         named = bool(path and self.panel.prefs.file_folder_names.get(path))
         return (("Edit", "edit", "", True), None,
-                ("Set to Default", "default", "", named))    # greys with no name set, never hides
+                ("Set to Default", "default", "", named))    # disabled with no name set, never hidden
 
     def show_actions(self, indexes, current) -> tuple:
-        """Show ▸: every entry an independent tick on the location under the cursor."""
+        """Show ▸: each entry an independent checkbox for the location under the cursor."""
         prefs = self.panel.prefs
         path = self._selected_location(current)
         kinds = file_library.location_kinds(prefs, path) if path else frozenset()
@@ -2002,7 +2002,7 @@ class FileSection(FolderSection):
                 path, kinds | {what} if on else kinds - {what})
         if folders is not None:
             folders.refresh_counts()
-        self.panel.update_selected_cat()    # rescan what is showing under the new ticks
+        self.panel.update_selected_cat()    # rescan the shown folder with the new settings
 
     def _repaint_location(self, path: str) -> None:
         folders = self._p(self.folders_attr)
@@ -2021,7 +2021,7 @@ class FileSection(FolderSection):
             prefs = self.panel.prefs
             name = self.panel.ask_category_name(
                 "Rename Location", prefs.file_folder_names.get(path)
-                or os.path.basename(path.rstrip("/\\")))    # opens on the name, never the path
+                or os.path.basename(path.rstrip("/\\")))    # the field starts with the name, never the path
             if name is None:
                 return
         self.panel.prefs.set_file_folder_name(path, name)
@@ -2051,11 +2051,11 @@ class FileSection(FolderSection):
         if folders is not None:
             folders.refresh_counts()    # Show Unknown Files changes what counts as a row
         if files is not None:
-            files.refresh_current_folder()    # once, so look preferences show unclicked
+            files.refresh_current_folder()    # once, so display preferences apply without a click
 
 
 class OnlineContext(Section):
-    """The online world: a Section's interface, not in SECTION_CLASSES; enter it through activate()."""
+    """The online section: a Section's interface, not in SECTION_CLASSES; shown by activate()."""
 
     key = "online"
     label = "Online"
@@ -2064,7 +2064,7 @@ class OnlineContext(Section):
     proxy_attr = "matx_sorted_model"
     selection_attr = "matx_selection_model"
     delegate_attr = "matx_delegate"    # its own delegate, carrying only the roles matx_library has
-    search_hint = ""    # empty, as on every tab; the tooltip teaches the tag search
+    search_hint = ""    # empty, as on every tab; the tooltip explains the tag search
 
     def activate(self) -> None:
         panel = self.panel
@@ -2085,7 +2085,7 @@ class OnlineContext(Section):
         return self.panel.matx_sorted_model.filter_value(role) or ""
 
     def filter_text(self, text: str) -> None:
-        """The online search asks the SOURCE, not a proxy."""
+        """The online search is set on the SOURCE model, not a proxy."""
         self.panel.matx_online_model.set_search(text)
 
     def filter_favorites(self, on: bool) -> None:
@@ -2114,7 +2114,7 @@ class OnlineContext(Section):
     def stack(self):
         return None
 
-    GRID_MENU = (    # named for where the material lands, a submenu for what it is built as - drawn C06/C06a/C06b
+    GRID_MENU = (    # named for where the material goes, a submenu for its renderer, as in C06/C06a/C06b
         MenuEntry("Import to Materials", verb="menu_import_to_library",
                   children="import_targets", count_suffix=True),
         MenuEntry("Import to Scene", verb="menu_import_to_scene",
@@ -2136,7 +2136,7 @@ class OnlineContext(Section):
         return records
 
     def import_targets(self, indexes, current) -> tuple:
-        """The renderer the import BUILDS AS - drawn C06a/C06b; a row greys without its plugin."""
+        """The renderer the import CREATES, as in C06a/C06b; disabled without its plugin."""
         from amaze.render.material_conversion import engine as conversion_engine
         hub = renderers.HUB.key
         return tuple(
@@ -2150,7 +2150,7 @@ class OnlineContext(Section):
                                                 renderer=payload or renderers.HUB.key)
 
     def menu_import_to_scene(self, indexes, current, payload=None) -> None:
-        self.panel.online_import.import_records_to_scene(    # the door wraps the editor restore for both of its callers
+        self.panel.online_import.import_records_to_scene(    # this method does the editor restore for both of its callers
             self._records(indexes), renderer=payload or renderers.HUB.key)
 
     def selection_is_amaze_packages(self, indexes, current) -> bool:
@@ -2171,7 +2171,7 @@ class OnlineContext(Section):
                 debug.exception("refresh source", exc, source=source.name)
         self.panel.matx_online_model.reload(force=True)    # force, or a loaded catalogue just re-filters and the user's explicit Refresh did nothing
 
-    takes_comments = False    # the three the online world does not offer; the toolbar reads them
+    takes_comments = False    # the three the online section does not offer; the toolbar reads them
     takes_favourites = False
     takes_filter_menu = False
     takes_capture = False    # an online tile is not in the library: nowhere to keep a capture
@@ -2179,11 +2179,11 @@ class OnlineContext(Section):
 
 
 class GradientSection(AssetSection):
-    """Colors on the asset spine; its own are the ramp verbs, the swatch menu and the size filter."""
+    """Colors, an AssetSection; its own parts are the ramp actions, swatch menu and size filter."""
 
     @staticmethod
     def delete_prompt(count: int, name: str = "") -> str:
-        if count == 1:    # the one section whose copy names the thing
+        if count == 1:    # the only section whose prompt names the item
             return ('Delete "%s"? The gradient goes for good. Ramps '
                     "already applied to a node are not affected."
                     % (name or "this palette"))
@@ -2193,7 +2193,7 @@ class GradientSection(AssetSection):
     key = "gradient"
     label = section_list.label(key)
     empty_noun = "palette"
-    EMPTY = amazetheme.EMPTY_COLOR    # no button: the gesture belongs to the network editor
+    EMPTY = amazetheme.EMPTY_COLOR    # no button: a palette is saved from a node in the network editor
     QUOTE = amazetheme.QUOTE_COLOR
     library_model_attrs = ("gradient_model", "gradient_categories_model")    # the raw models; sidebar_attr names the proxy over them
     model_attr = "gradient_model"
@@ -2214,7 +2214,7 @@ class GradientSection(AssetSection):
         SEPARATOR,
     ) + GRID_MENU_TAIL
 
-    DROP = DropRule(on_node="apply_gradient_to_node",  # to a node with a ramp; on space the MaterialX ramp carrier, where supported
+    DROP = DropRule(on_node="apply_gradient_to_node",  # to a node with a ramp; on empty space a MaterialX ramp node, where supported
                     on_space="create_gradient_node_in",
                     click_on_node="apply_gradient_to_node")
 
@@ -2222,7 +2222,7 @@ class GradientSection(AssetSection):
         self, index: QtCore.QModelIndex, node: hou.Node,
         basis: str = "",
     ) -> bool:
-        """Apply the dragged gradient to the node under the release; False if the node takes nothing."""
+        """Apply the dropped gradient to the node under the cursor; False with no colour ramp."""
         from amaze.core import dragengine
         from amaze.helpers import helpers
         entry = self._entry_at(index)
@@ -2249,7 +2249,7 @@ class GradientSection(AssetSection):
 
     def create_gradient_node_in(self, index, dest, position=None,
                                 basis: str = "") -> bool:
-        """The gradient creation rule: a MtlX colour ramp; empty `basis` means the recorded ramp."""
+        """Create a MtlX colour ramp node; empty `basis` means the recorded ramp."""
         entry = self._entry_at(index)
         if entry is None:
             return False
@@ -2258,7 +2258,7 @@ class GradientSection(AssetSection):
 
     def _create_gradient_carrier(self, entry, dest, basis: str = "",
                                  position=None) -> bool:
-        """The carrier half shared by the drag door (an index) and the click doors (an entry)."""
+        """Node creation shared by the drop (an index) and the click actions (an entry)."""
         from amaze.core import dragengine
         from amaze.helpers import helpers
         name = wording.sanitize_usd_path(
@@ -2315,7 +2315,7 @@ class GradientSection(AssetSection):
     )
 
     def on_a_category(self, indexes, current) -> bool:
-        """Is the row under the cursor a real user category? The stored name answers."""
+        """Whether the row under the cursor is a real user category, by its stored name."""
         if current is None:
             return False
         name = self.sidebar_key(current)
@@ -2345,7 +2345,7 @@ class GradientSection(AssetSection):
         )
 
     def menu_apply_ramp(self, indexes, current, payload=None) -> None:
-        self.panel.click_on_row(self, current, payload or None)    # Apply and Apply as through the click door; the payload is the ramp basis
+        self.panel.click_on_row(self, current, payload or None)    # Apply and Apply as through `click_on_row`; the payload is the ramp basis
 
     def menu_copy_swatch(self, indexes, current, payload=None) -> None:
         if payload is not None:
@@ -2362,7 +2362,7 @@ class GradientSection(AssetSection):
     )
 
     def apply_filter(self, value) -> None:
-        self.panel.gradient_sorted_model.set_size_filter(value)    # narrows by size; never through set_renderer_filter
+        self.panel.gradient_sorted_model.set_size_filter(value)    # filters by size; never through set_renderer_filter
 
     def can_save(self, nodes) -> bool:
         from amaze.helpers import helpers
@@ -2383,7 +2383,7 @@ class GradientSection(AssetSection):
             tags=dialog.tags
         )
         if dialog.categories:
-            self.panel.gradient_categories_model.check_add_category(    # brackets its own insert
+            self.panel.gradient_categories_model.check_add_category(    # emits its own row-insert signals
                 dialog.categories)
 
     @classmethod
@@ -2409,12 +2409,12 @@ def drop_rule(section, panel, index):
 
 
 def drop_verb(section, name):
-    """The bound verb a declaration names, always the section's own; an unresolved name raises."""
+    """The bound method a DropRule names, always the section's own; an unknown name raises."""
     return getattr(section, name)
 
 
 def save_guess(keys, nodes, prefer: str = "") -> str:
-    """Which of `keys` a save of `nodes` opens on. ▸p/save-section-row"""
+    """Which of `keys` the save dialog preselects for `nodes`. ▸p/save-section-row"""
     if prefer in keys:    # a drop onto the open section means that section
         return prefer
     return min(keys, key=lambda key: SECTION_INDEX[key].save_rank(nodes))

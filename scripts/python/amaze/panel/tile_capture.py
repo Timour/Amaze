@@ -7,7 +7,7 @@ from amaze.core import debug, scene_captures
 
 
 class TileCapture:
-    """One panel's Capture doors; the panel holds it as `tile_capture`."""
+    """One panel's Capture commands; the panel holds it as `tile_capture`."""
 
     def __init__(self, panel) -> None:
         self.panel = panel
@@ -32,7 +32,7 @@ class TileCapture:
         row = source.row()
         scene = self.panel.hip_path_for(proxy_index) if getattr(context, "key", "") == "file" else ""
         if scene:
-            captured = self.capture_and_report(scene)    # a scene only while it is the one open
+            captured = self.capture_and_report(scene)    # raises CaptureRefused unless `scene` is open
         else:
             captured = self.run(
                 lambda: scene_captures.capture_tile(model.capture_path(row), model.tile_key(row)),
@@ -41,12 +41,12 @@ class TileCapture:
             self.panel.apply_icon_spec(model, [row], {"face": "image"})
 
     def capture_and_report(self, target: str = "") -> bool:
-        """The open scene onto its File tile; "" means whatever is open. Answers whether it landed."""
+        """Capture the open scene onto its File tile; `""` means the open one. True if it worked."""
         return self.run(
             lambda: scene_captures.capture_open_scene(self.panel.prefs, target), target)
 
     def run(self, capture, label: str) -> bool:
-        """Run one capture and SAY WHY it refused: a silent refusal reads as a broken feature."""
+        """Run one capture and show why it failed: a silent failure looks like a bug."""
         try:
             capture()
         except scene_captures.CaptureRefused as exc:

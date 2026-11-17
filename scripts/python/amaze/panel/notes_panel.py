@@ -12,14 +12,14 @@ from amaze.helpers import theme, ui_helpers
 from amaze import messages
 from amaze import tooltips
 
-COMMENT_INK = amazetheme.COMMENT_INK    # the design's, declared once ▸p/one-design-document
+COMMENT_INK = amazetheme.COMMENT_INK    # defined once, in amazetheme ▸p/one-design-document
 
 SAVE_DELAY_MS = 600       # a crash loses a sentence at most, and typing is not a write per key
 
 HEADER_BG = amazetheme.COMMENT_HEADER_BG
 PAGE_BG = amazetheme.COMMENT_PAGE_BG
 
-_DRAWN = amazetheme.drawn_comments()    # every size and spacing below is N01's ▸r/comments-from-frame
+_DRAWN = amazetheme.drawn_comments()    # every size and spacing below is from the N01 design frame ▸r/comments-from-frame
 
 
 def _fill(widget, hex_color: str) -> None:
@@ -41,7 +41,7 @@ def _ink(label, role: str, opacity: float = 1.0) -> None:
 
 
 def _faded(pixmap: QtGui.QPixmap, opacity: float, dpr: float) -> QtGui.QPixmap:
-    """`pixmap`, made at ratio `dpr`, at `opacity` on a transparent copy; 1 hands it back."""
+    """`pixmap`, made at ratio `dpr`, at `opacity` on a transparent copy; 1 returns it as is."""
     if opacity >= 1.0:
         return pixmap
     faded = QtGui.QPixmap(pixmap.size())
@@ -55,7 +55,7 @@ def _faded(pixmap: QtGui.QPixmap, opacity: float, dpr: float) -> QtGui.QPixmap:
 
 
 class _AddButton(QtWidgets.QToolButton):
-    """The +: disabled with nothing selected, yet drawn as N01B draws it rather than Houdini's fade."""
+    """The + button: disabled with nothing selected, painted as in N01B, not faded by Houdini."""
 
     def paintEvent(self, event) -> None:
         if self.isEnabled():
@@ -63,21 +63,21 @@ class _AddButton(QtWidgets.QToolButton):
             return
         option = QtWidgets.QStyleOptionToolButton()
         self.initStyleOption(option)
-        option.state |= QtWidgets.QStyle.StateFlag.State_Enabled    # Houdini fades a disabled triangle away
+        option.state |= QtWidgets.QStyle.StateFlag.State_Enabled    # Houdini paints a disabled menu triangle almost invisible
         option.state &= ~QtWidgets.QStyle.StateFlag.State_MouseOver
         option.palette.setCurrentColorGroup(QtGui.QPalette.ColorGroup.Active)
         painter = QtWidgets.QStylePainter(self)
         painter.drawComplexControl(QtWidgets.QStyle.ComplexControl.CC_ToolButton, option)
         painter.end()
 
-_glyph_cache: dict = globals().get("_glyph_cache", {})   # keyed on every input and survives the reload chain
+_glyph_cache: dict = globals().get("_glyph_cache", {})   # keyed on every input and kept across module reloads
 
 
 def _feather_icon(name: str, side: int, ink: str, widget=None) -> QtGui.QPixmap:
-    """One Feather glyph re-inked at device resolution; pass the widget being painted. ▸r/screen-dpr"""
+    """A Feather icon recoloured at device resolution; pass the painted widget. ▸r/screen-dpr"""
     import amaze
     dpr = theme.screen_ratio(widget)
-    key = (name, int(side), str(ink), float(dpr))   # EVERY input in the key: ink changes per to-do state, dpr when the window moves screen
+    key = (name, int(side), str(ink), float(dpr))   # EVERY input in the key: colour changes per to-do state, dpr when the window moves screen
     cached = _glyph_cache.get(key)
     if cached is not None:
         return cached
@@ -90,11 +90,11 @@ def _feather_icon(name: str, side: int, ink: str, widget=None) -> QtGui.QPixmap:
 STATE_TODO = 1   # each block's userState; not inherited across Enter ▸r/qt-text-checklists
 STATE_DONE = 2
 STATE_IMAGE = 3   # a picture block: ONE image fragment, no text of its own ▸p/comment-images
-STATE_UNLOADED = 4    # a picture whose file would not load: words stand in, `src` rides on the block
+STATE_UNLOADED = 4    # a picture whose file did not load: text replaces it, `src` is stored on the block
 _UNLOADED_SRC = QtGui.QTextFormat.Property.UserProperty.value + 1
 _UNLOADED_TEXT = QtGui.QTextFormat.Property.UserProperty.value + 2
 
-ADD_ITEMS = (    # what the + offers, in order - a new item type joins by adding ONE line here ▸p/comment-images
+ADD_ITEMS = (    # the + menu's entries, in order; a new item type is added with ONE line here ▸p/comment-images
     ("Bullet point", "_add_todo"),
     ("Image", "_add_image"),
 )
@@ -103,7 +103,7 @@ ADD_ITEMS = (    # what the + offers, in order - a new item type joins by adding
 class _NoteEdit(QtWidgets.QTextEdit):
     """The flowing document: plain paragraphs and to-do blocks interleave freely."""
 
-    GLYPH_SPACE = _DRAWN["todo_indent"]   # left margin reserved on to-do blocks, where the glyph paints
+    GLYPH_SPACE = _DRAWN["todo_indent"]   # left margin reserved on to-do blocks, where the icon is painted
     GLYPH_SIDE = _DRAWN["glyph"]
 
     def __init__(self, parent=None) -> None:
@@ -128,7 +128,7 @@ class _NoteEdit(QtWidgets.QTextEdit):
 
     @staticmethod
     def unloaded_picture(block):
-        """The picture item an unloaded block stands in for; None once its words are edited away."""
+        """The picture item an unloaded block replaces; None once its text has been edited out."""
         if block.userState() != STATE_UNLOADED:
             return None
         held = block.blockFormat()
@@ -138,7 +138,7 @@ class _NoteEdit(QtWidgets.QTextEdit):
         return {"t": "image", "src": str(held.property(_UNLOADED_SRC) or ""), "text": shown}
 
     def _stand_in(self, cursor, src: str, shown: str) -> None:
-        """`shown` in the cursor's block, holding `src` so `serialize` writes the picture back."""
+        """Insert `shown` in the cursor's block, storing `src` so `serialize` saves the picture."""
         block = cursor.block()
         block.setUserState(STATE_UNLOADED)
         self._restyle_block(block, False, False)
@@ -235,7 +235,7 @@ class _NoteEdit(QtWidgets.QTextEdit):
 
     @staticmethod
     def _label_format(done: bool) -> QtGui.QTextCharFormat:
-        fmt = QtGui.QTextCharFormat()   # strike-through only; colour comes from the palette adopt_look() clones off the category list
+        fmt = QtGui.QTextCharFormat()   # strike-through only; colour comes from the palette adopt_look() copies from the category list
         fmt.setFontStrikeOut(bool(done))
         return fmt
 
@@ -253,13 +253,13 @@ class _NoteEdit(QtWidgets.QTextEdit):
         self.viewport().update()
 
     def make_todo_here(self, cursor, done: bool = False) -> None:
-        """Turn the cursor's block into a to-do frame."""
+        """Turn the cursor's block into a to-do block."""
         self._set_todo(cursor.block(), done)
         cursor.setCharFormat(self._label_format(done))
         self.setTextCursor(cursor)
 
     def make_plain_here(self, cursor) -> None:
-        """Turn the cursor's block back into flowing text; the label survives as words."""
+        """Turn the cursor's block back into plain text; the label is kept as text."""
         block = cursor.block()
         block.setUserState(-1)
         self._restyle_block(block, False, False)
@@ -300,7 +300,7 @@ class _NoteEdit(QtWidgets.QTextEdit):
                     and not cursor.hasSelection()
                     and (cursor.atBlockStart()
                          or not self.block_label(block))):
-                self.make_plain_here(cursor)   # Backspace at a frame's start unwraps it back to text
+                self.make_plain_here(cursor)   # Backspace at a to-do's start turns it back into plain text
                 return
             if (not cursor.hasSelection() and cursor.atBlockStart()
                     and self.is_todo_block(block.previous())):
@@ -312,7 +312,7 @@ class _NoteEdit(QtWidgets.QTextEdit):
             block = cursor.block()
             if (self.is_todo_block(block) and cursor.atBlockEnd()
                     and block.next().isValid()):
-                self._merge_keeping(block, event)   # forward-Delete at a frame's end pulls the next line in, same rule
+                self._merge_keeping(block, event)   # forward Delete at a to-do's end joins the next line, keeping the to-do state
                 return
         if event.key() in (QtCore.Qt.Key.Key_Return,
                            QtCore.Qt.Key.Key_Enter):
@@ -320,10 +320,10 @@ class _NoteEdit(QtWidgets.QTextEdit):
             block = cursor.block()
             if self.is_todo_block(block):
                 if not self.block_label(block):
-                    self.make_plain_here(cursor)   # Enter on an EMPTY to-do drops back to text
+                    self.make_plain_here(cursor)   # Enter on an EMPTY to-do turns it back into plain text
                     return
                 super().keyPressEvent(event)
-                self.make_todo_here(self.textCursor(), False)   # a fresh frame: userState does not inherit, so the block above keeps its checkbox
+                self.make_todo_here(self.textCursor(), False)   # a new to-do: userState is not inherited, so the block above keeps its checkbox
                 return
         super().keyPressEvent(event)
 
@@ -409,7 +409,7 @@ class _NoteEdit(QtWidgets.QTextEdit):
                     cursor.insertBlock(self._plain_format())
                 if self.make_image_here(cursor, src):
                     cursor = self.textCursor()
-                else:    # not here yet, or gone: the item's own fallback words, never a blank ▸p/comment-images
+                else:    # file not synced yet, or deleted: the item's fallback text, never a blank ▸p/comment-images
                     self._stand_in(cursor, src,
                                    item.get("text") or "[image: %s]" % os.path.basename(src))
                 first = False
@@ -437,7 +437,7 @@ class _NoteEdit(QtWidgets.QTextEdit):
         self.document().clearUndoRedoStacks()    # the load is not an edit ▸r/programmatic-load-is-undoable
 
     def serialize(self) -> list:
-        """The document as the store's item flow; adjacent plain lines join into one text item."""
+        """The document as the store's item list; adjacent plain lines join into one text item."""
         items = []
         text_lines = []
 
@@ -450,7 +450,7 @@ class _NoteEdit(QtWidgets.QTextEdit):
         block = self.document().begin()
         while block.isValid():
             picture = self.unloaded_picture(block)
-            if picture is not None:    # its file may arrive later: the item goes back as it came
+            if picture is not None:    # its file may appear later: the item is saved unchanged
                 flush_text()
                 items.append(picture)
                 typed = block.text().replace(picture["text"], "", 1)
@@ -463,7 +463,7 @@ class _NoteEdit(QtWidgets.QTextEdit):
                     items.append({"t": "image", "src": src,
                                   "text": "[image: %s]"    # what a build with no image support shows instead of a blank line ▸p/comment-images
                                           % os.path.basename(src)})
-                typed = block.text().replace("￼", "")    # words typed in a picture's block are content; the image reads as U+FFFC
+                typed = block.text().replace("￼", "")    # text typed in a picture's block is content; the image is U+FFFC in the text
                 if typed.strip():
                     text_lines.append(typed)
             elif self.is_todo_block(block):
@@ -523,14 +523,14 @@ class NotesPanel(ui_helpers.HeldPane):
                        QtCore.Qt.AlignmentFlag.AlignVCenter)
 
         self.name_label = QtWidgets.QLabel()
-        self.name_label.setFont(   # THE ONE FONT TABLE owns the weight, not this line
+        self.name_label.setFont(   # the font table in theme sets the weight, not this line
             theme.font("comments_title", self.name_label.font()))
         self.name_label.setTextFormat(QtCore.Qt.TextFormat.PlainText)    # the name is an on-disk filename - AutoText would render a tag-shaped one as HTML
         self.type_label = QtWidgets.QLabel()
-        self.type_label.setFont(theme.ui_font(self.type_label.font()))    # the name's base, floor included
+        self.type_label.setFont(theme.ui_font(self.type_label.font()))    # the name's base font, minimum size included
         self.type_label.setTextFormat(QtCore.Qt.TextFormat.PlainText)
         head.addWidget(self.name_label, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
-        head.addWidget(self.type_label, 1,    # takes the slack, so the + sits at the right
+        head.addWidget(self.type_label, 1,    # takes the free space, so the + is at the right
                        QtCore.Qt.AlignmentFlag.AlignVCenter)
 
         self.add_button = _AddButton()
@@ -549,7 +549,7 @@ class NotesPanel(ui_helpers.HeldPane):
         body = QtWidgets.QWidget()
         _fill(body, PAGE_BG)
         body_box = QtWidgets.QVBoxLayout(body)
-        body_box.setContentsMargins(0, 0, 0, 0)   # zero chrome margins: the inset lives in the document margin
+        body_box.setContentsMargins(0, 0, 0, 0)   # zero layout margins: the inset is the document margin
         self.text_edit = _NoteEdit()
         self.text_edit.document().setDocumentMargin(theme.ui_px(_DRAWN["doc_margin"]))
         self.text_edit.textChanged.connect(self._something_changed)
@@ -563,7 +563,7 @@ class NotesPanel(ui_helpers.HeldPane):
         import amaze
         dpr = theme.screen_ratio(self)
         side, plus_side = theme.ui_px(_DRAWN["icon"]), theme.ui_px(_DRAWN["plus"])
-        dead = getattr(self, "_ghost", False)    # nothing selected: labels and arts as N01B dims them
+        dead = getattr(self, "_ghost", False)    # nothing selected: labels and icons dimmed as in N01B
         text = amazetheme.COMMENT_DIM_TEXT_OPACITY if dead else 1.0
         _ink(self.name_label, "text_bright", text)
         _ink(self.type_label, "text", text)
@@ -638,7 +638,7 @@ class NotesPanel(ui_helpers.HeldPane):
 
 
     def _build_add_menu(self) -> None:
-        """The + menu, hung ONCE: it opens on press; the corner triangle marks it. ▸p/comment-images"""
+        """The + menu, set up ONCE: opens on press; a corner triangle marks it. ▸p/comment-images"""
         menu = QtWidgets.QMenu(self.add_button)    # a CHILD of the button: one menu for the session, not a new one per click ▸r/menu-lifetime
         for label, handler in ADD_ITEMS:
             menu.addAction(label).triggered.connect(    # addAction(str) returns the QAction despite the stub ▸r/menu-lifetime
@@ -656,7 +656,7 @@ class NotesPanel(ui_helpers.HeldPane):
         """Pick a picture, copy it into the library, and put it at the cursor. ▸p/comment-images"""
         import hou
 
-        ui = getattr(hou, "ui", None)    # absent headless, so every reach for it is guarded ▸p/refusal-sink
+        ui = getattr(hou, "ui", None)    # absent headless, so every use of it is guarded ▸p/refusal-sink
         if ui is None:
             return
         chosen = ui.selectFile(

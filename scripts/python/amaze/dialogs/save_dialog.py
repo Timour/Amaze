@@ -54,7 +54,7 @@ class SaveDialog(base_dialog.AssetDialog):
         self.line_name.setEnabled(name_enabled)
         self.line_name.setToolTip(ui_helpers.tooltip_text(tooltips.SAVE_NAME))
 
-        self.combo_cats = self.add_combo("Category", ())   # PLAIN: new ones come from the sidebar
+        self.combo_cats = self.add_combo("Category", ())   # not editable: new categories are made in the sidebar
         base_dialog.fill_categories(self.combo_cats, cat_list, default_cat)
 
         self.combo_language = self.add_combo(
@@ -85,6 +85,6 @@ class SaveDialog(base_dialog.AssetDialog):
             self.language = self.combo_language.currentText()
         self.categories = base_dialog.chosen_category(self.combo_cats)
         self.tags = self.line_tags.text()
-        if self.line_name.isEnabled():    # a greyed field's text is nobody's answer
+        if self.line_name.isEnabled():    # a disabled field's text is not used
             self.name = self.line_name.text().strip()
         super()._on_accept()

@@ -14,7 +14,7 @@ from amaze.helpers import theme, ui_helpers
 QtGui.QPixmapCache.setCacheLimit(65536)   # 64MB, app-wide for all of Houdini; set once, here
 
 class Badge:
-    """One tile badge by its ID: the role it reads, the verb it runs, its arts and its words."""
+    """One tile badge: its ID, the model role it reads, its click `verb`, its SVGs and tooltips."""
 
     __slots__ = ("name", "art", "role", "role_attr", "verb", "minimum", "equals", "dims",
                  "hover_art", "press_art", "off_art", "off_hover_art", "tip", "off_tip",
@@ -25,22 +25,22 @@ class Badge:
                  tip="", off_tip="", art_for=None) -> None:
         self.name = name
         self.art = art
-        self.role = role              # the model's role, by name, that says whether it draws; "" = always
-        self.role_attr = role_attr    # where the delegate keeps that role's number; list columns read it
-        self.verb = verb              # the section verb a click runs; "" draws an indicator
-        self.minimum = minimum        # a count draws at or above this: one version has no history
-        self.equals = equals          # the role's value this badge draws for; "" = any truthy one
-        self.dims = dims              # its ON art's icon wears the button opacities, rest and hover
-        self.hover_art = hover_art    # a hover state drawn as its own art, where it has one
-        self.press_art = press_art    # while the button is held down, where it has one
+        self.role = role              # the model role, by name, whose value decides if it is drawn; "" = always
+        self.role_attr = role_attr    # the delegate attribute holding that role's number; list columns read it
+        self.verb = verb              # the section method a click runs; "" = an indicator, not a button
+        self.minimum = minimum        # drawn when the count is at least this: one version has no history
+        self.equals = equals          # the role value this badge is drawn for; "" = any truthy value
+        self.dims = dims              # its ON art's icon is drawn at the button opacities, rest and hover
+        self.hover_art = hover_art    # a separate SVG for the hover state, where it has one
+        self.press_art = press_art    # a separate SVG while the button is held down, where it has one
         self.off_art = off_art        # drawn while the role is falsy, its icon at the button opacities
-        self.off_hover_art = off_hover_art    # the off state under the pointer, drawn as it is
-        self.tip = tip               # the hover words, from tooltips.py; "" = silent
-        self.off_tip = off_tip        # the words in the off state, where a click does the opposite
-        self.art_for = art_for        # the art named by the role's value, where it differs by value
+        self.off_hover_art = off_hover_art    # the off state under the pointer, at full opacity
+        self.tip = tip               # the tooltip text, from tooltips.py; "" = no tooltip
+        self.off_tip = off_tip        # the tooltip in the off state, where a click does the opposite
+        self.art_for = art_for        # returns the SVG name for the role's value, where it differs by value
 
     def shows(self, value) -> bool:
-        """Whether a truthy role value draws this badge's ON state: its count, or its one value."""
+        """Whether a truthy role value shows this badge's ON state, per `minimum` or `equals`."""
         if self.art_for:
             return bool(self.art_for(value))
         if self.minimum:
@@ -52,7 +52,7 @@ class Badge:
 
 
 def _renderer_badge(stored) -> str:
-    """The badge art of the renderer a material is for; "" for one Amaze does not offer."""
+    """The badge SVG name of a material's renderer; "" for a renderer Amaze does not support."""
     renderer = renderers.get(stored)
     return renderer.badge if renderer is not None else ""
 
@@ -60,7 +60,7 @@ def _renderer_badge(stored) -> str:
 BADGES = (      # in paint order; art in `ui/badge_*.svg`, one file each ▸r/tile-from-frame
     Badge("open", "badge_open", "OpenSceneRole", "_open_role"),    # the scene currently open
     Badge("favourite", "badge_favourite", "FavoriteRole", "_favorite_role", "menu_favourite",
-          off_art="badge_favourite_off",    # on is the colour as drawn, and ignores hover
+          off_art="badge_favourite_off",    # the on state is drawn as the SVG is, with no hover change
           off_hover_art="badge_favourite_off_hover",
           tip=tooltips.BADGE_FAVORITE_REMOVE, off_tip=tooltips.BADGE_FAVORITE_ADD),
     Badge("versions", "badge_versions", "VersionsRole", "_versions_role", "menu_versions",
@@ -88,7 +88,7 @@ def role_color(index, role):
 
 
 def show_item_words(event, view, index) -> bool:
-    """An item's own hover words at the pointer, through the one width cap; False when it has none."""
+    """Show an item's tooltip at the pointer, width-capped; False when it has none."""
     if event is None or event.type() != QtCore.QEvent.Type.ToolTip:
         return False
     words = index.data(QtCore.Qt.ItemDataRole.ToolTipRole)
@@ -142,7 +142,7 @@ class GridCellDelegate(QtWidgets.QStyledItemDelegate):
             QtWidgets.QStyle.PixelMetric.PM_FocusFrameHMargin, None, widget) + 1
 
     def text_shift(self, widget) -> int:
-        """How far right of the style's own text margin the text is drawn, to sit at TEXT_INSET."""
+        """How far right of the style's own text margin the text starts, to sit at TEXT_INSET."""
         return max(self.TEXT_INSET - self.text_margin(widget), 0)
 
     def paint(self, painter, option, index):
@@ -164,7 +164,7 @@ class GridCellDelegate(QtWidgets.QStyledItemDelegate):
                           cell, painter, option.widget)
 
     def helpEvent(self, event, view, option, index):
-        """A cell's hover words through the one width cap, as on the tiles."""
+        """A cell's tooltip, width-capped by `show_item_words`, as on the tiles."""
         return (show_item_words(event, view, index)
                 or super().helpEvent(event, view, option, index))
 
@@ -182,7 +182,7 @@ class TickCellDelegate(GridCellDelegate):
         super().initStyleOption(option, index)
         option.text = ""    # no text; `DisplayRole` keeps the yes/no for the sort
 
-    _LIST = amazetheme.drawn_list()    # the tick box is L01's ▸r/list-from-frame
+    _LIST = amazetheme.drawn_list()    # the tick box sizes come from the L01 frame ▸r/list-from-frame
     SIDE = theme.ui_px(_LIST["tick_side"])    # the mark's own side; a tick column is this plus PAD each side
     PAD = theme.ui_px(_LIST["tick_pad"])
 
@@ -207,7 +207,7 @@ class TickCellDelegate(GridCellDelegate):
 
 
 class CategoryCellDelegate(GridCellDelegate):
-    """The category column's ink: the selected ink when selected, else its colour made readable."""
+    """The category column's text colour: SELECTED_TEXT if selected, else its own, made readable."""
 
     def __init__(self, tiles, parent=None):
         super().__init__(parent)
@@ -216,7 +216,7 @@ class CategoryCellDelegate(GridCellDelegate):
     def initStyleOption(self, option, index):
         super().initStyleOption(option, index)
         if option.state & QtWidgets.QStyle.StateFlag.State_Selected:
-            return      # a selected row has ONE ink, and the base already set it
+            return      # a selected row has ONE text colour, already set by the base class
         raw = index.data(QtCore.Qt.ItemDataRole.ForegroundRole)
         if raw is None:
             return
@@ -247,8 +247,8 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
     GRID_IMG_TEXT_GAP = theme.ui_px(_TILE["img_text_gap"])
 
     CATEGORY_COLOR = QtGui.QColor(amazetheme.LIST_INK)    # the Category column for a category with no colour
-    LIST_INK = QtGui.QColor(amazetheme.LIST_INK)          # list mode's one ink, all but Category
-    SELECTED_TEXT = QtGui.QColor(amazetheme.LIST_SELECTED_TEXT)     # every column's ink on a selected row
+    LIST_INK = QtGui.QColor(amazetheme.LIST_INK)          # list mode's text colour, all but Category
+    SELECTED_TEXT = QtGui.QColor(amazetheme.LIST_SELECTED_TEXT)     # every column's text colour on a selected row
 
     _badge_cache = {}    # rendered badge per (art, size, dpr, opacity), app-wide
     _font_cache = {}     # (`QFont.key()`, selected) -> (name_font, rend_font, fm, fm)
@@ -270,7 +270,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         )
         return QtCore.QSize(width, height)
 
-    BAND_TEXT_DARK = QtGui.QColor(amazetheme.BAND_TEXT_DARK)     # the two inks for text on a coloured band
+    BAND_TEXT_DARK = QtGui.QColor(amazetheme.BAND_TEXT_DARK)     # the two text colours for a coloured band
     BAND_TEXT_LIGHT = QtGui.QColor(amazetheme.BAND_TEXT_LIGHT)
 
     @staticmethod
@@ -296,7 +296,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
 
     @classmethod
     def text_on(cls, background):
-        """Whichever of the two band inks has the higher WCAG contrast on `background`."""
+        """Whichever of the two band text colours has the higher WCAG contrast on `background`."""
         if cls.contrast_ratio(background, cls.BAND_TEXT_DARK) >= \
                 cls.contrast_ratio(background, cls.BAND_TEXT_LIGHT):
             return cls.BAND_TEXT_DARK
@@ -307,13 +307,13 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         """`color` lightened or darkened until it reaches `floor` contrast on `background`, hue kept."""
         if cls.contrast_ratio(color, background) >= floor:
             return color
-        toward_light = cls._relative_luminance(background) < 0.5   # walk away from the background
+        toward_light = cls._relative_luminance(background) < 0.5   # move away from the background's luminance
         best = color
         for _step in range(20):
             best = best.lighter(115) if toward_light else best.darker(115)
             if cls.contrast_ratio(best, background) >= floor:
                 return best
-        return cls.CATEGORY_COLOR    # a colour that never clears falls back to the neutral
+        return cls.CATEGORY_COLOR    # a colour that never reaches `floor` falls back to CATEGORY_COLOR
 
     def _band_color(self, index):
         """The category colour for this row, or None to leave the card as it is."""
@@ -332,7 +332,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
             if points is not None:
                 rend_font.setPointSizeF(points)    # the subtitle takes the name's size
             if selected:
-                name_font.setBold(True)    # everything is bold on the highlight
+                name_font.setBold(True)    # both lines are bold on a selected tile
                 rend_font.setBold(True)
             cached = (
                 name_font,
@@ -365,12 +365,12 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         self._licence_role = licence_role
         self._date_role = date_role            # list mode's date and id columns ▸p/d03-retired
         self._id_role = id_role
-        self._category_color_role = category_color_role    # paints the band under the tile; None: none
-        self._badge_clicks = {}       # badge name -> handler; wiring one makes that badge a button
+        self._category_color_role = category_color_role    # colours the band under the image; None: no band
+        self._badge_clicks = {}       # badge name -> handler; registering one makes that badge a button
         self._button_hover = None     # (badge name, QPersistentModelIndex) while the cursor is on a button badge
         self._button_down = False     # and whether the left button is held on it
         self._tile = tuple(BADGE[name].name for name in tile_badges)    # the section's badge IDs
-        for badge in BADGES:    # each role read off the model, None where this tile lacks it
+        for badge in BADGES:    # each role number from the model, None where this tile lacks the badge
             if badge.role_attr:
                 setattr(self, badge.role_attr, getattr(tile_model, badge.role)
                         if badge.name in self._tile else None)
@@ -409,7 +409,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
 
     @staticmethod
     def _icon_pixmap(icon, side, dpr=1.0, cover=False):
-        """A cached tile pixmap at device resolution, ratio stamped; position it by `_logical_size`."""
+        """A cached tile pixmap at device resolution, ratio set; place it by `_logical_size`."""
         target = max(1, round(side * dpr))
         if isinstance(icon, QtGui.QImage) and not icon.isNull():
             key = "amaze_%s_%s_%s_%s" % (      # a re-rendered thumbnail is a new key ▸r/tile-image-cache
@@ -432,7 +432,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
 
     @staticmethod
     def _scale_and_cache(pixmap, key, target, dpr, cover):
-        """Cover-crop or aspect-fit `pixmap` to `target`, ratio stamped, cached under `key`."""
+        """Cover-crop or aspect-fit `pixmap` to `target`, pixel ratio set, cached under `key`."""
         if cover:
             return AssetItemDelegate._cover_pixmap(pixmap, target, dpr, key)
         scaled = pixmap.scaled(
@@ -467,7 +467,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
 
     @staticmethod
     def _button_opacity(hovered) -> float:
-        """The one rest and hover strength every button badge wears."""
+        """The rest or hover opacity shared by every button badge."""
         return amazetheme.BADGE_HOVER_OPACITY if hovered else amazetheme.BADGE_REST_OPACITY
 
     @classmethod
@@ -502,7 +502,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
             return start + span - size - inset
         return start + inset
 
-    FAV_MARK_COLOR = LIST_INK      # the mark columns' ink - the table's one colour, like every other list column
+    FAV_MARK_COLOR = LIST_INK      # the mark columns' colour: LIST_INK, like every other list column
     OPEN_MARK_COLOR = LIST_INK
     NOTE_MARK_COLOR = LIST_INK
 
@@ -530,7 +530,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         painter.restore()
 
     def set_badge_click(self, name, callback) -> None:
-        """Wire `name`'s badge to `callback(index)`, making it a button."""
+        """Register `callback(index)` as the click handler of badge `name`, making it a button."""
         self._badge_clicks[name] = callback
 
     def set_button_hover(self, name, index, down=False) -> bool:
@@ -570,29 +570,29 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         return None
 
     def _badge_state(self, badge, index) -> str:
-        """"on", "off" or "" (not drawn) for one badge on one tile: paint, click and words read it."""
+        """"on", "off" or "" (not drawn) for one badge on one tile, for paint, click and tooltip."""
         if badge.name not in self._tile:
             return ""
         value = index.data(getattr(self, badge.role_attr)) if badge.role else True
         if value:
             return "on" if badge.shows(value) else ""
-        return "off" if badge.off_art and badge.name in self._badge_clicks else ""    # a button's rest
+        return "off" if badge.off_art and badge.name in self._badge_clicks else ""    # a button at rest
 
     def _badge_rect(self, option_rect, name):
-        """Where the badge `name` sits, for hit-testing - the paint's own placement."""
+        """Where the badge `name` is drawn, for hit-testing: the placement `_paint_badges` uses."""
         pad = self.PAD
         icon_side = option_rect.width() - 2 * pad
         return QtCore.QRect(*self._badge_at(
             name, option_rect.left() + pad, option_rect.top() + pad, icon_side))
 
     def _badge_tooltip(self, badge, index):
-        """A button badge's hover words: the action a click takes from the state it is in."""
+        """A button badge's tooltip: the action a click takes from its current state."""
         if badge.off_tip and self._badge_state(badge, index) == "off":
             return badge.off_tip
         return badge.tip
 
     def helpEvent(self, event, view, option, index):
-        """Hover words through the one width cap: a button badge's own, else the tile's."""
+        """Show a width-capped tooltip: a button badge's own, else the tile's."""
         if (event is not None
                 and event.type() == QtCore.QEvent.Type.ToolTip):
             badge = self.button_badge_at(index, option.rect, event.pos())
@@ -648,7 +648,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
                 opacity = None
             else:
                 art = badge.art
-                opacity = opacity if badge.dims else None    # as drawn, the on heart's colour
+                opacity = opacity if badge.dims else None    # full opacity, so the on heart keeps its colour
             side = self._placed_side(badge.name, icon_side)
             mark = self._badge_pixmap(art, side, dpr, opacity)
             if mark.isNull():
@@ -735,7 +735,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
                 band_color,
             )
         if selected:
-            zone_top = icon_y + icon_side    # the highlight goes back on the text zone only
+            zone_top = icon_y + icon_side    # repaint the highlight on the text area only
             painter.fillRect(
                 QtCore.QRect(
                     icon_x,
@@ -758,7 +758,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         name_pen = self.SELECTED_TEXT if selected else self.GRID_NAME_COLOR
         subtitle_pen = None
         if band_color is not None and not selected:
-            name_pen = self.text_on(band_color)    # both lines take the band's readable ink
+            name_pen = self.text_on(band_color)    # both lines use the text colour readable on the band
             subtitle_pen = name_pen
         painter.setPen(name_pen)
         painter.drawText(
@@ -795,7 +795,7 @@ class SidebarItemDelegate(QtWidgets.QStyledItemDelegate):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.show_counts = True    # False hides each category's count; All always shows its total
-        self.drag_index = QtCore.QPersistentModelIndex()    # the row a drag would land on; none when invalid
+        self.drag_index = QtCore.QPersistentModelIndex()    # the row a drop would go to; no row when invalid
         self._drag_color = QtGui.QColor(amazetheme.TILE_SUBTITLE)    # until the panel sets the accent
         self.color_role = None     # the role carrying a category's colour, or None for none
 
@@ -803,12 +803,12 @@ class SidebarItemDelegate(QtWidgets.QStyledItemDelegate):
         self._drag_color = QtGui.QColor(color)
 
     def drop_target(self, index) -> bool:
-        """Is `index` the row a drag would land on? The row itself: a tree numbers rows per parent."""
+        """Whether `index` is the drop target, by index not row: a tree numbers rows per parent."""
         return (self.drag_index.isValid()
                 and QtCore.QPersistentModelIndex(index) == self.drag_index)
 
     def helpEvent(self, event, view, option, index):
-        """A row's hover words, a folder's path among them, through the one width cap."""
+        """A row's tooltip, such as a folder's path, width-capped by `show_item_words`."""
         return (show_item_words(event, view, index)
                 or super().helpEvent(event, view, option, index))
 
@@ -816,7 +816,7 @@ class SidebarItemDelegate(QtWidgets.QStyledItemDelegate):
         """This row's category colour, or None; invalid values are ignored rather than painted."""
         return role_color(index, self.color_role)
 
-    BAR = theme.ui_px(amazetheme.drawn_sidebar()["bar"])    # G01's; EVERY row reserves it, so all labels start level
+    BAR = theme.ui_px(amazetheme.drawn_sidebar()["bar"])    # from G01; EVERY row reserves it, so all labels align
     ARROW_GAP = theme.ui_px(amazetheme.SIDEBAR_ARROW_GAP)    # in a folder tree: bar, gap, arrow
     ARROW_BOX = theme.ui_px(amazetheme.SIDEBAR_ARROW_BOX)
 
@@ -868,10 +868,10 @@ class SidebarItemDelegate(QtWidgets.QStyledItemDelegate):
                             self.ARROW_BOX, decoration.height())
 
     def initStyleOption(self, option, index):
-        """The row as view-item fields for the style to draw; `option.text` never touches DisplayRole."""
+        """The row as view-item fields for the style; `option.text` does not change DisplayRole."""
         super().initStyleOption(option, index)
         name = str(index.data(QtCore.Qt.ItemDataRole.DisplayRole) or "")
-        count = index.data(category.SIDEBAR_COUNT_ROLE)    # asked even when hidden, though each All now counts on its own
+        count = index.data(category.SIDEBAR_COUNT_ROLE)    # read even when hidden; each All row computes its own count
         if not self.show_counts and name != "All":
             count = None
         if count is not None:

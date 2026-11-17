@@ -1,4 +1,4 @@
-"""The empty state: which blank the grid shows, and its words; `grid.apply_grid_face` shows it."""
+"""The empty grid page: which empty state applies, and its text; `grid.apply_grid_face` shows it."""
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from amaze import amazetheme
@@ -10,13 +10,13 @@ NO_MATCH = "nothing-matches"
 NO_FAVOURITES = "no-favourites"
 UNREACHABLE = "unreachable"
 
-MAX_QUOTED = 24                 # the quoted search is unbounded input
+MAX_QUOTED = 24                 # the search text quoted in the headline can be any length
 
-SHARED = amazetheme.EMPTY_SHARED    # the WORDS are the design's, declared once ▸p/one-design-document
+SHARED = amazetheme.EMPTY_SHARED    # the texts are defined once, in amazetheme ▸p/one-design-document
 
 
 def _elide(text: str) -> str:
-    """The user's own string, capped so a pasted paragraph cannot run."""
+    """The user's search text, cut to MAX_QUOTED characters so a pasted paragraph stays short."""
     text = (text or "").strip()
     if len(text) <= MAX_QUOTED:
         return text
@@ -24,7 +24,7 @@ def _elide(text: str) -> str:
 
 
 def verdict(panel) -> tuple:
-    """(blank, detail) for the current section, or (None, ""), read off the visible view."""
+    """(empty state, detail) for the current section, or (None, `""`), from the visible view."""
     view = grid.visible_view(panel)
     if view is None:
         return (None, "")
@@ -60,7 +60,7 @@ def verdict(panel) -> tuple:
 
 
 def _favourites_only(panel) -> bool:
-    """Is the toolbar's favourites star down? False when the chip is gone."""
+    """Whether the toolbar's favourites button is checked; False when the button is deleted."""
     chip = getattr(panel, "cb_favsonly", None)
     if chip is None:
         return False
@@ -71,10 +71,10 @@ def _favourites_only(panel) -> bool:
 
 
 def _any_favourite(source) -> bool:
-    """Does ANY row of `source` carry a star? Without one the favourites star has its own blank."""
+    """Whether any row of `source` is a favourite; with none, the NO_FAVOURITES page is shown."""
     role = getattr(source, "FavoriteRole", None)
     if role is None:
-        return True    # a model with no star column cannot claim "no favorites yet"
+        return True    # a model with no FavoriteRole never shows the NO_FAVOURITES page
     return any(source.index(row, 0).data(role)
                for row in range(source.rowCount()))
 
@@ -130,7 +130,7 @@ def words_for(panel, blank: str, detail: str) -> tuple:
 
 
 class EmptyPage(QtWidgets.QWidget):
-    """The words, with no geometry code of its own. ▸r/transparent-for-mouse"""
+    """The empty-state labels and button, with no geometry code. ▸r/transparent-for-mouse"""
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -150,14 +150,14 @@ class EmptyPage(QtWidgets.QWidget):
             outer.addWidget(label)
             outer.addSpacing(theme.ui_px(8))
 
-        self._quote = QtWidgets.QLabel("", self)    # the quotation and its attribution: italic, and the sentence's own ink at half strength, as drawn
+        self._quote = QtWidgets.QLabel("", self)    # the quotation and its attribution: italic, the text colour at half opacity, as designed
         self._quote.setFont(theme.font("empty_quote", base))
         self._quote.setWordWrap(True)
         self._quote.setAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter
                                  | QtCore.Qt.AlignmentFlag.AlignTop)
         dim = QtGui.QColor(theme.color_hex("text"))
         dim.setAlphaF(0.5)
-        quote_palette = self._quote.palette()    # a PALETTE, never a stylesheet: the alpha survives and the glyphs paint through it ▸r/palette-alpha
+        quote_palette = self._quote.palette()    # a palette, not a stylesheet: the text is painted with the alpha kept ▸r/palette-alpha
         quote_palette.setColor(QtGui.QPalette.ColorRole.WindowText, dim)
         self._quote.setPalette(quote_palette)
         outer.addWidget(self._quote)
@@ -173,7 +173,7 @@ class EmptyPage(QtWidgets.QWidget):
         return self._btn
 
     def say(self, panel, blank: str, detail: str) -> None:
-        """Put this blank's words up and wire its button."""
+        """Show this empty state's texts and connect its button to the panel method."""
         headline, sentence, label, verb = words_for(panel, blank, detail)
         self._head.setText(headline)
         self._head.setVisible(bool(headline))
@@ -197,7 +197,7 @@ class EmptyPage(QtWidgets.QWidget):
 
 
 def page(panel):
-    """The panel's one page, built and mounted on first ask."""
+    """The panel's EmptyPage, created and added to the grid pane on the first call."""
     found = getattr(panel, "empty_page", None)
     if found is not None:
         return found
@@ -212,7 +212,7 @@ def page(panel):
 
 
 def refresh(panel) -> None:
-    """The ONE door: re-derive the blank and hand it to `grid`."""
+    """The only entry point: recompute the empty state and pass it to `grid.apply_grid_face`."""
     blank, detail = verdict(panel)
     surface = page(panel)
     if surface is None:

@@ -1,4 +1,4 @@
-"""What an update asks and says; the About tab, the shelf's Updates tool and the panel share it."""
+"""The update's question and result messages, shared by the About tab, Updates tool and panel."""
 
 import hou
 
@@ -7,12 +7,12 @@ from amaze.core import debug, updater
 
 
 def install_and_say(found) -> bool:
-    """Install `found` and say in a message how it went; True once it is installed."""
+    """Install `found` and show the result in a message; True once it is installed."""
     try:
         updater.install(found)
     except OSError as exc:
         hou.ui.displayMessage(str(exc),
-                              title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)    # already a finished sentence
+                              title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)    # already a complete message
         return False
     except Exception as exc:                                  # noqa: BLE001
         debug.exception("update install", exc)

@@ -1,4 +1,4 @@
-"""Five tabs built in code; every control writes the prefs at once and the dialog saves on close."""
+"""Six tabs built in code; every control writes the prefs at once and the dialog saves on close."""
 
 import os
 import platform
@@ -28,16 +28,16 @@ LINK_COLOR = amazetheme.LINK_COLOR   # About-tab links ▸p/one-design-document
 
 PREFS_FRAMES = ("P01", "P02", "P03a", "P03b", "P04", "P05", "P06")   # the drawn frame per page, in tab order; a sub-tab is a page ▸p/one-design-document
 
-VERSION_STEM = branding.APP_NAME + " v"   # what the drawn version line opens with
-FORMAT_STEM = amazetheme.LABEL_LIBRARY_FORMAT.split("%")[0]    # P01's drawn Format line opens with it
+VERSION_STEM = branding.APP_NAME + " v"   # what the drawn version line starts with
+FORMAT_STEM = amazetheme.LABEL_LIBRARY_FORMAT.split("%")[0]    # P01's drawn Format line starts with it
 APPLY_LINE_STEM = amazetheme.LABEL_UPGRADES_LIBRARY.split("%")[0]    # and the line beside Apply
-CHECK_INFO_STEM = "Info box"    # P01's drawn sample of the Databases row's line opens with it
+CHECK_INFO_STEM = "Info box"    # P01's drawn sample of the Databases row's line starts with it
 
 _logo_cache = None   # rendered once, reused as a QTextDocument resource for the About page
 
 
 def _logo_image(widget=None):
-    """The Amaze wordmark cropped to its ink; pass the widget it is drawn into. ▸r/screen-dpr"""
+    """The Amaze wordmark cropped to its pixels; pass the widget it is drawn into. ▸r/screen-dpr"""
     global _logo_cache
     dpr = theme.screen_ratio(widget)   # keyed by DPR: rendered for one density and reused on another draws at half resolution
     if isinstance(_logo_cache, dict) and _logo_cache.get("dpr") == dpr:
@@ -52,7 +52,7 @@ def _logo_image(widget=None):
                 QtGui.QBitmap.fromImage(full.createAlphaMask())
             ).boundingRect()
             if not box.isEmpty():
-                image = full.copy(box).scaledToHeight(   # DEVICE pixels tall with the ratio stamped, so the document draws it back at logical size
+                image = full.copy(box).scaledToHeight(   # DEVICE pixels tall with the ratio set, so the document draws it back at logical size
                     max(1, round(theme.ui_px(34) * dpr)),
                     QtCore.Qt.TransformationMode.SmoothTransformation,
                 )
@@ -65,7 +65,7 @@ def _logo_image(widget=None):
 
 
 def bug_report_url() -> str:
-    """The repo's new-issue URL with this machine's three facts pre-filled in its `body` parameter."""
+    """The new-issue URL with this machine's three versions pre-filled in its `body` parameter."""
     import hou
     from amaze.core import updater
 
@@ -77,7 +77,7 @@ def bug_report_url() -> str:
 
 
 def _open_url(url: str) -> None:
-    if not QtGui.QDesktopServices.openUrl(QtCore.QUrl(url)):    # False = the OS refused the hand-off, and nothing-happened is the one outcome that teaches nothing
+    if not QtGui.QDesktopServices.openUrl(QtCore.QUrl(url)):    # False: the OS did not open the URL; logged, since a silent failure gives no clue
         debug.event("prefs", "the OS refused to open the bug page",
                     url=url)
 
@@ -106,17 +106,17 @@ def _show_quietly(widget, value) -> None:
 
 
 def _chooser_path(path: str) -> str:
-    """A folder spelled for `selectFile` and for prefs: forward slashes, trailing one only at a root."""
+    """A folder path for `selectFile` and prefs: forward slashes, trailing one only at a root."""
     return hostos.canonical_path_key(path) if path else ""   # empty stays empty: `canonical_path_key("")` is `"."`
 
 
 def _same_folder(one: str, other: str) -> bool:
-    """Whether two spellings name one folder; an empty one names none."""
+    """Whether two paths are the same folder; an empty path matches none."""
     return bool(one and other) and hostos.comparable_path(one) == hostos.comparable_path(other)
 
 
 def _ink(label, color: str) -> None:
-    """Colour a label's text, through a sheet because Houdini's own sheet outranks a palette."""
+    """Colour a label's text with a stylesheet, as Houdini's stylesheet overrides a palette."""
     ink = QtGui.QColor(color)
     label.setStyleSheet("QLabel { color: rgba(%d, %d, %d, %d); }"
                         % (ink.red(), ink.green(), ink.blue(), ink.alpha()))
@@ -125,21 +125,21 @@ def _ink(label, color: str) -> None:
 def _content_holder(inner, width: int = amazetheme.PREFS_CONTENT_WIDTH) -> QtWidgets.QWidget:
     """`inner` (a layout) inside a widget pinned to the drawn content column. ▸r/tabwidget-adds-eight"""
     holder = QtWidgets.QWidget()
-    inner.setContentsMargins(0, 0, 0, 0)    # the page already carries the drawn margin
+    inner.setContentsMargins(0, 0, 0, 0)    # the page already has the drawn margin
     holder.setLayout(inner)
     holder.setFixedWidth(theme.ui_px(width))
     return holder
 
 
 def _drawn_reach(frame_key: str) -> int:
-    """How far right of the inset a frame's widest drawn row reaches, never under the column."""
+    """How far right of the inset a frame's widest drawn row reaches, never less than the column."""
     right = max(x + w for kind, x, _y, w, _h, _text in amazetheme.DIALOG_LAYOUT[frame_key]["nodes"]
                 if not kind.startswith(("QTabBar", "QWidget")))
     return max(right - amazetheme.PREFS_INSET, amazetheme.PREFS_CONTENT_WIDTH)
 
 
 class CheckLight(QtWidgets.QWidget):
-    """One light of the Databases row: a filled circle, grey until its part is judged."""
+    """One light of the Databases row: a filled circle, grey until its part is checked."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -180,7 +180,7 @@ def addon_row_boxes(index: int) -> dict:
 
 
 class _PageLines(QtWidgets.QWidget):
-    """The drawn lines along a sub-tab page's top and right edges, laid over whichever page shows."""
+    """The drawn lines along a sub-tab page's top and right edges, drawn over the visible page."""
 
     def __init__(self, tabs: QtWidgets.QTabWidget) -> None:
         super().__init__(tabs)
@@ -208,7 +208,7 @@ class _PageLines(QtWidgets.QWidget):
 
 
 class PrefsDialog(base_dialog.AssetDialog):
-    """Preferences on the house shell: live-apply, no OK/Cancel, resizable, tabs as the content."""
+    """Preferences on AssetDialog: live changes, no OK/Cancel, resizable, tabs as the content."""
 
     FORM_WIDTH = amazetheme.PREFS_FORM_WIDTH
 
@@ -217,14 +217,14 @@ class PrefsDialog(base_dialog.AssetDialog):
         super().__init__(branding.APP_NAME + " Preferences",
                          fixed_size=False, parent=parent)
         self._prefs = prefs
-        model_registry.refresh_all(prefs)    # a DOOR: every list below reads what peers saved ▸r/peer-read
-        prefs.follow_shared()    # and so do the shared settings this session left alone
+        model_registry.refresh_all(prefs)    # re-read first: every list below shows what other sessions saved ▸r/peer-read
+        prefs.follow_shared()    # and so do the shared settings this session has not changed
         # the panel owns the library operations and this only forwards; None in tests is allowed
         self._panel = panel
         self._file_files_model = file_files_model
         self._tab_built: dict = {}    # each tab's widgets per kind in creation order, matched to the frame's drawn rects
         self._sliders: dict = {}      # the slider `_field_slider_row` built beside each spin box
-        self._path_rows: list = []    # every field-and-buttons row, re-spaced once its widgets wear their drawn widths
+        self._path_rows: list = []    # every field-and-buttons row, re-spaced once its widgets have their drawn widths
         self._drawn_rows: list = []   # rows spanning the column, each widget put on its drawn x
 
         tabs = QtWidgets.QTabWidget()
@@ -239,7 +239,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._page_steps = dict(zip(PREFS_FRAMES, self._steps_to_pages()))
 
         self.set_content(tabs)
-        self.finish(ok_cancel=False,   # a tabbed window keeps its air - the house margin is for compact forms
+        self.finish(ok_cancel=False,   # a tabbed window keeps a wider margin; HOUSE_MARGIN is for compact forms
                     margins=amazetheme.PREFS_DIALOG_MARGIN)
 
         for combo in self.findChildren(QtWidgets.QComboBox):   # combos never take focus; runs after setLayout so findChildren sees them
@@ -295,7 +295,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         return str(self.cbb_library.currentData() or "")
 
     def _picked_is_open(self) -> bool:
-        """Whether the pane has the picked library open; without a pane, whether it is the set one."""
+        """Whether the pane has the picked library open; with no pane, whether it is prefs.dir."""
         if self._panel is not None:
             return self._panel.serves(self._picked_library())
         return _same_folder(self._picked_library(), self._prefs.dir)
@@ -327,7 +327,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._clear_check()
 
     def _known_users(self, folder: str) -> dict:
-        """`{uid: name}` in `folder`; nobody in a folder out of reach."""
+        """`{uid: name}` in `folder`; empty for a folder that cannot be reached."""
         if not folder or not os.path.isdir(folder):
             return {}
         return users.all_users(self._prefs, library=folder)
@@ -338,7 +338,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         return current if _same_folder(folder, self._prefs.dir) and current in known else ""
 
     def _reload_library_users(self, picked=None) -> None:
-        """Fill the User list for the picked library and select `picked`, else the user the rule picks."""
+        """Fill the User list for the picked library, selecting `picked` or the `_preselected` user."""
         folder = self._picked_library()
         known = self._known_users(folder)
         if picked is None:
@@ -420,7 +420,7 @@ class PrefsDialog(base_dialog.AssetDialog):
                 self.create_library_user(dialog.name)
                 return
             self._say_name_taken(dialog.name)
-        self._reload_library_users(picked=self._last_user_pick)    # off the create row, back to the pick
+        self._reload_library_users(picked=self._last_user_pick)    # leave the create row: reselect the previous pick
 
     def delete_library_user(self, uid) -> None:
         """Delete `uid` and everything tagged theirs from the open library; nobody is picked after."""
@@ -479,7 +479,7 @@ class PrefsDialog(base_dialog.AssetDialog):
 
     def pick_library(self, folder: str) -> None:
         """Show `folder` in the Library list, added there until applied when the list lacks it."""
-        folder = hostos.canonical_path_key(folder).rstrip("/") + "/"    # the library folder's spelling
+        folder = hostos.canonical_path_key(folder).rstrip("/") + "/"    # the library folder's canonical form
         if not any(_same_folder(folder, known)
                    for known in [self._prefs.dir] + self._prefs.libraries
                    + self._added_libraries):
@@ -487,7 +487,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._fill_libraries(picked=folder)
 
     def manage_libraries(self) -> None:
-        """Manage Libraries (D15), then the Library list as it stands after it."""
+        """Manage Libraries (D15), then refill the Library list after it closes."""
         dialog = library_dialog.ManageLibrariesDialog(
             self._prefs, open_library=self._prefs.dir, parent=self)
         dialog.exec()
@@ -525,12 +525,12 @@ class PrefsDialog(base_dialog.AssetDialog):
         return True
 
     def _switch_library(self, folder: str, uid) -> bool:
-        """Open `folder` with the picked user; both go back when it stays closed."""
+        """Open `folder` with the picked user; both are restored when it does not open."""
         if self._panel is not None and not self._panel.takes_library(folder):
-            return False    # asked before anything is written to it
+            return False    # checked before anything is written to it
         before, before_dir = str(self._prefs.library_user or ""), self._prefs.dir
         if uid != self.NEW_USER:
-            self._prefs.library_user = uid    # before the models switch, so they read this user's stars
+            self._prefs.library_user = uid    # before the models switch, so they read this user's favourites
         self._prefs.dir = folder
         self._prefs.save()    # the models' switch re-reads settings.json
         opened = self._panel is None or self._panel.open_library()
@@ -565,7 +565,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         return shown, "", False, True
 
     def _sync_library_buttons(self) -> None:
-        """Apply needs a library and a user; what acts on a library waits until it is the open one."""
+        """Apply needs a library and a user; the library buttons need it to be the open one."""
         is_open = self._picked_is_open()
         uid = self.cbb_library_user.currentData()
         picked = bool(uid) and uid != user_dialog.CREATE
@@ -664,7 +664,7 @@ class PrefsDialog(base_dialog.AssetDialog):
                                    self._default_cache, self._btn_clear_cache))
 
         self._add_divider(form)
-        # NOT A PREFERENCE: it lives in the library's policy and travels with it
+        # NOT A PREFERENCE: it is stored in the library's policy and moves with the library
         self._cbx_allow_overwrite = ui_helpers.ToggleSwitch(
             amazetheme.LABEL_VERSIONS)
         self._cbx_allow_overwrite.setChecked(
@@ -795,7 +795,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._set_check_button(bool(found["lines"]))
 
     def _survey_open_library(self) -> dict:
-        """One survey of the open library on disk, the panel's waiting changes saved first."""
+        """One survey of the open library on disk, the panel's pending changes saved first."""
         if self._panel is not None:
             check_actions.let_go(self._panel)
         findings = repair.survey(self._prefs)
@@ -827,7 +827,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._show_check(findings)
 
     def refresh_library_version(self) -> None:
-        """Re-read the picked library's format: an update can land while this window is open."""
+        """Re-read the picked library's format: an update can be installed while this is open."""
         label = getattr(self, "_lbl_library_format", None)
         if label is None:
             return
@@ -1128,7 +1128,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         inner.addWidget(browser, 1)
 
         form = self._make_form()
-        self._lbl_version = QtWidgets.QLabel(   # every update answer lands here, not in a popup ▸r/houdini-colour-picker
+        self._lbl_version = QtWidgets.QLabel(   # every update result is shown here, not in a popup ▸r/houdini-colour-picker
             "Amaze version " + branding.APP_VERSION)
         self._lbl_version.setWordWrap(True)
         form.addRow(self._label(""), self._lbl_version)
@@ -1140,7 +1140,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._btn_report.setToolTip(ui_helpers.tooltip_text(
             tooltips.PREFS_REPORT_A_BUG))
         self._btn_report.clicked.connect(self.report_bug)
-        ask_row = QtWidgets.QWidget()   # the two live side by side, from P06
+        ask_row = QtWidgets.QWidget()   # the three buttons side by side, as in P06
         ask = QtWidgets.QHBoxLayout(ask_row)
         ask.setContentsMargins(0, 0, 0, 0)
         ask.setSpacing(theme.ui_px(amazetheme.PREFS_BUTTON_GAP))
@@ -1157,7 +1157,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._cbx_debug.setToolTip(ui_helpers.tooltip_text(
             tooltips.PREFS_DEBUG_MODE))
         self._cbx_debug.toggled.connect(self.set_debug_mode)
-        debug_row = QtWidgets.QWidget()   # toggle and its two buttons on ONE row: three stacked rows read as three unrelated settings
+        debug_row = QtWidgets.QWidget()   # toggle and its two buttons on ONE row: three stacked rows look like three unrelated settings
         row = QtWidgets.QHBoxLayout(debug_row)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(theme.ui_px(amazetheme.PREFS_BUTTON_GAP))
@@ -1178,7 +1178,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         row.addWidget(clear_btn)
 
         form.addRow(self._label(""), debug_row)
-        self._path_rows.append(debug_row)    # the three log buttons take the drawn 8 and 6, not one gap twice
+        self._path_rows.append(debug_row)    # the three log buttons use the drawn gaps 8 and 6, not one gap twice
 
         self._add_divider(form)
         self._cbx_addon_betas = ui_helpers.ToggleSwitch("Add-On beta versions")
@@ -1210,7 +1210,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._addon_list.setWidgetResizable(True)    # the rows are as wide as the view ▸r/scroll-area-size-hint
         self._addon_list.setHorizontalScrollBarPolicy(
             QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._addon_list.setSizePolicy(    # the rows scroll in what the page leaves ▸r/scroll-area-size-hint
+        self._addon_list.setSizePolicy(    # the rows scroll in the height the page has left ▸r/scroll-area-size-hint
             QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Ignored)
         inner.addWidget(self._addon_list, 1)
         self._btn_addons = QtWidgets.QPushButton()
@@ -1234,7 +1234,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         return page
 
     def fill_addon_rows(self) -> None:
-        """A row per group of every installed add-on, from its package alone; a line when none is."""
+        """A row per group of each installed add-on, from its package alone; a message if none is."""
         from amaze.core import addons, updater
         root = updater.install_root()
         rows = [(folder, manifest, group)
@@ -1255,7 +1255,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._addon_list.setWidget(holder)
 
     def _addon_row(self, holder, index, root, folder, manifest, group) -> dict:
-        """Row `index`, placed from the drawn rows; answers its widgets by drawn kind."""
+        """Row `index`, placed from the drawn rows; returns its widgets by drawn kind."""
         from amaze.core import addons
         box = {kind: tuple(theme.ui_px(v) for v in rect)
                for kind, rect in addon_row_boxes(index).items()}
@@ -1313,7 +1313,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         return image
 
     def turn_addon(self, root: str, folder: str, group, switch, on: bool) -> None:
-        """Move a group in or out of Houdini's reach and say a restart is due; on failure, undo the switch."""
+        """Turn a group on or off, showing that a restart is due; on failure, undo the switch."""
         from amaze.core import addons, packages
         try:
             addons.set_on(root, folder, group, on)
@@ -1331,7 +1331,7 @@ class PrefsDialog(base_dialog.AssetDialog):
             tooltips.PREFS_ADDONS_UPDATE if offer else tooltips.PREFS_ADDONS_CHECK))
 
     def _press_addons(self) -> None:
-        """Check, then update: the press that installs is never the press that looked."""
+        """Check, then update: the click that installs is never the click that checked."""
         if self._addons_found:
             self.install_addons()
         else:
@@ -1339,7 +1339,7 @@ class PrefsDialog(base_dialog.AssetDialog):
 
     @debug.guarded("prefs.check_addons")
     def check_addons(self) -> None:
-        """Ask the store, on request only, and say the answer in the line beside the button."""
+        """Query the store, on request only, and show the result in the label beside the button."""
         from amaze.actions import addons as addon_actions
         self._btn_addons.setEnabled(False)
         self._btn_addons.setText("Checking...")
@@ -1353,7 +1353,7 @@ class PrefsDialog(base_dialog.AssetDialog):
 
     @debug.guarded("prefs.install_addons")
     def install_addons(self) -> None:
-        """Install what the last check found, with no popup: the line says what happened."""
+        """Install what the last check found, with no popup: the label shows the result."""
         from amaze.actions import addons as addon_actions
         from amaze.core import updater
         root = updater.install_root()
@@ -1417,7 +1417,7 @@ class PrefsDialog(base_dialog.AssetDialog):
             ahead = next((getattr(later, "drawn_box", None) for later in widgets[index + 1:]
                           if getattr(later, "drawn_box", None) is not None), None)
             if ahead is None:
-                continue    # nothing drawn after it says where it ends
+                continue    # no drawn widget after it gives its end
             widget.setFixedWidth(theme.ui_px(ahead[0] - at))
             widget.setIndent(theme.ui_px(amazetheme.P01_LIGHT_COUNT_GAP))
             at = ahead[0]
@@ -1426,14 +1426,14 @@ class PrefsDialog(base_dialog.AssetDialog):
                 layout.insertSpacing(layout.indexOf(widget), theme.ui_px(gap))
 
     def _space_pinned_row(self, row) -> None:
-        """Give the row the drawn gap between each pair, so every widget lands on its drawn x."""
+        """Give the row the drawn gap between each pair, so every widget is at its drawn x."""
         layout = row.layout()
         items = [layout.itemAt(i) for i in range(layout.count())]
         plan = []
         for index in range(len(items) - 1):
             left, right = items[index].widget(), items[index + 1].widget()
             if left is None or right is None:
-                continue    # a stretch stands between them and owns that gap
+                continue    # a stretch between them fills that gap
             drawn = (getattr(left, "drawn_box", None),
                      getattr(right, "drawn_box", None))
             if None in drawn:
@@ -1475,7 +1475,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         return combo
 
     def _path_row(self, line_edit, browse_btn, *extra) -> QtWidgets.QWidget:
-        """A path field, its browse button, and any button after it; gaps land in `_space_pinned_row`."""
+        """A path field, its browse button and any more buttons; `_space_pinned_row` sets the gaps."""
         row = QtWidgets.QWidget()
         h = QtWidgets.QHBoxLayout(row)
         h.setContentsMargins(0, 0, 0, 0)
@@ -1487,7 +1487,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         return row
 
     def _button_row(self, *buttons) -> QtWidgets.QWidget:
-        """Buttons side by side from the field column; the gaps land in `_space_pinned_row`."""
+        """Buttons side by side from the field column; the gaps are set in `_space_pinned_row`."""
         row = QtWidgets.QWidget()
         h = QtWidgets.QHBoxLayout(row)
         h.setContentsMargins(0, 0, 0, 0)
@@ -1498,7 +1498,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         return row
 
     def _apply_row(self, label, *buttons) -> QtWidgets.QWidget:
-        """A line from the content column's left edge, then buttons ending at its right edge."""
+        """A label from the content column's left edge, then buttons ending at its right edge."""
         row = QtWidgets.QWidget()
         h = QtWidgets.QHBoxLayout(row)
         h.setContentsMargins(0, 0, 0, 0)
@@ -1516,7 +1516,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         return _call
 
     def _add_divider(self, form: QtWidgets.QFormLayout) -> None:
-        """A 1px group divider as a spanning row; groups carry no title text."""
+        """A 1px group divider as a spanning row; groups have no title text."""
         box = QtWidgets.QWidget()
         v = QtWidgets.QVBoxLayout(box)
         v.setContentsMargins(0, theme.ui_px(amazetheme.PREFS_DIVIDER_ABOVE),
@@ -1542,7 +1542,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         )
         slider = ui_helpers.ClickSlider()
         slider.setOrientation(QtCore.Qt.Orientation.Horizontal)
-        slider.snap_marks = ()   # no tick dots or snap magnets here; those belong to the toolbar's size slider only
+        slider.snap_marks = ()   # no tick dots or snapping here; those belong to the toolbar's size slider only
         slider.setRange(lo, hi)
         slider.setValue(spinbox.value())
         slider.set_accent_color(theme.accent(self._prefs.accent_color))
@@ -1596,7 +1596,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         hostos.set_cache_override("")
         self.line_cache.setText(hostos.cache_root())
 
-    _SHARED_ROWS = (    # (row attribute, the shared setting it shows); renderer switches ride beside
+    _SHARED_ROWS = (    # (row attribute, the shared setting it shows); renderer switches are in `_shown_values`
         ("line_rendersize", "rendersize"),
         ("spin_ram_cache", "ram_cache_mb"),
         ("spin_parallel", "texture_parallel_conversions"),
@@ -1609,7 +1609,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         ("cbx_obj_drag_outline", "obj_drag_outline"),
     )
 
-    _USER_ROWS = (    # (row attribute, the per-user setting it shows); sections and scroll ride beside
+    _USER_ROWS = (    # (row attribute, the per-user setting it shows); sections and scroll are in `_shown_values`
         ("_cbx_sidebar_counts", "sidebar_counts"),
         ("_cbx_hide_empty", "hide_empty_categories"),
         ("_cbx_step_size", "step_size"),
@@ -1632,7 +1632,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         yield self.spin_scroll_speed, round(prefs.scroll_speed * 100)
 
     def _sync_rows(self) -> None:
-        """The door after a library or user change: every row re-reads, signals blocked."""
+        """Called after a library or user change: every row re-reads its value, signals blocked."""
         drawn_weight = self._combo_icon_weight.currentData()    # what the tiles were composed with
         self._reload_library_users()
         self._sync_overwrite_switch()
@@ -1645,7 +1645,7 @@ class PrefsDialog(base_dialog.AssetDialog):
             self._recompose_tile_icons()
 
     def _sync_overwrite_switch(self) -> None:
-        """Re-read the overwrite switch from the library now bound, whose policy holds it."""
+        """Re-read the overwrite switch from the library now open, whose policy stores it."""
         _show_quietly(self._cbx_allow_overwrite,
                       library_settings.allow_overwrite(self._prefs))
 
@@ -1681,7 +1681,7 @@ class PrefsDialog(base_dialog.AssetDialog):
 
     @debug.guarded("prefs.report_bug")
     def report_bug(self) -> None:
-        """Open the pre-filled new-issue page; `_open_url` records a refusal. ▸r/github-issue-url"""
+        """Open the pre-filled new-issue page; `_open_url` logs a failure. ▸r/github-issue-url"""
         _open_url(bug_report_url())
 
     def _installable(self):
@@ -1690,10 +1690,10 @@ class PrefsDialog(base_dialog.AssetDialog):
         return result if result and getattr(result, "url", "") else None
 
     def _set_update_button(self, offer: bool) -> None:
-        """Set the one button to one of its two readings; the tooltip moves with the label."""
+        """Set the one button to one of its two labels; the tooltip changes with the label."""
         self._btn_update.setText(
             "Install Update" if offer else "Check for Updates")
-        ui_helpers.pin_drawn(   # ONE drawn box for both readings: the word moves, the geometry does not
+        ui_helpers.pin_drawn(   # ONE drawn box for both labels: the text changes, the geometry does not
             self._btn_update, "P06", "QPushButton", "Check for Updates")
         self._btn_update.setToolTip(ui_helpers.tooltip_text(
             tooltips.PREFS_INSTALL_UPDATE
@@ -1718,7 +1718,7 @@ class PrefsDialog(base_dialog.AssetDialog):
 
     @debug.guarded("prefs.check_for_updates")
     def check_for_updates(self) -> None:
-        """Ask the release feed and say the answer in the version line; blocks until it answers."""
+        """Query the release feed and show the result in the version line; blocks until done."""
         from amaze.core import updater
 
         self._btn_update.setEnabled(False)
@@ -1749,14 +1749,14 @@ class PrefsDialog(base_dialog.AssetDialog):
         QtWidgets.QApplication.processEvents(
             QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
         try:
-            updater.install(result)    # the SAME call the shelf tool makes, so the two cannot drift
+            updater.install(result)    # the SAME call the shelf tool makes, so the two cannot diverge
         except OSError as exc:
-            self._lbl_version.setText(str(exc))   # the updater raises with a FINISHED sentence, shown as-is rather than wrapped in a second one
+            self._lbl_version.setText(str(exc))   # the updater raises with a complete message, shown as is rather than wrapped in another
         except Exception as exc:                              # noqa: BLE001
             debug.exception("update install", exc)
             self._lbl_version.setText(messages.UPDATE_FAILED_UNEXPECTED % exc)
         else:
-            self._last_update = None   # the offer is spent, so the next press asks the feed again rather than fetching a second time
+            self._last_update = None   # the offer is used, so the next press queries the feed again rather than fetching a second time
             self._lbl_version.setText(
                 messages.UPDATE_INSTALLED % result.version)
         finally:
@@ -1771,7 +1771,7 @@ class PrefsDialog(base_dialog.AssetDialog):
             debug.prefs_snapshot(self._prefs)
 
     def set_addon_betas(self, checked: bool) -> None:
-        """Pick the kind Check for Updates installs; what a check found was the other kind's."""
+        """Pick the kind Check for Updates installs; drop the other kind's last check result."""
         self._prefs.addon_betas = checked
         self._addons_found = []
         self._set_addons_button(False)
@@ -1782,12 +1782,12 @@ class PrefsDialog(base_dialog.AssetDialog):
         folder = os.path.dirname(path)
         try:
             os.makedirs(folder, exist_ok=True)
-            hostos.open_path(path if os.path.exists(path) else folder)    # it reveals what nothing opens
+            hostos.open_path(path if os.path.exists(path) else folder)    # the folder when the log file does not exist
         except Exception as exc:
             debug.event("prefs", "could not open log", error=str(exc))
 
     def save_debug_log(self) -> None:
-        """Export the log to a folder the user picks each time; the file carries paths and asset names."""
+        """Export the log to a folder picked each time; the file contains paths and asset names."""
         import hou
 
         start = self._prefs.dir or os.path.expanduser("~")   # `.dir`: a wrong name raises inside a Qt slot, which PySide swallows
@@ -1800,7 +1800,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         try:
             target = debug.export_log(folder)
         except debug.ExportRefused as exc:
-            hou.ui.displayMessage(   # SAY WHY: nothing-happened is the one outcome that teaches nothing
+            hou.ui.displayMessage(   # SHOW WHY: a silent failure gives the user no clue
                 str(exc), title=messages.TITLE_LOG_NOT_SAVED, severity=hou.severityType.Warning)
             debug.event("prefs", "log export refused", reason=str(exc))
             return
@@ -1816,7 +1816,7 @@ class PrefsDialog(base_dialog.AssetDialog):
             ui_helpers.reveal(target)
 
     def clear_debug_log(self) -> None:
-        # through the engine, never os.remove: it owns the session header and the flood counters
+        # through debug.clear_log, never os.remove: it also writes a new session header and resets counters
         ok, reason = debug.clear_log()
         if not ok:
             debug.note(messages.LOG_NOT_CLEARED % reason)
@@ -1856,7 +1856,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._prefs.save()
 
     def _on_section_toggled(self, _checked: bool) -> None:
-        """Rebuild enabled_sections in ALL_SECTIONS order, never zero; unregistered keys carry over."""
+        """Rebuild enabled_sections in ALL_SECTIONS order, never zero; unregistered keys are kept."""
         order = section_list.keys()
         enabled = [k for k in order
                    if k in self._section_boxes

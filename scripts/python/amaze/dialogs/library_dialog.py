@@ -86,14 +86,14 @@ def _draw(painter, metrics, text, rect, ink, elide) -> None:
 
 
 def ground_list(view) -> None:
-    """A drawn list's ground: Houdini's list colour, with the drawn corners."""
+    """A drawn list's background: Houdini's list colour, with the drawn corner radius."""
     view.setStyleSheet(
         "QListWidget { background-color: %s; border: none; border-radius: %dpx; }"
         % (theme.list_ground().name(), theme.ui_px(amazetheme.LIST_RADIUS)))
 
 
 def drawn_list(frame_key: str, selection_mode, delegate) -> QtWidgets.QListWidget:
-    """A drawn list: no frame, no sideways scroll, `delegate` painting rows on the list ground."""
+    """A drawn list: no frame, no sideways scroll, `delegate` painting rows on the background."""
     view = QtWidgets.QListWidget()
     view.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
     view.setSelectionMode(selection_mode)
@@ -123,7 +123,7 @@ class ManageLibrariesDialog(AssetDialog):
             self.FRAME_KEY,
             QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection,    # one or more
             ListRows())
-        self._remove, self._cancel, buttons = self.drawn_pair(    # Cancel closes; a removal made stays
+        self._remove, self._cancel, buttons = self.drawn_pair(    # Cancel closes; removals already made are kept
             amazetheme.BTN_REMOVE_FROM_LIST, self._remove_selected)
         self._cancel.setDefault(True)
 

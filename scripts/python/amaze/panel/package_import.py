@@ -11,13 +11,13 @@ from amaze.panel import sections
 
 
 class PackageImport:
-    """One panel's package import doors; the panel holds it as `package_import`."""
+    """One panel's package import commands; the panel holds it as `package_import`."""
 
     def __init__(self, panel) -> None:
         self.panel = panel
 
     def import_file(self, path: str, restore: bool = False) -> dict:
-        """Import a whole package; `restore=True` keeps original ids. Answers the core summary."""
+        """Import a whole package; `restore=True` keeps original ids. Returns packages' summary."""
         from amaze.core import packages
         summary = packages.import_package(self.models(),
                                           self.panel.prefs, path,
@@ -105,14 +105,14 @@ class PackageImport:
             listed = {hostos.canonical_path_key(path)
                       for path in self.panel.prefs.file_folders}
             if folder not in listed:
-                self.panel.prefs.set_file_folder_name(folder, "Import")    # before the row lands, and only here: a rename stays
+                self.panel.prefs.set_file_folder_name(folder, "Import")    # before the row is added, and only here: a user rename is kept
                 self.panel.prefs.set_file_folder_kinds(folder, locations.EVERY_KIND)
                 if folders is None:
                     self.panel.prefs.add_file_folder(folder)
                 else:
                     folders.add_folder(folder)
             elif folders is not None:
-                folders.refresh_counts()    # already listed: files landed in it, so its number moved
+                folders.refresh_counts()    # already listed: files were added to it, so its count changed
                 row = folders.row_of(folder)
                 if row is not None:
                     folders.dataChanged.emit(folders.index(0),
@@ -120,7 +120,7 @@ class PackageImport:
 
     def import_record(self, record, source, restore,
                       on_progress=None):
-        """One store tile into the library, fresh or restore: (ok, reason); `on_progress` pumps the UI."""
+        """Import one store tile, new or restored: (ok, reason); `on_progress` updates the UI."""
         from amaze.core import packages
         url = record.payload.get("package")
         debug.event("import", "package tile start", title=record.title,
@@ -133,7 +133,7 @@ class PackageImport:
             notify = None if on_progress is None else (
                 lambda done, total:
                 on_progress(min(done / float(max(total, 1)), 1.0)))
-            bundle = source.import_reader(url, notify=notify)    # its own: a preview may hold the shared one
+            bundle = source.import_reader(url, notify=notify)    # a separate reader: a preview may be using the shared one
             summary = packages.import_entries(
                 self.models(), self.panel.prefs, bundle, [entry],
                 restore=restore)
@@ -150,7 +150,7 @@ class PackageImport:
                 return (False, messages.STORE_TILE_IMPORTED_NOTHING)
             return (True, "")
         except hou.OperationInterrupted:
-            raise    # the Esc belongs to the batch loop, not to this tile
+            raise    # Esc stops the whole batch loop, not only this tile
         except Exception as exc:                          # noqa: BLE001
             debug.exception("package import", exc, record=record.title)
             return (False, str(exc))

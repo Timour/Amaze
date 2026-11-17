@@ -1,4 +1,4 @@
-"""The Sidebar: what a row MEANS, and what may be dropped on it. ▸o/section-api"""
+"""The sidebar view, its row reorder, and what may be dropped on a row. ▸o/section-api"""
 
 from __future__ import annotations
 
@@ -10,14 +10,14 @@ from amaze.helpers import theme
 
 
 def top_level(index):
-    """The top row an index sits under; a top row answers itself."""
+    """The top-level row above an index; a top-level index returns itself."""
     while index.isValid() and index.parent().isValid():
         index = index.parent()
     return index
 
 
 class SidebarTreeView(QtWidgets.QTreeView):
-    """The one sidebar: a flat list in the asset tabs, a folder tree in File. ▸r/tree-views"""
+    """The sidebar view: a flat list in the asset tabs, a folder tree in File. ▸r/tree-views"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -26,22 +26,22 @@ class SidebarTreeView(QtWidgets.QTreeView):
         self.setUniformRowHeights(True)
         self.setIndentation(theme.ui_px(amazetheme.SIDEBAR_INDENT))
         self._open: dict = {}    # id(model) -> the folder paths open in it
-        self._standing = None    # (model, path) to stand on once its row arrives
+        self._standing = None    # (model, path) to select once its row is inserted
         self._watched = None
         self._arrow_press = False
-        self._pressed = None    # the row a left press landed on, held across the gesture
+        self._pressed = None    # the row under a left press, kept until the release
         self.expanded.connect(self._opened)
         self.collapsed.connect(self._closed)
 
     def drawBranches(self, painter, rect, index):
-        """Qt's indent-column arrows stay undrawn: the row's own arrow is the only one."""
+        """Draws nothing: no indent-column arrows; the delegate draws each row's arrow."""
 
     def paintEvent(self, event):
         if not self.alternatingRowColors():
             super().paintEvent(event)
             return
         rows = QtCore.QRect(0, 0, self.viewport().width(), self._rows_bottom())
-        super().paintEvent(QtGui.QPaintEvent(event.region().intersected(rows)))    # below: the plain ground
+        super().paintEvent(QtGui.QPaintEvent(event.region().intersected(rows)))    # below the last row: the plain background
 
     def _rows_bottom(self) -> int:
         """Where the last row on screen ends, 0 with none."""
@@ -87,7 +87,7 @@ class SidebarTreeView(QtWidgets.QTreeView):
         self._arrow_press = False
         pressed = self.indexAt(event.position().toPoint())
         if pressed.isValid():
-            self._standing = None    # a row the user chose outranks a folder still unfolding
+            self._standing = None    # a row the user clicked cancels a pending folder reveal
         left = event.button() == QtCore.Qt.MouseButton.LeftButton
         self._pressed = QtCore.QPersistentModelIndex(pressed) if left else None
         super().mousePressEvent(event)
@@ -99,18 +99,18 @@ class SidebarTreeView(QtWidgets.QTreeView):
             return
         pressed, self._pressed = self._pressed, None
         under = self.indexAt(event.position().toPoint())
-        super().mouseReleaseEvent(event)    # Qt clicks only a release on the row pressed
+        super().mouseReleaseEvent(event)    # Qt emits clicked only for a release on the pressed row
         if pressed is None or not pressed.isValid() or QtCore.QModelIndex(pressed) == under:
             return
         current = self.currentIndex()
         if current.isValid() and self.selectionModel().isSelected(current):
-            self.clicked.emit(current)    # dragged onto another row, or released off it: still a choice
+            self.clicked.emit(current)    # released on another row or outside it: still counts as a click
 
     def keyPressEvent(self, event):
         before = QtCore.QPersistentModelIndex(self.currentIndex())
         super().keyPressEvent(event)
         if QtCore.QModelIndex(before) != self.currentIndex():
-            self._standing = None    # the user moved off the row waiting for its folder
+            self._standing = None    # the user changed the current row: cancel the pending reveal
 
     def mouseDoubleClickEvent(self, event):
         index = self._on_arrow(event)
@@ -153,7 +153,7 @@ class SidebarTreeView(QtWidgets.QTreeView):
             self._open.get(id(self.model()), set()).discard(path)
 
     def _reopen(self, *_args):
-        """Open again what was open, and stand on a pending folder once its row is there."""
+        """Expand again what was expanded, and select a pending folder once its row exists."""
         model = self.model()
         if not self._remembers(model):
             return
@@ -171,11 +171,11 @@ class SidebarTreeView(QtWidgets.QTreeView):
                 self.scrollTo(index)
 
     def reveal(self, path: str) -> None:
-        """Open every folder above `path` and stand on it, as their rows arrive."""
+        """Expand every folder above `path` and select it, as their rows are inserted."""
         model = self.model()
         if not self._remembers(model) or not path:
             return
-        location = model.top_of(path)    # the scene row's folders open under it too
+        location = model.top_of(path)    # the top row's folder, the scene's row included
         opened = self._open.setdefault(id(model), set())
         opened.add(location)
         here = path.rstrip("/")
@@ -189,7 +189,7 @@ class SidebarTreeView(QtWidgets.QTreeView):
 
 
 class SidebarReorder(QtCore.QObject):
-    """Press-hold row reorder; asks the Section, owns only the state machine. ▸r/press-gestures"""
+    """Press-and-hold row reorder; the Section moves rows, this keeps state. ▸r/press-gestures"""
 
     EDGE_SCROLL_MARGIN = 16
 
@@ -208,7 +208,7 @@ class SidebarReorder(QtCore.QObject):
         return self._reordering
 
     def _clear(self) -> None:
-        """The blank slate: no press, no grab, no snapshot, nothing moved."""
+        """Clear the state: no press, no grabbed row, no snapshot, nothing moved."""
         self._pressed_pos = None
         self._grabbed = None
         self._snapshot = None
@@ -216,7 +216,7 @@ class SidebarReorder(QtCore.QObject):
         self._reordering = False
 
     def _reset(self) -> None:
-        """The blank slate again, and the cursor goes back with it."""
+        """Stop the hold timer, clear the state, and restore the cursor."""
         self._hold_timer.stop()
         was_reordering = self._reordering
         self._clear()
@@ -263,7 +263,7 @@ class SidebarReorder(QtCore.QObject):
         self._pressed_pos = pos
         self._grabbed = QtCore.QPersistentModelIndex(
             view.model().index(index.row(), 0))
-        # Re-read per press: the platform owns this number, not us.
+        # Read on each press: the value is the platform's setting, not ours.
         self._hold_timer.setInterval(
             QtWidgets.QApplication.startDragTime())
         self._hold_timer.start()
@@ -296,7 +296,7 @@ class SidebarReorder(QtCore.QObject):
         return False
 
     def _follow(self, pos) -> None:
-        """The grabbed row goes to the row under the clamped cursor. ▸r/press-gestures"""
+        """Move the grabbed row to the row under the cursor, clamped. ▸r/press-gestures"""
         section = self._section()
         view = self._panel.cat_list
         if (section is None or view is None
@@ -313,7 +313,7 @@ class SidebarReorder(QtCore.QObject):
         elif pos.y() > area.bottom() - self.EDGE_SCROLL_MARGIN:
             bar = view.verticalScrollBar()
             bar.setValue(bar.value() + bar.singleStep())
-        target = top_level(view.indexAt(clamped))    # over a subfolder, its location's row
+        target = top_level(view.indexAt(clamped))    # over a subfolder: its top-level location row
         if not target.isValid():
             return
         to_row = max(1, target.row())
@@ -334,11 +334,11 @@ class SidebarReorder(QtCore.QObject):
                 section.commit_sidebar_order()
         else:
             self._reset()
-        # Passed through: the row under the hand IS the grabbed row.
+        # Not consumed: the view gets the release, and the row under the cursor is the grabbed row.
         return False
 
     def _abort(self) -> None:
-        """Esc, or the world moved under the gesture: put the order back, and the grid's row."""
+        """On Esc or a model change mid-drag: restore the order, and select the grid's row again."""
         section = self._section()
         snapshot = self._snapshot
         self._reset()
@@ -350,7 +350,7 @@ class SidebarReorder(QtCore.QObject):
 
 
 def droppable_index(panel, pos):
-    """THE ONE PLACE the drop-target rules live; None if no tile may land here."""
+    """The only place the drop-target rules are defined; None if no tile may be dropped here."""
     context = panel.active_section()
     if context is None or not (context.takes_category_drops or context.takes_file_drops):
         return None
@@ -397,7 +397,7 @@ def _cursor_in_sidebar(panel):
 
 
 def category_under_cursor(panel):
-    """The assignable category under the GLOBAL cursor - every self-managed release asks first."""
+    """The assignable category under the GLOBAL cursor; every self-managed drop calls this first."""
     pos = _cursor_in_sidebar(panel)
     return None if pos is None else category_at_point(panel, pos)
 
@@ -438,7 +438,7 @@ def update_hover_global(panel) -> None:
 
 
 def can_drop(panel, event) -> bool:
-    """Only OUR OWN grid, only into a context that takes drops - the rest falls through."""
+    """Only drags from this panel's grid, into a section that takes drops; False for the rest."""
     context = panel.active_section()
     return bool(context is not None
                 and (context.takes_category_drops or context.takes_file_drops)

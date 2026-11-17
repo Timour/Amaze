@@ -11,7 +11,7 @@ from amaze.core import library_files as naming
 from amaze.helpers import ui_helpers, wording
 
 MOST_BUTTONS = 5    # actions one report shows before Choose an Action lists them instead
-FIX_FAILED = (ValueError, OSError, guard_mod.Refused)    # what a fix raises when it did not land
+FIX_FAILED = (ValueError, OSError, guard_mod.Refused)    # what a fix raises when it fails
 
 
 def open_panel_tab():
@@ -34,7 +34,7 @@ def open_panel_tab():
 
 
 def _say(text: str, severity=None) -> None:
-    """A finished sentence; `severity` Warning for what failed, Error for damage, else Message."""
+    """Show a message; `severity` Warning for what failed, Error for damage, else Message."""
     hou.ui.displayMessage(text, title=messages.TITLE_CHECK_LIBRARY,    # type: ignore
                           severity=severity or hou.severityType.Message)    # type: ignore
 
@@ -48,7 +48,7 @@ def _confirmed(text: str, buttons: tuple, help_text: str = "", warn: bool = Fals
 
 
 def _repair_settings(settings: dict) -> None:
-    """settings.json will not read, is missing or names no library: offer saved copies back."""
+    """settings.json is unreadable, missing or names no library: offer its saved copies."""
     folder = os.path.dirname(settings["path"])
     if not settings["snapshots"]:
         _say(messages.SETTINGS_UNREADABLE_NO_COPIES % folder, hou.severityType.Error)
@@ -82,7 +82,7 @@ def _repair_settings(settings: dict) -> None:
 
 
 def run(preferences=None) -> None:
-    """The shelf tool, for a panel that will not open: reports always, acts with no library read."""
+    """Shelf tool for a panel that does not open: reports; fixes only with no library open."""
     settings = repair.settings_survey(preferences)
     if settings is not None and (settings["state"] == "unreadable" or (
             settings["state"] == "absent" and settings["snapshots"])):
@@ -145,7 +145,7 @@ def repair_found(findings: dict, guard: bool = True, changed=None) -> bool:
 
 
 def check_failed_library(folder: str, preferences) -> None:
-    """Check Library on a library a switch left closed; fixes only while nothing here holds it."""
+    """Check Library on a library a switch left closed; fixes only if this session has it closed."""
     while True:
         findings = repair.survey(folder, preferences.img_dir)
         findings["settings"] = None
@@ -157,7 +157,7 @@ def check_failed_library(folder: str, preferences) -> None:
 
 
 def surveyed(findings: dict) -> None:
-    """The survey's record in the log, one event per check."""
+    """Log the survey's result, one event per check."""
     debug.event("repair", "surveyed", complete=findings["complete"],
                 unaccounted=repair.unaccounted_total(findings),
                 states={entry["filename"]: entry["state"] for entry in findings["lists"]})
@@ -233,7 +233,7 @@ def _every_choice(findings: dict, may_change: bool):
 
 
 def act(findings: dict, action: str, guard: bool = True, changed=None) -> bool:
-    """Confirm and run one action, `changed` called once it lands, then say so; True if it did."""
+    """Confirm, run and report one action; `changed` is called if it succeeds; True if it did."""
     if action == "holding":
         ui_helpers.reveal(findings["holding"]["path"])
         return False
@@ -253,7 +253,7 @@ def act(findings: dict, action: str, guard: bool = True, changed=None) -> bool:
 
 
 def _do_recover(findings: dict, guard: bool, changed) -> None:
-    """Confirm, put each orphaned pair in its folder's database, and say how many."""
+    """Confirm, put each orphaned pair in its folder's database, and show how many."""
     found = repair.recoverable(findings)
     missing = [naming.section_label(name) for name in found
                if repair.list_is_missing(findings, name)]
@@ -344,7 +344,7 @@ def _pick(offers: list, message: str, header: str, sections: bool = False):
          + repair.copy_named_by_what_it_holds(filename, snap)
          for filename, _tier, snap, _current in offers],
         default_choices=(0,), exclusive=True,
-        clear_on_cancel=True,    # without it Cancel answers the row that opened picked
+        clear_on_cancel=True,    # without it Cancel returns the row that was preselected
         title=messages.TITLE_CHECK_LIBRARY, message=message, column_header=header)
     return offers[chosen[0]] if chosen else None
 
@@ -401,7 +401,7 @@ def _put_copy_back(findings: dict, offer: tuple, guard: bool, changed, older: bo
 
 def _moved(result: dict) -> None:
     """What a move aside did, and what it could not move."""
-    claimed = result.get("claimed")    # files a list took since the check
+    claimed = result.get("claimed")    # files a database added since the check
     if result["failed"]:
         _say(messages.FILES_MOVED_ASIDE_SOME_FAILED
              % (repair.files(len(result["moved"])), repair.files(len(result["failed"]))),
@@ -413,7 +413,7 @@ def _moved(result: dict) -> None:
 
 
 def _added(said: str, result: dict) -> None:
-    """What a Recover did, and that the library changed when a database took files since the check."""
+    """Show what Recover did, and that the library changed if a database added files since then."""
     claimed = result.get("claimed")
     if result["added"] or not claimed:
         _say(said)
@@ -422,7 +422,7 @@ def _added(said: str, result: dict) -> None:
 
 
 def _do_move_aside(findings: dict, guard: bool, changed) -> None:
-    """The unlisted files `movable` leaves and the leftovers, in one move after one confirm."""
+    """Move the unlisted files from `movable` and the leftovers, in one move after one confirm."""
     aside = repair.movable(findings)
     unlisted = 0 if repair.why_unlisted_stay(findings) else repair.unaccounted_total(aside)
     leftovers = findings.get("leftovers") or []
@@ -448,7 +448,7 @@ def _do_move_aside(findings: dict, guard: bool, changed) -> None:
 
 
 def _do_move_unknown(findings: dict, guard: bool, changed) -> None:
-    """The files and folders no name fits, after their own confirm naming each."""
+    """Move aside files and folders no known name matches, after a confirm that lists each."""
     names = [entry[0] + "/" for entry in findings.get("unknown_folders") or ()] + [
         entry[0] for entry in findings.get("unknown") or ()]
     if not _confirmed(messages.CONFIRM_MOVE_UNKNOWN_ASIDE, messages.BUTTONS_MOVE_ASIDE,
@@ -465,7 +465,7 @@ def _do_move_unknown(findings: dict, guard: bool, changed) -> None:
 
 
 def _do_set_aside(findings: dict, guard: bool, changed) -> None:
-    """Folders not on this computer set aside, and stars on files that are gone dropped too."""
+    """Set aside folders not on this computer, and remove favourite marks on deleted files."""
     dead, stars = findings.get("dead_folders") or [], findings.get("dead_stars") or []
     if dead:
         asked = _confirmed(messages.CONFIRM_SET_ASIDE_FOLDERS % repair.folders(len(dead)),
@@ -490,7 +490,7 @@ def _do_set_aside(findings: dict, guard: bool, changed) -> None:
             messages.DEAD_STARS_ALSO_REMOVED % repair.favorites(len(gone)) if gone else ""))
     elif gone:
         _say(messages.DEAD_STARS_REMOVED_DONE % repair.favorites(len(gone)))
-    if len(folders) < len(dead) or not (folders or gone):    # a folder came back since the check
+    if len(folders) < len(dead) or not (folders or gone):    # a folder was skipped: it exists again, or its drive is offline
         _say(messages.LIBRARY_CHANGED_SINCE_CHECK, hou.severityType.Warning)
 
 

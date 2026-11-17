@@ -15,7 +15,7 @@ COLUMNS = amazetheme.D02_COLUMNS      # how wide the grid runs before wrapping
 
 
 class IconDialog(base_dialog.AssetDialog):
-    """Non-modal icon and colour picker; `spec` is the result, Apply fires `applied`. ▸r/accept-apply"""
+    """Non-modal icon and colour picker: result in `spec`, Apply emits `applied`. ▸r/accept-apply"""
 
     FORM_WIDTH = amazetheme.D02_FORM_WIDTH
     FRAME_KEY = "D02"     # the fixed-size parts only; the fields, search and grid stretch
@@ -52,7 +52,7 @@ class IconDialog(base_dialog.AssetDialog):
 
         content = QtWidgets.QWidget()
         column = QtWidgets.QVBoxLayout(content)
-        column.setContentsMargins(0, 0, 0, 0)   # the shell owns the outer margins
+        column.setContentsMargins(0, 0, 0, 0)   # AssetDialog.finish sets the outer margins
         column.setSpacing(0)                    # every gap below is a DRAWN number, added explicitly
         column.addLayout(self._build_fields())
         column.addSpacing(theme.ui_px(amazetheme.D02_TOP_GAP))
@@ -97,11 +97,11 @@ class IconDialog(base_dialog.AssetDialog):
         if not self._categories:
             self.category_combo = None
         else:
-            self.category_combo = ui_helpers.DesignedComboBox()   # its dropdown holds the box's width ▸r/combo-popup-width
+            self.category_combo = ui_helpers.DesignedComboBox()   # its dropdown keeps the box's width ▸r/combo-popup-width
             self.category_combo.setFixedHeight(field_h)
             base_dialog.fill_categories(self.category_combo,
                                         self._categories, self._tile_category,
-                                        blank=True)    # mixed or none: a blank that moves nothing
+                                        blank=True)    # mixed or none: an empty first row that changes no category
             self.category_combo.setToolTip(ui_helpers.tooltip_text(
                 tooltips.CUSTOMIZE_CATEGORY))
             form.addRow(amazetheme.LABEL_CATEGORY, self.category_combo)
@@ -118,7 +118,7 @@ class IconDialog(base_dialog.AssetDialog):
         return form
 
     def _build_search(self):
-        """The icon filter, drawn at the bottom under the grid."""
+        """The icon filter, placed above the grid."""
         self.search = QtWidgets.QLineEdit()
         self.search.setFixedHeight(theme.ui_px(amazetheme.D02_FIELD_H))
         self.search.setPlaceholderText(amazetheme.PLACEHOLDER_SEARCH_ICONS)
@@ -127,8 +127,8 @@ class IconDialog(base_dialog.AssetDialog):
         return self.search
 
     def _build_chooser(self):
-        """The icon grid alone - the search sits ABOVE it since the overhaul, in the column that owns both."""
-        chooser_bg = self.palette().color(   # the dialog's OWN window colour, so the grid is not a light island in it
+        """The icon grid only; the search field is ABOVE it, in the column that holds both."""
+        chooser_bg = self.palette().color(   # the dialog's OWN window colour, so the grid is not a lighter area in it
             QtGui.QPalette.ColorRole.Window).name()
         icon_ink = theme.color_hex("text_bright")
 
@@ -157,7 +157,7 @@ class IconDialog(base_dialog.AssetDialog):
         icon_px = theme.ui_px(CELL - 14)
         self._icon_px = icon_px
         self._icon_ink = icon_ink
-        self._icon_dpr = None                             # the ratio the icons currently carry; None until the first ink ▸r/screen-dpr
+        self._icon_dpr = None                             # the device pixel ratio of the current icons; None until first drawn ▸r/screen-dpr
         for name in tile_icons.icon_names():
             button = QtWidgets.QToolButton()
             button.setCheckable(True)
@@ -169,7 +169,7 @@ class IconDialog(base_dialog.AssetDialog):
                 lambda _checked=False, chosen=name: self._choose(chosen))
             group.addButton(button)
             self._buttons_by_name[name] = button
-        self._ink_for_screen()      # again on show, when the window finally has a screen to ask ▸r/screen-dpr
+        self._ink_for_screen()      # called again in showEvent, once the window has a screen ▸r/screen-dpr
         self._relayout(tile_icons.icon_names())
 
         area.setStyleSheet("QScrollArea { background: %s; border: none; }"
@@ -202,9 +202,9 @@ class IconDialog(base_dialog.AssetDialog):
             row.setSpacing(theme.ui_px(amazetheme.D02_LABEL_GAP))
             toggle = ui_helpers.ToggleSwitch()
             toggle.setToolTip(ui_helpers.tooltip_text(tooltip))
-            row.addWidget(toggle)       # the pill sits left, its label after
+            row.addWidget(toggle)       # the switch on the left, its label after
             label = QtWidgets.QLabel(label_text)
-            label.setMinimumWidth(1)    # the label yields before the row overflows the column under a wide style's font
+            label.setMinimumWidth(1)    # the label shrinks before the row overflows the column under a wide style's font
             row.addWidget(label)
             row.addStretch(1)
             return row, toggle
@@ -238,8 +238,8 @@ class IconDialog(base_dialog.AssetDialog):
         stack.addSpacing(theme.ui_px(amazetheme.D02_ROW_GAP))
 
         colour_row = QtWidgets.QHBoxLayout()
-        colour_row.setSpacing(theme.ui_px(amazetheme.D02_SWATCH_GAP))   # the drawn 6: the chip is swatch-sized and the row rides the swatch rhythm
-        self.custom_chip = QtWidgets.QToolButton()   # wears the current colour, opens the picker ▸r/houdini-colour-picker
+        colour_row.setSpacing(theme.ui_px(amazetheme.D02_SWATCH_GAP))   # the drawn 6: the chip is swatch-sized and the row uses the swatch spacing
+        self.custom_chip = QtWidgets.QToolButton()   # shows the current colour, opens the picker ▸r/houdini-colour-picker
         self.custom_chip.setToolTip(ui_helpers.tooltip_text(
             tooltips.CUSTOMIZE_CUSTOM_COLOR))
         self.custom_chip.clicked.connect(self._pick_custom)
@@ -308,12 +308,12 @@ class IconDialog(base_dialog.AssetDialog):
 
 
     def showEvent(self, event) -> None:
-        """Ink the grid for the screen the dialog actually opened on. ▸r/screen-dpr"""
+        """Redraw the grid icons for the screen the dialog opened on. ▸r/screen-dpr"""
         super().showEvent(event)
         self._ink_for_screen()
 
     def _ink_for_screen(self) -> None:
-        """Redraw the chooser icons when this window's ratio differs from the one they carry."""
+        """Redraw the chooser icons when this window's ratio differs from the icons' ratio."""
         dpr = float(self.devicePixelRatioF())
         if dpr == self._icon_dpr:
             return
@@ -324,7 +324,7 @@ class IconDialog(base_dialog.AssetDialog):
 
     @staticmethod
     def _chooser_icon(name: str, icon_px, dpr: float, ink: str):
-        """One chooser icon: the Feather SVG re-inked, rendered at device pixels, ratio stamped."""
+        """One chooser icon: the Feather SVG recoloured, rendered at device pixels, ratio set."""
         return ui_helpers.device_pixmap(
             tile_icons.icon_path(name), icon_px, dpr, {"currentColor": ink})
 
@@ -407,7 +407,7 @@ class IconDialog(base_dialog.AssetDialog):
 
     def _harvest(self) -> None:
         """Everything a commit writes: the chosen face, and the name, tags and category."""
-        self.new_tile_name = self.new_tags = self.new_category = None    # THIS commit's answer only
+        self.new_tile_name = self.new_tags = self.new_category = None    # reset: only THIS commit's values
         face = self.face_combo.currentData()
         if face == "custom":
             self.spec = tile_icons.normalise(
