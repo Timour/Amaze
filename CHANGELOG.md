@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.34.3
+
+- A Python snippet's tile has its run button in the lower-right corner. **Edit** is on the right-click menu.
+- The Code section's default tile picture is new.
+- Tile buttons keep the same background at rest, under the pointer and when clicked.
+- The **Repair** button has a standard button's corners and its own red.
+
 ## 1.34.2
 
 - **Check Library** is in Preferences ▸ Library. **Check** shows three lights, **Errors**, **Files** and **Ref**, each with a count. When it finds something the button reads **Repair** and opens a list of what was found, with **Fix All** and **Fix Safe**.
