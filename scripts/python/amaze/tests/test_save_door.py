@@ -1,4 +1,4 @@
-"""One `Save to Amaze` door: what it offers, which it opens on. ▸p/save-section-row"""
+"""One `Save to Amaze` command: the sections it offers, the one it opens on. ▸p/save-section-row"""
 
 import os
 import sys
@@ -96,7 +96,7 @@ class TheDoorOffersWhatCanTakeTheNode(unittest.TestCase):
 class TheDoorOpensOnTheLikeliestSection(unittest.TestCase):
 
     def test_the_door_opens_on_the_likeliest_section(self):
-        """The open section wins only when it can take the node."""
+        """The open section is chosen only when it can hold the node."""
         sub = hou.node("/obj").createNode("subnet", "door_obj_subnet")
         self.addCleanup(sub.destroy)
         wrangle = _wrangle(self)
@@ -141,7 +141,7 @@ class TheSectionRowDrivesTheRestOfTheDialog(unittest.TestCase):
         self.assertEqual("typed", dialog.name)
 
     def test_language_is_live_only_for_code(self):
-        """Greyed for a material, where it is nobody's answer; live for code."""
+        """Disabled for a material, which has no language; enabled for code."""
         greyed = self._dialog()
         self.assertFalse(greyed.combo_language.isEnabled())
         greyed._on_accept()
@@ -165,7 +165,7 @@ class TheChosenSectionIsWhereTheSaveLands(unittest.TestCase):
         with _choosing("cop"):
             self.panel._save_new([node], "material", node)
         self.assertEqual(before + 1, self.panel.cop_model.rowCount(),
-                         "the save did not land in Node")
+                         "the save did not add a row to Node")
         asset, = test_support.arrived(self.panel.cop_model, held)
         self.assertEqual("VOP", asset.renderer)
         index = self.panel.cop_model.index(
@@ -187,7 +187,7 @@ class TheChosenSectionIsWhereTheSaveLands(unittest.TestCase):
             self.panel._save_new([wrangle], "code", wrangle)
         self.assertEqual(before + 1, self.panel.code_model.rowCount())
         snippet, = test_support.arrived(self.panel.code_model, held)
-        self.assertEqual("Python", snippet.renderer)    # a snippet's language rides the renderer field
+        self.assertEqual("Python", snippet.renderer)    # a snippet's language is stored in the renderer field
         self.assertIn("@Cd = 1;", snippet.code)
 
 
@@ -214,7 +214,7 @@ class ASaveKeepsTheArtistsSelection(unittest.TestCase):
 
 
 class ADroppedNodeIsSavedAtTheTopOfTheEventLoop(unittest.TestCase):
-    """The save a drop defers must not run inside Houdini's event pump. ▸p/deferred-ui-at-top-level"""
+    """A drop's deferred save must not run inside `processEvents`. ▸p/deferred-ui-at-top-level"""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -270,7 +270,7 @@ class ADroppedNodeIsSavedAtTheTopOfTheEventLoop(unittest.TestCase):
 
 
 class ASaveLeavesNothingOnTheUndoStack(unittest.TestCase):
-    """The staging copies are the save's own business; the next Ctrl+Z is the artist's."""
+    """The save's staging copies add no undo entry; the next Ctrl+Z undoes the artist's change."""
 
     def test_a_material_save_adds_no_undo_entry(self):
         from amaze.render import nodes
@@ -288,10 +288,10 @@ class ASaveLeavesNothingOnTheUndoStack(unittest.TestCase):
         self.assertEqual(
             (), hou.undos.undoLabels(),
             "the save's staging copy left entries on the undo stack, so "
-            "the next Ctrl+Z after Save to Amaze undoes the save's noise")
+            "the next Ctrl+Z after Save to Amaze undoes the save's staging")
 
     def test_a_convert_adds_no_undo_entry(self):
-        """Convert to rebuilds, converts and saves a twin in scratch: none of it is the artist's."""
+        """Convert to rebuilds, converts and saves a scratch copy: none of it adds an undo entry."""
         from amaze.actions import materials as material_actions
         from amaze.core import library
         from amaze.render import nodes
@@ -318,7 +318,7 @@ class ASaveLeavesNothingOnTheUndoStack(unittest.TestCase):
 
 
 class AnUpdateBeforeARestartSaysSo(unittest.TestCase):
-    """The menu reloads from disk and the panel does not, so a new menu can meet an old panel."""
+    """The menu reloads from disk and the panel does not, so a new menu can call an old panel."""
 
     def test_an_old_panel_gets_the_restart_sentence_and_keeps_the_selection(self):
         import types
@@ -337,11 +337,11 @@ class AnUpdateBeforeARestartSaysSo(unittest.TestCase):
             rc_calls.save(node)
         self.assertEqual([messages.RESTART_TO_FINISH_UPDATE], said)
         self.assertFalse(node.isSelected(),
-                         "a refused save took the user's selection")
+                         "a save that did not run changed the user's selection")
 
 
 class AnUnderscoredCategoryKeepsItsStoredName(unittest.TestCase):
-    """`_WIP` reads WIP in every list, and a save files under `_WIP` without minting another."""
+    """`_WIP` shows as WIP in every list; a save files under `_WIP` without creating another."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -376,7 +376,7 @@ class AnUnderscoredCategoryKeepsItsStoredName(unittest.TestCase):
                          "the asset was filed under a name the sidebar "
                          "does not hold")
         self.assertEqual(self.before, self.categories.rowCount(),
-                         "a second category that also reads WIP was made")
+                         "a second category that also shows as WIP was made")
 
     def test_picking_WIP_files_under_WIP(self):
         seen = self._save(pick="WIP")
@@ -387,10 +387,10 @@ class AnUnderscoredCategoryKeepsItsStoredName(unittest.TestCase):
 
     def test_standing_on_WIP_pre_selects_it(self):
         self.assertTrue(self.panel._stand_on_category("WIP"),
-                        "premise: no row reads WIP")
+                        "premise: no row shows WIP")
         seen = self._save()
         self.assertEqual("WIP", seen["shown"],
-                         "standing on WIP opened the save on another row")
+                         "with WIP selected, the save opened on another row")
         self._assert_filed_under_the_stored_name(seen["saved"])
 
     def test_editing_a_WIP_snippet_leaves_it_there(self):
@@ -413,7 +413,7 @@ class AnUnderscoredCategoryKeepsItsStoredName(unittest.TestCase):
 
 
 class ACategoryHoldingACommaIsOneCategory(unittest.TestCase):
-    """A save filed under "Wood, Oak" lands there whole and mints no "Wood" or "Oak"."""
+    """A save filed under "Wood, Oak" keeps that whole name and creates no "Wood" or "Oak"."""
 
     NAME = "Wood, Oak"
 

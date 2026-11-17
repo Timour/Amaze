@@ -1,4 +1,4 @@
-"""Viewport pick space: before H22 on macOS, queryNodeAtPixel wants the point times the dpr."""
+"""Viewport pick space: before H22 on macOS, queryNodeAtPixel expects the point times the dpr."""
 
 import os
 import sys
@@ -21,7 +21,7 @@ from amaze.tests import test_support  # noqa: E402,F401 - redirects the log
 
 
 class _Viewport:
-    """Records each pixel asked; size() is four values in device pixels, as Houdini reports it."""
+    """Records each pixel queried; size() is four values in device pixels, as Houdini reports it."""
 
     def __init__(self, w=481, h=279, scale=2.0, hit=None):
         self._device = (0, 0, int(w * scale), int(h * scale))
@@ -58,7 +58,7 @@ class _Viewer:
 
 
 class _Version:
-    """Pin hou.applicationVersion to real builds for a test; the gate keys on the build number."""
+    """Pin hou.applicationVersion to real builds for a test; the check uses the build number."""
 
     BUILDS = {21: (21, 0, 780), 22: (22, 0, 393)}
 
@@ -110,18 +110,18 @@ class TestPickCoordinateSpace(unittest.TestCase):
                 "%s got the workaround - the H22 series must behave "
                 "like the H22 that was actually measured, until a build "
                 "in it is measured and flagged" % (build,))
-        for build in ((21, 0, 780), (21, 0, 790)):    # both measured: H21 wants device pixels
+        for build in ((21, 0, 780), (21, 0, 790)):    # both measured: H21 expects device pixels
             self.assertEqual(
                 (882, 4), self._pick_with(build),
                 "%s lost the workaround - it does not apply the device "
                 "pixel ratio itself" % (build,))
 
     def test_the_origin_is_not_touched(self):
-        """The scale is the whole workaround: a y-flip alongside it puts the pick a viewport away."""
+        """The scale is the whole workaround: a y-flip as well moves the pick to the wrong place."""
         for gl_y in (0, 2, 140, 277, 279):
             vp = _Viewport(h=self.HEIGHT, scale=self.SCALE)
             _Version(self, 21)
-            _Platform(self, "macos")  # pinned: this asserts the macOS-only workaround fires
+            _Platform(self, "macos")  # pinned: this asserts the macOS-only workaround is applied
             dragengine._pick(_Viewer(vp), "obj", 100, gl_y,
                              self.SCALE, self.HEIGHT)
             self.assertEqual(
@@ -130,7 +130,7 @@ class TestPickCoordinateSpace(unittest.TestCase):
                 % (gl_y, vp.asked[0][1]))
 
     def test_a_display_without_scaling_is_untouched(self):
-        """dpr 1.0: no missing factor to restore, so the workaround must not fire even on an old build."""
+        """dpr 1.0: no missing factor to restore, so the workaround must not run even on an old build."""
         self.assertEqual((441, 2), self._pick_with(21, scale=1.0))
 
     def test_windows_never_gets_the_macos_workaround(self):
@@ -145,14 +145,14 @@ class TestViewportResolutionStillWorks(unittest.TestCase):
 
     def test_a_hit_is_reported_as_the_node_path(self):
         _Version(self, 21)
-        _Platform(self, "macos")  # the fake viewport only answers at the scaled point (882, 4)
+        _Platform(self, "macos")  # the fake viewport returns a node only at the scaled point (882, 4)
         vp = _Viewport(hit=(882, 4))
         found = dragengine._pick(_Viewer(vp), "obj", 441, 2, 2.0, 279)
         self.assertEqual("/obj/sphere_object1", found)
         vp = _Viewport(hit=None)
         self.assertEqual(
             "", dragengine._pick(_Viewer(vp), "obj", 10, 10, 2.0, 279),
-            "a miss is not an empty answer")
+            "a miss does not return an empty string")
 
     def test_a_raising_viewport_says_why_instead_of_going_quiet(self):
         """A miss and a raised exception must not produce the same log line."""
@@ -171,7 +171,7 @@ class TestViewportResolutionStillWorks(unittest.TestCase):
             "", dragengine._pick(_Viewer(_Boom()), "obj", 1, 1, 2.0, 279))
         self.assertTrue(
             any("raised" in m for m, _ in records),
-            "the pick swallowed an exception without recording it: %s"
+            "the pick caught an exception without recording it: %s"
             % [m for m, _ in records])
 
 

@@ -1,4 +1,4 @@
-"""The COP companion: where it lands and what a refused import leaves behind, on REAL nodes."""
+"""The COP companion network: where it is created and what a rolled-back import removes."""
 
 import os
 import shutil
@@ -26,7 +26,7 @@ TOKEN_ROOT = "/obj/Amaze"    # the path saved files carry; the import maps it
 
 
 class TheCompanionIsTheImportsOwn(unittest.TestCase):
-    """A refused import takes back the COP network it made and nothing else."""
+    """A rolled-back import deletes the COP network it created and nothing else."""
 
     def setUp(self):
         self.handler = nodes.NodeHandler.__new__(nodes.NodeHandler)
@@ -36,7 +36,7 @@ class TheCompanionIsTheImportsOwn(unittest.TestCase):
         self.handler._created_cop_net = net
         self.handler._undo_cop_companion()
         self.assertIsNone(hou.node("/obj/companion_probe"),
-                          "the refused import left its COP network in the scene")
+                          "the rolled-back import left its COP network in the scene")
 
     def test_a_companion_this_import_did_not_make_is_never_touched(self):
         theirs = hou.node("/obj").createNode("copnet", "someone_elses_probe")
@@ -53,7 +53,7 @@ class TheCompanionIsTheImportsOwn(unittest.TestCase):
 
 
 class ACompanionLandsBesideItsMaterial(unittest.TestCase):
-    """Where a COP network goes: /stage, /obj or the geometry ▸r/houdini-after-create"""
+    """Where the COP network is created: /stage, /obj or the geometry ▸r/houdini-after-create"""
 
     NAME = "companion_home_probe"
 
@@ -106,14 +106,14 @@ class ACompanionLandsBesideItsMaterial(unittest.TestCase):
 
 
 class ACompanionThatOnlyWarnedIsKept(unittest.TestCase):
-    """`hou.LoadWarning` comes from a load that succeeded; the companion stays for the `op:` paths."""
+    """`hou.LoadWarning` comes from a load that succeeded; the companion is kept for `op:` paths."""
 
     def setUp(self):
         self.handler = nodes.NodeHandler.__new__(nodes.NodeHandler)
         self.handler._created_cop_net = None
 
     def test_LoadWarning_really_is_caught_by_the_broad_clause(self):
-        """Premise: without its own branch above, `except (OSError, hou.Error)` swallows the warning."""
+        """Premise: without its own branch above, `except (OSError, hou.Error)` catches the warning."""
         try:
             raise hou.LoadWarning("Bad node type found: probe")
         except (OSError, hou.Error) as caught:
@@ -124,7 +124,7 @@ class ACompanionThatOnlyWarnedIsKept(unittest.TestCase):
             "ordering this fix depends on has changed")
 
     def test_the_handler_catches_the_warning_before_hou_Error(self):
-        """Source-derived: `except hou.LoadWarning` sits above `except hou.Error`, its base class."""
+        """Source-derived: `except hou.LoadWarning` precedes `except hou.Error`, its base class."""
         import inspect
         source = inspect.getsource(nodes.NodeHandler.restore_cop_companion)
         warning_at = source.find("except hou.LoadWarning")
@@ -135,7 +135,7 @@ class ACompanionThatOnlyWarnedIsKept(unittest.TestCase):
             "companion that loaded with warnings is destroyed")
         self.assertLess(
             warning_at, error_at,
-            "the LoadWarning branch sits BELOW hou.Error, which catches "
+            "the LoadWarning branch comes AFTER hou.Error, which catches "
             "the subclass first and makes it unreachable")
 
 
@@ -162,7 +162,7 @@ class AWholeNetworkSaveKeepsItsDots(unittest.TestCase):
         self.assertIn(dot, builder.allItems())
 
     def test_the_staged_save_asks_for_every_item(self):
-        """Source-derived: the material save hands `saveItemsToFile` the items, not the children."""
+        """Source-derived: the material save gives `saveItemsToFile` the items, not the children."""
         import inspect
         source = inspect.getsource(nodes.NodeHandler._save_copy)
         self.assertIn("allItems()", source,
@@ -184,12 +184,12 @@ class AWholeNetworkSaveKeepsItsDots(unittest.TestCase):
                 if i not in restored.children()]
         self.assertTrue(
             dots,
-            "the saved file carried no dot back, so the wire through it "
+            "the reloaded file restored no dot, so the wire through it "
             "is gone from the restored network")
 
 
 class ALooseSurfaceSaveKeepsAWireThroughADot(unittest.TestCase):
-    """A surface saved on its own, a loose save, comes back fed as it was. ▸r/node-items"""
+    """A surface saved on its own (a loose save) reloads with its inputs wired. ▸r/node-items"""
 
     def setUp(self):
         test_support.pin_env(self, "OCIO", "/dev/null")
@@ -207,7 +207,7 @@ class ALooseSurfaceSaveKeepsAWireThroughADot(unittest.TestCase):
         self.assertNotIn(dot, self.home.children(), "premise: the dot is a child")
         handler = nodes.NodeHandler(self.prefs)
         handler._renderer = "Karma"
-        self.assertTrue(handler.save_node(surface, "dotprobe", False), "premise: no save")
+        self.assertTrue(handler.save_node(surface, "dotprobe", False), "premise: save_node failed")
         restored = self.home.createNode("subnet", "restored")
         restored.loadItemsFromFile(material.payload_path(
             self.prefs, "dotprobe", self.prefs.ext, library_files.MATERIALS))
@@ -224,7 +224,7 @@ class ALooseSurfaceSaveKeepsAWireThroughADot(unittest.TestCase):
         dot.setInput(image, 0)
         surface.setInput(surface.inputIndex("base_color"), dot, 0)
         self.assertEqual(image, surface.inputs()[surface.inputIndex("base_color")],
-                         "inputs() no longer sees through a dot")
+                         "inputs() no longer returns the node behind a dot")
         scratch = self.home.createNode("subnet", "premise_copy")
         copy = next(c for c in hou.copyNodesTo([image, surface], scratch)
                     if c.type().name() == "mtlxstandard_surface")
@@ -242,7 +242,7 @@ class AnImportCarriesNoOneElsesStamp(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.scratch, True)
 
     def _saved_with_a_stale_inner_stamp(self):
-        """A material file whose inner node carries another entry's id, two levels deep."""
+        """A material file whose inner node has another entry's id, two levels deep."""
         builder = self.parent.createNode("subnet", "builder")
         deep = builder.createNode("subnet", "deep")
         leaf = deep.createNode("null", "leaf")
@@ -261,7 +261,7 @@ class AnImportCarriesNoOneElsesStamp(unittest.TestCase):
                   if n.userData("assetlib_id")]
         self.assertIn(
             "SOMEBODY-ELSES-ID", stamps,
-            "the stamp no longer survives a save, so this guard is moot")
+            "the stamp no longer survives a save, so clearing it is moot")
 
     def test_a_strict_load_clears_every_inherited_stamp(self):
         path = self._saved_with_a_stale_inner_stamp()
@@ -274,11 +274,11 @@ class AnImportCarriesNoOneElsesStamp(unittest.TestCase):
                 if n.userData("assetlib_id")]
         self.assertEqual(
             [], left,
-            "an imported material still carries another entry's id, so a "
+            "an imported material still has another entry's id, so a "
             "Save to Amaze on that inner node offers to overwrite it")
 
     def test_the_sweep_reaches_a_NESTED_node(self):
-        """The stale stamp sits two subnets down; a children()-only sweep would miss it."""
+        """The stale stamp is two subnets down; a walk over children() only would miss it."""
         path = self._saved_with_a_stale_inner_stamp()
         target = self.parent.createNode("subnet", "nested")
         nodes.load_items_strict(target, path)
@@ -288,7 +288,7 @@ class AnImportCarriesNoOneElsesStamp(unittest.TestCase):
             "the fixture is not actually nested, so this proves nothing")
 
     def test_a_loose_node_has_its_OWN_stamp_cleared_too(self):
-        """A network-destination import drops loose nodes, each carrying the stamp it was saved with."""
+        """A network-destination import creates loose nodes, each with the stamp it was saved with."""
         loose = self.parent.createNode("subnet", "loose")
         loose.setUserData("assetlib_id", "STALE-TOP")
         inner = loose.createNode("null", "inner")
@@ -300,7 +300,7 @@ class AnImportCarriesNoOneElsesStamp(unittest.TestCase):
         self.assertIsNone(inner.userData("assetlib_id"))
 
     def test_a_container_keeps_its_own_stamp_by_default(self):
-        """The container sites stamp it right after; the default leaves it and other nodes alone."""
+        """Callers stamp the container right after; by default only the nodes inside are cleared."""
         keeper = self.parent.createNode("subnet", "keeper")
         keeper.setUserData("assetlib_id", "THE-REAL-ONE")
         inner = keeper.createNode("null", "inner")
@@ -312,7 +312,7 @@ class AnImportCarriesNoOneElsesStamp(unittest.TestCase):
         self.assertIsNone(inner.userData("assetlib_id"))
 
     def test_a_dot_in_the_network_does_not_stop_the_sweep(self):
-        """Dots carry no userData at all, so a walk that touches it must tolerate them. ▸r/inherited-stamps"""
+        """Dots have no userData, so the walk must skip them without raising. ▸r/inherited-stamps"""
         holder = self.parent.createNode("subnet", "holder")
         holder.createNetworkDot()
         stamped = holder.createNode("null", "stamped")
@@ -325,7 +325,7 @@ class AnImportCarriesNoOneElsesStamp(unittest.TestCase):
 
 
 class AFailedSaveLeavesNoCompanionScratch(unittest.TestCase):
-    """The companion is written to a scratch file first; a save that fails before the pair keeps none."""
+    """The companion is written to a scratch file first; a save failing before the pair removes it."""
 
     ASSET = "scratchprobe"
 
@@ -359,10 +359,10 @@ class AFailedSaveLeavesNoCompanionScratch(unittest.TestCase):
                 handler.save_node(self.builder, self.ASSET, False)
         self.assertEqual(
             [], self._scratches(),
-            "the companion's scratch file outlived a save that never "
-            "reached the pair, and nothing else will ever remove it")
+            "the companion's scratch file remains after a save that failed "
+            "before the pair, and no other code removes it")
         self.assertIsNone(handler._pending_cop_promote,
-                          "the handler still holds the dead companion")
+                          "`_pending_cop_promote` is still set after the failed save")
 
 
 class OneWalkFindsAndRewritesCopReferences(unittest.TestCase):

@@ -25,7 +25,7 @@ COUNT = category.SIDEBAR_COUNT_ROLE
 
 
 def _grid_key(panel) -> str:
-    """What the grid shows, read off the grid's own models: "" for everything."""
+    """The category the grid shows, read from the grid's own models: "" for all."""
     if panel._is_online():
         role = panel.matx_online_model.CategoryRole
         return panel.matx_sorted_model.filter_value(role) or ""
@@ -36,7 +36,7 @@ def _grid_key(panel) -> str:
 
 
 def _row_key(panel, index) -> str:
-    """What a click on this sidebar row shows, read off the row: "" for All."""
+    """What a click on this sidebar row shows, read from the row: "" for All."""
     if panel._is_online():
         return panel.matx_source_model.category_at(index.row()) or ""
     model = panel.cat_list.model()
@@ -51,14 +51,14 @@ def _pump(seconds=0.05):
 
 
 def _ui(**answers):
-    """A stand-in for `hou.ui`: every dialog answers its first button, `selectFile` what is given."""
+    """A fake `hou.ui`: every dialog returns its first button, `selectFile` the path given."""
     return types.SimpleNamespace(
         displayMessage=lambda *a, **k: 0, setStatusMessage=lambda *a, **k: None,
         selectFile=lambda *a, **k: answers.get("selectFile", ""))
 
 
 def _check_ui(*wanted_labels):
-    """`hou.ui` for Check Library: each box presses the next button naming this, else its close."""
+    """A fake `hou.ui` for Check Library: each dialog picks the next wanted label, else closes."""
     wanted = list(wanted_labels)
 
     def answer(*_args, **kwargs):
@@ -74,7 +74,7 @@ def _check_ui(*wanted_labels):
 
 
 class _HighlightCase:
-    """A shown fixture panel on section KEY, and the gestures that move its sidebar."""
+    """A visible fixture panel on section KEY, and the mouse actions that change its sidebar."""
 
     KEY = ""
 
@@ -103,7 +103,7 @@ class _HighlightCase:
             self.assertEqual(_grid_key(self.panel), _row_key(self.panel, current),
                              "the sidebar highlights another row than the grid shows")
             if grid is not None:
-                self.assertEqual(grid, _grid_key(self.panel), "the grid stands somewhere else")
+                self.assertEqual(grid, _grid_key(self.panel), "the grid shows another category")
 
     def row(self, key):
         """The sidebar row a click on which shows `key`, its subfolders searched too."""
@@ -127,7 +127,7 @@ class _HighlightCase:
         _pump(0.01)
 
     def menu(self, index, *labels):
-        """A right press on `index` and its menu: `labels` picked down the submenus, none dismisses."""
+        """Right-click `index`, pick `labels` through the submenus; with none, dismiss the menu."""
         self.click(index, RIGHT)
 
         def pick(menu, *_args, **_kwargs):
@@ -154,7 +154,7 @@ class _HighlightCase:
         QtTest.QTest.mouseRelease(self.view.viewport(), LEFT, NOMOD, to)
 
     def reorder(self, grabbed, over, release_at=None, escape=False, turn=False):
-        """Press-hold `grabbed`, follow the hand over `over`, a turn of events, Esc, and release."""
+        """Press and hold `grabbed`, move over `over`, run events, press Esc if asked, release."""
         to = self.at(over)
         QtTest.QTest.mousePress(self.view.viewport(), LEFT, NOMOD, self.at(grabbed))
         self.panel.sidebar_reorder._hold_fired()
@@ -170,7 +170,7 @@ class _HighlightCase:
 
 
 class _AssetSidebarPaths(_HighlightCase):
-    """Material, Color, Node and Code walk the same paths over their own categories."""
+    """Material, Color, Node and Code run the same steps on their own categories."""
 
     FILTERS_HIDE = True    # a Kind filter that hides a category; Color's size filter hides none
 
@@ -189,7 +189,7 @@ class _AssetSidebarPaths(_HighlightCase):
         return mock.patch.object(self.panel, "ask_category_name", lambda *_a, **_k: name)
 
     def _peer_adds(self, name):
-        """Another machine adds category `name`; the merge reaches the models through the registry."""
+        """Another machine adds category `name`; `model_registry.refresh_all` merges it in."""
         categories = self.panel.active_section().stack().categories
         path = os.path.join(self.panel.prefs.dir, categories.DB_FILENAME)
         with open(path, encoding="utf-8-sig") as handle:
@@ -257,7 +257,7 @@ class _AssetSidebarPaths(_HighlightCase):
             panel.prefs.add_file_favorite(os.path.join(panel.prefs.file_folders[0], "gone.exr"))
             with mock.patch.object(hou, "ui", _check_ui("Fix Safe"), create=True):
                 test_support.repair_from_preferences(self, panel)
-        self.check("Check Library", clean_up, grid="")    # a re-read stands on the first row, as Reload does
+        self.check("Check Library", clean_up, grid="")    # a re-read selects the first row, as Reload does
 
         def tab_and_back():
             self.stand()
@@ -275,7 +275,7 @@ class _AssetSidebarPaths(_HighlightCase):
         self.check("a library switch", self.switch_library, grid="")
 
     def test_a_change_made_elsewhere_leaves_the_highlight_on_the_grids_row(self):
-        """A peer merge and a second panel's verbs reach this sidebar only through the shared model."""
+        """Another machine's and a second panel's edits reach this sidebar via the shared model."""
         categories = self.panel.active_section().stack().categories
 
         def peer_merge():
@@ -299,14 +299,14 @@ class _AssetSidebarPaths(_HighlightCase):
         self.check("a second panel deletes the row", second_panel_deletes_it, grid="")
 
     def test_a_reorder_held_across_a_turn_follows_the_grabbed_row(self):
-        """The sidebar's moves under a press-hold reorder do not stand it again mid-gesture."""
+        """Row moves during a press-and-hold reorder do not reselect the sidebar row mid-drag."""
         def held_across_a_turn():
             self.stand()
             self.reorder(self.row("Other"), self.row("Kept"), turn=True)
         self.check("a reorder held across an event-loop turn", held_across_a_turn, grid="Other")
 
     def test_a_burst_of_resets_stands_again_once(self):
-        """However many resets land in one event-loop turn, the sidebar stands again once."""
+        """However many resets arrive in one event-loop turn, `stand_again` runs once."""
         section = self.panel.active_section()
         categories = section.stack().categories
         self.stand()
@@ -315,7 +315,7 @@ class _AssetSidebarPaths(_HighlightCase):
             categories.restore_order(order[:1] + order[:0:-1])    # one reset
             categories.restore_order(order)    # and a second, in the same turn
             _pump()
-        self.assertEqual([1], stood, "two resets in one turn stood again %d times" % len(stood))
+        self.assertEqual([1], stood, "two resets in one turn ran stand_again %d times" % len(stood))
 
 
 class MaterialSidebarTest(_AssetSidebarPaths, unittest.TestCase):
@@ -336,7 +336,7 @@ class CodeSidebarTest(_AssetSidebarPaths, unittest.TestCase):
 
 
 class FileSidebarTest(_HighlightCase, unittest.TestCase):
-    """Locations and their subfolders, the moves, and the Check Library that sets one aside."""
+    """Locations and their subfolders, file moves, and Check Library setting a location aside."""
 
     KEY = "file"
 
@@ -353,7 +353,7 @@ class FileSidebarTest(_HighlightCase, unittest.TestCase):
                 for row in range(self.folders._offset(), self.folders.rowCount())]
 
     def added_since(self, before) -> str:
-        """The one location registered since `before`, spelled as its sidebar row stores it."""
+        """The one location registered since `before`, in the form its sidebar row stores."""
         found = [path for path in self.locations() if path not in before]
         self.assertEqual(1, len(found), "premise: not one new location: %s" % found)
         return found[0]
@@ -364,10 +364,10 @@ class FileSidebarTest(_HighlightCase, unittest.TestCase):
         return self.added_since(before)
 
     def read(self, location, folder):
-        """Unfold `location` until its row for `folder` is read."""
+        """Expand `location` until its row for `folder` is loaded."""
         self.folders.data(self.folders.index_of(location), COUNT)
         self.assertTrue(test_support.pump_until(lambda: self.folders.index_of(folder).isValid()),
-                        "premise: %s never arrived under its location" % folder)
+                        "premise: %s never appeared under its location" % folder)
         self.view.expand(self.folders.index_of(location))
         _pump()
 
@@ -380,10 +380,10 @@ class FileSidebarTest(_HighlightCase, unittest.TestCase):
         selection = self.panel.thumblist.selectionModel()
         selection.select(proxy.index(0, 0), QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
         self.assertTrue(self.panel.active_section().move_files_to(folder), "premise: no move started")
-        self.assertTrue(test_support.pump_until(lambda: not file_moves.mover.busy()), "the move never landed")
+        self.assertTrue(test_support.pump_until(lambda: not file_moves.mover.busy()), "the move never finished")
 
     def remember_unread(self, name) -> str:
-        """A new subfolder of the location, remembered, the File tab entered before its row is read."""
+        """A new subfolder set as the last folder, the File tab entered before its row is loaded."""
         folder = os.path.join(self.loc, name)
         os.makedirs(folder)
         self.addCleanup(shutil.rmtree, folder, ignore_errors=True)
@@ -391,7 +391,7 @@ class FileSidebarTest(_HighlightCase, unittest.TestCase):
         _pump()
         self.panel.prefs.last_file_folder = folder
         self.panel.section_tabs.setChecked("file")
-        self.assertFalse(self.folders.index_of(folder).isValid(), "premise: its row is read")
+        self.assertFalse(self.folders.index_of(folder).isValid(), "premise: its row is already loaded")
         return folder
 
     def test_every_path_leaves_the_highlight_on_the_grids_row(self):
@@ -482,7 +482,7 @@ class FileSidebarTest(_HighlightCase, unittest.TestCase):
         self.check("a library switch", self.switch_library)
 
     def test_a_location_set_aside_or_located_from_the_blank(self):
-        """Check Library and the blank's Locate come through the panel's own doors."""
+        """Check Library and the empty grid's Locate run through the panel's own functions."""
         panel = self.panel
         made = tempfile.mkdtemp(prefix="amaze_gone_location_")
         self.addCleanup(shutil.rmtree, made, ignore_errors=True)
@@ -506,7 +506,7 @@ class FileSidebarTest(_HighlightCase, unittest.TestCase):
         self.check("the blank's Locate, cancelled", locate_cancelled, grid="")
 
     def test_a_browsed_subfolder_removed_on_disk(self):
-        """Its row leaves at the next read: the highlight and the grid stand on its location."""
+        """Its row is removed at the next read:the highlight and the grid move to its location."""
         def removed_then_read():
             self.stand(self.nested)
             shutil.rmtree(self.nested)
@@ -519,7 +519,7 @@ class FileSidebarTest(_HighlightCase, unittest.TestCase):
 
 
 class OnlineSidebarTest(_HighlightCase, unittest.TestCase):
-    """The catalogue's categories, which a landing fetch can replace under the user."""
+    """The catalogue's categories, which a finished fetch can replace while the user browses."""
 
     KEY = "material"
 
@@ -529,7 +529,7 @@ class OnlineSidebarTest(_HighlightCase, unittest.TestCase):
         self.addCleanup(setattr, self.online, "_all", self.online._all)
 
     def land(self, *categories):
-        """A catalogue fetch landing with one record per category, the shared disk cache untouched."""
+        """A catalogue fetch with one record per category; the shared disk cache is unchanged."""
         online = self.online
         records = [matx_sources.MatxRecord(source=online._source_filter, uid="probe-%s" % name,
                                            title="Probe %s" % name, category=name)

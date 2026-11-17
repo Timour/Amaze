@@ -1,4 +1,4 @@
-"""The 2.0 conversion and Check Library rehearsed on a private copy of the real library."""
+"""The 2.0 conversion and Check Library, run on a private copy of the real library."""
 
 import json
 import os
@@ -34,7 +34,7 @@ def _sizes(directory: str) -> dict:
 
 
 def _old(directory: str, name: str) -> dict:
-    """An old root file as it was written; {} when it is not there or does not read."""
+    """An old root file as it was written; {} when it is missing or cannot be read."""
     try:
         with open(os.path.join(directory, name), encoding="utf-8-sig") as handle:
             found = json.load(handle)
@@ -55,13 +55,13 @@ def _owner(key: str) -> tuple:
 
 
 def _words(items) -> list:
-    """What a comment says, item by item, its ids and authors aside."""
+    """A comment's content, item by item, without its ids and authors."""
     return [(item.get("t"), str(item.get("text", "")).strip(), item.get("label"),
              item.get("src")) for item in items or [] if isinstance(item, dict)]
 
 
 class _Census:
-    """What a library holds, read in its own shape: rows, comments, stars, icons, people."""
+    """What a library holds, read in its own format: rows, comments, stars, icons, users."""
 
     def __init__(self, directory: str, old: bool) -> None:
         self.rows, self.comments, self.stars, self.icons = {}, {}, set(), {}
@@ -84,7 +84,7 @@ class _Census:
         for key, page in (_old(directory, "notes.json").get("notes") or {}).items():
             prefix, _sep, ident = str(key).partition(":")
             if prefix == "file":
-                continue    # a file's key is re-homed on its location: counted, not compared
+                continue    # a file's key moves to its location record: counted, not compared
             items = library_conversion._first_shape(page)
             name = {"material": library_files.MATERIALS, "cop": library_files.NODES,
                     "code": library_files.CODE, "gradient": library_files.COLORS}.get(prefix)
@@ -132,10 +132,10 @@ class _Census:
 
 
 class _ConversionRehearsal:
-    """The 2.0 conversion run on a private copy of the real library, then proven."""
+    """The 2.0 conversion run on a private copy of the real library, then checked."""
 
     def rehearse(self, directory: str, label: str):
-        """Convert `directory`, prove every row and setting came through, print a summary."""
+        """Convert `directory`, check every row and setting is kept, print a summary."""
         if not library_conversion.needs_conversion(directory):
             self.skipTest("the real library is already 2.0: nothing to rehearse a conversion on")
         before = _Census(directory, old=True)
@@ -152,11 +152,11 @@ class _ConversionRehearsal:
         for name in library_files.LISTS:
             with self.subTest(section=name):
                 self.assertEqual(before.rows.get(name, set()) - aside.get(name, set()),
-                                 after.rows.get(name, set()), "rows changed beyond the set-aside")
+                                 after.rows.get(name, set()), "rows changed beyond those set aside")
         missing = [key for key, words in before.comments.items()
                    if key[1] not in aside.get(key[0], set())
                    and any(word not in after.comments.get(key, []) for word in words)]
-        self.assertEqual([], missing[:20], "comments that did not come through whole")
+        self.assertEqual([], missing[:20], "comments lost or changed in the conversion")
         self.assertEqual({star for star in before.stars if star[2] not in aside.get(star[0], ())},
                          {star for star in after.stars if star[2] in after.rows.get(star[0], ())},
                          "stars changed")
@@ -176,7 +176,7 @@ class _ConversionRehearsal:
         kept_aside = {os.path.normpath(path) for one in outcome.set_aside for path in one.files}
         shaped = [path for path in sizes if library_conversion.old_shape(path)
                   and os.path.normpath(os.path.join(directory, path)) not in kept_aside]
-        self.assertEqual([], shaped[:20], "format 3 files left that no one set aside")
+        self.assertEqual([], shaped[:20], "format 3 files left that the conversion did not set aside")
         for name in library_files.DATABASES:
             reading = guard.Guard(directory).read(name)
             self.assertIn(reading.verdict, (guard.FINE, guard.FRESH),
@@ -202,7 +202,7 @@ class _ConversionRehearsal:
 
 
 class TheRealLibraryRehearsalTest(_ConversionRehearsal, unittest.TestCase):
-    """The databases and every old root file copied whole, each folder's top level as stand-ins."""
+    """The databases and old root files copied in full; each folder's top level as placeholders."""
 
     def setUp(self):
         live = test_support.live_library_to_rehearse_on(self)
@@ -230,10 +230,10 @@ class TheRealLibraryRehearsalTest(_ConversionRehearsal, unittest.TestCase):
                 target = os.path.join(self.dir, folder, entry)
                 if entry.endswith(material.RECORD_SUFFIX) or entry.endswith(".builder.json") \
                         or entry.endswith(".stamp.json"):
-                    shutil.copy2(source, target)    # metadata whole: the conversion reads it
+                    shutil.copy2(source, target)    # metadata copied in full: the conversion reads it
                 else:
                     with open(target, "wb") as handle:
-                        handle.write(b"x")    # a stand-in a byte long: an empty file is no file
+                        handle.write(b"x")    # a 1-byte placeholder: an empty file counts as no file
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
 
@@ -242,7 +242,7 @@ class TheRealLibraryRehearsalTest(_ConversionRehearsal, unittest.TestCase):
         self.rehearse(self.dir, "databases whole, files as stand-ins")
 
     def test_the_converted_copy_is_coherent_and_nothing_moves(self):
-        """The accept path: Check Library finds nothing unlisted, and moves nothing."""
+        """The passing case: Check Library finds no unlisted file and moves nothing."""
         outcome = library_conversion.convert(self.dir, confirm=lambda: True)
         if outcome.status == library_conversion.NOTHING:
             self.skipTest("the real library is already 2.0")
@@ -257,7 +257,7 @@ class TheRealLibraryRehearsalTest(_ConversionRehearsal, unittest.TestCase):
 
 
 class TheRealLibrarysWholeShapeTest(_ConversionRehearsal, unittest.TestCase):
-    """Every folder of the real library, its databases and records whole, the rest stand-ins."""
+    """Every folder of the real library: databases and records in full, the rest placeholders."""
 
     def setUp(self):
         live = test_support.live_library_to_rehearse_on(self)
@@ -270,7 +270,7 @@ class TheRealLibrarysWholeShapeTest(_ConversionRehearsal, unittest.TestCase):
             here = os.path.normpath(os.path.join(self.dir, relative))
             os.makedirs(here, exist_ok=True)
             if relative in (library_files.PACKAGE_FOLDER, library_files.TRASH_FOLDER):
-                dirs[:] = []    # a permanent store the check never enters
+                dirs[:] = []    # a permanent folder the check never scans
                 continue
             for name in names:
                 source = os.path.join(folder, name)
@@ -287,14 +287,14 @@ class TheRealLibrarysWholeShapeTest(_ConversionRehearsal, unittest.TestCase):
         self.addCleanup(test_support.reset_database_singletons)
 
     def test_the_conversion_rehearsed_on_the_whole_shape(self):
-        """Every folder and version folder, the databases and root files whole."""
+        """Every folder and version folder, the databases and root files in full."""
         self.rehearse(self.dir, "whole shape")
 
     def test_unlisted_files_leftovers_and_unknowns_are_told_apart(self):
         outcome = library_conversion.convert(self.dir, confirm=lambda: True)
         self.assertIn(outcome.status, (library_conversion.DONE, library_conversion.NOTHING),
                       outcome.why)
-        library_conversion.trash_set_aside(self.dir, outcome.set_aside)    # the end box's Move to Trash
+        library_conversion.trash_set_aside(self.dir, outcome.set_aside)    # as the conversion's final Move to Trash
         test_support.reset_database_singletons()
         started = time.perf_counter()
         findings = repair.survey(self.dir, "img/")
@@ -310,7 +310,7 @@ class TheRealLibrarysWholeShapeTest(_ConversionRehearsal, unittest.TestCase):
         unknown = ({entry[0] for entry in findings["unknown"]}
                    | {entry[0] for entry in findings["unknown_folders"]})
         self.assertEqual(set(), leftovers & unknown,
-                         "one file was called both a leftover and unknown")
+                         "one file was listed both as a leftover and as unknown")
         text = "\n".join(repair.report_lines(findings))
         self.assertNotIn("img/comments", text, "the comment pictures folder is reported")
 

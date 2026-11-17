@@ -37,11 +37,11 @@ class NoTestBuildsItsOwnPanel(unittest.TestCase):
 
     def test_no_test_module_constructs_a_panel_directly(self):
         with open(os.path.join(HERE, "test_support.py"),
-                  encoding="utf-8") as handle:    # anti-vacuity: the needle must still find its haystack
+                  encoding="utf-8") as handle:    # the pattern must still match test_support.py, or the check proves nothing
             self.assertTrue(
                 re.findall(r"AmazePanel\s*\(", handle.read()),
                 "the pattern no longer matches a real panel construction - "
-                "re-key it in this same change, or it is checking nothing")
+                "update it in this same change, or it is checking nothing")
         offenders = {}
         for name in _test_modules():
             if name in self.ALLOWED:
@@ -60,18 +60,18 @@ class NoTestBuildsItsOwnPanel(unittest.TestCase):
 
 
 class AFixturePanelScansNothingOfTheUsers(unittest.TestCase):
-    """The runtime half: every directory the panel would walk is temp."""
+    """At run time: every directory the fixture panel would scan is in the temp dir."""
 
     def test_every_registered_location_is_inside_the_temp_dir(self):
         panel = test_support.fixture_panel(self)
         temp = os.path.realpath(tempfile.gettempdir())
 
         registered = []
-        self.assertTrue(    # the accept path: a guard only ever satisfied by emptiness is not a guard
+        self.assertTrue(    # a check that passes only because the list is empty checks nothing
             list(panel.prefs.file_folders),
             "the fixture panel registers no file location, so this "
-            "guard passes for the wrong reason")
-        # NAMED, never `getattr(..., ())` - defaulting narrows this guard.
+            "check passes for the wrong reason")
+        # By name, never `getattr(..., ())` - a default weakens this check.
         for folder in panel.prefs.file_folders or ():
             registered.append(("file_folders", str(folder)))
         registered.append(("library", panel.prefs.dir))
@@ -86,7 +86,7 @@ class AFixturePanelScansNothingOfTheUsers(unittest.TestCase):
 
 
 class TheSnapshotToolFingerprintsALibrary(unittest.TestCase):
-    """Armed, the machine's settings are out of reach, so `ui_snapshot.py` needs its own library."""
+    """The sandbox hides the real settings, so `ui_snapshot.py` needs its own library."""
 
     def test_the_snapshot_grid_has_a_model_with_rows(self):
         from amaze.tests import ui_snapshot
@@ -124,8 +124,8 @@ class TheSUITETestsTheCheckoutAndNotTheInstall(unittest.TestCase):
             expected, loaded,
             "the suite is testing a DIFFERENT copy of amaze than the "
             "one it lives in - every result is about\n  %s\nwhile the "
-            "working tree is\n  %s\nA sabotage in the checkout cannot "
-            "turn anything red." % (loaded, expected))
+            "working tree is\n  %s\nA deliberate break in the checkout "
+            "cannot fail any test." % (loaded, expected))
 
 
 if __name__ == "__main__":

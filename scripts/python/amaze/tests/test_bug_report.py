@@ -20,7 +20,7 @@ from amaze.tests import test_support  # noqa: E402
 
 class TheBugReportCarriesTheMachine(unittest.TestCase):
     def test_the_url_is_the_new_issue_page_with_the_three_facts(self):
-        """Amaze, Houdini and OS versions for this machine, one per line, through the click's `QUrl`."""
+        """Amaze, Houdini and OS versions, one per line, intact in the `QUrl` the button opens."""
         from PySide6 import QtCore
         from amaze.core import updater
         from amaze.dialogs import prefs_dialog
@@ -32,7 +32,7 @@ class TheBugReportCarriesTheMachine(unittest.TestCase):
                     % (branding.APP_VERSION,
                        hou.applicationVersionString(),
                        platform.platform()))
-        self.assertIn("%0A", parts.query,    # urlsplit strips raw newlines; only the encoded form proves them
+        self.assertIn("%0A", parts.query,    # urlsplit strips raw newlines; only the encoded form shows them
                       "the newlines were lost in the encoding")
         self.assertEqual(
             expected, urllib.parse.parse_qs(parts.query)["body"][0])
@@ -41,10 +41,10 @@ class TheBugReportCarriesTheMachine(unittest.TestCase):
         self.assertEqual(
             "body=" + expected,
             qurl.query(QtCore.QUrl.ComponentFormattingOption.FullyDecoded),
-            "QUrl hands the OS something other than what was built")
+            "QUrl passes the OS a different query from the one built")
 
     def test_the_button_opens_exactly_that_url(self):
-        """Through the real button, so the wiring is proven; only the browser door is stubbed."""
+        """Clicks the real button, so its connection is tested; only `_open_url` is stubbed."""
         from amaze.dialogs import prefs_dialog
         prefs = test_support.fixture_prefs(self)
         dlg = prefs_dialog.PrefsDialog(prefs, panel=None)

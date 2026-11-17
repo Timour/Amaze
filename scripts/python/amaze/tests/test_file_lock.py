@@ -1,4 +1,4 @@
-"""`hostos.file_lock` - a best-effort exclusive lock that NEVER costs a write."""
+"""`hostos.file_lock` - a best-effort exclusive lock that NEVER blocks a write."""
 
 import os
 import shutil
@@ -27,28 +27,28 @@ class ItTakesAndReleases(_Case):
             with hostos.file_lock(self.path) as second:
                 self.assertFalse(
                     second,
-                    "two callers both believed they held it, so the lock "
-                    "narrows nothing")
+                    "both callers got True from file_lock, so the lock "
+                    "excludes nothing")
 
 
 class ItNeverCostsAWrite(_Case):
 
     def test_an_unlockable_file_yields_false_rather_than_raising(self):
-        """A network share may refuse locking outright; the write must still go."""
+        """A network share may not support locking at all; the write must still happen."""
         real = hostos._take_lock
         hostos._take_lock = lambda handle: (_ for _ in ()).throw(OSError("no"))
         self.addCleanup(setattr, hostos, "_take_lock", real)
 
         with hostos.file_lock(self.path) as held:
-            self.assertFalse(held, "it claimed a lock it could not take")
+            self.assertFalse(held, "it returned True for a lock it could not take")
 
     def test_the_library_folder_is_not_touched(self):
-        """Three suite guards refuse a stray in there, and one of them is a SUCCESSFUL save."""
+        """Three suite checks fail on an extra file there, one of them on a SUCCESSFUL save."""
         before = sorted(os.listdir(self.dir))
         with hostos.file_lock(self.path):
             pass
         self.assertEqual(before, sorted(os.listdir(self.dir)),
-                         "the lock left a file beside the library")
+                         "the lock left a file in the library folder")
 
     def test_a_raising_body_still_releases(self):
         with self.assertRaises(ValueError):

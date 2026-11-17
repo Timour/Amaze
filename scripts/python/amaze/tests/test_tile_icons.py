@@ -69,7 +69,7 @@ def package_subclasses(base: str) -> list:
 
 
 class GeometryTest(unittest.TestCase):
-    """What the template says, measured in pixels."""
+    """The template's geometry, measured in pixels."""
 
     def test_the_template_icon_lands_where_the_template_put_it(self):
         """The clipboard path spans (156,131) to (356,381), grown by half the 10px stroke each side."""
@@ -112,7 +112,7 @@ class GeometryTest(unittest.TestCase):
 
 
 class ChoiceTest(unittest.TestCase):
-    """Storing a choice, and surviving a bad one."""
+    """Storing a choice, and handling an invalid one."""
 
     def setUp(self):
         test_support.reset_database_singletons()
@@ -141,7 +141,7 @@ class ChoiceTest(unittest.TestCase):
         before_files = self._files()
         self.model.set_tile_icon(self.row, {"name": "layers", "bg": "#4af2a1"})
         self.assertEqual(before_path, self.model._mat_paths[self.row],
-                         "the tile left its one picture path")
+                         "the tile's picture path changed")
         self.assertEqual([], sorted(path for path in self._files() - before_files
                                     if path.endswith(".png")),
                          "a custom icon wrote a picture into the library")
@@ -165,22 +165,22 @@ class ChoiceTest(unittest.TestCase):
         self.assertEqual(render_path, self.model._mat_paths[self.row])
 
     def test_the_choice_lands_in_the_store_and_ONLY_there(self):
-        """The icons section of the section database is the only home of an icon choice."""
+        """An icon choice is stored only in the icons section of the section's database."""
         self.model.set_tile_icon(self.row, {"name": "layers",
                                             "bg": "#4af2a1"})
         stored = tile_icons.override_for(
             self.prefs, self.model.tile_key(self.row), self.model.DB_FILENAME)
         self.assertEqual("layers", stored.get("name"),
-                         "the pick never reached the shared store")
+                         "the choice never reached the icons section")
         self.assertNotIn(
             "icon", self.model.assets[self.row].get_as_dict(),
             "the retired record field is being written again - two "
-            "copies of one value, free to drift, and the schema step "
-            "that strips it is undone on every save")
+            "copies of one value that can disagree, and the schema step "
+            "that removes it is undone on every save")
         self.model.set_tile_icon(self.row, {})
         self.assertEqual({}, tile_icons.override_for(
             self.prefs, self.model.tile_key(self.row), self.model.DB_FILENAME),
-            "clearing the icon left the store entry behind")
+            "clearing the icon left the icons-section entry behind")
 
     def test_the_cache_key_changes_with_the_icon(self):
         """Same asset, different picture, so the shared image cache cannot serve the stale one."""
@@ -193,7 +193,7 @@ class ChoiceTest(unittest.TestCase):
         self.assertNotEqual(first, second, "a colour change reused the key")
 
     def test_a_nonsense_choice_becomes_no_choice(self):
-        """An odd stored value costs a fallback tile, never the grid."""
+        """An invalid stored value gives a fallback tile and never breaks the grid."""
         white = {"name": "box", "bg": "#ffffff"}
         for raw, cleaned in (
                 ({"name": "not-an-icon", "bg": "#4af2a1"}, {}),
@@ -237,7 +237,7 @@ class FaceRuleTest(unittest.TestCase):
     def test_one_rule_picks_the_face(self):
         icon = {"name": "box", "bg": "#4af2a1"}
         for spec, default, can_preview, face in (
-                (icon, "image", True, "custom"),    # a custom icon wins over any default
+                (icon, "image", True, "custom"),    # a custom icon overrides any default
                 (icon, "generic", True, "custom"),
                 ({}, "generic", True, "generic"),    # nothing stored shows the row's default
                 ({"face": "generic"}, "image", True, "generic"),
@@ -313,7 +313,7 @@ class FaceChoiceTest(unittest.TestCase):
 
 
 class FileRowTest(unittest.TestCase):
-    """File rows have no asset record, so their choices live in the icons section of files.json."""
+    """File rows have no asset record; their choices are kept in the icons section of files.json."""
 
     FILES = library_files.FILES
 
@@ -339,7 +339,7 @@ class FileRowTest(unittest.TestCase):
         tile_icons.set_override(self.prefs, "/tmp/a.exr", {}, self.FILES)
         library_db.release()
         self.assertEqual({}, tile_icons.override_for(self.prefs, "/tmp/a.exr", self.FILES),
-                         "clearing did not forget the path on disk")
+                         "clearing did not remove the path on disk")
         self.assertNotIn("/tmp/a.exr", self._on_disk())
 
     def test_an_unreadable_store_costs_icons_not_the_section(self):
@@ -350,7 +350,7 @@ class FileRowTest(unittest.TestCase):
         self.assertEqual({}, tile_icons.override_for(self.prefs, "/tmp/a.exr", self.FILES))
         self.assertFalse(tile_icons.set_override(self.prefs, "/tmp/a.exr",
                                                  {"name": "image", "bg": "#5cc9f5"}, self.FILES),
-                         "a choice was taken by a database that does not read")
+                         "a choice was accepted by a database that cannot be read")
         with open(path, encoding="utf-8") as handle:
             self.assertEqual("{ this is not json", handle.read(),
                              "an unreadable database was written over")
@@ -409,19 +409,19 @@ class DialogTest(unittest.TestCase):
         return dialog
 
     def test_the_category_field_stays_live_on_a_multi_selection(self):
-        """Name greys out on a multi-selection; Category stays live to move them all at once."""
+        """Name is disabled on a multi-selection; Category stays enabled to move them all."""
         dialog = icon_dialog.IconDialog(
             None, tile_name="", tile_name_enabled=False,
             categories=["Metal", "Wood"], tile_category="")
         self.addCleanup(dialog.deleteLater)
         self.assertFalse(dialog.tile_name_edit.isEnabled(),
-                         "the Name field is live on a multi-selection")
+                         "the Name field is enabled on a multi-selection")
         self.assertTrue(dialog.category_combo.isEnabled(),
-                        "the Category field greys out, so a selection "
+                        "the Category field is disabled, so a selection "
                         "cannot be moved in one go")
 
     def test_a_blank_category_moves_nothing(self):
-        """An empty box is not an answer the way an empty Tags line is: there is no no-category."""
+        """Empty means no change, unlike an empty Tags line: a tile always has a category."""
         dialog = icon_dialog.IconDialog(
             None, categories=["Metal"], tile_category="Metal")
         self.addCleanup(dialog.deleteLater)
@@ -454,7 +454,7 @@ class DialogTest(unittest.TestCase):
             moving.category_combo.findText("WIP"))
         moving.accept_button.click()
         self.assertEqual("_WIP", moving.new_category,
-                         "the move names a category nothing stores")
+                         "the move returns a name no category is stored under")
 
     def test_accept_returns_the_choice(self):
         untouched = self._dialog({"name": "layers", "bg": "#5cc9f5"})
@@ -490,7 +490,7 @@ class DialogTest(unittest.TestCase):
     def test_only_custom_has_an_icon_and_colours_to_choose(self):
         dialog = self._dialog()
         self.assertEqual("image", dialog.face_combo.currentData())
-        self.assertFalse(dialog._chooser_area.isEnabled(), "the chooser is live on Image")
+        self.assertFalse(dialog._chooser_area.isEnabled(), "the chooser is enabled on Image")
         self.assertFalse(dialog.light_toggle.isEnabled())
         self._pick(dialog, "custom")
         self.assertTrue(dialog._chooser_area.isEnabled())
@@ -504,11 +504,11 @@ class DialogTest(unittest.TestCase):
         self.addCleanup(dialog.deleteLater)
         self.assertFalse(self._item(dialog, "image").isEnabled())
         for face in ("generic", "custom"):
-            self.assertTrue(self._item(dialog, face).isEnabled(), "%s greyed with Image" % face)
+            self.assertTrue(self._item(dialog, face).isEnabled(), "%s disabled with Image" % face)
         live = icon_dialog.IconDialog(None, face="generic")
         self.addCleanup(live.deleteLater)
         self.assertTrue(self._item(live, "image").isEnabled(),
-                        "Image greyed on a row that can have a picture")
+                        "Image disabled on a row that can have a picture")
 
     def test_an_old_render_or_capture_choice_opens_on_image(self):
         """A face stored before format 4 opens on Image and is written back as image."""
@@ -555,7 +555,7 @@ class DialogTest(unittest.TestCase):
             return shown.pixelColor(shown.width() // 2, shown.height() // 2).name()
 
         self.assertEqual("#12b886", middle(), "Image does not show the tile's picture")
-        self.assertTrue(dialog.preview.isEnabled(), "the real face must not draw greyed")
+        self.assertTrue(dialog.preview.isEnabled(), "the actual face must not be drawn disabled")
         self._pick(dialog, "generic")
         self.assertEqual("#1c7ed6", middle(), "Generic does not show the section's face")
         self._pick(dialog, "custom")
@@ -571,14 +571,14 @@ class DialogTest(unittest.TestCase):
         self.assertEqual([{"name": "layers", "bg": "#ef8878",
                            "ink": "dark"}], landed)
         self.assertTrue(dialog.canceled,
-                        "Apply must not read as an accepting close")
+                        "Apply must not count as an accepting close")
 
     def test_closing_the_window_changes_nothing(self):
         dialog = self._dialog({"name": "box", "bg": "#ef8878"})
-        dialog._choose("layers")          # fiddle with it first
+        dialog._choose("layers")          # change the choice first
         dialog.reject()                   # the X, and Esc
         self.assertTrue(dialog.canceled,
-                        "closing the window read as a choice")
+                        "closing the window counted as a choice")
 
     def test_the_light_icon_toggle_reaches_the_choice(self):
         """The Lines dropdown became a switch in the overhaul: off is dark lines, on is light."""
@@ -591,14 +591,14 @@ class DialogTest(unittest.TestCase):
         self.assertEqual("dark", dialog.spec["ink"])
 
     def test_the_chip_wears_the_current_colour_and_the_stack_lines_up(self):
-        """The chip shows the current background; chip and pills sit flush left, the buttons right."""
+        """The chip shows the current background; chip and pills align left, the buttons right."""
         dialog = self._dialog({"name": "box", "bg": "#e0523a"})
         dialog.show()
         self.addCleanup(dialog.hide)
         QtWidgets.QApplication.processEvents()
 
         self.assertIn("#e0523a", dialog.custom_chip.styleSheet(),
-                      "the chip does not wear the current background")
+                      "the chip does not show the current background")
         dialog._set_bg("#b0d1df")
         self.assertIn("#b0d1df", dialog.custom_chip.styleSheet(),
                       "the chip did not follow a preset click")
@@ -629,7 +629,7 @@ class DialogTest(unittest.TestCase):
 
 
 class ChooserWearsTheDialogsColoursTest(unittest.TestCase):
-    """The chooser wears the window colour; QSvgRenderer leaves `currentColor` black, so re-ink."""
+    """The chooser uses the window colour; QSvgRenderer leaves `currentColor` black, so recolour."""
 
     def _dialog(self):
         from amaze.dialogs import icon_dialog
@@ -647,9 +647,9 @@ class ChooserWearsTheDialogsColoursTest(unittest.TestCase):
         area = dialog.findChild(QtWidgets.QScrollArea).styleSheet()
         for sheet, who in ((holder, "grid holder"), (area, "scroll area")):
             self.assertIn(window, sheet,
-                          "%s does not wear the dialog's colour" % who)
+                          "%s does not use the dialog's colour" % who)
             self.assertNotIn("#d0ced0", sheet,
-                             "%s is the light island again" % who)
+                             "%s has the light background again" % who)
         # the checked ring, the only mark of the current choice, shows on the dark backdrop
         self.assertIn(theme.color_hex("text_bright"), holder)
 
@@ -673,19 +673,19 @@ class ChooserWearsTheDialogsColoursTest(unittest.TestCase):
                     exact += 1
                 if pixel.alpha() > 200 and pixel.lightness() < 100:
                     dark += 1
-        self.assertGreater(exact, 0, "no pixel carries the ink - the "
-                           "icons are not re-inked at all")
+        self.assertGreater(exact, 0, "no pixel has the ink colour - "
+                           "the icons are not recoloured at all")
         self.assertEqual(0, dark, "opaque dark pixels: the icon is "
                          "drawing in currentColor black on a dark "
                          "backdrop")
 
     def test_the_icon_pixmaps_carry_their_density(self):
-        """Rendered at logical size times dpr with the ratio stamped, driven at 2.0 as headless is 1.0."""
+        """Rendered at logical size times dpr, ratio set; tested at 2.0 as headless is 1.0."""
         from amaze.dialogs import icon_dialog
         pixmap = icon_dialog.IconDialog._chooser_icon(
             "box", 20, 2.0, "#dddddd")
         self.assertEqual(2.0, pixmap.devicePixelRatio(),
-                         "the ratio is not stamped - a 2x screen "
+                         "the ratio is not set - a 2x screen "
                          "paints this half-resolution")
         self.assertEqual(40, pixmap.width(),
                          "not rendered at device pixels")
@@ -708,7 +708,7 @@ class MenuWiringTest(unittest.TestCase):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
     def test_every_section_ANSWERS_with_models_it_actually_has(self):
-        """Each context's `tile_models()` answers real models, asked of the live panel."""
+        """Each section's `tile_models()` returns real models on the live panel."""
         from amaze.panel import sections as sections_mod
 
         calls = [node for node in ast.walk(ast.parse(
@@ -718,8 +718,8 @@ class MenuWiringTest(unittest.TestCase):
                  and node.func.attr == "edit_tile_icon"]
         self.assertEqual(
             1, len(calls),
-            "Customize reaches the shared handler from %d places - it "
-            "is one row of one shared tail" % len(calls))
+            "Customize calls the shared handler from %d places - it "
+            "must be one row of the shared menu tail" % len(calls))
 
         for key in ("material", "cop", "code", "file", "gradient"):
             with self.subTest(section=key):
@@ -769,7 +769,7 @@ class MenuWiringTest(unittest.TestCase):
             for method, args in calls.items():
                 fn = getattr(model, method, None)
                 if fn is None:
-                    self.assertEqual("commit_tile_icons", method,    # the one optional verb
+                    self.assertEqual("commit_tile_icons", method,    # the one optional method
                                      "%s has no %s()" % (model_attr, method))
                     continue
                 try:
@@ -827,7 +827,7 @@ class MenuWiringTest(unittest.TestCase):
             self.assertEqual(spec, applied.call_args[0][1])
 
     def test_every_section_opens_customize_on_its_face(self):
-        """Each model answers its face, its picture and its generic art - the dialog shows all three."""
+        """Each model returns its face, picture and generic art; the dialog shows all three."""
         opened = []
 
         class _Dialog:
@@ -957,7 +957,7 @@ class AnotherSessionsIconsSurviveTest(unittest.TestCase):
         self.set_override("/ours/b.exr", {"name": "map", "bg": "#222222"})
         backups = library_db.guard_of(self.prefs).backups(library_files.FILES)
         self.assertTrue(backups, "files.json has no backup - the first bad write is "
-                                 "the last word on every icon in the library")
+                                 "final for every icon in the library")
 
 
 class CustomColourOpensTheHoudiniPickerTest(unittest.TestCase):
@@ -984,7 +984,7 @@ class CustomColourOpensTheHoudiniPickerTest(unittest.TestCase):
                     before if picked is None else picked.name(), dialog._bg)
 
     def test_the_dialog_is_not_modal(self):
-        """The load-bearing property: an exec loop here puts the native picker underneath the dialog again."""
+        """The key property: an exec loop here puts the native picker under the dialog again."""
         dialog = self._dialog()
         dialog.show()
         self.addCleanup(dialog.hide)
@@ -994,7 +994,7 @@ class CustomColourOpensTheHoudiniPickerTest(unittest.TestCase):
 
 
 class TheAboutLogoCarriesItsDensityTest(unittest.TestCase):
-    """The About logo holds device pixels with the devicePixelRatio stamped, like every badge."""
+    """The About logo holds device pixels with the devicePixelRatio set, like every badge."""
 
     def test_the_logo_is_stamped_with_the_apps_ratio(self):
         from PySide6 import QtWidgets
@@ -1014,7 +1014,7 @@ class TheAboutLogoCarriesItsDensityTest(unittest.TestCase):
 
 
 class EveryGridModelDeclaresTheFieldsItEdits(unittest.TestCase):
-    """`TILE_FIELDS` names the fields whose setters a model has; Customize asks it, not the model."""
+    """`TILE_FIELDS` lists the fields a model has setters for; Customize reads it, not the model."""
 
     SETTERS = {"name": ("set_tile_name",),
                "tags": ("set_tile_tags", "add_tile_tags"),
@@ -1078,7 +1078,7 @@ class TileNameTest(unittest.TestCase):
         single = icon_dialog.IconDialog(
             None, 0.0, None, tile_name="Rock", tile_name_enabled=True)
         self.assertIsNotNone(single.tile_name_edit,
-                             "a renameable tile grows no Name field")
+                             "a renameable tile shows no Name field")
         self.assertTrue(single.tile_name_edit.isEnabled())
         single.tile_name_edit.setText("Stone")
         single._accept()
@@ -1088,11 +1088,11 @@ class TileNameTest(unittest.TestCase):
         multi = icon_dialog.IconDialog(
             None, 0.0, None, tile_name="", tile_name_enabled=False)
         self.assertIsNotNone(multi.tile_name_edit,
-                             "the field must grey out, not vanish")
+                             "the field must be disabled, not removed")
         self.assertFalse(multi.tile_name_edit.isEnabled())
         multi._accept()
         self.assertIsNone(multi.new_tile_name,
-                          "a greyed field may not produce a rename")
+                          "a disabled field must not produce a rename")
         multi.deleteLater()
 
         fileish = icon_dialog.IconDialog(None, 0.0, None)
@@ -1101,7 +1101,7 @@ class TileNameTest(unittest.TestCase):
         fileish.deleteLater()
 
     def test_the_window_is_titled_with_the_asset(self):
-        """The title band draws the asset's own name; a multi-selection keeps the generic one."""
+        """The title bar shows the asset's own name; a multi-selection keeps the generic one."""
         single = icon_dialog.IconDialog(
             None, 0.0, None, tile_name="Rock", tile_name_enabled=True)
         self.assertEqual("Rock", single.windowTitle())
@@ -1154,7 +1154,7 @@ class AnApplyIsWhatTheNextCommitComparesAgainst(unittest.TestCase):
 
 
 class TileTagsTest(unittest.TestCase):
-    """The Customize Tags line replaces the tags on every selected row, live on a multi-selection."""
+    """The Customize Tags line sets the tags of every selected row; editable on a multi-select."""
 
     def test_the_library_tag_write_is_narrow_and_real(self):
         from amaze.core import library as library_mod
@@ -1171,7 +1171,7 @@ class TileTagsTest(unittest.TestCase):
                          "be a no-op")
         self.assertTrue(model.set_tile_tags(0, ""),
                         "an empty line must CLEAR the tags, not be "
-                        "read as no answer")
+                        "read as no change")
         self.assertEqual("", model.tile_tags(0))
         test_support.reset_database_singletons()
         again = library_mod.MaterialLibrary(preferences=prefs_obj)
@@ -1193,7 +1193,7 @@ class TileTagsTest(unittest.TestCase):
         self.assertTrue(model.add_tile_tags(1, "rough"))
         self.assertEqual("metal, rough", model.tile_tags(0))
         self.assertEqual("wood, rough", model.tile_tags(1),
-                         "adding flattened the row to the shared line")
+                         "adding replaced the row's tags with the typed line")
         self.assertFalse(model.add_tile_tags(0, "rough"),
                          "adding a tag it already has must be a no-op")
         self.assertFalse(model.add_tile_tags(0, ""),
@@ -1205,7 +1205,7 @@ class TileTagsTest(unittest.TestCase):
             None, 0.0, None, tile_name="Rock", tile_name_enabled=True,
             tile_tags="metal")
         self.assertIsNotNone(single.tags_edit,
-                             "a taggable tile grows no Tags field")
+                             "a taggable tile shows no Tags field")
         self.assertTrue(single.tags_edit.isEnabled())
         single.tags_edit.setText("metal, rough")
         single._accept()
@@ -1226,14 +1226,14 @@ class TileTagsTest(unittest.TestCase):
             None, 0.0, None, tile_name="", tile_name_enabled=False,
             tile_tags="")
         self.assertIsNotNone(multi.tags_edit,
-                             "a taggable tile grows no Tags field")
+                             "a taggable tile shows no Tags field")
         self.assertTrue(multi.tags_edit.isEnabled(),
-                        "Tags greys on a multi-selection; it must stay "
+                        "Tags is disabled on a multi-selection; it must stay "
                         "editable, like Category and unlike Name")
         self.assertEqual("", multi.tags_edit.text(),
                          "a multi-selection must open with an EMPTY tag "
-                         "field - there is no one line that says what "
-                         "several rows carry")
+                         "field - no single line can show the tags of "
+                         "several rows")
         multi.tags_edit.setText("metal")
         multi._accept()
         self.assertEqual("metal", multi.new_tags,
@@ -1256,7 +1256,7 @@ class TileTagsTest(unittest.TestCase):
         fileish.deleteLater()
 
     def test_the_panel_applies_a_cleared_field(self):
-        """A clear harvests an empty `new_tags`, so the apply site tests `is not None`."""
+        """A cleared field gives an empty `new_tags`, so the apply code tests `is not None`."""
         source = inspect.getsource(panel_mod.AmazePanel.edit_tile_icon)
         tree = ast.parse(textwrap.dedent(source))
         calls = [node for node in ast.walk(tree)
@@ -1336,7 +1336,7 @@ class OneRowsIconCostsOneRowsLookups(unittest.TestCase):
 
 
 class AnIconEditWritesNoIndex(unittest.TestCase):
-    """An icon lives in its own store, so choosing one writes no record list, and touches one row."""
+    """An icon is stored apart from the rows, so choosing one rewrites no row and refreshes one."""
 
     SPEC = {"name": "circle", "bg": "#e0523a", "ink": "dark"}
 
@@ -1377,10 +1377,10 @@ class AnIconEditWritesNoIndex(unittest.TestCase):
 
         before, after, written = self._rows_and_records_during(icon_pass, library_files.MATERIALS)
         self.assertEqual(before, after, "an icon choice changed a material row, "
-                                        "where no icon field lives")
+                                        "which holds no icon field")
         self.assertEqual([], [name for name in written if name.endswith(".json")],
                          "an icon choice rewrote an asset's record")
-        self.assertTrue(model.tile_icon(0), "premise: the icon landed")
+        self.assertTrue(model.tile_icon(0), "premise: the icon was stored")
 
     def test_a_colour_icon_saves_no_index(self):
         from amaze.core import gradient_library
@@ -1393,7 +1393,7 @@ class AnIconEditWritesNoIndex(unittest.TestCase):
         before, after, _written = self._rows_and_records_during(
             lambda: self.assertTrue(model.set_tile_icon(0, self.SPEC)), library_files.COLORS)
         self.assertEqual(before, after, "a palette's icon changed a Colors row")
-        self.assertTrue(model.tile_icon(0), "premise: the icon landed")
+        self.assertTrue(model.tile_icon(0), "premise: the icon was stored")
 
     def test_one_row_s_icon_scans_no_other_row_and_reads_no_ledger(self):
         from amaze.core import versions
@@ -1415,7 +1415,7 @@ class AnIconEditWritesNoIndex(unittest.TestCase):
         ledger.assert_not_called()
         key = model._thumb_key(1)
         self.assertEqual(1, model._thumb_rows.get(key),
-                         "the row's new picture key does not lead back to it")
+                         "the row's new picture key does not map back to it")
         self.assertEqual([1], [row for row in model._thumb_rows.values()
                                if row == 1], "the row's old key was kept")
 
@@ -1472,7 +1472,7 @@ class TheLineWeightRedrawsEverySection(unittest.TestCase):
         self.addCleanup(model.dataChanged.disconnect, heard)
         self.set_weight("feather")
         self.assertTrue(any(top <= 0 <= bottom for top, bottom in repainted),
-                        "the Colors tile was never told to repaint")
+                        "the Colors tile got no dataChanged to repaint")
         bold = model.data(index, QtCore.Qt.ItemDataRole.DecorationRole)
         self.assertNotEqual(thin, bold,
                             "the Colors tile serves its cached picture at "
@@ -1480,7 +1480,7 @@ class TheLineWeightRedrawsEverySection(unittest.TestCase):
 
 
 class AnIconOverASelectionWritesOnce(unittest.TestCase):
-    """The shared Customize apply writes the section database once per gesture, every row landed."""
+    """The shared Customize apply writes the section database once per action, every row updated."""
 
     DATABASES = {"material_model": library_files.MATERIALS, "cop_model": library_files.NODES,
                  "code_model": library_files.CODE, "file_files_model": library_files.FILES,
@@ -1522,13 +1522,13 @@ class AnIconOverASelectionWritesOnce(unittest.TestCase):
                                  "one gesture" % (attr, database, len(writes)))
                 self.assertEqual([tile_icons.normalise(self.SPEC)] * len(rows),
                                  [model.tile_icon(row) for row in rows],
-                                 "%s: a row did not take the icon" % attr)
+                                 "%s: a row did not get the icon" % attr)
                 checked.append(attr)
         self.assertIn("material_model", checked, "premise: Materials checked")
         self.assertIn("file_files_model", checked, "premise: File checked")
 
     def test_an_icon_and_a_category_in_one_gesture_are_one_write(self):
-        """Customize sets the icon and files the tiles: with the panel timer, one save of both."""
+        """Customize sets the icon and the category: with the panel timer, one save of both."""
         model = self.panel.material_model
         rows = list(range(min(model.rowCount(), 3)))
         self.assertGreater(len(rows), 1, "premise: two material tiles")

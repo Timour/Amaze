@@ -34,7 +34,7 @@ from amaze.tests.test_packages import _ranged_server, _Served  # noqa: E402
 FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "simready")
 BASE = ("https://github.com/NVIDIA-Omniverse/PhysicalAI-SimReady-Materials/"
         "releases/download/v9/")
-BIG = 300 * 1024    # one texture spans several blocks, so a split can land inside it
+BIG = 300 * 1024    # one texture spans several blocks, so a split can fall inside it
 
 
 def _read(*parts) -> bytes:
@@ -105,7 +105,7 @@ def _after_big(blob: bytes) -> int:
 
 
 class _Release:
-    """Canned release assets served by ranges; Amaze's `hosted` files are counted apart."""
+    """Fixed release assets served by byte range; Amaze's `hosted` files are counted separately."""
 
     def __init__(self, objects, hosted=None):
         self.objects, self.calls = dict(objects), []
@@ -124,7 +124,7 @@ class _Release:
         if name not in self.hosted:
             raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
         blob = self.hosted[name]
-        if spec == "bytes=0-0":    # GitHub's answer to one byte carries the whole size
+        if spec == "bytes=0-0":    # GitHub's reply to a one-byte range includes the whole size
             return _Served(blob[:1], {"Content-Range": "bytes 0-0/%d" % len(blob)})
         return _ranged_server(blob)(url, headers)
 
@@ -164,7 +164,7 @@ def _previews(pictures) -> bytes:
 
 
 class SimReadyListingTest(unittest.TestCase):
-    """Every .usda in every category archive is one tile, read off the directories alone."""
+    """Every .usda in every category archive is one tile, read from the zip directories alone."""
 
     def test_every_material_is_one_record(self):
         from amaze.core import matx_sources
@@ -177,14 +177,14 @@ class SimReadyListingTest(unittest.TestCase):
         self.assertEqual(("Volga Blue", "Stone", "package", "SimReady"),
                          (volga.title, volga.category, volga.kind, volga.source))
         self.assertEqual("MIT-0 (MIT No Attribution)", volga.licence,
-                         "the licence must be the release's own words")
+                         "the licence must be the release's own text")
         self.assertEqual([BASE + "Stone.z01", BASE + "Stone.zip"],
                          [url for url, _size in volga.payload["parts"]],
                          "a split archive's parts must run .z01 first, the .zip last")
         self.assertEqual("Materials/Stone/Volga_Blue.usda", volga.payload["member"])
 
     def test_a_listing_reads_two_ranges_an_archive_and_a_relisting_none(self):
-        """None counted from the end: GitHub's release host answers 501. ▸r/simready-release"""
+        """No `bytes=-N` range: GitHub's release host returns 501 for it. ▸r/simready-release"""
         from amaze.core import matx_sources
         release = _release(self)
         source = matx_sources.SimReadySource()
@@ -195,13 +195,13 @@ class SimReadyListingTest(unittest.TestCase):
                              "the tail and the directory, per archive: %s" % release.calls)
         release.calls.clear()
         source.list_materials(limit=100)
-        self.assertEqual([], release.calls, "the directories were not kept")
+        self.assertEqual([], release.calls, "the directories were not cached")
         source.refresh()
         source.list_materials(limit=100)
         self.assertTrue(release.calls, "Refresh left the directories cached")
 
     def test_a_directory_past_the_tail_block_is_read_in_one_request(self):
-        """Metal's directory is 497 KB; a directory that outgrows the tail costs one more GET."""
+        """Metal's directory is 497 KB; one larger than the tail block costs one more GET."""
         from amaze.core import matx_sources
         out = io.BytesIO()
         with zipfile.ZipFile(out, "w") as bundle:
@@ -212,7 +212,7 @@ class SimReadyListingTest(unittest.TestCase):
         blob = out.getvalue()
         end = blob.rfind(b"PK\x05\x06")
         self.assertGreater(struct.unpack("<I", blob[end + 12:end + 16])[0],
-                           matx_sources.RANGED_BLOCK, "premise: the directory outgrows the tail")
+                           matx_sources.RANGED_BLOCK, "premise: the directory is larger than the tail")
         release = _Release({"Big.zip": blob})
         release.patched(self)
         records = matx_sources.SimReadySource().list_materials(limit=100)
@@ -233,7 +233,7 @@ class SimReadyListingTest(unittest.TestCase):
         release.calls.clear()
         self.assertEqual(4, len(source.list_materials(limit=100)))
         self.assertEqual({"Glass.zip"}, {name for name, _r in release.calls},
-                         "the archives that did read were read again")
+                         "the archives read the first time were read again")
 
 
 class SimReadyRemembersTest(unittest.TestCase):
@@ -269,7 +269,7 @@ class SimReadyRemembersTest(unittest.TestCase):
         self.assertEqual(sorted(r.uid for r in before), sorted(r.uid for r in after))
 
     def test_the_refresh_menu_reuses_nothing(self):
-        """Refresh is the user asking to look, so the worker is handed no last listing."""
+        """Refresh is an explicit request to re-list, so the worker gets no previous listing."""
         from amaze.core import matx_library
         handed = []
         model = matx_library.MatxOnlineLibrary()
@@ -293,7 +293,7 @@ class SimReadyRemembersTest(unittest.TestCase):
             model.reload()
             model.reload(force=True)
         self.assertEqual([len(listed), 0], [len(h) for h in handed],
-                         "the first open hands its disk listing on, Refresh hands none")
+                         "the first open passes its disk listing on, Refresh passes none")
 
     def _listed_offline(self):
         _release(self)
@@ -318,7 +318,7 @@ class SplitArchiveTest(unittest.TestCase):
                     for name in [n for n in original.namelist() if not n.endswith("/")]:
                         self.assertEqual(original.read(name),
                                          matx_sources.read_member(bundle, remote, name),
-                                         "%s did not survive the split" % name)
+                                         "%s read back changed after the split" % name)
 
     def test_a_directory_outside_the_last_part_is_refused(self):
         from amaze.core import matx_sources
@@ -365,16 +365,16 @@ class SimReadyFetchTest(unittest.TestCase):
         self.assertEqual(os.path.join(dest, "Materials", "Stone", "Volga_Blue.mtlx"),
                          got["mtlx"])
         self.assertGreater(len(seen), 2, "premise: the big texture streams in chunks")
-        self.assertEqual(sorted(seen), seen, "the bar stepped backwards")
+        self.assertEqual(sorted(seen), seen, "the progress bar went backwards")
         self.assertEqual(1.0, seen[-1])
 
     def test_a_span_longer_than_its_member_never_runs_the_bar_past_it(self):
         """A fetch reads whole blocks, so a member's request runs past the member itself."""
         from amaze.core import matx_sources
         shares = [matx_sources.member_share(100, 50, read, 80) for read in range(0, 81, 8)]
-        self.assertEqual(sorted(shares), shares, "the share stepped backwards")
-        self.assertEqual(150, shares[-1], "the last byte must land on the members done")
-        self.assertLessEqual(max(shares), 150, "the bar ran into the next member's share")
+        self.assertEqual(sorted(shares), shares, "the share went backwards")
+        self.assertEqual(150, shares[-1], "the last byte must equal the members done")
+        self.assertLessEqual(max(shares), 150, "the bar went into the next member's share")
 
     def test_each_texture_is_one_request_and_the_labels_become_tags(self):
         record, _dest, _got, _seen, release = self._fetch("Skin/Skin_Dark")
@@ -418,11 +418,11 @@ class SimReadyFetchTest(unittest.TestCase):
             try:
                 source.fetch(record, "original", os.path.join(dest, "pkg"))
             except Exception as exc:                         # noqa: BLE001
-                self.fail("a hostile path must cost that texture, not the import: %r" % exc)
+                self.fail("a hostile path must skip that texture, not fail the import: %r" % exc)
         landing = os.path.join(os.path.dirname(dest), "escape.jpg")    # where ../../ from pkg points
         self.assertFalse(os.path.exists(landing), "a texture was written out of the package")
         said = [r for r in log.records("online") if "outside the library" in r.get("msg", "")]
-        self.assertEqual(1, len(said), "the refused path was not logged once")
+        self.assertEqual(1, len(said), "the rejected path was not logged exactly once")
 
 
 class NestedDocumentRepairTest(unittest.TestCase):
@@ -458,7 +458,7 @@ class NestedDocumentRepairTest(unittest.TestCase):
 
 
 class SimReadyImportTest(unittest.TestCase):
-    """Through the app's own import door: every texture the material reads is on disk."""
+    """Through `matx_import.build_in_scene`: every texture the material reads is on disk."""
 
     def test_every_image_points_at_a_downloaded_file(self):
         from amaze.core import matx_import, matx_sources
@@ -525,7 +525,7 @@ class MaterialSpecTest(unittest.TestCase):
                          .getInput("file").getAttribute("colorspace"))
         self.assertEqual("", doc.getNode("tiledimage_specular_roughness")
                          .getInput("file").getAttribute("colorspace"),
-                         "a data map carries no colour space; its signature decides")
+                         "a data map has no colour space; its signature decides")
 
     def test_a_coat_normal_map_lands_on_the_coat(self):
         normals = self._spec("Stone", "Volga_Blue_Deep_Pollished")["normals"]
@@ -559,7 +559,7 @@ class MaterialSpecTest(unittest.TestCase):
         self.assertIsNone(doc.getNode("convert_base_color"))
 
     def test_a_value_too_small_for_a_float_is_written_as_zero(self):
-        """Five released Plastics write `3e-45`, which MaterialX refuses. ▸r/simready-graph"""
+        """Five released Plastics write `3e-45`, which MaterialX rejects. ▸r/simready-graph"""
         spec = {"name": "M", "labels": [], "images": {}, "normals": {}, "unread": [],
                 "constants": {"transmission_color": ("color3", (0.0, 3e-45, 0.0)),
                               "transmission_weight": ("float", 1e-40)}}
@@ -597,7 +597,7 @@ class MaterialSpecTest(unittest.TestCase):
 
 
 class TranslatedVopsTest(unittest.TestCase):
-    """The document through the app's material door: the nodes a hand-built OpenPBR has."""
+    """The document through `matx_translate.build_material`: the nodes a hand-built OpenPBR has."""
 
     def _built(self, category, name):
         from amaze.core import matx_translate, matx_usd
@@ -668,7 +668,7 @@ class PreviewlessTileTest(unittest.TestCase):
 
 
 class SimReadyPreviewsTest(unittest.TestCase):
-    """A tile's picture from Amaze's hosted zip: placed at listing, one ranged read each."""
+    """A tile's picture from Amaze's hosted zip: located at listing, one ranged read each."""
 
     PICTURE = bytes(range(256)) * 40
 
@@ -762,7 +762,7 @@ class RGLPreviewsTest(unittest.TestCase):
 
 
 class PolyHavenPreviewsTest(unittest.TestCase):
-    """PolyHaven's tiles carry Amaze's hosted pictures, which outrank PolyHaven's own."""
+    """PolyHaven's tiles carry Amaze's hosted pictures, used before PolyHaven's own."""
 
     def test_a_material_with_a_hosted_picture_is_listed_with_its_place(self):
         from amaze.core import matx_sources
@@ -851,7 +851,7 @@ class ListingProgressTest(unittest.TestCase):
 
 
 class HostedPreviewTileTest(unittest.TestCase):
-    """A SimReady tile with a hosted picture reads it, and a re-render is a new picture."""
+    """A SimReady tile with a hosted picture reads it; a re-rendered picture gets a new key."""
 
     def _model_and_record(self, crc):
         from amaze.core import matx_library, matx_sources
@@ -862,7 +862,7 @@ class HostedPreviewTileTest(unittest.TestCase):
             kind="package", payload={"preview": {"offset": 0, "size": 1, "crc": crc}})
 
     def _jobs(self, model, record) -> list:
-        """The preview jobs `record` queues, the worker that would run them held back."""
+        """The preview jobs `record` queues, with the worker that would run them never started."""
         from amaze.core import matx_library
         made = []
 
@@ -907,7 +907,7 @@ class HostedPreviewTileTest(unittest.TestCase):
         self.assertTrue(callable(jobs[0][1]), "the source's own picture was fetched instead")
 
     def _offline(self) -> list:
-        """The network door raising, as a timeout or an offline machine does; answers what was asked."""
+        """`_request` raising, as on a timeout or an offline machine; returns the URLs requested."""
         from amaze.core import matx_sources
         asked = []
 
@@ -989,7 +989,7 @@ class HostedPreviewTileTest(unittest.TestCase):
         redraw.assert_called_once()
 
     def test_every_registered_source_can_read_a_hosted_picture(self):
-        """`source_for` answers a source built from SOURCES, or None; the tile reads through it."""
+        """`source_for` returns a source built from SOURCES, or None; the tile reads through it."""
         from amaze.core import matx_sources
         self.assertTrue(callable(vars(matx_sources.MatxSource).get("read_thumb_to")),
                         "the source base no longer reads a hosted picture")
@@ -1041,7 +1041,7 @@ class AListingPrunesThePreviewCache(unittest.TestCase):
 
 
 class TheOnlineQuitStopsEveryWorkerAtOnce(unittest.TestCase):
-    """A quit asks every online worker to stop at once; held by a socket, they cost ONE window."""
+    """A quit stops every online worker at once; blocked on a socket, they cost ONE timeout."""
 
     def _model(self, parallel):
         from amaze.core import matx_library
@@ -1051,7 +1051,7 @@ class TheOnlineQuitStopsEveryWorkerAtOnce(unittest.TestCase):
         return model
 
     def _painted(self, model, count, read, ready, release=lambda: None):
-        """`count` tiles painted, each picture fetched by `read()`; their workers once `ready()`."""
+        """Paint `count` tiles, each fetched by `read()`; return their workers once `ready()`."""
         from amaze.core import matx_sources
         source = types.SimpleNamespace(name="QuitProbe", read_thumb_to=lambda record, path: read())
         patcher = mock.patch.object(model, "_sources", [source])    # the registry, not the lookup
@@ -1069,7 +1069,7 @@ class TheOnlineQuitStopsEveryWorkerAtOnce(unittest.TestCase):
         return threads
 
     def _let_go(self, threads, ended, release):
-        """Free what still reads, then unpark each worker once its `finished` has landed here."""
+        """Release blocked reads, then take each worker off `_unstoppable` once it finishes."""
         from amaze.core import workers
         release()
         self.assertTrue(test_support.pump_until(lambda: len(ended) == len(threads), timeout=40),
@@ -1100,9 +1100,9 @@ class TheOnlineQuitStopsEveryWorkerAtOnce(unittest.TestCase):
         model.shutdown()
         elapsed = time.monotonic() - started
         dropped = [t for t in threads if not t.isFinished() and t not in workers._unstoppable]
-        self.assertEqual([], dropped, "a download still running was let go")
+        self.assertEqual([], dropped, "a download still running was dropped")
         self.assertEqual(16, sum(1 for t in threads if t in workers._unstoppable),
-                         "a held download terminate() could not end was not parked")
+                         "a blocked download terminate() could not end is not in _unstoppable")
         bound = (workers.WAIT_MS + workers.TERMINATE_MS) / 1000.0 + 1.0
         self.assertLess(elapsed, bound, "the quit took %.1fs for 16 held downloads" % elapsed)
 
@@ -1120,7 +1120,7 @@ class TheOnlineQuitStopsEveryWorkerAtOnce(unittest.TestCase):
         model.shutdown()
         elapsed = time.monotonic() - started
         self.assertEqual([], [t for t in threads if t in workers._unstoppable],
-                         "a download had to be parked")
+                         "a download had to be put in _unstoppable")
         self.assertLess(elapsed, 1.0, "the quit waited %.1fs on downloads between pictures" % elapsed)
 
     def test_a_listing_stops_between_sources_and_lands_nothing(self):
@@ -1148,14 +1148,14 @@ class TheOnlineQuitStopsEveryWorkerAtOnce(unittest.TestCase):
             model.shutdown()
             elapsed = time.monotonic() - started
             test_support.pump_until(
-                lambda: False, timeout=0.3)    # whatever the worker sent lands now
+                lambda: False, timeout=0.3)    # whatever the worker emitted is delivered now
         self.assertLess(elapsed, 1.0, "the quit waited %.1fs on a listing between sources" % elapsed)
         self.assertEqual([], saved, "a listing cut short replaced the cached catalogue")
 
 
 @unittest.skipUnless(test_support.renderer_loaded("Redshift"), "the Redshift plugin is not loaded")
 class RedshiftTiledImageTest(unittest.TestCase):
-    """Tiling and a raw colour map cross to Redshift as Karma reads them. ▸r/rs-sampler-uv"""
+    """Tiling and a raw colour map convert to Redshift as Karma reads them. ▸r/rs-sampler-uv"""
 
     def _converted(self, produce):
         from amaze.render import nodes, redshift_converter

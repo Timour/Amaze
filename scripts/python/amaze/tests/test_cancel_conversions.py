@@ -31,7 +31,7 @@ def _press(point):
 
 
 class TheCancelVerb(unittest.TestCase):
-    """FileFiles.cancel_conversions - the model half, no panel."""
+    """FileFiles.cancel_conversions - the model part, without a panel."""
 
     def setUp(self):
         self.root = tempfile.mkdtemp(prefix="amaze_cancel_")
@@ -62,7 +62,7 @@ class TheCancelVerb(unittest.TestCase):
                 "still %r" % (key, thumbnails.engine._states.get(key)))
 
     def test_the_bar_is_settled_not_stranded(self):
-        """No reload resets the counters after a cancel, so the cancel settles the bar itself."""
+        """No reload resets the counters after a cancel, so the cancel completes the bar itself."""
         self._loaded_keys()
         seen = []
         self.model.progress_changed.connect(
@@ -72,7 +72,7 @@ class TheCancelVerb(unittest.TestCase):
         done, total = seen[-1]
         self.assertGreaterEqual(
             done, total,
-            "cancel left the bar stranded at %s/%s" % (done, total))
+            "cancel left the bar unfinished at %s/%s" % (done, total))
 
     def test_a_cancelled_folder_reconverts_on_revisit(self):
         self._loaded_keys()
@@ -114,7 +114,7 @@ class TheCancelChip(unittest.TestCase):
         self.assertEqual([], self.fired)
 
     def test_the_chip_centers_on_the_strip_not_the_tray(self):
-        """The chip floats outside the tray, so it centers on the full row height."""
+        """The chip is drawn outside the tray, so it centers on the full row height."""
         self.tabs.set_cancel_visible(True)
         rect = self.tabs._cancel_rect()
         self.assertIsNotNone(rect)
@@ -133,7 +133,7 @@ class TheCancelChip(unittest.TestCase):
 
 
 class TheChipFollowsTheBar(unittest.TestCase):
-    """The panel half: one condition, one door, and the wiring."""
+    """The panel part: one condition, one `set_conversion_bar_visible`, and the signals."""
 
     @classmethod
     def setUpClass(cls):
@@ -160,13 +160,13 @@ class TheChipFollowsTheBar(unittest.TestCase):
         self.assertFalse(panel.section_tabs.cancel_visible())
 
     def test_the_chip_survives_a_strip_rebuild(self):
-        """A rebuilt strip reads the chip state from the bar itself, never re-derived."""
+        """A rebuilt tab strip reads the chip state from the bar itself, never recomputing it."""
         panel = self._file_section_quiet()
         panel._on_file_folder_progress(1, 10)
         panel._build_section_tabs()
         self.assertTrue(
             panel.section_tabs.cancel_visible(),
-            "the rebuilt strip forgot the chip mid-batch")
+            "the rebuilt strip hid the chip during a batch")
         panel._on_file_folder_progress(10, 10)
         panel._build_section_tabs()
         self.assertFalse(panel.section_tabs.cancel_visible())
@@ -179,11 +179,11 @@ class TheChipFollowsTheBar(unittest.TestCase):
         self.assertTrue(panel.texture_progress.isHidden())
         self.assertFalse(
             panel.section_tabs.cancel_visible(),
-            "activation hid the bar and left the chip up - the two "
-            "are one condition and may never disagree")
+            "activation hid the bar and left the chip visible - the two "
+            "follow one condition and must always match")
 
     def test_the_chip_press_reaches_the_engine(self):
-        """Press, hit, signal, panel, model, engine, with the flush ahead of the cancel."""
+        """Press, hit test, `cancelClicked`, panel, model, engine; the flush before the cancel."""
         panel = self._file_section_quiet()
         panel._on_file_folder_progress(1, 10)
         panel.section_tabs.resize(600, panel.section_tabs.HEIGHT)
@@ -203,11 +203,11 @@ class TheChipFollowsTheBar(unittest.TestCase):
             panel.section_tabs, _press(rect.center()))
         self.assertEqual(
             ["flush", "cancel"], order,
-            "the chip's press did not reach the engine through the "
-            "flush-first pair")
+            "the chip's press did not reach the engine as a flush "
+            "followed by a cancel")
 
     def test_the_bar_has_one_visibility_door(self):
-        """Source-derived: the bar `setVisible` appears once in the package, inside the door."""
+        """Source scan: the bar's `setVisible` appears once, inside `set_conversion_bar_visible`."""
         package_root = os.path.dirname(os.path.dirname(
             os.path.abspath(file_library.__file__)))
         sites = []
@@ -238,10 +238,10 @@ class TheChipFollowsTheBar(unittest.TestCase):
             if isinstance(node, ast.FunctionDef) \
                     and node.name == "set_conversion_bar_visible":
                 door = node
-        self.assertIsNotNone(door, "the door itself is gone")
+        self.assertIsNotNone(door, "set_conversion_bar_visible is gone")
         self.assertTrue(
             door.lineno <= sites[0][1] <= door.end_lineno,
-            "the one setVisible site sits outside the door")
+            "the one setVisible call is outside set_conversion_bar_visible")
 
 
 if __name__ == "__main__":

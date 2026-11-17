@@ -1,4 +1,4 @@
-"""Renderer and thumbnail paths; several read the source, since copies agree until one drifts."""
+"""Renderer and thumbnail paths; several read the source, as copies agree until one changes."""
 
 import ast
 import json
@@ -32,7 +32,7 @@ source_of = test_support.source_of
 
 
 class EveryRendererRendersInTheOneBatch(unittest.TestCase):
-    """No material renders inside Houdini: each renderer's door is a batch of one."""
+    """No material renders inside Houdini: each renderer calls `render_batch` with one item."""
 
     def test_each_renderer_is_a_batch_of_one(self):
         prefs = test_support.fixture_prefs(self)
@@ -61,7 +61,7 @@ class TheThumbnailPathIsComposedInOnePlace(unittest.TestCase):
         self.prefs = test_support.fixture_prefs(self)
 
     def test_the_separator_cannot_change_the_answer(self):
-        """A trailing separator on `prefs.dir` may not move the thumbnail path."""
+        """A trailing separator on `prefs.dir` may not change the thumbnail path."""
         model = library_mod.MaterialLibrary(preferences=self.prefs)
         root = self.prefs.dir.rstrip(os.sep)
 
@@ -81,12 +81,12 @@ class TheThumbnailPathIsComposedInOnePlace(unittest.TestCase):
                          answers.pop(), "a material's one picture is not `materials/<id>.png`")
 
     def test_an_unsafe_id_cannot_escape_the_image_directory(self):
-        """The picture path refuses an escaping id, for the readers and the writers alike."""
+        """`thumbnail_path` raises on an id leaving the folder, for readers and writers alike."""
         with self.assertRaises(hostos.PathEscape):
             tile_icons.thumbnail_path(self.prefs, "../../../Documents/x", library_files.MATERIALS)
 
     def test_a_format_3_picture_is_never_read(self):
-        """img/ and captures/ are the converter's: the one picture is in the section folder."""
+        """img/ and captures/ are for the format converter: the picture is in the section folder."""
         root = str(self.prefs.dir)
         home = tile_icons.thumbnail_path(self.prefs, "abc", library_files.NODES)
         self.assertEqual(os.path.join("nodes", "abc.png"),
@@ -108,7 +108,7 @@ class TheThumbnailPathIsComposedInOnePlace(unittest.TestCase):
         return asked
 
     def test_the_tile_reads_the_file_the_renderers_write(self):
-        """A tile asks the loader for the path `thumbnail_path` names, separator or not."""
+        """A tile requests the path `thumbnail_path` returns from the loader, separator or not."""
         model = library_mod.MaterialLibrary(preferences=self.prefs)
         row = next(i for i, a in enumerate(model.assets)
                    if str(a.mat_id) not in ("", "-1"))
@@ -136,7 +136,7 @@ class TheThumbnailPathIsComposedInOnePlace(unittest.TestCase):
             "outside the library")
 
     def test_a_rebuild_resolves_no_path_on_disk(self):
-        """The tile map is strings only: it runs after every delete, and a realpath walks the share."""
+        """The tile map is strings only: it runs after every delete, and a realpath reads the share."""
         model = library_mod.MaterialLibrary(preferences=self.prefs)
         model.rebuild_thumbs()    # warm: the first icon lookup reads its store
         self.assertGreater(model.rowCount(), 0, "premise: rows to map")
@@ -168,7 +168,7 @@ class TheThumbnailPathIsComposedInOnePlace(unittest.TestCase):
 
 
 class TheCacheKeyCarriesTheLibrary(unittest.TestCase):
-    """The RAM cache key carries the library, so two libraries with one asset id share no image."""
+    """The RAM cache key includes the library, so two libraries with one asset id share no image."""
 
     def setUp(self):
         test_support.reset_database_singletons()
@@ -176,7 +176,7 @@ class TheCacheKeyCarriesTheLibrary(unittest.TestCase):
         self.prefs = test_support.fixture_prefs(self)
 
     def test_two_libraries_do_not_share_one_row_key(self):
-        """A reload must keep the cached image, so the key may not move for one library."""
+        """A reload must keep the cached image, so the key must not change within one library."""
         model = library_mod.MaterialLibrary(preferences=self.prefs)
         row = next(i for i, a in enumerate(model.assets)
                    if str(a.mat_id) not in ("", "-1"))
@@ -186,16 +186,16 @@ class TheCacheKeyCarriesTheLibrary(unittest.TestCase):
             self.prefs.dir = spelling
             self.assertEqual(
                 here, model._thumb_key(row),
-                "a trailing separator moved the key, so an ordinary "
-                "reload throws the whole library's cache away")
+                "a trailing separator changed the key, so an ordinary "
+                "reload discards the whole library's cache")
 
         self.prefs.dir = os.path.join(root + "_copy", "")
         there = model._thumb_key(row)
 
         self.assertNotEqual(
             here, there,
-            "the same asset id in two libraries answers one cache key, "
-            "so a switch paints the previous library's picture and the "
+            "the same asset id in two libraries gives one cache key, "
+            "so a switch shows the previous library's picture and the "
             "new library's file is never read")
 
 
@@ -203,7 +203,7 @@ class ThumbnailsLeaveNothingOnTheUndoStack(unittest.TestCase):
     """A thumbnail leaves nothing on the undo stack, or Ctrl+Z restores the scaffold, not the edit."""
 
     def test_a_pair_on_the_live_stack_really_does_come_back(self):
-        """The measured consequence the source check below is anchored in."""
+        """The measured Houdini behaviour that the source checks below rely on."""
         def scrub():
             with hou.undos.disabler():
                 for child in list(hou.node("/obj").children()):
@@ -265,7 +265,7 @@ class ThumbnailsLeaveNothingOnTheUndoStack(unittest.TestCase):
         self.assertEqual(
             [], unguarded,
             "these build a node in the user's /obj or /out on the LIVE "
-            "undo stack, so their next Ctrl+Z resurrects a thumbnail "
+            "undo stack, so their next Ctrl+Z restores a thumbnail "
             "scaffold: %s" % unguarded)
 
     def test_every_scene_container_is_DESTROYED_off_the_stack(self):
@@ -295,7 +295,7 @@ class ThumbnailsLeaveNothingOnTheUndoStack(unittest.TestCase):
         self.assertEqual(
             [], unguarded,
             "these destroy a scene container on the LIVE undo stack, "
-            "so one Ctrl+Z resurrects it with its children: %s"
+            "so one Ctrl+Z restores it with its children: %s"
             % unguarded)
 
 
@@ -311,7 +311,7 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
             patcher.start()
             self.addCleanup(patcher.stop)
         self.submitted = []
-        patcher = mock.patch.object(husk_job.jobs, "submit",    # the scene's half, no husk
+        patcher = mock.patch.object(husk_job.jobs, "submit",    # only the scene part; no husk runs
                                     lambda job, blocking=False: self.submitted.append(job))
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -326,7 +326,7 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
         self.assertIsNotNone(
             scaffold,
             "no scaffold was built although the OCIO seam is patched - "
-            "this test can no longer see its subject")
+            "this test can no longer check anything")
         self.addCleanup(test_support.drop_node, scaffold["net"])
         return scaffold    # its real ROP: write_batch writes the USD and starts no render
 
@@ -343,22 +343,22 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
         for name in ("samplesperpixel", "pathtracedsamples"):
             parm = render_props.parm(name)
             self.assertIsNotNone(
-                parm, "`karmarenderproperties` no longer carries `%s`" % name)
+                parm, "`karmarenderproperties` no longer has `%s`" % name)
             hides[name] = parm.parmTemplate().conditionals().get(
                 hou.parmCondType.HideWhen, "")
         self.assertIn(
             "engine != cpu", hides["samplesperpixel"],
-            "`samplesperpixel` is no longer the CPU-only dial")
+            "`samplesperpixel` is no longer the CPU-only parm")
         self.assertIn(
             "engine != xpu", hides["pathtracedsamples"],
-            "`pathtracedsamples` is no longer the XPU-only dial")
+            "`pathtracedsamples` is no longer the XPU-only parm")
         self.assertEqual(
             "cpu", render_props.parm("engine").eval(),
             "the scaffold no longer selects the CPU engine, so which "
-            "samples dial it must write is no longer settled")
+            "samples parm it must write is no longer known")
         self.assertEqual(
             23, render_props.parm("samplesperpixel").eval(),
-            "the Karma-samples preference went to the XPU dial, so on "
+            "the Karma-samples preference went to the XPU parm, so on "
             "these CPU renders it changes nothing: the artist raises "
             "samples and the thumbnail comes back just as noisy")
 
@@ -377,7 +377,7 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
             (), hou.undos.undoLabels(),
             "rendering one material left entries on the live undo "
             "stack; destroying the per-material nodes does not remove "
-            "them, so one Ctrl+Z after a thumbnail is spent on noise")
+            "them, so one Ctrl+Z after a thumbnail undoes none of the artist's work")
 
     def test_update_preview_adds_no_undo_entries(self):
         """The import feeding the render and the cleanup ending it are a pair too. ▸r/undo-groups"""
@@ -399,11 +399,11 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
         with mock.patch.object(nodes.NodeHandler, "import_asset_to_scene",
                                spy):
             thumbs.ThumbNailRenderer(self.prefs, asset).create_thumbnail()
-        self.assertEqual(1, len(self.submitted), "no husk was asked for")
+        self.assertEqual(1, len(self.submitted), "no husk job was submitted")
         self.assertEqual(
             [True], imported,
-            "the material never imported - this test cannot see its "
-            "subject")
+            "the material never imported - this test checks "
+            "nothing")
         self.assertEqual(
             (), hou.undos.undoLabels(),
             "Update Render left entries on the live undo stack: the "
@@ -421,7 +421,7 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
         dot.setInput(image, 0)
         surface.setInput(surface.inputIndex("base_color"), dot, 0)
         batch = preview.write_batch(
-            self._scaffold(), [("DOT_PROBE", [surface, image])], self.out)    # as a loose save hands it
+            self._scaffold(), [("DOT_PROBE", [surface, image])], self.out)    # as a loose save passes it
         stage = Usd.Stage.Open(batch["usd"])
         staged = next(UsdShade.Shader(prim) for prim in Usd.PrimRange(
             stage.GetPrimAtPath(batch["prims"][0])) if prim.GetName() == "probe_surface")
@@ -439,7 +439,7 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
         preview.write_batch(scaffold, [("SEL_PROBE", mat)], self.out)
         self.assertEqual(
             [keeper], list(hou.selectedNodes()),
-            "the render ate the artist's selection: `hou.copyNodesTo` "
+            "the render cleared the artist's selection: `hou.copyNodesTo` "
             "selects the copies it makes, the copies are destroyed at "
             "the end, and nothing puts back what was selected before")
 
@@ -509,7 +509,7 @@ class ANetworkThumbnailLeavesNothingOnTheUndoStack(unittest.TestCase):
         self.addCleanup(hou.undos.clear)
 
     def _saved(self, network):
-        """`network` saved as a Node asset, then gone from the scene: its asset id."""
+        """`network` saved as a Node asset, then deleted from the scene: its asset id."""
         from amaze.actions import nodes as node_actions
         held = test_support.asset_ids(self.model)
         node_actions.add_asset(self.model, network, "", "", False, name=network.name())
@@ -610,7 +610,7 @@ class ParallelConversionsIsALiveCap(unittest.TestCase):
 
         self.assertEqual(
             first, engine._convert_parallel,
-            "the first dispatch did not fill the cap")
+            "the first dispatch did not start the maximum of loaders")
         self.assertLessEqual(
             len(made), engine._convert_parallel,
             "a second dispatch started more loaders while %d were still "
@@ -672,14 +672,14 @@ class UpdatePreviewWritesTheManifestOnce(unittest.TestCase):
 
         cache.invalidate(broken)
         self.assertFalse(cache.known_failure(broken),
-                         "Rerender Thumbnail did not clear the memory")
+                         "Rerender Thumbnail did not clear the remembered failure")
 
         cache.remember_failure(broken)
         with open(broken, "wb") as handle:
             handle.write(b"\x00" * 4096)
         self.assertFalse(
             cache.known_failure(broken),
-            "the memory outlived the file it was about - a fixed "
+            "the failure is still remembered for a replaced file - a fixed "
             "image would never get its thumbnail")
 
     def test_a_single_invalidate_still_writes(self):
@@ -690,11 +690,11 @@ class UpdatePreviewWritesTheManifestOnce(unittest.TestCase):
         cache.invalidate("/img/one.png")
         with open(cache.manifest_path, encoding="utf-8") as handle:
             self.assertNotIn("/img/one.png", json.load(handle),
-                             "a one-shot invalidate no longer reaches disk")
+                             "a one-shot invalidate is no longer written to disk")
 
 
 class ACapturePathCostsNoDisk(unittest.TestCase):
-    """A File tile asks for its capture's path on every paint: a hash and a join, nothing more."""
+    """A File tile requests its capture's path on every paint: a hash and a join, nothing more."""
 
     @staticmethod
     def _prefs(folder):
@@ -708,7 +708,7 @@ class ACapturePathCostsNoDisk(unittest.TestCase):
                 mock.patch.object(os, "makedirs", side_effect=record):
             for n in range(20):
                 captures.file_path(self._prefs("/libraries/one"), "loc:abc/s%d.hip" % n)
-        self.assertEqual([], touched, "working out a capture's path asked the disk")
+        self.assertEqual([], touched, "working out a capture's path accessed the disk")
 
     def test_the_path_follows_the_library(self):
         """Captures live in the library, so two libraries never share one."""
@@ -739,17 +739,17 @@ class ARerenderNeverEntersTheUsersLopContext(unittest.TestCase):
                                 and isinstance(kw.value, ast.Constant)])
         self.assertTrue(
             targets, "_render_group no longer imports an asset at all "
-                     "- this test can no longer see its subject")
+                     "- this test can no longer check anything")
         self.assertEqual(
             [["mat"]] * len(targets), targets,
             "the batch imports with the active editor's context "
-            "again - a thumbnail has no business in the user's LOP "
-            "network, and every rerender there leaves a dead entry "
+            "again - a thumbnail must not import into the user's LOP "
+            "network, and every rerender there leaves an unused entry "
             "behind and retranslates their whole material library")
 
 
 class BothRedshiftTerminalsAreLookedFor(unittest.TestCase):
-    """Both Redshift terminal node types are looked for, or the USD flavour loses displacement."""
+    """Both Redshift terminal node types are looked for, or the USD variant loses displacement."""
 
     def _sources(self):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -781,7 +781,7 @@ class BothRedshiftTerminalsAreLookedFor(unittest.TestCase):
         self.assertEqual(
             [], offenders,
             "a terminal is matched against one literal, so the USD "
-            "flavour is invisible there: %s" % offenders)
+            "variant is not matched there: %s" % offenders)
 
 
 class ANodeRefusalIsCaughtAsHouError(unittest.TestCase):
@@ -792,7 +792,7 @@ class ANodeRefusalIsCaughtAsHouError(unittest.TestCase):
         self.assertFalse(
             issubclass(hou.PermissionError, hou.OperationFailed),
             "the premise changed - PermissionError is now caught by an "
-            "OperationFailed handler and this guard is pointless")
+            "OperationFailed handler and this check is pointless")
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         offenders = []
         for folder, _dirs, files in os.walk(root):
@@ -808,7 +808,7 @@ class ANodeRefusalIsCaughtAsHouError(unittest.TestCase):
                 for number, line in enumerate(lines):
                     if "except hou.OperationFailed" not in line:
                         continue
-                    # Walk back to the `try:` that owns this handler.
+                    # Search back for the `try:` of this handler.
                     window = []
                     back = number - 1
                     while back >= 0 and len(window) < 14:
@@ -821,7 +821,7 @@ class ANodeRefusalIsCaughtAsHouError(unittest.TestCase):
         self.assertEqual(
             [], offenders,
             "a createNode is guarded by OperationFailed alone, so a "
-            "locked asset's refusal escapes as a traceback: %s"
+            "locked asset's error escapes as a traceback: %s"
             % offenders)
 
 
@@ -835,10 +835,10 @@ class BundledFilesAreFoundThroughOneLookup(unittest.TestCase):
         self.assertTrue(found.startswith(amaze.PACKAGE_ROOT),
                         "resolved outside the package")
         self.assertTrue(os.path.exists(found),
-                        "the starter snippets are not where this says")
+                        "the starter snippets are not where package_file points")
 
     def test_no_source_file_concatenates_the_install_variable(self):
-        """The unsafe join must be unwritable; the concatenation is often on the next line, so read both."""
+        """The unsafe join must be absent; the concatenation is often on the next line, so read both."""
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         offenders = []
         for folder, _dirs, files in os.walk(root):
@@ -864,7 +864,7 @@ class BundledFilesAreFoundThroughOneLookup(unittest.TestCase):
                         offenders.append("%s:%d" % (name, number))
         self.assertEqual(
             [], offenders,
-            "an install path is glued together with +, so an unset "
+            "an install path is joined with +, so an unset "
             "variable raises TypeError instead of naming a file: %s"
             % offenders)
 
@@ -903,7 +903,7 @@ class BundledFilesAreFoundThroughOneLookup(unittest.TestCase):
             % ", ".join(sorted(offenders)))
 
     def test_ui_art_comes_from_the_loaded_package_whatever_AMAZE_names(self):
-        """Under the suite $AMAZE names the live install; a lookup through it draws that tree's art."""
+        """Under the suite $AMAZE names the live install; a lookup through it loads that tree's art."""
         from amaze.helpers import ui_helpers
 
         decoy = tempfile.mkdtemp(prefix="amaze_decoy_install_")
@@ -926,7 +926,7 @@ class BundledFilesAreFoundThroughOneLookup(unittest.TestCase):
             "the badge was drawn from the tree $AMAZE names, not the loaded package")
 
     def test_a_bundled_lookup_survives_an_UNSET_install_variable(self):
-        """With $AMAZE unset a bundled lookup still finds the file, or the toolbar icons vanish."""
+        """With $AMAZE unset a bundled lookup still finds the file, or toolbar icons go missing."""
         import amaze
         from amaze.core import gradient_library
 
@@ -960,7 +960,7 @@ class MantraIsNotASupportedRenderer(unittest.TestCase):
                 path = os.path.join(folder, name)
                 with open(path, encoding="utf-8") as handle:
                     lines = handle.read().splitlines()
-                # Prose may name it, code may not, hence docstring state.
+                # Docstrings may name it, code may not, so docstring state is tracked.
                 in_doc = False
                 for number, line in enumerate(lines, 1):
                     bare = line.strip()
@@ -978,8 +978,8 @@ class MantraIsNotASupportedRenderer(unittest.TestCase):
         self.assertEqual(
             [], offenders,
             "Mantra was dropped, so a branch or a name that still "
-            "carries it is either dead code reading as support or a "
-            "control with nothing behind it: %s" % offenders)
+            "has it is either dead code that looks like support or a "
+            "control with no implementation: %s" % offenders)
 
 
 class TheAfterSaveThumbnailIsOneBlock(unittest.TestCase):
@@ -1010,12 +1010,12 @@ class TheAfterSaveThumbnailIsOneBlock(unittest.TestCase):
         return nodes, nodes.NodeHandler(prefs)
 
     def test_one_scope_decides_whether_to_render(self):
-        """Every save asks the preference in the same place, so no copy can answer differently."""
+        """Every save reads the preference in one place, so no copy can decide differently."""
         scopes = self._scopes_containing("render_on_import")
         self.assertEqual(
             ["after_save_thumbnail"], scopes,
             "the render_on_import decision is written in %d places, so a "
-            "save path can drift out of step with the others: %s"
+            "save path can come to differ from the others: %s"
             % (len(scopes), scopes))
 
     def test_no_save_path_catches_its_own_thumbnail_failure(self):
@@ -1092,12 +1092,12 @@ class TheAfterSaveThumbnailIsOneBlock(unittest.TestCase):
         self.assertNotIn(
             "save_node_cop", scopes,
             "save_node_cop reads childTypeCategory itself instead of "
-            "asking context_of, which answers the same question with the "
+            "calling context_of, which returns the same answer with the "
             "same guard")
 
 
 class TheThumbnailPicksItsRendererAsTheImportDoes(unittest.TestCase):
-    """A stored renderer label is matched by containment, the rule the import door already keeps."""
+    """A stored renderer label is matched by containment, the rule the import already uses."""
 
     def _rendered_by(self, label):
         from amaze.core import material
@@ -1126,7 +1126,7 @@ class ALooseSurfaceIsPickedByItsType(unittest.TestCase):
                 self.addCleanup(test_support.drop_node, lib)
                 loose = hou.node("/mat").createNode(kind, "loose_" + kind)
                 self.addCleanup(test_support.drop_node, loose)
-                path = preview.usd_scene._stage_material(lib, [loose], "probe", "/materials/amaze_thumb_0")    # a loose save hands its items
+                path = preview.usd_scene._stage_material(lib, [loose], "probe", "/materials/amaze_thumb_0")    # a loose save passes its items
                 self.assertEqual("/materials/amaze_thumb_0", path)
                 self.assertEqual(kind, hou.node(lib.path() + "/" + lib.parm("matnode1").evalAsString()).type().name())
 

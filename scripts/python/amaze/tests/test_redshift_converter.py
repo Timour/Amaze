@@ -75,7 +75,7 @@ def _karma_material(parent, name="karma_source"):
 @unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                      "the Redshift plugin is not loaded")
 class AKarmaMaterialBecomesARedshiftOne(unittest.TestCase):
-    """Network to network, through the engine door the library will call."""
+    """Network to network, through `convert_karma_builder`, the function the library calls."""
 
     @classmethod
     def setUpClass(cls):
@@ -133,15 +133,15 @@ class AKarmaMaterialBecomesARedshiftOne(unittest.TestCase):
     def test_the_textures_are_the_same_files_in_the_right_colour_space(self):
         samplers = {t.parm("tex0").unexpandedString(): t
                     for t in self._children("redshift::TextureSampler")}
-        self.assertIn(ALBEDO, samplers, "the colour map did not cross over as the SAME file")
-        self.assertIn(ROUGH, samplers, "the roughness map did not cross over")
+        self.assertIn(ALBEDO, samplers, "the colour map was not converted with the SAME file")
+        self.assertIn(ROUGH, samplers, "the roughness map was not converted")
         self.assertEqual("sRGB", samplers[ALBEDO].parm("tex0_colorSpace").evalAsString())
         self.assertEqual("Raw", samplers[ROUGH].parm("tex0_colorSpace").evalAsString())
         inputs = self._inputs(self.shader)
         self.assertEqual(samplers[ALBEDO].path(), inputs["base_color"].path())
         self.assertEqual(samplers[ROUGH].path(), inputs["refl_roughness"].path())
         self.assertEqual((2.0, 3.0), tuple(samplers[ALBEDO].parmTuple("scale").eval()),
-                         "the UV scale did not ride the sampler")
+                         "the UV scale was not set on the sampler")
 
     def test_the_normal_map_is_a_tangent_space_bump_on_the_shader(self):
         bumps = self._children("redshift::BumpMap")
@@ -184,7 +184,7 @@ class WhatHasNoRedshiftShapeIsReportedNotInvented(unittest.TestCase):
 @unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                      "the Redshift plugin is not loaded")
 class AConstantOnAWireLandsAsAValue(unittest.TestCase):
-    """Wired mtlxconstant dials land as values; Redshift math nodes default to zero. ▸r/redshift-nodes"""
+    """Wired mtlxconstant nodes become values; Redshift math nodes default to zero. ▸r/redshift-nodes"""
 
     TINT = (0.5, 0.25, 1.0)
     UV = 5.0
@@ -261,7 +261,7 @@ class AConstantOnAWireLandsAsAValue(unittest.TestCase):
 @unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                      "the Redshift plugin is not loaded")
 class TheLibraryDoorMakesANewRedshiftEntry(unittest.TestCase):
-    """Convert to Redshift reads the saved Karma material and registers the twin beside it."""
+    """Convert to Redshift reads the saved Karma material and adds the converted copy."""
 
     @classmethod
     def setUpClass(cls):
@@ -283,7 +283,7 @@ class TheLibraryDoorMakesANewRedshiftEntry(unittest.TestCase):
 
     @property
     def row(self):
-        return self.model.find_asset_row_by_id(self.source_id)    # rows sort; the id holds
+        return self.model.find_asset_row_by_id(self.source_id)    # rows are re-sorted; the id stays the same
 
     def test_a_twin_whose_list_was_refused_lands_nothing(self):
         held = test_support.asset_ids(self.model)
@@ -292,7 +292,7 @@ class TheLibraryDoorMakesANewRedshiftEntry(unittest.TestCase):
                 self.model, self.model.index(self.row, 0), "Redshift")
         self.assertFalse(ok, report.summary_lines())
         self.assertEqual([], test_support.arrived(self.model, held),
-                         "a twin whose row was refused shows as a tile")
+                         "a converted copy whose row was not written shows as a tile")
 
     def test_a_redshift_twin_is_added_beside_the_karma_source(self):
         before = len(self.model.assets)
@@ -306,7 +306,7 @@ class TheLibraryDoorMakesANewRedshiftEntry(unittest.TestCase):
         self.assertEqual("Redshift", twin.renderer)
         self.assertEqual(source.name, twin.name)
         self.assertEqual(list(source.categories), list(twin.categories))
-        handler = nodes.NodeHandler(self.prefs)    # a redshift_vopnet twin was refused a LOP library
+        handler = nodes.NodeHandler(self.prefs)    # a redshift_vopnet copy could not be imported into a LOP library
         self.assertEqual("rs_usd_material_builder",
                          material_files.get_saved_node_type(self.prefs, twin,
                                                             library_files.MATERIALS))
@@ -333,7 +333,7 @@ class TheLibraryDoorMakesANewRedshiftEntry(unittest.TestCase):
 @unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                      "the Redshift plugin is not loaded")
 class ATangentSpaceBumpKeepsItsStrength(unittest.TestCase):
-    """Convert to Karma on a `redshift::BumpMap`, whose `inputType` menu answers STRING tokens."""
+    """Convert to Karma on a `redshift::BumpMap`, whose `inputType` menu returns STRING tokens."""
 
     def setUp(self):
         from amaze.render import material_converter
@@ -431,7 +431,7 @@ class ALegacyRedshiftMaterialGoesIntoSolaris(unittest.TestCase):
         legacy.destroy()
 
     def _legacy(self):
-        """A classic container: the classic output fed by a shader and a bump, a texture behind."""
+        """A classic container: output fed by a shader and a bump, the shader by a texture."""
         legacy = self.parent.createNode("redshift_vopnet")
         for child in list(legacy.children()):
             if child.type().name() != "redshift_material":
@@ -452,12 +452,12 @@ class ALegacyRedshiftMaterialGoesIntoSolaris(unittest.TestCase):
         before = {n.path() for lib in stage.children()
                   if lib.type().name() == "materiallibrary"
                   for n in lib.children()}
-        library = stage.createNode("materiallibrary")    # the import lands in the library it is handed
+        library = stage.createNode("materiallibrary")    # the import goes into the library it is given
         self.addCleanup(library.destroy)
         ok, reason, _created = material_actions.import_asset_to_scene(self.model,
             self.model.index(self.row, 0), target="lop", context_node=library)
         self.assertTrue(ok, reason)
-        after = [n for lib in stage.children()
+        after =[n for lib in stage.children()
                  if lib.type().name() == "materiallibrary"
                  for n in lib.children() if n.path() not in before]
         self.assertEqual(1, len(after), [n.path() for n in after])
@@ -487,7 +487,7 @@ class ALegacyRedshiftMaterialGoesIntoSolaris(unittest.TestCase):
                                  for c in shader.inputConnections()}["refl_roughness"])
         self.assertFalse([c for c in node.children()
                           if c.type().name() == "redshift_material"],
-                         "the classic terminal came along")
+                         "the classic terminal was imported too")
 
     def test_the_library_conversion_rewrites_its_files_as_the_usd_container(self):
         from amaze.core import renderers
@@ -554,12 +554,12 @@ class AFirstEditionTwinGoesIntoSolaris(unittest.TestCase):
         before = {n.path() for lib in stage.children()
                   if lib.type().name() == "materiallibrary"
                   for n in lib.children()}
-        library = stage.createNode("materiallibrary")    # the import lands in the library it is handed
+        library = stage.createNode("materiallibrary")    # the import goes into the library it is given
         self.addCleanup(library.destroy)
         ok, reason, _created = material_actions.import_asset_to_scene(self.model,
             self.model.index(self.row, 0), target="lop", context_node=library)
         self.assertTrue(ok, reason)
-        node = [n for lib in stage.children()
+        node =[n for lib in stage.children()
                 if lib.type().name() == "materiallibrary"
                 for n in lib.children() if n.path() not in before][0]
         self.addCleanup(node.destroy)
@@ -567,7 +567,7 @@ class AFirstEditionTwinGoesIntoSolaris(unittest.TestCase):
                      if c.type().name() in material.REDSHIFT_TERMINALS]
         self.assertEqual(["redshift_usd_material"],
                          [t.type().name() for t in terminals],
-                         "the old terminal came along as a second one")
+                         "the old terminal was kept as a second one")
         feeds = {c.outputName(): c.inputNode().name()
                  for c in terminals[0].inputConnections()}
         self.assertEqual({"Surface": "mtlxstandard_surface1",
@@ -613,14 +613,14 @@ class AnOpenPBRKarmaMaterialConvertsByItsOwnNames(unittest.TestCase):
         feeds = {c.outputName(): c.inputNode().type().name()
                  for c in shader.inputConnections() if c.inputNode()}
         self.assertEqual("redshift::TextureSampler", feeds.get("specular_roughness"),
-                         "the roughness texture did not cross")
+                         "the roughness texture was not converted")
         self.assertTrue(report.is_clean(), "\n".join(report.summary_lines()))
 
 
 @unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                      "the Redshift plugin is not loaded")
 class AWireThroughADotSurvivesTheSolarisRebuild(unittest.TestCase):
-    """moveNodesTo carries nodes only, so dots are bypassed before the rebuild. ▸r/node-items"""
+    """moveNodesTo moves nodes only, so dots are bypassed before the rebuild. ▸r/node-items"""
 
     def test_the_dot_routed_input_arrives_wired(self):
         from amaze.render import redshift_converter
@@ -648,7 +648,7 @@ class AWireThroughADotSurvivesTheSolarisRebuild(unittest.TestCase):
 
 
 class ADotIsRemovedAndItsWiresStay(unittest.TestCase):
-    """`_bypass_dots` leaves every consumer fed by what fed the dot, whatever that is. ▸r/node-items"""
+    """`_bypass_dots` wires each consumer to what fed the dot, whatever that is. ▸r/node-items"""
 
     @staticmethod
     def _feeds(node):
@@ -714,7 +714,7 @@ class ADotIsRemovedAndItsWiresStay(unittest.TestCase):
 
 
 class _ValuesSource:
-    """A values source with nothing to download: `fetch` answers the record's own payload."""
+    """A values source with nothing to download: `fetch` returns the record's own payload."""
 
     name = "PhysicallyBased"
 
@@ -725,7 +725,7 @@ class _ValuesSource:
 @unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                      "the Redshift plugin is not loaded")
 class AnOnlineMaterialCanLandAsRedshift(unittest.TestCase):
-    """An online record builds as Karma, converts, and the library registers the Redshift twin."""
+    """An online record builds as Karma, converts, and the library adds the Redshift entry."""
 
     @classmethod
     def setUpClass(cls):

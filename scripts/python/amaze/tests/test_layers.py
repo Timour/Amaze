@@ -12,7 +12,7 @@ EXCEPTIONS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "layer_exc
 SKIP_DIRS = {"__pycache__", "tests", "res", "ui"}
 
 ORDER = ("base", "library", "formats", "models", "houdini", "actions", "interface")
-ALLOWED = {    # who may use whom: everything below, except that models and houdini are siblings
+ALLOWED = {    # layers each may use: all below it, except models and houdini, which may not use each other
     "base": {"base"},
     "library": {"base", "library"},
     "formats": {"base", "library", "formats"},
@@ -88,7 +88,7 @@ def layer_of(name):
 
 
 def _target(dotted, modules):
-    """The amaze module a dotted import lands on: its longest existing prefix."""
+    """The amaze module a dotted import resolves to: its longest existing prefix."""
     parts = dotted.split(".")[1:]
     while parts:
         name = ".".join(parts)
@@ -99,7 +99,7 @@ def _target(dotted, modules):
 
 
 def _base_of(node, name, modules):
-    """The absolute module an ImportFrom names, relative spellings resolved."""
+    """The absolute module an ImportFrom names, relative imports resolved."""
     if not node.level:
         return node.module or ""
     parts = ("amaze." + name).split(".") if name != "amaze" else ["amaze"]
@@ -180,7 +180,7 @@ def lines(places):
 
 
 class EachLayerUsesOnlyTheLayersBelowIt(unittest.TestCase):
-    """The map is on the project's FigJam board; this is the push's compiler feedback. ▸m/layer-plan"""
+    """The map is on the project's FigJam board; this lists where code breaks it. ▸m/layer-plan"""
 
     def test_every_module_has_a_layer(self):
         """A new file fails until the map gives it a row, so no file is outside the rules."""
@@ -196,7 +196,7 @@ class EachLayerUsesOnlyTheLayersBelowIt(unittest.TestCase):
                          "these break the layer map; move the code, or list the place on purpose")
 
     def test_a_fixed_place_leaves_the_list(self):
-        """The list only shrinks: a place no longer broken must lose its line."""
+        """The list only shrinks: a place that no longer breaks the map must be deleted from it."""
         stale = listed() - breaks()
         self.assertEqual([], lines(stale),
                          "these are fixed; delete their lines from layer_exceptions.txt")

@@ -1,4 +1,4 @@
-"""The tab strip stands on its S01 frame: height, tray and chip spacing. ▸r/tabs-from-frame"""
+"""The tab strip matches its S01 frame: height, tray and chip spacing. ▸r/tabs-from-frame"""
 
 import os
 import sys
@@ -20,7 +20,7 @@ from amaze.tests import test_support  # noqa: E402,F401
 
 
 class TheTabStripStandsOnItsFrame(unittest.TestCase):
-    """Every tab, the tray and the strip land where S01 draws them, in whatever font."""
+    """Every tab, the tray and the strip are placed where S01 draws them, in any font."""
 
     def setUp(self):
         self.px = theme.ui_px
@@ -51,7 +51,7 @@ class TheTabStripStandsOnItsFrame(unittest.TestCase):
         self.assertEqual(self.tray[1] + self.tray[3], self.chips[-1][1] + self.chips[-1][3] + inset,
                          "the tray does not end one inset past the last tab")
         self.assertEqual(self.frame["frame"][1], self.tray[2] + self.tray[4],
-                         "the tray does not sit on the strip's bottom")
+                         "the tray does not end at the strip's bottom")
 
     def test_the_strip_is_its_drawn_height(self):
         height = self.px(self.frame["frame"][1])
@@ -61,7 +61,7 @@ class TheTabStripStandsOnItsFrame(unittest.TestCase):
     def test_every_tab_lands_where_it_is_drawn(self):
         rects = [rect for _segment, rect in self.bar._chip_rects()]
         self.assertEqual(len(self.chips), len(rects))
-        self.assertEqual(self.px(self.chips[0][1]), rects[0].x(), "the first tab moved")
+        self.assertEqual(self.px(self.chips[0][1]), rects[0].x(), "the first tab is not at its drawn x")
         metrics = self.bar.fontMetrics()
         pad = self.px(self.boxes[self.keys[0]][1] - self.chips[0][1])
         gap = self.px(self.chips[1][1] - (self.chips[0][1] + self.chips[0][3]))
@@ -72,7 +72,7 @@ class TheTabStripStandsOnItsFrame(unittest.TestCase):
                 self.assertEqual(2 * pad, rect.width() - metrics.horizontalAdvance(label),
                                  "the tab does not pad its label by the drawn pad")
         for a, b in zip(rects, rects[1:]):
-            self.assertEqual(gap, b.x() - (a.x() + a.width()), "two tabs sit at another gap")
+            self.assertEqual(gap, b.x() - (a.x() + a.width()), "two tabs have another gap")
 
     def test_the_tray_is_where_it_is_drawn(self):
         tray = self.bar._tray_rect()
@@ -137,7 +137,7 @@ class BothChipRingsAreOneWholePixelWidth(unittest.TestCase):
         tab = ui_helpers.SectionTabBar.CHIP_RING_W
         self.assertEqual([tab], widths)
         self.assertIsInstance(widths[0], int, "the toolbar chip ring is not whole pixels")
-        self.assertIsInstance(tab, int, "the tab ring scales by fractions")
+        self.assertIsInstance(tab, int, "the tab ring is not whole pixels")
 
 
 if __name__ == "__main__":

@@ -13,11 +13,11 @@ import types
 
 from amaze.helpers import hostos
 
-os.environ[hostos.SANDBOX_VAR] = "1"    # armed at IMPORT, however the test was started ▸p/hand-run-script-is-unguarded
+os.environ[hostos.SANDBOX_VAR] = "1"    # set at IMPORT, however the test was started ▸p/hand-run-script-is-unguarded
 
 
 def call_as_amaze(fn):
-    """Call `fn` from a frame whose module name is Amaze's own, the way an import's frames read."""
+    """Call `fn` from a frame whose `__name__` is an Amaze module, as during an import."""
     def inside():
         return _fn()    # noqa: F821 - bound by the globals handed to FunctionType below
 
@@ -34,7 +34,7 @@ def settle(done, timeout=3.0) -> None:
 
 
 def pump_until(done, timeout=10.0) -> bool:
-    """Run the event loop until done answers true or the time is up, and answer done."""
+    """Run the event loop until `done()` is true or the time is up; return `done()`."""
     from PySide6 import QtWidgets
     deadline = time.monotonic() + timeout
     while not done() and time.monotonic() < deadline:
@@ -44,12 +44,12 @@ def pump_until(done, timeout=10.0) -> bool:
 
 
 def scratch_dir(prefix: str) -> str:
-    """Every directory this module mints, in the system temp folder. ▸p/suite-debris-home"""
+    """Make a directory in the system temp folder, where all test dirs go. ▸p/suite-debris-home"""
     return tempfile.mkdtemp(prefix=prefix)
 
 
 def isolate_user_folders() -> str:
-    """Point the sandbox's stand-in settings, cache and log folders into this run's temp dir."""
+    """Point the sandbox's settings, cache and log folders into this run's temp dir."""
     directory = scratch_dir("amaze_test_home_")
     atexit.register(shutil.rmtree, directory, True)
     os.environ[hostos.SANDBOX_HOME_VAR] = directory
@@ -69,7 +69,7 @@ from amaze.prefs import prefs                           # noqa: E402
 
 FIXTURE_DIR = os.path.join(os.path.dirname(__file__), "assets", "library")
 
-FIXTURE_USER = "0f1e2d3c4b5a69788796a5b4c3d2e1f0"    # the fixture library's owner: a constant shaped like a minted UID
+FIXTURE_USER = "0f1e2d3c4b5a69788796a5b4c3d2e1f0"    # the fixture library's owner: a constant in the format of a generated UID
 
 
 def isolate_debug_log() -> str:
@@ -114,21 +114,21 @@ TEST_CACHE = isolate_cache_root()    # redirected at IMPORT for the same reason 
 
 
 def reset_database_singletons() -> None:
-    """Drop every model and every library's databases this session holds, waiting saves first."""
+    """Release every model and library database this session holds, after saving pending writes."""
     from amaze.core import library_db, model_registry
     library_db.flush()
     library_db.drop_scheduler()    # a panel left from the last test must not hold this one's saves
-    model_registry.release()    # a kept model would leak the last test's rows
+    model_registry.release()    # a kept model would carry the last test's rows into this one
 
 
 def settle_stamps() -> None:
-    """Every change waiting to be saved, saved now, with each asset's metadata beside it."""
+    """Save every pending change now, each asset's metadata included."""
     from amaze.core import library_db
     library_db.flush()
 
 
 def stop_stamp_checks() -> None:
-    """Nothing runs after a test to write into its library: the saves are flushed."""
+    """Flush pending saves, so nothing writes into a test's library after the test ends."""
     from amaze.core import library_db
     library_db.flush()
 
@@ -142,7 +142,7 @@ def posix_relpath(path: str, start: str) -> str:
 
 
 def posix_path(path: str) -> str:
-    """An absolute path as the stores spell it, via the product's own round trip. ▸p/harness-isolation"""
+    """An absolute path as the databases store it, via `storage_path_key`. ▸p/harness-isolation"""
     return hostos.expand_storage_path(hostos.storage_path_key(path))
 
 
@@ -156,7 +156,7 @@ def fresh_files_folder(testcase) -> str:
 
 
 def pin_scene_folder(testcase) -> str:
-    """`$HIP` is a fresh folder of two files for the test, then its old value."""
+    """Set `$HIP` to a new folder of two files for the test; its old value is restored after."""
     import hou
     scene = scratch_dir("amaze_test_scene_")
     testcase.addCleanup(shutil.rmtree, scene, True)
@@ -167,7 +167,7 @@ def pin_scene_folder(testcase) -> str:
     from amaze.actions import files as files_actions
     real = getattr(files_actions.scene_saved, "real", files_actions.scene_saved)
 
-    def saved() -> bool:    # the pinned scene counts as saved; `.real` is Houdini's own answer
+    def saved() -> bool:    # the test scene counts as saved; `.real` is the original check
         return True
     saved.real = real
     files_actions.scene_saved = saved
@@ -176,7 +176,7 @@ def pin_scene_folder(testcase) -> str:
 
 
 def fresh_library(testcase, source=None) -> str:
-    """A throwaway fixture library copy, spelled as `prefs.dir`, free to mutate. ▸p/harness-isolation"""
+    """A throwaway copy of the fixture library, as a `prefs.dir` path. ▸p/harness-isolation"""
     tmp = scratch_dir("amaze_test_lib_")
     testcase.addCleanup(shutil.rmtree, tmp, True)
     testcase.addCleanup(stop_stamp_checks)    # runs first: no check writes into a copy being removed
@@ -204,7 +204,7 @@ def _keep_seeded(library: str) -> None:
     keep = os.path.join(scratch_dir("amaze_seeded_fixture_"), "library")
     atexit.register(shutil.rmtree, os.path.dirname(keep), True)
     shutil.copytree(library, keep)
-    for name in _PER_PANEL:    # empty, not absent: the manifest names it, so absent reads as lost
+    for name in _PER_PANEL:    # emptied, not deleted: the manifest lists it, so a missing file reads as lost
         if os.path.exists(os.path.join(keep, name)):
             with open(os.path.join(keep, name), "w", encoding="utf-8") as handle:
                 handle.write("{}\n")
@@ -212,7 +212,7 @@ def _keep_seeded(library: str) -> None:
 
 
 def seeded_library(testcase) -> str:
-    """`fresh_library`, already seeded, so a switch onto it skips the curated palettes."""
+    """`fresh_library`, already seeded, so switching to it skips adding the curated palettes."""
     return fresh_library(testcase, _SEEDED[0] if _SEEDED else None)
 
 
@@ -261,12 +261,12 @@ def asset_ids(model) -> set:
 
 
 def arrived(model, before) -> list:
-    """The assets added since `before`, in row order: a new row sorts in. ▸p/grid-engine"""
+    """The assets added since `before`, in row order, as sorted. ▸p/grid-engine"""
     return [asset for asset in model.assets if str(asset.mat_id) not in before]
 
 
 def refused_at_open(path, error=None):
-    """`open` refusing `path` alone, by default as a file another account owns refuses this one."""
+    """Patch `open` to fail for `path` only, by default as for a file another account owns."""
     import errno
     from unittest import mock
     error = error or PermissionError(errno.EACCES, "Permission denied", path)
@@ -283,7 +283,7 @@ def refused_at_open(path, error=None):
 
 @contextlib.contextmanager
 def full_disk_for(path):
-    """Every write of `path`, or of its scratch beside it, refused as a full disk refuses it."""
+    """Make every write of `path`, or of its scratch file beside it, fail with a full-disk error."""
     import errno
     from unittest import mock
     from amaze.core import guard
@@ -327,13 +327,13 @@ def captured_log():
     finally:
         debug.configure(was_on)
         debug.redirect(TEST_LOG)
-        recorded._drain()    # BEFORE the file goes, or every later assertion reads "the code said nothing"
+        recorded._drain()    # BEFORE the file is deleted, or every later assertion finds no records
         shutil.rmtree(directory, True)
 
 
 @contextlib.contextmanager
 def row_moves_inside_a_layout_change(*models):
-    """Every row insert, removal or reset sent while that model's layout change was open."""
+    """Every row insert, removal or reset emitted while that model's layout change was open."""
     caught = []
     wired = []
 
@@ -344,7 +344,7 @@ def row_moves_inside_a_layout_change(*models):
         return heard
 
     for model in models:
-        depth = [0]    # the open pairs; the H21 segfault shape is a row move at depth > 0
+        depth = [0]    # open layout changes; the H21 segfault comes from a row move at depth > 0
 
         def opened(*_args, depth=depth):
             depth[0] += 1
@@ -367,11 +367,11 @@ def row_moves_inside_a_layout_change(*models):
             try:
                 signal.disconnect(slot)
             except (RuntimeError, TypeError):
-                pass             # the model went first
+                pass             # the model was already deleted
 
 
 def plugins_loaded(*renderers):
-    """Each material conversion API answers loaded for `renderers` alone, MaterialX always."""
+    """Each material conversion API reports loaded only for `renderers`, MaterialX always."""
     from unittest import mock
     from amaze.render.material_conversion import engine
     stack = contextlib.ExitStack()
@@ -383,16 +383,16 @@ def plugins_loaded(*renderers):
 
 
 def renderer_loaded(key: str) -> bool:
-    """Whether `key`'s plugin is loaded, asked the product's way - the answer `plugins_loaded` fakes."""
+    """Whether `key`'s plugin is loaded, via `engine.api`: the check `plugins_loaded` patches."""
     from amaze.render.material_conversion import engine
     return engine.api(key).available()
 
 
 def pin_env(scope, name: str, value: str) -> None:
-    """`$name` is `value` for `scope` wherever the product reads it as unset; its own state comes back."""
+    """Set `$name` to `value` for `scope` if Amaze reads it as unset; its old state is restored."""
     import hou
     previous = hou.getenv(name)
-    if previous:    # the product's gate is `not hou.getenv(name)`, so an empty `OCIO =` is unset
+    if previous:    # Amaze's check is `not hou.getenv(name)`, so an empty `OCIO =` is unset
         return
     if previous is None:
         scope.addCleanup(hou.unsetenv, name)
@@ -402,7 +402,7 @@ def pin_env(scope, name: str, value: str) -> None:
 
 
 def clear_obj() -> None:
-    """Object level back to empty, whatever a test built there."""
+    """Delete every node at object level, whatever a test built there."""
     import hou
     for child in hou.node("/obj").children():
         try:
@@ -436,7 +436,7 @@ def source_of(relative: str) -> str:
 
 
 def plain_python() -> str:
-    """The Python under this one, started in under a second; hython itself costs 20 s."""
+    """The plain Python under this hython, which starts in under a second; hython takes 20 s."""
     for name in (os.path.join("bin", "python3"), "python.exe"):
         path = os.path.join(sys.base_prefix, name)
         if os.path.isfile(path):
@@ -447,7 +447,7 @@ def plain_python() -> str:
 def live_library_to_rehearse_on(testcase):
     """The configured library, or a skip. ▸p/harness-isolation"""
     live = prefs.Prefs()
-    live.path = hostos.real_config_root()    # the user's own settings, read only - the sandbox refuses a write
+    live.path = hostos.real_config_root()    # the user's own settings, read only - the sandbox blocks writes
     live.load()
     directory = live.dir
     if not directory or not os.path.isdir(directory):
@@ -462,7 +462,7 @@ def live_library_to_rehearse_on(testcase):
 
 
 def fixture_prefs(testcase):
-    """Preferences with .dir and .path on a fresh fixture copy, user pointed. ▸p/harness-isolation"""
+    """Preferences with .dir and .path on a fresh fixture copy, user set. ▸p/harness-isolation"""
     p = prefs.Prefs()
     p.dir = fresh_library(testcase)
     p.path = scratch_dir("amaze_fixture_prefs_")
@@ -487,7 +487,7 @@ FIXTURE_USER_NAME = "Fixture"    # the fixture user's name, in a library a panel
 
 
 def with_fixture_user(library) -> str:
-    """`library`, holding the fixture user: a panel opens a library only with its user."""
+    """Add the fixture user to `library`, which a panel opens only with one of its users."""
     import types
     from amaze.core import library_db, users
     holder = types.SimpleNamespace(dir=library, library_user=FIXTURE_USER)
@@ -509,7 +509,7 @@ def repair_from_preferences(testcase, panel):
 
 
 def backup_now(library, name: str) -> str:
-    """Database `name` as it is now, kept as a backup Check Library offers; the backup's path."""
+    """Copy database `name` to a backup Check Library lists; returns the backup's path."""
     import datetime
     from amaze.core import guard
     folder = os.path.join(str(library), guard.BACKUP_DIR)
@@ -521,7 +521,7 @@ def backup_now(library, name: str) -> str:
 
 
 def serves(name: str, library) -> bool:
-    """A shared model on database `name` reads `library`."""
+    """Whether a shared model for database `name` reads `library`."""
     from amaze.core import model_registry
     wanted = os.path.realpath(str(library).rstrip("/\\"))
     return any(os.path.realpath(str(model.preferences.dir).rstrip("/\\")) == wanted
@@ -634,7 +634,7 @@ def fixture_panel(testcase, render_geometry=False):
 
 
 def reopened_panel(testcase):
-    """A second panel over the same scope, only after `fixture_panel`. ▸p/harness-isolation"""
+    """A second panel on the same settings, only after `fixture_panel`. ▸p/harness-isolation"""
     from amaze.helpers import hostos as hostos_mod
     from amaze.panel import panel as panel_mod
 
@@ -731,7 +731,7 @@ def stop_panel_workers(panel) -> None:
         except Exception:                                # noqa: BLE001
             pass
     try:
-        panel.unwatch_scene()    # deleteLater never pumps `destroyed` here
+        panel.unwatch_scene()    # `destroyed` is never emitted here after deleteLater
     except Exception:                                    # noqa: BLE001
         pass
     try:
@@ -769,7 +769,7 @@ def toolbar_row(panel) -> list:
 
 
 BADGE_FAMILY = ("badge_open", "badge_favourite", "badge_versions",
-                "badge_comment")    # the tile badges, by art name - the family, in corner order
+                "badge_comment")    # the tile badges, by SVG name, in corner order
 
 
 def tile_delegate(roles, subtitle_role=None, **kwargs):

@@ -1,4 +1,4 @@
-"""Write ordering: the list first, the files second, and a refused write destroys nothing."""
+"""Write ordering: the database first, the files second, and a failed write deletes nothing."""
 
 import json
 import os
@@ -59,7 +59,7 @@ class _LibraryCase(unittest.TestCase):
 class RemoveAssetHonoursTheIndexWrite(_LibraryCase):
 
     def test_a_refused_write_destroys_nothing_and_the_row_stays(self):
-        """The rows and the files are one unit: a refused save moves neither, nor does the next."""
+        """Rows and files change together: a failed save moves neither, nor does the next save."""
         versions.create_version(self.prefs, self.mat_id, "V1")
         store = versions.versions_dir(self.prefs, self.mat_id)
         owned = self.model.asset_files(self.mat_id)
@@ -71,19 +71,19 @@ class RemoveAssetHonoursTheIndexWrite(_LibraryCase):
 
         survivors = [k for k in present if os.path.exists(owned[k])]
         self.assertEqual(sorted(present), sorted(survivors),
-                         "remove_asset moved files although the database write was refused")
+                         "remove_asset moved files although the database write failed")
         self.assertTrue(os.path.isdir(store),
-                        "the version store went although the delete was refused")
+                        "the version store was deleted although the delete failed")
         self.assertNotEqual(-1, self.model.find_asset_row_by_id(self.mat_id),
-                            "the row left the grid although the delete was refused")
+                            "the row left the grid although the delete failed")
         self.assertIn(self.mat_id, self._on_disk_ids(),
-                      "materials.json no longer lists an asset whose delete was refused")
+                      "materials.json no longer lists an asset whose delete failed")
         self.assertTrue(self.model.save(), "the fixture save should succeed")
         self.assertIn(self.mat_id, self._on_disk_ids(),
-                      "the refused delete was carried out by the next save")
+                      "the failed delete was carried out by the next save")
 
     def test_a_completed_delete_removes_the_files_and_the_version_store(self):
-        """The fix must not cost the ordinary case."""
+        """The fix must not break an ordinary delete."""
         number = versions.create_version(self.prefs, self.mat_id, "V1")
         store = versions.versions_dir(self.prefs, self.mat_id)
         self.assertTrue(number and os.path.isdir(store),
@@ -98,9 +98,9 @@ class RemoveAssetHonoursTheIndexWrite(_LibraryCase):
         self.assertNotIn(self.mat_id, self._on_disk_ids())
         self.assertFalse(
             os.path.isdir(store),
-            "materials/versions/<id>/ survived the asset. Nothing else removes "
-            "it, and its id is now in no list - so no later run can ever "
-            "decide it is safe to take")
+            "materials/versions/<id>/ outlived the asset. Nothing else removes "
+            "it, and its id is now in no database - so no later run can ever "
+            "decide it is safe to delete")
 
 
 class AnIdThatCannotNameAFileOwnsNothing(_LibraryCase):
@@ -141,7 +141,7 @@ class SwitchingVersionsIsAllOrNothing(unittest.TestCase):
         self.assertEqual(2, versions.create_version(self.prefs, self.mat_id))
 
     def _write(self, kind, text):
-        """`.mat` takes `text` whole; `.json` takes it as its builder's interface."""
+        """Write `text` as the whole `.mat`, or as the `.json` builder's interface."""
         if kind == ".json":
             asset_record.write_section(self.base[kind], asset_record.BUILDER,
                                        {"type": "subnet", "interface": text, "values": {}})
@@ -159,7 +159,7 @@ class SwitchingVersionsIsAllOrNothing(unittest.TestCase):
         return 2 if "VERSION-2" in self._text(kind) else 1
 
     def test_a_held_file_leaves_the_base_on_one_version(self):
-        """A sync client holding one file must not leave .mat and .json on different versions."""
+        """A sync client with one file open must not leave .mat and .json on different versions."""
         real_promote = hostos.promote_scratch
 
         def held_record(scratch, target):
@@ -182,15 +182,15 @@ class SwitchingVersionsIsAllOrNothing(unittest.TestCase):
             "builder come from different ones, so importing it builds "
             "one version's network behind another's parameters")
         self.assertEqual(self._holds(".mat"), versions.active_version(self.prefs, self.mat_id),
-                         "the ledger names another version than the files hold")
+                         "the ledger records another version than the files hold")
 
     def _released(self):
-        """The held file let go: the guard finishes the change it journaled, whole."""
+        """The open file released: `guard.recover` completes the change it journaled."""
         from amaze.core import guard
         guard.Guard(str(self.prefs.dir)).recover()
 
     def test_an_unarchived_base_is_archived_before_the_switch(self):
-        """A structural update mints no version, so the base may be the only copy: archive it first."""
+        """A structural update makes no version; the base may be the sole copy: archive it first."""
         for kind in (".mat", ".json"):
             self._write(kind, "STRUCTURAL %s" % kind)
 
@@ -211,7 +211,7 @@ class SwitchingVersionsIsAllOrNothing(unittest.TestCase):
             "update - no archive holds it: %s" % archived)
 
     def test_a_held_switch_lands_whole_once_the_file_is_let_go(self):
-        """A kind the base lacked arrives with the rest, never alone beside the old ones."""
+        """A file kind the base lacked is written with the rest, never alone beside the old ones."""
         os.remove(self.base[".json"])
 
         real_promote = hostos.promote_scratch
@@ -231,7 +231,7 @@ class SwitchingVersionsIsAllOrNothing(unittest.TestCase):
         self.assertTrue(switched, "a recorded switch that waits on one file was reported as failed")
         self._released()
         self.assertEqual((1, 1), (self._holds(".mat"), self._holds(".json")),
-                         "the switch landed in part: a material made of two versions")
+                         "the switch was applied in part: a material made of two versions")
 
     def test_an_ordinary_switch_still_works(self):
         self.assertTrue(versions.switch_active(self.prefs, self.mat_id, 1))
@@ -272,7 +272,7 @@ class TheThumbnailManifestKeepsAnotherWritersWork(unittest.TestCase):
             "so the folder re-converts from scratch on every visit")
 
     def test_entries_written_right_after_our_save_survive_the_next(self):
-        """A manifest landing just after our write is another writer's, never taken as seen."""
+        """A manifest written just after ours is another writer's, never treated as already read."""
         cache = texture_library.ThumbnailCache(size=256)
         cache._manifest["/textures/wood/1.exr"] = {"mtime": 1, "size": 1}
         cache._dirty = True
@@ -309,7 +309,7 @@ class TheThumbnailManifestKeepsAnotherWritersWork(unittest.TestCase):
             return len([k for k in json.load(fh) if "/metal/" in k])
 
     def test_entries_written_while_the_manifest_loads_survive_our_save(self):
-        """The fingerprint is of the bytes parsed, so a write landing after the parse is merged."""
+        """The fingerprint is of the bytes parsed, so a write made after the parse is merged."""
         path = texture_library.ThumbnailCache(size=256).manifest_path
         with open(path, "w", encoding="utf-8") as fh:
             json.dump({"/textures/wood/1.exr": {"mtime": 1, "size": 1}}, fh)
@@ -321,7 +321,7 @@ class TheThumbnailManifestKeepsAnotherWritersWork(unittest.TestCase):
                          "were dropped by our save")
 
     def test_entries_written_while_a_sweep_is_forgotten_survive_our_save(self):
-        """A forget adopts the file once and keeps that read's fingerprint, never a second one."""
+        """`forget` reads the file once and keeps that read's fingerprint, never a second one."""
         cache = texture_library.ThumbnailCache(size=256)
         cache._manifest["/textures/wood/1.exr"] = {"mtime": 1, "size": 1}
         cache._dirty = True

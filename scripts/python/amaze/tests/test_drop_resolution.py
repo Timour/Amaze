@@ -1,4 +1,4 @@
-"""Where a released Node asset lands, and the verb that puts it there. ▸r/drop-resolution"""
+"""Where a dropped Node asset is created, and the function creating it. ▸r/drop-resolution"""
 
 import os
 import sys
@@ -34,7 +34,7 @@ def _cop_node_type() -> str:
 
 
 def _fake_editor(net, items=(), cursor=(0.0, 0.0), under_cursor=True):
-    """A Network View answering the four questions the resolver asks it."""
+    """A fake Network View with the pane methods `context_under_cursor` calls."""
     return types.SimpleNamespace(
         type=lambda: hou.paneTabType.NetworkEditor,
         pwd=lambda: net,
@@ -46,7 +46,7 @@ def _fake_editor(net, items=(), cursor=(0.0, 0.0), under_cursor=True):
 
 
 class _ReleaseCase(unittest.TestCase):
-    """Shared harness: a real panel, and the pane handed in rather than found."""
+    """Shared setup: a real panel, and the pane under the pointer patched in, not looked up."""
 
     @classmethod
     def setUpClass(cls):
@@ -56,7 +56,7 @@ class _ReleaseCase(unittest.TestCase):
         self.addCleanup(test_support.clear_obj)
 
     def _patch(self, editor):
-        """Serve `editor` as the pane under the pointer for this test."""
+        """Return `editor` as the pane under the pointer for this test."""
         patch = mock.patch.object(dragengine, "pane_tab_under_cursor",
                                   return_value=editor)
         patch.start()
@@ -84,19 +84,19 @@ class TheReleaseResolvesToTheNetworkUnderThePointer(_ReleaseCase):
         self._patch(_fake_editor(hou.node("/obj"), items=[(net,)]))
         self.assertEqual(
             net, self.panel.drop_placement.context_under_cursor(self.matcher),
-            "a release over a container landed beside it")
+            "a release over a container placed the nodes beside it")
 
     def test_a_node_the_rule_rejects_falls_back_to_the_editor(self):
-        """A node this section cannot fill is not a target."""
+        """A node the matcher rejects is not a target."""
         obj = hou.node("/obj")
         geo = obj.createNode("geo", "not_a_target")
         self._patch(_fake_editor(obj, items=[(geo,)]))
         self.assertEqual(
             obj, self.panel.drop_placement.context_under_cursor(lambda _node: False),
-            "a rejected node swallowed the release")
+            "a rejected node was returned as the target")
 
     def test_a_bare_item_is_walked_like_a_tuple(self):
-        """Hits arrive as tuples, and a bare item has to survive the walk too."""
+        """`networkItemsInBox` returns tuples; a bare item must be handled too."""
         net = hou.node("/obj").createNode("copnet", "bare_cop")
         self._patch(_fake_editor(hou.node("/obj"), items=[net]))
         self.assertEqual(
@@ -111,13 +111,13 @@ class TheReleaseResolvesToTheNetworkUnderThePointer(_ReleaseCase):
             self.panel.drop_placement.context_under_cursor(self.matcher))
 
     def test_no_pane_under_the_pointer_resolves_to_nothing(self):
-        """Released over the desktop, nothing is consulted."""
+        """Released over the desktop, there is no pane, so None is returned."""
         self._patch(None)
         self.assertIsNone(
             self.panel.drop_placement.context_under_cursor(self.matcher))
 
     def test_the_chrome_of_a_pane_is_not_its_canvas(self):
-        """Over a toolbar there are no items, so the shown network still wins."""
+        """Over a toolbar there are no items, so the shown network is returned."""
         net = hou.node("/obj").createNode("copnet", "chrome_cop")
         self._patch(_fake_editor(net, items=[(net,)], under_cursor=False))
         self.assertEqual(
@@ -125,7 +125,7 @@ class TheReleaseResolvesToTheNetworkUnderThePointer(_ReleaseCase):
 
 
 class TheNodeDropLandsWhereItWasReleased(_ReleaseCase):
-    """`drop_cop_at_release`: the Node section's release verb, end to end."""
+    """`drop_cop_at_release`: the Node section's drop handler, end to end."""
 
     def setUp(self):
         super().setUp()
@@ -143,7 +143,7 @@ class TheNodeDropLandsWhereItWasReleased(_ReleaseCase):
                 len(self.panel.cop_model.assets) - 1, 0))
 
     def test_the_network_lands_in_the_editors_network_at_the_cursor(self):
-        """The body centres on the release point - the host's own convention."""
+        """The created nodes centre on the release point, as Houdini places new nodes."""
         index = self._saved_cop_asset()
         dest = hou.node("/obj").createNode("copnet", "drop_dest")
         self._patch(_fake_editor(dest, cursor=(4.0, -2.5)))
@@ -153,12 +153,12 @@ class TheNodeDropLandsWhereItWasReleased(_ReleaseCase):
         anchor = helpers.centred_on(hou.Vector2(4.0, -2.5))
         self.assertAlmostEqual(
             anchor.x(), sum(n.position().x() for n in landed) / len(landed),
-            msg="the nodes did not land where the release happened")
+            msg="the nodes were not placed where the release happened")
         self.assertAlmostEqual(
             anchor.y(), sum(n.position().y() for n in landed) / len(landed))
 
     def test_an_invalid_index_lands_nothing(self):
-        """A drag armed on blank grid space arrives invalid, and row -1 indexes the LAST asset."""
+        """A drag started on blank grid space has an invalid index; row -1 is the LAST asset."""
         self._saved_cop_asset()
         dest = hou.node("/obj").createNode("copnet", "untouched")
         self._patch(_fake_editor(dest))
@@ -168,20 +168,20 @@ class TheNodeDropLandsWhereItWasReleased(_ReleaseCase):
                          "an invalid index still built a network")
 
     def test_a_release_over_nothing_is_silent(self):
-        """A miss builds nothing and reports no error."""
+        """A release over no pane builds nothing and reports no error."""
         index = self._saved_cop_asset()
         self._patch(None)
         self.assertFalse(self.section.drop_cop_at_release(index))
 
     def test_a_refused_context_goes_to_the_status_line_with_the_network(self):
-        """A wrong context is bad AIM, so it takes the quiet door. ▸p/refusal-sink"""
+        """A wrong context is a user aiming error: `debug.refuse`, no dialog. ▸p/refusal-sink"""
         index = self._saved_cop_asset()
         dest = hou.node("/obj").createNode("matnet", "vop_dest")
         self._patch(_fake_editor(dest))
         with mock.patch.object(debug, "refuse") as refused:
             self.assertTrue(self.section.drop_cop_at_release(index))
         self.assertTrue(refused.call_args_list,
-                        "premise: a VOP network refuses this asset")
+                        "premise: a VOP network does not accept this asset")
         reason, data = (refused.call_args.args[0],
                         refused.call_args.kwargs)
         self.assertNotIsInstance(
@@ -189,11 +189,11 @@ class TheNodeDropLandsWhereItWasReleased(_ReleaseCase):
             "a mismatched context was reported as library damage, which "
             "opens a dialog mid-gesture")
         self.assertEqual(dest.path(), data.get("net"),
-                         "the refusal did not record WHICH network refused")
+                         "`debug.refuse` did not record WHICH network rejected it")
 
 
 class MaterialNetworkGateTest(unittest.TestCase):
-    """A material release lands only where the network accepts a VOP; elsewhere it creates nothing."""
+    """A material drop creates nodes only where the network accepts a VOP; elsewhere none."""
 
     @classmethod
     def setUpClass(cls):
@@ -231,12 +231,12 @@ class MaterialNetworkGateTest(unittest.TestCase):
                 ok = self.section.drop_material_at_release(index)
         self.assertFalse(
             ok, "a release in /obj imported - Houdini's own nodes "
-                "refuse the wrong context and so must ours")
+                "reject the wrong context and so must ours")
         self.assertEqual(before_obj, len(obj.children()),
                          "something was created in /obj")
         self.assertEqual(before_mat, len(mat.children()),
-                         "the refusal fell back to /mat - strictly "
-                         "nothing was the ruling")
+                         "the rejected drop fell back to /mat - it "
+                         "must create nothing at all")
 
     def test_a_matlib_release_builds_inside_it(self):
         from amaze.core import renderers
@@ -246,7 +246,7 @@ class MaterialNetworkGateTest(unittest.TestCase):
              if renderers.is_karma(str(a.renderer))), None)
         self.assertIsNotNone(karma_row,
                              "premise: a Karma material exists - a "
-                             "Redshift one is refused at a LOP library "
+                             "Redshift one is rejected at a LOP library "
                              "by design")
         index = self.panel.material_sorted_model.mapFromSource(
             model.index(karma_row, 0))
@@ -267,8 +267,8 @@ class MaterialNetworkGateTest(unittest.TestCase):
         from amaze.panel import sections
         self.assertEqual(
             "Vop", sections.MaterialSection.DROP.context,
-            "the verb and the live ghost both read the declaration - "
-            "an empty context gates nothing")
+            "the drop handler and the drag ghost both read `DROP.context` - "
+            "an empty context blocks nothing")
 
     def test_the_snap_degrades_to_none_headless(self):
         matnet = hou.node("/obj").createNode("matnet")
@@ -287,16 +287,16 @@ class MaterialNetworkGateTest(unittest.TestCase):
         self.addCleanup(lopnet.destroy)
         self.assertEqual(
             (0.5, 0.5), dragengine._ghost_half_for(_fake_editor(lopnet)),
-            "non-VOP contexts hand the NodeShape a SQUARE, the host's "
-            "own trick (nodegraphselectpos.py) - the shape keeps its "
+            "non-VOP contexts give the NodeShape a SQUARE, as Houdini's "
+            "own nodegraphselectpos.py does - the shape keeps its "
             "natural proportions inside it, matching a standard node")
         self.assertEqual(
             (0.5, 0.15),
             dragengine._ghost_half_for(_fake_editor(matnet)),
-            "VOP contexts use the flat new-node half, as the host does")
+            "VOP contexts use the flat new-node half, as Houdini does")
 
     def test_the_ghost_reads_the_hosts_half_size(self):
-        """`nodegraphutils.getNewNodeHalfSize()` is asked, never copied; headless it cannot import."""
+        """`nodegraphutils.getNewNodeHalfSize()` is used, never copied; headless it cannot import."""
         import sys
         import types
         host = types.ModuleType("nodegraphutils")

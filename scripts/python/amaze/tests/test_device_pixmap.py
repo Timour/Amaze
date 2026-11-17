@@ -1,4 +1,4 @@
-"""`device_pixmap` renders at a rounded `side * dpr` and stamps it; offscreen Qt is always dpr 1."""
+"""`device_pixmap` renders at a rounded `side * dpr` and sets the ratio; offscreen Qt is dpr 1."""
 
 import os
 import sys
@@ -21,7 +21,7 @@ from amaze.tests import test_support  # noqa: E402 - redirects the log
 SQUARE = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">'
           '<rect width="10" height="10" fill="currentColor"/></svg>')
 
-PENDING = ()   # exact both ways: a new hand-rolled site reddens, and so does a stale entry
+PENDING = ()   # exact both ways: a new hand-rolled site fails the test, and so does a stale entry
 
 
 def _svg(testcase):
@@ -53,7 +53,7 @@ class ADevicePixmapIsRoundedAndStamped(unittest.TestCase):
 class TheFourSitesDrawThroughIt(unittest.TestCase):
 
     def test_no_site_hand_rolls_the_contract_any_more(self):
-        """`render_svg_pixmap` beside `setDevicePixelRatio` outside `device_pixmap` is hand-rolling."""
+        """Code outside `device_pixmap` calling `render_svg_pixmap` and `setDevicePixelRatio`."""
         import ast
         import re
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -82,9 +82,9 @@ class TheFourSitesDrawThroughIt(unittest.TestCase):
                             scope.name))
         self.assertEqual(
             sorted(PENDING), sorted(offenders),
-            "the hand-rolled set moved: a NEW site rasterises and stamps "
-            "by hand, or a PENDING one was adopted and not removed from "
-            "the tuple")
+            "the hand-rolled set changed: a NEW function rasterises and "
+            "sets the ratio itself, or a PENDING one now calls "
+            "device_pixmap and was not removed from the tuple")
         self.assertTrue(
             re.search(r"def device_pixmap", open(os.path.join(
                 root, "helpers", "ui_helpers.py"),

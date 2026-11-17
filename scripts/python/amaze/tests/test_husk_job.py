@@ -1,4 +1,4 @@
-"""One background husk per batch: command, per-frame swap, progress, Cancel. ▸r/husk-startup"""
+"""One background husk per batch: command, material per frame, progress, Cancel. ▸r/husk-startup"""
 
 import os
 import shutil
@@ -32,7 +32,7 @@ OCTANE_SHADER = "octane::NT_MAT_STANDARD_SURFACE"
 
 
 def _patch_viewer(testcase):
-    """Headless there is no Scene Viewer: both seams that read one answer this OCIO."""
+    """Headless there is no Scene Viewer: both `ocio_from_viewer` functions return this OCIO."""
     for target in (preview.thumbnail_scene, preview):
         patcher = mock.patch.object(target, "ocio_from_viewer", lambda: dict(OCIO))
         patcher.start()
@@ -40,7 +40,7 @@ def _patch_viewer(testcase):
 
 
 def _plastic(testcase, colour):
-    """The plastic fixture in a plain holder, its base colour set."""
+    """The plastic fixture loaded into a plain subnet, its base colour set."""
     holder = hou.node("/mat").createNode("subnet")
     testcase.addCleanup(test_support.drop_node, holder)
     holder.loadItemsFromFile(os.path.join(material.section_folder(
@@ -141,7 +141,7 @@ class TheCommandAndItsEnvironment(unittest.TestCase):
         self.assertEqual("1", octane[octane.index("--restart-delegate") + 1])
 
     def test_the_bar_climbs_over_the_batch_not_per_frame(self):
-        """husk counts each frame from 0 to 100; three frames must not run the bar up three times."""
+        """husk counts each frame from 0 to 100; three frames must not fill the bar three times."""
         job = self._job("Karma", 3)
         seen = []
         job.progressed.connect(lambda done, total: seen.append(done))
@@ -150,7 +150,7 @@ class TheCommandAndItsEnvironment(unittest.TestCase):
                      "%s 2" % husk_job.DONE, "%s 100%%" % husk_job.PROGRESS):
             job._handle(line)
         self.assertEqual([16, 33, 50, 100], seen)
-        self.assertEqual(seen, sorted(seen), "the bar went backwards")
+        self.assertEqual(seen, sorted(seen), "the progress value went down")
 
     def test_a_script_path_with_a_space_is_quoted(self):
         self.assertEqual('"/a b/p.py"', husk_job._script_arg("/a b/p.py"))
@@ -158,7 +158,7 @@ class TheCommandAndItsEnvironment(unittest.TestCase):
 
 
 class ARenderIsJudgedByItsFrames(unittest.TestCase):
-    """22.0.482's husk exits 139 after its last frame ▸r/husk-startup; a stand-in husk plays it."""
+    """22.0.482's husk exits 139 after its last frame ▸r/husk-startup; a fake husk does the same."""
 
     def _run(self, reported):
         """A three-frame job whose stand-in husk reports `reported` frames done, then exits 139."""
@@ -176,7 +176,7 @@ class ARenderIsJudgedByItsFrames(unittest.TestCase):
     def test_an_exit_after_every_frame_is_done(self):
         job, log = self._run(3)
         self.assertEqual("done", job.status)
-        self.assertEqual([], log.matching("render stopped"), "a finished render said it stopped")
+        self.assertEqual([], log.matching("render stopped"), "a finished render logged `render stopped`")
         finished = [(r["data"].get("status"), r["data"].get("code"))
                     for r in log.records("thumb") if r["msg"] == "husk finished"]
         self.assertEqual([("done", 139)], finished, "the log lost husk's exit code")
@@ -185,11 +185,11 @@ class ARenderIsJudgedByItsFrames(unittest.TestCase):
         job, log = self._run(2)
         self.assertEqual("failed: husk exit 139", job.status)
         self.assertEqual(1, len(log.matching("render stopped (husk exit 139)")),
-                         "a render missing a frame did not say so")
+                         "a render missing a frame was not logged as stopped")
 
 
 class AFrameWithNoPictureIsRecorded(unittest.TestCase):
-    """A frame husk calls done with no EXR, or one that converts to nothing, is in the log."""
+    """A frame husk reports done with no EXR, or one that converts to no PNG, is logged."""
 
     def _run(self, write_exr):
         """A two-frame job whose stand-in husk reports both done, writing frame 1's EXR or not."""
@@ -212,7 +212,7 @@ class AFrameWithNoPictureIsRecorded(unittest.TestCase):
                 mock.patch.object(preview, "exr_to_png", return_value=False), \
                 test_support.captured_log() as log:
             husk_job.jobs.submit(job, blocking=True)
-        self.assertEqual([], written, "a tile was told a picture landed")
+        self.assertEqual([], written, "`thumbnailWritten` was emitted with no picture written")
         return [(r["data"].get("asset_id"), r["data"].get("frame"))
                 for r in log.records("thumb") if r["data"].get("frame") is not None]
 
@@ -224,7 +224,7 @@ class AFrameWithNoPictureIsRecorded(unittest.TestCase):
 
 
 class QuittingLeavesNoJobFolder(unittest.TestCase):
-    """At Houdini's exit the running husk stops and every job's folder goes with it."""
+    """At Houdini's exit the running husk is stopped and every job's folder is removed."""
 
     def _sleeper(self, jobs):
         folder = test_support.scratch_dir("amaze_husk_quit_")
@@ -248,11 +248,11 @@ class QuittingLeavesNoJobFolder(unittest.TestCase):
         jobs.stop_now()
         self.assertFalse(os.path.exists(running.job_dir), "the running job's folder was left")
         self.assertFalse(os.path.exists(waiting.job_dir), "a waiting job's folder was left")
-        self.assertIsNotNone(running._proc.poll(), "husk outlived the session")
+        self.assertIsNotNone(running._proc.poll(), "husk still runs after stop_now")
 
 
 class AFailedStageWriteLeavesNoFolder(unittest.TestCase):
-    """`render_batch` removes its job folder on every way out of the stage write."""
+    """`render_batch` removes its job folder whatever exception the stage write raises."""
 
     def test_any_exception_from_the_write_takes_the_folder(self):
         _patch_viewer(self)
@@ -302,7 +302,7 @@ class ThePreFrameScriptBindsFrameNsMaterial(unittest.TestCase):
 
 
 class OneHuskRendersEachMaterial(unittest.TestCase):
-    """Real renders through `render_batch`, here in hython where it runs to the end."""
+    """Real renders through `render_batch`, here in hython where it waits for husk to finish."""
 
     def setUp(self):
         _patch_viewer(self)
@@ -340,7 +340,7 @@ class OneHuskRendersEachMaterial(unittest.TestCase):
 
 
 class AHuskThatWillNotStopIsKilled(unittest.TestCase):
-    """A Redshift husk stuck in a texture conversion ignored its terminate. ▸r/redshift-thumbnail-paths"""
+    """A Redshift husk stuck in a texture conversion ignored SIGTERM. ▸r/redshift-thumbnail-paths"""
 
     def _deaf_job(self):
         folder = test_support.scratch_dir("amaze_husk_deaf_")
@@ -363,8 +363,8 @@ class AHuskThatWillNotStopIsKilled(unittest.TestCase):
             started = time.monotonic()
             job.run_blocking()
         self.assertEqual("cancelled", job.status)
-        self.assertIsNotNone(job._proc.poll(), "the husk outlived its cancel")
-        self.assertLess(time.monotonic() - started, 15.0, "the kill came late")
+        self.assertIsNotNone(job._proc.poll(), "the husk still runs after cancel")
+        self.assertLess(time.monotonic() - started, 15.0, "the kill took 15 s or more")
 
     def test_a_quiet_husk_is_stalled_and_killed(self):
         job = self._deaf_job()
@@ -375,8 +375,8 @@ class AHuskThatWillNotStopIsKilled(unittest.TestCase):
             job.run_blocking()
         self.assertEqual("failed: stalled", job.status)
         self.assertIsNotNone(job._proc.poll(), "the stalled husk was left running")
-        self.assertLess(time.monotonic() - started, 15.0, "the stall was found late")
-        self.assertEqual(1, len(log.matching("printed nothing")), "the stall was not said")
+        self.assertLess(time.monotonic() - started, 15.0, "the stall took 15 s or more to detect")
+        self.assertEqual(1, len(log.matching("printed nothing")), "the stall was not logged")
 
 
 class TheBackgroundQueue(unittest.TestCase):

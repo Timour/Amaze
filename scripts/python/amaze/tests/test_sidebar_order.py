@@ -34,7 +34,7 @@ def _categories(testcase, entries):
 
 
 class SortByNameTest(unittest.TestCase):
-    """The one-off Sort by name: everything below All lands alphabetically and is saved; not a mode."""
+    """The one-off Sort by name: everything below All is sorted by name and saved; not a mode."""
 
     def test_the_categories_land_alphabetically_below_All(self):
         model = _categories(self, ["_All", "b", "Zed", "a"])
@@ -65,7 +65,7 @@ class SortByNameTest(unittest.TestCase):
         self.assertEqual(["_All", "Apple", "_WIP"], model._categories)
 
     def test_a_non_string_row_does_not_raise(self):
-        """`_categories` comes raw off materials.json, so the sort survives whatever the file holds."""
+        """`_categories` is read raw from materials.json, so the sort accepts whatever it holds."""
         model = _categories(self, ["_All", "b", 3])
         with mock.patch.object(model, "save"):
             model.sort_categories()
@@ -109,7 +109,7 @@ class TheSortVerbKeepsTheSidebarStandingSomewhere(unittest.TestCase):
         cat_list.selectionModel().select(
             standing,
             QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
-        self.panel.update_selected_cat()    # the click: where you stand is the grid's row
+        self.panel.update_selected_cat()    # as a click does: the selected row sets the grid's filter
 
         section.menu_sort_categories((), None)
 
@@ -119,12 +119,12 @@ class TheSortVerbKeepsTheSidebarStandingSomewhere(unittest.TestCase):
             "grid kept its filter")
         self.assertEqual(
             "b", cat_list.currentIndex().data(),
-            "the sort moved the user off the category they were "
-            "standing in")
+            "the sort changed the current row away from the category "
+            "selected before")
 
 
 class DeletingTheLastOfACategoryStandsTheSidebarOnAll(unittest.TestCase):
-    """Deleting the last asset of a hidden-when-empty category lands the sidebar on All."""
+    """Deleting the last asset of a hidden-when-empty category selects All in the sidebar."""
 
     @classmethod
     def setUpClass(cls):
@@ -140,7 +140,7 @@ class DeletingTheLastOfACategoryStandsTheSidebarOnAll(unittest.TestCase):
         panel.refresh_sidebar_categories()
         self.assertTrue(
             panel._stand_on_category("Karma_Mats"),
-            "the fixture sidebar has no Karma_Mats row to stand on")
+            "the fixture sidebar has no Karma_Mats row to select")
         model = panel.material_model
         rows = [model.index(row, 0) for row, asset in enumerate(model.assets)
                 if "Karma_Mats" in list(asset.categories)]
@@ -154,14 +154,14 @@ class DeletingTheLastOfACategoryStandsTheSidebarOnAll(unittest.TestCase):
                  if proxy.index(r, 0).data() == "Karma_Mats"), None),
             "the emptied category is still shown")
         current = panel.cat_list.currentIndex()
-        self.assertTrue(current.isValid(), "the sidebar stands nowhere")
+        self.assertTrue(current.isValid(), "the sidebar has no current row")
         self.assertEqual(
             "All", current.data(),
             "the sidebar did not move to All after its category was hidden")
         stored = getattr(panel.material_sorted_model, "_filters", {})
         self.assertNotIn(
             model.CategoryRole, stored,
-            "the grid is still filtered on the category that vanished")
+            "the grid is still filtered on the category that was hidden")
 
 
 class MoveCategoryTest(unittest.TestCase):
@@ -197,7 +197,7 @@ class MoveCategoryTest(unittest.TestCase):
         self.assertFalse(model.move_category(1, 1))
         self.assertFalse(model.move_category(1, 9))
         self.assertFalse(model.move_category(9, 1))
-        self.assertEqual([], seen, "a refused move emitted signals")
+        self.assertEqual([], seen, "a rejected move emitted signals")
 
     def test_the_move_mutates_in_place_and_does_not_save(self):
         """The gesture saves ONCE on release: the move neither rebinds nor writes."""
@@ -240,7 +240,7 @@ class OrderSnapshotTest(unittest.TestCase):
 
 
 class SidebarShowsStoredOrderTest(unittest.TestCase):
-    """The sidebar proxy PRESENTS, it does not sort."""
+    """The sidebar proxy shows the stored order; it does not sort."""
 
     def _proxy(self, entries):
         model = _categories(self, entries)
@@ -277,7 +277,7 @@ class PanelWiresNoSidebarSortTest(unittest.TestCase):
         with open(os.path.join(root, "panel", "panel.py"),
                   encoding="utf-8") as handle:
             cls.panel_source = handle.read()
-        # A wrapped call is the same call: the needles match whitespace-free.
+        # A call wrapped over lines is the same call: the searches ignore whitespace.
         cls.flat_source = "".join(cls.panel_source.split())
 
     def test_no_sidebar_proxy_is_sorted_or_sort_roled(self):
@@ -287,15 +287,15 @@ class PanelWiresNoSidebarSortTest(unittest.TestCase):
                 self.assertNotIn(
                     needle, self.flat_source,
                     "%s - the sidebar shows STORED order; sorting it "
-                    "is the '2 above All' bug coming back" % needle)
+                    "is the '2 above All' bug again" % needle)
 
     def test_color_goes_through_the_shared_sidebar_proxy(self):
         """Every sidebar, Color included, is built by `_sidebar_proxy`, which never sorts."""
         for attr in self.SIDEBAR_PROXIES:
             self.assertIn(
                 "self.%s=self._sidebar_proxy(" % attr, self.flat_source,
-                "%s bypasses the shared sidebar proxy - the odd one out "
-                "is how the sections drifted apart in the first place" % attr)
+                "%s does not use the shared sidebar proxy - one section built "
+                "differently is how the sections came to differ before" % attr)
         start = self.panel_source.index("def _sidebar_proxy(")
         body = self.panel_source[start:self.panel_source.index("\n    def ", start + 1)]
         self.assertIn("category.CategoriesSidebarProxy(", body)
@@ -303,10 +303,10 @@ class PanelWiresNoSidebarSortTest(unittest.TestCase):
             self.assertNotIn(call, body, "the shared sidebar proxy sorts")
 
     def test_the_save_dialog_dropdown_keeps_its_sort(self):
-        """Alphabetical by the label a row shows, sorted in the ONE category-names home."""
+        """Alphabetical by the label a row shows, sorted only in `category_names_from`."""
         from amaze.panel.panel import AmazePanel
 
-        class _Stored:    # the three calls the home makes of a Categories model
+        class _Stored:    # the three calls `category_names_from` makes on a Categories model
             CatSortRole = 256
 
             def __init__(self, names):
@@ -334,18 +334,18 @@ class PanelWiresNoSidebarSortTest(unittest.TestCase):
         self.assertIn(    # the three asset sections share one body over their own categories
             "returnpanel.category_names_from(st.categories),", sections_flat,
             "the asset sections' list no longer comes straight from "
-            "the ONE category-names home")
+            "`category_names_from`")
 
 
 class ReorderContractTest(unittest.TestCase):
-    """Every section answers the reorder contract; the gesture asks the CONTEXT."""
+    """Every section has the reorder methods; the gesture calls them on the CONTEXT."""
 
     def test_the_five_sections_reorder_and_online_does_not(self):
         from amaze.panel import sections
         for cls in sections.SECTION_CLASSES:
             self.assertTrue(
                 getattr(cls, "reorders_sidebar", False),
-                "%s does not answer the reorder gesture" % cls.key)
+                "%s does not support the reorder gesture" % cls.key)
         self.assertFalse(
             getattr(sections.OnlineContext, "reorders_sidebar", True),
             "the online sources are fixed - nothing to reorder")
@@ -362,7 +362,7 @@ class ReorderContractTest(unittest.TestCase):
 
 
 class _RecordingSection:
-    """The contract the gesture speaks, recorded - the state machine is under test."""
+    """Records the section calls the gesture makes; the state machine is under test."""
 
     reorders_sidebar = True
 
@@ -516,7 +516,7 @@ class HoldGestureTest(unittest.TestCase):
         controller.eventFilter(view, esc)
         self.assertFalse(controller.reordering())
         self.assertEqual(["_All", "a", "b", "c"], model._categories)
-        self.assertEqual(1, section.stood, "the highlight the reset cleared was not put back")
+        self.assertEqual(1, section.stood, "`stand_again` was not called to restore the cleared highlight")
         self._release(view, controller, self._row_center(view, 3))
         self.assertEqual(0, section.commits)
 
@@ -529,7 +529,7 @@ class HoldGestureTest(unittest.TestCase):
         self.assertEqual(0, section.commits)
 
     def test_a_reset_returns_every_field_to_its_born_state(self):
-        """The blank slate is written ONCE: a field one of the pair misses reddens here."""
+        """The initial state is written ONCE: a field that `_reset` misses fails here."""
         _model, _proxy, view, _section, controller = self._harness()
         born = dict(vars(controller))
         self._press(view, controller, 1)
@@ -556,10 +556,10 @@ class HoldGestureTest(unittest.TestCase):
 
 
 class FolderOrderTest(unittest.TestCase):
-    """The File sidebar speaks the same gesture; a move goes through `locations`."""
+    """The File sidebar uses the same gesture; a move goes through `locations`."""
 
     def _base(self):
-        """A realpath'd scratch root - the location store speaks resolved paths."""
+        """A realpath'd scratch root - the location store uses resolved paths."""
         base = os.path.realpath(tempfile.mkdtemp(prefix="amaze_folders_"))
         self.addCleanup(shutil.rmtree, base, True)
         return base
@@ -591,21 +591,21 @@ class FolderOrderTest(unittest.TestCase):
                          prefs.file_folders)
 
     def test_a_move_accepts_ANY_spelling_of_a_registered_path(self):
-        """The door NORMALISES what it is handed, like every sibling. ▸p/one-file-one-table"""
+        """`move_registered` NORMALISES the path given, like the others. ▸p/one-file-one-table"""
         from amaze.core import locations
         base = self._base()
         one, two, three = (os.path.join(base, n) for n in ("1", "2", "3"))
         prefs = self._prefs([one, two, three])
         detour = os.path.join(base, "elsewhere", os.pardir, "1")
-        self.assertNotEqual(detour, one, "the detour spelling collapsed "
-                                         "before the door ever saw it")
+        self.assertNotEqual(detour, one, "the detour spelling was normalised "
+                                         "before `move_registered` got it")
         self.assertTrue(locations.move_registered(prefs, detour, 2))
         self.assertEqual([test_support.posix_path(p)
                           for p in (two, three, one)],
                          prefs.file_folders)
 
     def test_a_move_works_where_the_STORED_spelling_is_not_the_absolute(self):
-        """Red for the plausible wrong fix: normalising the CALLER alone. ▸p/one-file-one-table"""
+        """Fails for the likely wrong fix: normalising in the CALLER alone. ▸p/one-file-one-table"""
         from amaze.core import locations
         from amaze.helpers import hostos
         base = self._base()
@@ -693,7 +693,7 @@ class FolderOrderTest(unittest.TestCase):
                          "premise: the rename is the label")
         with mock.patch.object(prefs, "save") as save:
             self.assertTrue(model.sort_folders())
-        save.assert_not_called()    # staged like a move; the verb commits once
+        save.assert_not_called()    # staged like a move; the menu action commits once
         self.assertEqual([test_support.posix_path(p) for p in (apple, zebra, cherry)],
                          prefs.file_folders)
         self.assertEqual(model.SCENE_LABEL, model.index(1, 0).data(), "the scene row moved")
@@ -708,7 +708,7 @@ class FolderOrderTest(unittest.TestCase):
         two, one = (os.path.join(base, n) for n in ("2", "1"))
         prefs = self._prefs([two, one])
         model = file_library.FileFolders(prefs)
-        section = sections.FileSection.__new__(sections.FileSection)    # the verb alone: no panel behind it
+        section = sections.FileSection.__new__(sections.FileSection)    # the menu action alone, with no panel
         with mock.patch.object(sections.FileSection, "_p", lambda _s, _name: model), \
                 mock.patch.object(sections.FileSection, "standing_key", lambda _s: ""), \
                 mock.patch.object(sections.FileSection, "stand_on_key") as stand, \
@@ -723,14 +723,14 @@ class FolderOrderTest(unittest.TestCase):
 
 
 class EverySidebarSourceMovesCategories(unittest.TestCase):
-    """`_sidebar_categories` hands back any source it finds, and the reorder calls `move_category`."""
+    """`_sidebar_categories` returns any source it finds, and the reorder calls `move_category`."""
 
     @classmethod
     def setUpClass(cls):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
     def test_every_sidebar_with_a_source_holds_one_that_moves_categories(self):
-        """Asked of every context the panel built, through the lookup the reorder itself uses."""
+        """Checked for every context the panel built, through the lookup the reorder uses."""
         panel = self.panel
         sourced = []
         for key, context in dict(panel.sections, online=panel.online_context).items():

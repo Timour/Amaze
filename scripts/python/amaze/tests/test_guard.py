@@ -1,4 +1,4 @@
-"""The guard: tickets, one-unit changes proven by stopping the disk at every step, backups, trash."""
+"""`guard`: tickets, all-or-nothing changes tested by stopping at every disk step, backups, trash."""
 
 import datetime
 import json
@@ -10,18 +10,18 @@ import unittest
 from amaze import branding
 from amaze.core import guard
 from amaze.helpers import hostos
-from amaze.tests import test_support  # noqa: F401 - arms the sandbox for a run on its own
+from amaze.tests import test_support  # noqa: F401 - sets up the sandbox when run alone
 
 MATERIALS = "materials.json"
 NODES = "nodes.json"
 
 
 class Stop(Exception):
-    """The disk died at the chosen step."""
+    """Raised when the disk stops at the chosen step."""
 
 
 class StoppingDisk(guard.Disk):
-    """A real disk that dies at step `at`: before the step, or halfway through a write."""
+    """A real disk that stops at step `at`: before the step, or halfway through a write."""
 
     def __init__(self, at: int = 0, torn: bool = False) -> None:
         self.at, self.torn, self.steps, self.dead = at, torn, 0, False
@@ -62,7 +62,7 @@ class StoppingDisk(guard.Disk):
 
 
 class Clock:
-    """A clock a test moves by hand."""
+    """A fake clock that a test advances with `forward`."""
 
     def __init__(self) -> None:
         self.at = datetime.datetime(2026, 11, 16, 10, 0, 0)
@@ -131,7 +131,7 @@ class _Library(unittest.TestCase):
 
 
 class StoppedAtEveryStepTest(unittest.TestCase):
-    """Each operation, stopped at each step in turn: the library reopens all old or all new."""
+    """Each operation, stopped at each step in turn: the reopened library is all old or all new."""
 
     OPERATIONS = ("one_database", "a_new_database", "many_files", "a_restore", "a_taken_file")
 
@@ -227,7 +227,7 @@ class BusyDisk(guard.Disk):
 
 
 class AChangeThatWaitsOnAFileTest(_Library):
-    """A change with one file in use is recorded: it reports done, and lands when the file is free."""
+    """A change with a file in use is recorded: it reports done, and finishes when it is free."""
 
     def test_it_is_not_reported_failed_and_lands_once_the_file_is_free(self):
         disk = BusyDisk("materials/A002.mat")
@@ -238,9 +238,9 @@ class AChangeThatWaitsOnAFileTest(_Library):
         change.remove("materials/A002.mat")
         tickets = change.commit()
         self.assertIn(MATERIALS, tickets)
-        self.assertTrue(change.waiting, "the change did not say it waits on a file")
+        self.assertTrue(change.waiting, "`change.waiting` is not set while a file is in use")
         self.assertEqual(guard.HELD, held.read(MATERIALS).verdict,
-                         "a database read as settled while a change on it is half in place")
+                         "a database is not HELD while a change to it is half applied")
         disk.free = True
         reading = held.read(MATERIALS)
         self.assertEqual(guard.FINE, reading.verdict)
@@ -260,7 +260,7 @@ class AChangeThatWaitsOnAFileTest(_Library):
 
 
 class AnOlderLibraryHasNoMissingMasterTest(unittest.TestCase):
-    """An older library's `code.json` shares a 2.0 name; it is no proof a master was here."""
+    """An older library's `code.json` has a 2.0 file name; it does not show a master existed."""
 
     def test_its_master_reads_fresh(self):
         folder = tempfile.mkdtemp(prefix="amaze_guard_old_")
@@ -312,7 +312,7 @@ class NoTicketNoWriteTest(_Library):
     def test_only_the_manifest_says_a_database_existed(self):
         put(self.dir, "backup/%s.2026-11-01_090000.bak" % NODES, assets(3))
         self.assertEqual(guard.FRESH, self.guard.read(NODES).verdict,
-                         "a backup file was taken as proof where the manifest names nothing")
+                         "a backup file counted as a past database though the manifest lists none")
 
     def test_a_missing_master_beside_other_databases_is_known(self):
         os.remove(self.at(guard.MASTER))
@@ -404,7 +404,7 @@ class AChangeMeetsTheFileAsItIsTest(_Library):
 
 
 class BackupsTest(_Library):
-    """A backup is the old bytes, spaced, never a repeat, and pruned to the rule."""
+    """A backup holds the old bytes, spaced in time, never a duplicate, pruned by age."""
 
     def stamps(self) -> list:
         return [when.strftime("%m-%d %H:%M") for _name, when in self.guard.backups(MATERIALS)]
@@ -529,7 +529,7 @@ class TrashTest(_Library):
 
 
 class TakenFileTest(_Library):
-    """A file Houdini already wrote lands with the rest of a change, or not at all."""
+    """A file Houdini already wrote is moved in with the rest of a change, or not at all."""
 
     def test_a_scratch_inside_the_library_is_moved_into_place(self):
         written = put(self.dir, "materials/A007.mat.h" + guard.SCRATCH, b"from Houdini")

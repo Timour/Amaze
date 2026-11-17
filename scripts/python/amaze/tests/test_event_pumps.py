@@ -1,4 +1,4 @@
-"""Gate, read from source: a shipped `processEvents` must exclude user input, or a click re-enters."""
+"""Source scan: each shipped `processEvents` must exclude user input, or a click re-enters."""
 
 import ast
 import os
@@ -10,7 +10,7 @@ _AMAZE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _source_files() -> list:
-    """The shipped modules; tests are excluded, as a test pumps a loop with no user in it."""
+    """The shipped modules; tests are excluded, as a test runs the event loop with no user."""
     found = []
     for root, dirs, files in os.walk(_AMAZE):
         dirs[:] = [d for d in dirs if d not in ("__pycache__", "tests")]

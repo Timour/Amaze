@@ -1,4 +1,4 @@
-"""Check Library 2.0: the guard's judgement in the report, and every fix acting through the guard."""
+"""Check Library 2.0: the report shows what `guard` reads, and every fix writes through `guard`."""
 
 import datetime
 import json
@@ -34,7 +34,7 @@ def _read(directory: str, name: str) -> dict:
 
 
 class _Library(unittest.TestCase):
-    """A small 2.0 library: two materials with their files and metadata, no session holding it."""
+    """A small 2.0 library: two materials with their files and metadata, open in no session."""
 
     def setUp(self):
         test_support.reset_database_singletons()
@@ -138,7 +138,7 @@ class TheFixesActThroughTheGuardTest(_Library):
         self.assertIn("Roofs", stored["categories"])
 
     def test_each_folder_s_pairs_are_recovered_into_its_own_section(self):
-        """No question asked: the materials folder's pairs go to Materials, the nodes folder's to Nodes."""
+        """Without asking: pairs in the materials folder go to Materials, in nodes to Nodes."""
         nodes = os.path.join(self.dir, "nodes")
         long_id = "ABCDEF0123456789ABCDEF0123456789"
         self.asset(long_id, folder=nodes)
@@ -157,7 +157,7 @@ class TheFixesActThroughTheGuardTest(_Library):
         self.assertEqual("Rig", node_rows["RIG1"]["name"])
         self.assertEqual("Recovered MAT9", _read(self.dir, MATERIALS)["assets"]["MAT9"]["name"])
         self.assertTrue(os.path.exists(os.path.join(nodes, "RIG1.png")),
-                        "a file in the other folder did not move home with the row")
+                        "a file in the other folder was not moved to the row's folder")
         self.assertFalse(os.path.exists(os.path.join(self.materials, "RIG1.png")))
 
     def test_a_lost_database_is_rebuilt_from_each_assets_metadata(self):
@@ -255,7 +255,7 @@ def _make(path: str, data: bytes = b"x", age_s: float = 0) -> str:
 
 
 class EverySentenceOfTheReportTest(_Library):
-    """One test per sentence the report can say, each set up so that sentence is true."""
+    """One test per sentence the report can show, each set up so that sentence applies."""
 
     def text(self, findings=None) -> str:
         return "\n".join(repair.report_lines(findings or self.survey()))
@@ -447,7 +447,7 @@ class TheFilesSectionTest(unittest.TestCase):
 
 
 class TheFixesKeepTheirWordTest(_Library):
-    """The fixes the first fix tests leave out: leftovers, unknown files, stars, locations, trash."""
+    """Fixes the tests above leave out: leftovers, unknown files, stars, locations, trash."""
 
     def files_prefs(self):
         test_support.reset_database_singletons()
@@ -499,7 +499,7 @@ class TheFixesKeepTheirWordTest(_Library):
             self.assertFalse(hostos.give_folder_icon(self.dir, package_file("ui", "library_folder")),
                              "a folder with a desktop.ini was given another")
         result = repair.move_aside(self.survey(), "unknown", guard_session=False)
-        self.assertEqual([], result["moved"], "the icon's two files were taken for unknown ones")
+        self.assertEqual([], result["moved"], "the icon's two files were treated as unknown ones")
 
     def test_unknown_files_and_folders_go_to_the_trash(self):
         _make(os.path.join(self.dir, "notes.txt"))
@@ -724,7 +724,7 @@ class _Broken(_Library):
 
 
 class TheTwoFixesTest(_Broken):
-    """Fix Safe adds and tidies only; Fix All also removes, trashes and brings a database back."""
+    """Fix Safe only adds and tidies; Fix All also removes, trashes and restores a database."""
 
     def test_fix_safe_recovers_and_trashes_removes_and_replaces_nothing(self):
         with mock.patch.object(guard.Guard, "restore") as restore, \
@@ -764,7 +764,7 @@ class TheTwoFixesTest(_Broken):
         self.assertEqual([], done["rebuilt"])
         self.assertIn("1 database restored from its backup.", library_check.done_lines(done))
         self.assertEqual({"AAA2", "NEW1"}, set(_read(self.dir, MATERIALS)["assets"]),
-                         "the files were not repaired once the database read again")
+                         "the files were not repaired once the database could be read again")
 
     def test_fix_all_restores_a_missing_database(self):
         test_support.backup_now(self.dir, MATERIALS)
@@ -790,7 +790,7 @@ class TheTwoFixesTest(_Broken):
 
 
 class TheRepairDialogTest(_Broken):
-    """The Repair dialog through a stand-in `hou.ui`: its text, its buttons, what each one does."""
+    """The Repair dialog through a fake `hou.ui`: its text, its buttons, what each one does."""
 
     def run_dialog(self, pick: int, findings=None) -> list:
         from amaze.dialogs import repair_dialog
@@ -823,7 +823,7 @@ class TheRepairDialogTest(_Broken):
         self.assertIn("Materials: " + self.survey()["missing_files"][MATERIALS][0][1], names)
         self.assertEqual(7, len(names), "the dialog does not name each thing its lines count")
         self.assertEqual("Amaze", asked["title"])
-        self.assertEqual(1, len(shown), "Cancel said something")
+        self.assertEqual(1, len(shown), "Cancel showed a second message")
         self.assertEqual((False, 0), (self.landed, self.changed))
         self.assertIn("AAA1", _read(self.dir, MATERIALS)["assets"])
         self.assertEqual([], self.trashed())
@@ -853,7 +853,7 @@ class TheRepairDialogTest(_Broken):
 
 
 class EachRepairGoesRedWhenItIsBrokenTest(unittest.TestCase):
-    """Sabotage: each of the two fixes' tests fails when the step it stands on does nothing."""
+    """Each TheTwoFixesTest test fails when the step it depends on is patched to do nothing."""
 
     SABOTAGES = (
         ("test_fix_safe_recovers_and_trashes_removes_and_replaces_nothing",
@@ -877,11 +877,11 @@ class EachRepairGoesRedWhenItIsBrokenTest(unittest.TestCase):
                 with mock.patch(target, broken):
                     TheTwoFixesTest(name).run(result)
                 self.assertTrue(result.failures or result.errors,
-                                "%s stayed green with %s broken" % (name, target))
+                                "%s passed with %s patched out" % (name, target))
 
 
 class EachFixGoesRedWhenItIsBrokenTest(unittest.TestCase):
-    """Sabotage: each fix's test fails when the guard step it stands on does nothing."""
+    """Each fix's test fails when the guard step it depends on is patched to do nothing."""
 
     SABOTAGES = (
         ("test_restore_a_backup_keeps_the_database_you_have_as_an_undo_copy",
@@ -907,7 +907,7 @@ class EachFixGoesRedWhenItIsBrokenTest(unittest.TestCase):
                 with mock.patch(target, broken):
                     TheFixesActThroughTheGuardTest(name).run(result)
                 self.assertTrue(result.failures or result.errors,
-                                "%s stayed green with %s broken" % (name, target))
+                                "%s passed with %s patched out" % (name, target))
 
 
 if __name__ == "__main__":

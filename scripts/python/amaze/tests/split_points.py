@@ -1,4 +1,4 @@
-"""Cut points in a method that no local crosses; necessary, not sufficient, as `self` is ignored."""
+"""Where a method's locals allow a split; necessary, not sufficient, as `self` is ignored."""
 
 import argparse
 import ast

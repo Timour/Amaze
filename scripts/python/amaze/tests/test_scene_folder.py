@@ -1,4 +1,4 @@
-"""The File sidebar's `$HIP` row: the scene's folder, browsed by the engine every folder uses."""
+"""The File sidebar's `$HIP` row: the scene's folder, browsed by the same code as every folder."""
 
 import os
 import shutil
@@ -15,7 +15,7 @@ import hou  # noqa: E402
 from amaze.core import category  # noqa: E402
 from amaze.helpers import hostos  # noqa: E402
 from amaze.panel import sidebar  # noqa: E402
-from amaze.tests import test_support  # noqa: E402 - arms the sandbox
+from amaze.tests import test_support  # noqa: E402 - sets up the sandbox
 from amaze.tests.test_folder_tree import _shown  # noqa: E402
 
 
@@ -46,7 +46,7 @@ class _SceneCase(unittest.TestCase):
 
 
 class TheSceneRowInTheFileTab(_SceneCase):
-    """Row 1 reads the scene's folder, browses it, and refuses every location verb."""
+    """Row 1 shows the scene's folder, browses it, and allows no location menu action."""
 
     def test_it_reads_the_pinned_scene_folder_at_row_1(self):
         row = self._row()
@@ -64,7 +64,7 @@ class TheSceneRowInTheFileTab(_SceneCase):
         self.assertTrue(section.sidebar_movable(self.folders.index(self.folders._offset(), 0)),
                         "premise: a location can be dragged")
         self.assertFalse(section.on_a_location([row], row),
-                         "Locate, Rename, Remove, Show and Label stay live on the scene row")
+                         "Locate, Rename, Remove, Show and Label stay enabled on the scene row")
         needs = {entry.label: entry.needs for entry in section.SIDEBAR_MENU}
         self.assertEqual("always", needs["Add"])
 
@@ -80,7 +80,7 @@ class TheSceneRowInTheFileTab(_SceneCase):
             self.panel.locate_folder_user(self.folders)
         self.assertEqual([], picked, "Locate opened a folder picker on the scene row")
         self.assertEqual(1, len(said), "Locate said nothing on the scene row")
-        self.assertEqual(before, list(self.folders._folders()), "a location's pointer changed")
+        self.assertEqual(before, list(self.folders._folders()), "a location's path changed")
         self.assertEqual(_hip(), self.folders.scene_folder())
 
     def test_a_click_browses_the_scene_folder_and_remembers_it_by_its_token(self):
@@ -107,24 +107,24 @@ class TheSceneRowInTheFileTab(_SceneCase):
         self.assertEqual(sub, self.files.browsing(), "the grid shows another folder")
         view = self.panel.cat_list
         self.assertTrue(self.folders.is_scene_row(sidebar.top_level(view.currentIndex())),
-                        "the sidebar stands outside the scene row")
-        self.folders.data(self._row(), category.SIDEBAR_COUNT_ROLE)    # a paint asks; headless, ask as it would
+                        "the sidebar's current row is not under the scene row")
+        self.folders.data(self._row(), category.SIDEBAR_COUNT_ROLE)    # painting requests this; headless, request it here
         self.assertTrue(test_support.pump_until(
             lambda: view.currentIndex().data(self.folders.BrowseRole) == sub),
-            "the sidebar never stood on the remembered scene subfolder")
+            "the sidebar never selected the remembered scene subfolder")
 
     def test_a_tile_dragged_onto_it_is_accepted(self):
         self.assertTrue(self.section.accepts_file_drop(self._row()))
 
 
 class TheSceneRowFollowsTheScene(_SceneCase):
-    """Save, Open and New move the row; a grid on the row follows, one on a location stays."""
+    """Save, Open and New change the row; a grid on the row follows, one on a location does not."""
 
     def _save(self) -> str:
         folder = test_support.scratch_dir("amaze_test_saved_scene_")
         self.addCleanup(shutil.rmtree, folder, True)
         self.addCleanup(hou.hipFile.clear, suppress_save_prompt=True)
-        self.addCleanup(self.panel.unwatch_scene)    # first: the clear moves no grid onto the runner's folder
+        self.addCleanup(self.panel.unwatch_scene)    # runs first, so the clear moves no grid onto the test runner's folder
         hou.hipFile.save(os.path.join(folder, "moved.hip"), save_to_recent_files=False)
         QtWidgets.QApplication.processEvents()
         return hostos.canonical_path_key(folder).rstrip("/") + "/"
@@ -154,14 +154,14 @@ class TheSceneRowFollowsTheScene(_SceneCase):
         os.makedirs(old + "plates")
         _shown(self.folders, old)
         self.assertTrue(test_support.pump_until(lambda: self.folders.rowCount(self._row()) == 1),
-                        "premise: the scene folder's subfolder never arrived")
+                        "premise: the scene folder's subfolder never appeared")
         self._stand(self.folders.index(0, 0, self._row()))
         self.assertEqual(old + "plates", self.files.browsing(), "premise: not on the subfolder")
         moved = self._save()
         test_support.pump_until(lambda: False, timeout=0.05)
         self.assertEqual(moved, self.files.browsing(), "the grid stayed in the old scene folder")
         self.assertEqual(self._row(), self.panel.cat_list.currentIndex(),
-                         "the sidebar does not stand on the scene row")
+                         "the sidebar has not selected the scene row")
 
     def test_a_save_leaves_a_grid_on_a_location_alone(self):
         self._stand(self.folders.index(self.folders._offset(), 0))
@@ -188,7 +188,7 @@ class TheSceneRowFollowsTheScene(_SceneCase):
 
 
 class TheSceneWatchItself(unittest.TestCase):
-    """What the watch reads from Houdini, and a removal the manual says may refuse."""
+    """What the watch reads from Houdini, and a callback removal that can fail, per the manual."""
 
     def test_no_hip_reads_no_scene_folder(self):
         from amaze.actions import files as files_actions
