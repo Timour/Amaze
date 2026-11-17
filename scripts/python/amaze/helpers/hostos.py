@@ -359,7 +359,7 @@ PEER_ABSENT = "absent"          # nothing there to merge with
 PEER_UNCHANGED = "unchanged"    # the same bytes this caller last saw
 PEER_CHANGED = "changed"        # `document` holds what is on disk now
 PEER_UNREADABLE = "unreadable"  # it exists and does not parse - never write over it
-PEER_HELD = "held"              # it exists and could not be opened now - keep the copy in memory
+PEER_IN_USE = "held"              # it exists and could not be opened now - keep the copy in memory
 
 
 class PeerFile(typing.NamedTuple):
@@ -391,7 +391,7 @@ def peer_read(path: str, fingerprint=None) -> PeerFile:
     except (FileNotFoundError, NotADirectoryError):
         return PeerFile(PEER_ABSENT, None, None)
     except OSError as exc:    # a lock or a permission: the file is still there
-        return PeerFile(PEER_HELD, None, None, str(exc))
+        return PeerFile(PEER_IN_USE, None, None, str(exc))
     current = file_fingerprint(raw)
     if fingerprint is not None and tuple(fingerprint) == current:
         return PeerFile(PEER_UNCHANGED, None, current)
@@ -534,7 +534,7 @@ def rename_exclusive(source: str, dest: str) -> bool:
     raise OSError(code, os.strerror(code), source, None, dest)
 
 
-_MKSTEMP_MODE = 0o600  # what `tempfile.mkstemp` creates with; promote_scratch recognises it
+_MKSTEMP_MODE = 0o600  # what `tempfile.mkstemp` creates with; replace_with_scratch recognises it
 
 
 def _default_file_mode() -> int:
@@ -566,7 +566,7 @@ def render_scratch(path: str, tag: str = "rendering") -> str:
     return unique_scratch(path, suffix="." + tag + ext, create=False)
 
 
-def promote_scratch(scratch: str, path: str) -> None:
+def replace_with_scratch(scratch: str, path: str) -> None:
     """fsync `scratch`, then rename it over `path` with its mode; may raise. ▸r/atomic-writes"""
     check_sandbox(path)
     handle = os.open(scratch, os.O_RDWR)  # on Windows `os.fsync` needs a writable handle
@@ -666,15 +666,15 @@ def scratch_beside(path: str, suffix: str = ".writing"):
     scratch = unique_scratch(path, suffix)
     try:
         yield scratch
-        promote_scratch(scratch, path)
+        replace_with_scratch(scratch, path)
     finally:
-        discard_scratch(scratch)  # saving several files as one change uses unique_scratch and promote_scratch instead
+        discard_scratch(scratch)  # saving several files as one change uses unique_scratch and replace_with_scratch instead
 
 
 SANDBOX_VAR = "AMAZE_SANDBOX"  # the environment variable that turns on the sandbox below
 
 
-class SandboxRefused(RuntimeError):
+class WriteOutsideSandbox(RuntimeError):
     """Raised for a write outside the temp folder, only while the sandbox is on."""
 
 
@@ -703,13 +703,13 @@ def _sandboxed_root(kind: str) -> str:
 
 
 def check_sandbox(path: str) -> None:
-    """Sandboxed: raise SandboxRefused for writes outside temp. ▸p/hand-run-script-is-unguarded"""
+    """Sandboxed: raise WriteOutsideSandbox for writes outside temp. ▸p/hand-run-script-is-unguarded"""
     if not sandboxed():
         return
     resolved = os.path.realpath(path)
     root = os.path.realpath(tempfile.gettempdir()) + os.sep
     if not resolved.startswith(root):
-        raise SandboxRefused(
+        raise WriteOutsideSandbox(
             "%s is armed, so this run may only write inside %s - refusing "
             "to write %s. If this is a real library or a real settings "
             "file, the script is pointed at live data."
@@ -746,7 +746,7 @@ def write_json_atomic(path: str, data, indent: int = 4,
 FAILED_UNREACHABLE = "unreachable"  # the cause of a failed write in one word, to branch on
 FAILED_READ_ONLY = "read-only"
 FAILED_FULL = "full"
-FAILED_HELD = "held"
+FAILED_IN_USE = "held"
 FAILED_UNKNOWN = "unknown"
 
 _FAILURE_CAUSES = {  # errno -> cause; an unlisted errno is FAILED_UNKNOWN ▸r/failed-write
@@ -756,18 +756,18 @@ _FAILURE_CAUSES = {  # errno -> cause; an unlisted errno is FAILED_UNKNOWN ▸r/
     errno.EPERM: FAILED_READ_ONLY,
     errno.EROFS: FAILED_READ_ONLY,
     errno.ENOSPC: FAILED_FULL,
-    errno.EBUSY: FAILED_HELD,  # Windows reports a held file as EACCES, see _HELD_WINERRORS
-    errno.ETXTBSY: FAILED_HELD,
+    errno.EBUSY: FAILED_IN_USE,  # Windows reports a held file as EACCES, see _IN_USE_WINERRORS
+    errno.ETXTBSY: FAILED_IN_USE,
 }
 
-_HELD_WINERRORS = frozenset((  # native Windows codes for a held destination, which `errno` cannot express ▸r/failed-write
+_IN_USE_WINERRORS = frozenset((  # native Windows codes for a held destination, which `errno` cannot express ▸r/failed-write
     32,  # ERROR_SHARING_VIOLATION - in use by another process
     33,  # ERROR_LOCK_VIOLATION - another process locked part of it
 ))
 
 
-def _windows_refusing_file(path: str):
-    """FAILED_READ_ONLY or FAILED_HELD when Windows refused because of the FILE, else None."""
+def _windows_file_cause(path: str):
+    """FAILED_READ_ONLY or FAILED_IN_USE when Windows refused because of the FILE, else None."""
     if not is_windows() or not path or not os.path.isfile(path):
         return None
     try:
@@ -776,17 +776,17 @@ def _windows_refusing_file(path: str):
         with open(path, "r+b"):
             return None
     except OSError:
-        return FAILED_HELD
+        return FAILED_IN_USE
 
 
 def why_failed(exc: OSError, path: str = "") -> tuple:
     """(cause, sentence) for a write that raised, naming what the user must fix. ▸r/failed-write"""
     cause = _FAILURE_CAUSES.get(getattr(exc, "errno", None),
                                 FAILED_UNKNOWN)
-    if getattr(exc, "winerror", None) in _HELD_WINERRORS:
-        cause = FAILED_HELD  # the native code takes precedence over the errno, which is EACCES for a file in use
-    target = _windows_refusing_file(path) if cause == FAILED_READ_ONLY else None
-    cause = FAILED_HELD if target == FAILED_HELD else cause
+    if getattr(exc, "winerror", None) in _IN_USE_WINERRORS:
+        cause = FAILED_IN_USE  # the native code takes precedence over the errno, which is EACCES for a file in use
+    target = _windows_file_cause(path) if cause == FAILED_READ_ONLY else None
+    cause = FAILED_IN_USE if target == FAILED_IN_USE else cause
     where = os.path.dirname(path) or path
     if target == FAILED_READ_ONLY:
         sentence = ("the file is read-only" + (":\n" + path if path else "")
@@ -803,7 +803,7 @@ def why_failed(exc: OSError, path: str = "") -> tuple:
                       "stop this - it is the folder's permissions.")
     elif cause == FAILED_FULL:
         sentence = "the disk is full."
-    elif cause == FAILED_HELD:
+    elif cause == FAILED_IN_USE:
         sentence = ("another program is holding the file open"
                     + (":\n" + path if path else "") + ".")
     else:
@@ -902,7 +902,7 @@ def has_extension(name: str, extensions) -> bool:
     return name.lower().endswith(endings)
 
 
-class PathEscape(ValueError):
+class PathOutsideBase(ValueError):
     """A joined path resolved outside the directory it must stay inside."""
 
 
@@ -935,13 +935,13 @@ def _under_real_base(real_base: str, parts):
 
 
 def contained_join(base: str, *parts: str) -> str:
-    """`os.path.join(base, *parts)`, raising `PathEscape` for a result outside `base`."""
+    """`os.path.join(base, *parts)`, raising `PathOutsideBase` for a result outside `base`."""
     composed = os.path.join(base, *parts)
     real_base = _real_base(base)
     real_composed = _under_real_base(real_base, parts) or os.path.realpath(composed)
     if real_composed != real_base and not real_composed.startswith(
             real_base.rstrip(os.sep) + os.sep):
-        raise PathEscape(
+        raise PathOutsideBase(
             "%r does not stay inside %r" % (composed, base))
     return composed
 

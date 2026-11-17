@@ -618,7 +618,7 @@ class AssetLibrary(grid_engine.GridEngine,
             record.mat_id)
         return moved.get(row, row) if moved else row
 
-    def _take_back_refused_append(self, record) -> None:
+    def _remove_unsaved_record(self, record) -> None:
         """Remove a new record whose save failed from the model and the database, by identity."""
         row = next((i for i, held in enumerate(self._assets)
                     if held is record), -1)
@@ -648,7 +648,7 @@ class AssetLibrary(grid_engine.GridEngine,
             asset_record.add_staged(change, guard, staged, metadata=row)))
         if not saved:
             asset_record.discard(staged)
-            self._take_back_refused_append(record)
+            self._remove_unsaved_record(record)
             return False
         return True
 
@@ -791,7 +791,7 @@ class AssetLibrary(grid_engine.GridEngine,
         try:
             return {"versions": versions.versions_dir(
                 self.preferences, mat_id, self.VERSION_SECTION)}
-        except hostos.PathEscape as exc:  # no valid directory path; must not raise out of remove_asset
+        except hostos.PathOutsideBase as exc:  # no valid directory path; must not raise out of remove_asset
             debug.event("library", "version store path refused",
                         mat_id=mat_id, error=str(exc))
             return {}
@@ -952,7 +952,7 @@ class AssetLibrary(grid_engine.GridEngine,
         try:
             return hostos.disk_state(material.payload_path(
                 self.preferences, mat_id, self.preferences.ext, self.DB_FILENAME))
-        except (hostos.PathEscape, TypeError, KeyError):    # Code and Colors own no `.mat`
+        except (hostos.PathOutsideBase, TypeError, KeyError):    # Code and Colors own no `.mat`
             return None
 
     def _remember_content_state(self) -> None:

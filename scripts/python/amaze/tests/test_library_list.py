@@ -213,7 +213,7 @@ class TheManageWindowStandsOnItsFrame(unittest.TestCase):
         def ink(x, y):
             return QtGui.QColor(picture.pixel(int(x * ratio), int(y * ratio))).name()
 
-        selected = QtGui.QColor(amazetheme.D15_SELECTED_INK).name()
+        selected = QtGui.QColor(amazetheme.D15_SELECTED_BACKGROUND).name()
         self.assertEqual(selected, ink(px(rows["box_x"]) + 1, top + 1),
                          "the selected row is not painted at its designed box")
         self.assertNotEqual(selected, ink(px(rows["box_x"]) + 1, top - 1),
@@ -253,7 +253,7 @@ class EveryDrawnListWearsTheListGround(unittest.TestCase):
                     return QtGui.QColor(picture.pixel(int(at_x * ratio),
                                                       int(at_y * ratio))).name()
 
-                ground = theme.list_ground().name()
+                ground = theme.list_background().name()
                 self.assertEqual(ground, ink(x + 10, y + high - 3),
                                  "the empty list area is not the list colour")
                 self.assertNotEqual(ground, ink(x, y),

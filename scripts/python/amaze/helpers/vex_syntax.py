@@ -6,20 +6,20 @@ from PySide6 import QtGui
 
 from amaze import amazetheme
 
-_INKS = {}
+_SYNTAX_COLORS = {}
 
 
-def use_inks(inks: dict) -> None:
-    """Use `inks` (colours by kind) from now; the panel passes Houdini's. ▸r/houdini-code-look"""
+def use_syntax_colors(colors: dict) -> None:
+    """Use `colors` (colours by kind) from now; the panel passes Houdini's. ▸r/houdini-code-look"""
     global DEFAULT, COMMENT, STRING, NUMBER, TYPE, KEYWORD, FUNCTION, ATTRIB
-    _INKS.clear()
-    _INKS.update(inks)
-    DEFAULT, COMMENT, STRING, NUMBER = (inks[k] for k in ("plain", "comment", "string", "number"))
-    TYPE, KEYWORD, FUNCTION, ATTRIB = (inks[k] for k in ("type", "keyword", "function", "attrib"))
+    _SYNTAX_COLORS.clear()
+    _SYNTAX_COLORS.update(colors)
+    DEFAULT, COMMENT, STRING, NUMBER = (colors[k] for k in ("plain", "comment", "string", "number"))
+    TYPE, KEYWORD, FUNCTION, ATTRIB = (colors[k] for k in ("type", "keyword", "function", "attrib"))
 
 
-use_inks({kind: QtGui.QColor(fallback)    # Houdini's dark scheme, until the panel calls use_inks
-          for kind, (_name, fallback) in amazetheme.CODE_SYNTAX.items()})
+use_syntax_colors({kind: QtGui.QColor(fallback)    # Houdini's dark scheme, until the panel's call
+                   for kind, (_name, fallback) in amazetheme.CODE_SYNTAX.items()})
 
 KEYWORDS = {
     "if", "else", "for", "foreach", "while", "do", "return", "break",
@@ -57,7 +57,7 @@ def _runs(line: str):
             text = m.group()
             kind = ("keyword" if text in KEYWORDS else "type" if text in TYPES
                     else "function" if _CALL_RE.match(line, m.end()) else "word")
-        yield m.start(), m.end() - m.start(), kind, _INKS.get(kind, DEFAULT)
+        yield m.start(), m.end() - m.start(), kind, _SYNTAX_COLORS.get(kind, DEFAULT)
 
 
 def spans(line: str):

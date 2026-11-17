@@ -397,7 +397,7 @@ class TypingCostsOnePassNotOnePerKeystroke(unittest.TestCase):
         """Category, search, renderer and favourites all set: returning to Materials is one pass."""
         panel = self.panel
         panel._on_tab_toggled("material", True)
-        panel._stand_on_category("usds")
+        panel._select_category("usds")
         panel.line_filter.setText("a")
         panel.filter_thumb_view()
         renderers = [label for label in panel.filter_actions if label != "All"]

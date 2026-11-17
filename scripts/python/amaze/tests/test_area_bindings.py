@@ -123,7 +123,7 @@ class AreaBindingCase(unittest.TestCase):
         """Put the panel into one context and process pending Qt events."""
         panel = self.panel
         if panel._is_online():
-            panel.leave_online_world()
+            panel.leave_online_mode()
             QtWidgets.QApplication.processEvents()
         panel.section_tabs.setChecked(key)
         QtWidgets.QApplication.processEvents()
@@ -145,7 +145,7 @@ class AreaBindingCase(unittest.TestCase):
         """Put the shared panel back in a local world, so no test inherits the online one."""
         panel = self.panel
         if panel._is_online():
-            panel.leave_online_world()
+            panel.leave_online_mode()
         section = panel.active_section()
         if section is not None:
             section.activate()
@@ -209,10 +209,10 @@ class EveryContextCarriesTheBadgesItsModelCanAnswer(AreaBindingCase):
 
     def test_the_online_world_carries_only_its_own(self):
         panel = self.panel
-        panel.enter_online_world()
+        panel.enter_online_mode()
         QtWidgets.QApplication.processEvents()
         self.addCleanup(QtWidgets.QApplication.processEvents)
-        self.addCleanup(panel.leave_online_world)
+        self.addCleanup(panel.leave_online_mode)
         self.assertEqual(
             ONLINE_BADGES, set(panel.thumblist.itemDelegate().badges()),
             "the online grid shows a badge no online record has data for")
@@ -333,14 +333,14 @@ class TheOnlineWorldBindsTheSameFourAreas(AreaBindingCase):
         panel = self.activate("gradient")
         self.addCleanup(self._restore)
         before = self.bound(panel)
-        panel.enter_online_world()
+        panel.enter_online_mode()
         QtWidgets.QApplication.processEvents()
         actual = self.bound(panel)
         for area, name in ONLINE_BINDINGS.items():
             self.assertIs(actual[area], getattr(panel, name),
                           "the online world bound the wrong %s - "
                           "expected panel.%s" % (area, name))
-        panel.leave_online_world()
+        panel.leave_online_mode()
         QtWidgets.QApplication.processEvents()
         after = self.bound(panel)
         for area in ("grid", "selection", "delegate", "sidebar"):
@@ -364,7 +364,7 @@ class TheOnlineWorldBindsTheSameFourAreas(AreaBindingCase):
             source=name, uid="%s-%d" % (name, n), title="%s %d" % (name, n),
             category="Metal") for name in names for n in range(3)]
         online._loaded = True
-        panel.enter_online_world(names[0])
+        panel.enter_online_mode(names[0])
         QtWidgets.QApplication.processEvents()
         resets = []
         online.modelReset.connect(lambda: resets.append(1))
@@ -397,7 +397,7 @@ class TheOnlineWorldBindsTheSameFourAreas(AreaBindingCase):
                         "Capture should be offered on the File tab, so "
                         "this test is not set up to prove anything")
 
-        panel.enter_online_world()
+        panel.enter_online_mode()
         QtWidgets.QApplication.processEvents()
         self.assertFalse(
             panel.btn_hip_capture.isEnabled(),
@@ -440,7 +440,7 @@ class TheOnlineWorldIsASKEDLikeAnySection(AreaBindingCase):
 
         panel = self.activate("material")
         self.addCleanup(self._restore)
-        panel.enter_online_world()
+        panel.enter_online_mode()
         QtWidgets.QApplication.processEvents()
 
         online = panel.matx_online_model  # seeded via `_all`, the model's cache: the fixture blocks the network, so nothing arrives

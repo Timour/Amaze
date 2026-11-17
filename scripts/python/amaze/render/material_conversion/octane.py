@@ -10,7 +10,7 @@ from amaze.render import material_converter, nodes
 from amaze.render.material_conversion import engine, materialx, octane_reader
 
 SOLARIS_TERMINAL = "octane_material"
-PLUMBING = ("subinput", "suboutput")
+SUBNET_IO = ("subinput", "suboutput")
 PASS_THROUGH = "mtlxdot"
 CONDUCTOR = "mtlxconductor_bsdf"
 SURELY_ADMITTED = "mtlxstandard_surface"    # refused only where the filter cannot answer
@@ -131,7 +131,7 @@ def _drop(node: hou.Node, report) -> None:
     node.destroy()
 
 
-def _alive(node: hou.Node) -> bool:
+def _node_exists(node: hou.Node) -> bool:
     try:
         node.path()
         return True
@@ -156,7 +156,7 @@ def resolve(container: hou.Node, report) -> None:
     for node in of_type(CONDUCTOR):
         _metal(node, report)
     for node in container.allSubChildren(recurse_in_locked_nodes=False):
-        if _alive(node) and not admitted(node.type().name()):
+        if _node_exists(node) and not admitted(node.type().name()):
             _drop(node, report)
 
 
@@ -196,10 +196,10 @@ def classic_into(parent: hou.Node, vopnet: hou.Node, name: str = "") -> hou.Node
     terminal = next(c for c in builder.children()
                     if c.type().name() == SOLARIS_TERMINAL)
     stock = [c for c in builder.children()
-             if c != terminal and c.type().name() not in PLUMBING]
+             if c != terminal and c.type().name() not in SUBNET_IO]
     items = [item for item in vopnet.allItems()    # dots too, or wires through them break
              if not (isinstance(item, hou.Node)
-                     and item.type().name() in PLUMBING)]
+                     and item.type().name() in SUBNET_IO)]
     copies = dict(zip((item.path() for item in items), builder.copyItems(items)))
     out = next((c for c in vopnet.children() if c.type().name() == "suboutput"), None)
     surface = next((c for c in (out.inputConnections() if out is not None else ())

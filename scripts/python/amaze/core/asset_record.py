@@ -16,7 +16,7 @@ LOCK = threading.RLock()    # two writers share the file: the asset save and the
 
 
 def path_for(preferences, mat_id, section: str) -> str:
-    """The asset's `<id>.json` in its section's folder; PathEscape for an unsafe id."""
+    """The asset's `<id>.json` in its section's folder; PathOutsideBase for an unsafe id."""
     return material.payload_path(preferences, mat_id, material.RECORD_SUFFIX, section)
 
 
@@ -145,7 +145,7 @@ def saved_builder(preferences, mat_id, section: str) -> dict:
     """The asset's builder from its `<id>.json`; {} when it has none or the path is refused."""
     try:
         path = path_for(preferences, mat_id, section)
-    except (hostos.PathEscape, TypeError, KeyError) as exc:
+    except (hostos.PathOutsideBase, TypeError, KeyError) as exc:
         debug.event("import", "builder path refused", mat_id=str(mat_id)[:120], error=str(exc))
         return {}
     return builder_section(read(path)[BUILDER])

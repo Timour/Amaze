@@ -329,7 +329,7 @@ def _commit_assets(prefs, staged, summary) -> None:
         if not stored:
             for _model, asset, _entry, _row, written in reversed(items):
                 asset_record.discard(written)
-                model._take_back_refused_append(asset)
+                model._remove_unsaved_record(asset)
             summary["refused"] += len(items)
             continue
         for _model, asset, entry, row, _written in items:
@@ -390,7 +390,7 @@ def _import_asset(models, prefs, bundle, entry, restore, summary, taken):
         for token, arcname in (entry.get("textures") or {}).items():
             if not str(token).startswith(store_prefix):    # only store tokens may be written
                 raise PackageError("not a store texture token: %r" % token)
-            target = hostos.contained_join(    # PathEscape on `..`; the entry counts in `refused`
+            target = hostos.contained_join(    # PathOutsideBase on `..`; the entry counts in `refused`
                 prefs.dir, *str(token)[len(texstore.TOKEN_PREFIX):].split("/"))
             if target in taken:
                 continue

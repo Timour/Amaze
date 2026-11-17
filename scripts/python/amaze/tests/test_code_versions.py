@@ -69,7 +69,7 @@ class TheStoreSitsBesideTheMaterialStore(_Case):
     def test_a_snippet_id_never_names_a_folder_outside_the_code_versions(self):
         from amaze.helpers import hostos
         for unsafe in ("..", "../..", "../../outside"):
-            with self.assertRaises(hostos.PathEscape, msg=unsafe):
+            with self.assertRaises(hostos.PathOutsideBase, msg=unsafe):
                 versions.versions_dir(self.prefs, unsafe, versions.CODE)
         self.assertEqual(os.path.join(self.prefs.dir, "code", "versions", "X1"),
                          os.path.normpath(versions.versions_dir(self.prefs, "X1", versions.CODE)))

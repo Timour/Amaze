@@ -245,7 +245,7 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _build(self) -> None:
         from amaze.helpers import vex_syntax
-        vex_syntax.use_inks(theme.syntax_inks())    # Houdini's syntax colours, tiles and editor alike
+        vex_syntax.use_syntax_colors(theme.syntax_colors())    # Houdini's syntax colours, tiles and editor alike
         self.prefs = prefs.Prefs()
 
         loaded = self.prefs.load()    # False when nothing usable is on disk; the prefs are populated either way
@@ -283,7 +283,7 @@ class AmazePanel(QtWidgets.QWidget):
         self.code_category_model = None
         self.file_files_model = None    # show_prefs hands it to Preferences, which takes None
         self.file_folders_model = None
-        self.matx_online_model = None    # setup() builds the online world; `enter_online_world` refuses without it
+        self.matx_online_model = None    # setup() builds the online world; `enter_online_mode` refuses without it
         self._sync_online_chip()
 
     def _defer_open_library(self) -> None:
@@ -864,9 +864,9 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _on_online_button(self, checked: bool) -> None:
         if checked:
-            self.enter_online_world()
+            self.enter_online_mode()
         else:
-            self.leave_online_world()
+            self.leave_online_mode()
 
     def _sync_online_chip(self) -> None:
         """Enabled only where the online section can open, and checked only while it is open."""
@@ -1291,12 +1291,12 @@ class AmazePanel(QtWidgets.QWidget):
             cat_index = splitter.indexOf(self.cat_list)
             self.notes_panel = notes_panel.NotesPanel(self.prefs)    # the splitter's rightmost pane: sidebar | grid | notes
             splitter.addWidget(self.notes_panel)
-            self.notes_panel.adopt_look(self.cat_list)
+            self.notes_panel.copy_font_and_text_color(self.cat_list)
             splitter.splitterMoved.connect(self._on_splitter_moved)
             self.notes_panel.changed.connect(self._on_note_saved)
             self.notes_panel.setVisible(bool(self.prefs.show_notes))
             splitter.setHandleWidth(theme.ui_px(self._SIDEBAR["handle"]))    # width only; Houdini draws the grip ▸r/sidebar-from-frame
-        self.cat_wrapper = ui_helpers.HeldPane(    # keeps its width: the last dragged width, or the design width
+        self.cat_wrapper = ui_helpers.SavedWidthPane(    # keeps its width: the last dragged width, or the design width
             self.prefs, "sidebar_width", theme.ui_px(self._SIDEBAR["width"]))
         self.cat_wrapper.setMaximumWidth(theme.ui_px(self._SIDEBAR["width"]))    # the pane's cap ▸r/sidebar-from-frame
         self.cat_list.setMaximumWidth(theme.ui_px(self._SIDEBAR["width"]))    # and the list's, at UI scale
@@ -1411,7 +1411,7 @@ class AmazePanel(QtWidgets.QWidget):
         self.thumblist.doubleClicked.connect(self.import_asset_auto)
         self.thumblist.clicked.connect(self._refresh_notes_subject)    # idempotent
         thumblist_palette = self.thumblist.palette()    # Houdini paints the background; text contrast is computed against Base
-        thumblist_palette.setColor(QtGui.QPalette.ColorRole.Base, QtGui.QColor(amazetheme.GRID_GROUND))
+        thumblist_palette.setColor(QtGui.QPalette.ColorRole.Base, QtGui.QColor(amazetheme.GRID_BACKGROUND))
         self.thumblist.setPalette(thumblist_palette)
 
         self.texture_progress = ui_helpers.ThinProgressBar()    # the thin bar above thumbview, hidden until there is work
@@ -2308,13 +2308,13 @@ class AmazePanel(QtWidgets.QWidget):
     def _on_online_source(self, action) -> None:
         """A source entry: Material Library leaves online, an online source opens its browser."""
         if action is self.action_material_library:
-            self.leave_online_world()
+            self.leave_online_mode()
             if self.current_section != "material":
                 self.section_tabs.setChecked("material")
         elif action.isChecked():    # the entries share one exclusive group, so Qt keeps exactly one checked
             self.open_online_source(action.text())
 
-    def enter_online_world(self, source: str = "") -> None:
+    def enter_online_mode(self, source: str = "") -> None:
         """Switch to the online tab strip; leaving returns to the section shown before."""
         if self._is_online():
             return
@@ -2328,7 +2328,7 @@ class AmazePanel(QtWidgets.QWidget):
         self.open_online_source(first)
         self._sync_online_chip()
 
-    def leave_online_world(self) -> None:
+    def leave_online_mode(self) -> None:
         """Return to the local sections: the one left, or the first shown if it was hidden."""
         if not self._is_online():
             return
@@ -2341,7 +2341,7 @@ class AmazePanel(QtWidgets.QWidget):
     def open_online_source(self, source_name: str) -> None:
         """Show one source in the online section; a tab click, as the tabs are the sources."""
         if not self._is_online():
-            self.enter_online_world(source_name)    # `enter_online_world` does the entering, for any caller
+            self.enter_online_mode(source_name)    # `enter_online_mode` does the entering, for any caller
             return
         self.online_source = source_name
         act = self.online_source_actions.get(source_name)
@@ -2862,16 +2862,16 @@ class AmazePanel(QtWidgets.QWidget):
             self._refresh_notes_subject()
 
     def _sync_notes_button_pixmaps(self) -> None:
-        """The button's icon: IDLE_BODY blue while the pane is closed, COMMENT_INK when open."""
+        """The button's icon: IDLE_BODY blue while the pane is closed, COMMENT_ICON_COLOR when open."""
         button = getattr(self, "btn_notes", None)
         if button is None:
             return
         button.set_art(
             self._ui_icon_path("icon_comments.svg"),
             lighten_on_hover=False,    # the icon is the section's blue as drawn, and it does not lighten when on
-            recolour={notes_panel.COMMENT_INK:    # keyed on a colour the art contains
+            recolour={notes_panel.COMMENT_ICON_COLOR:    # keyed on a colour the art contains
                       ui_helpers.IconMenuButton.IDLE_BODY},
-            recolour_on={notes_panel.COMMENT_INK: notes_panel.COMMENT_INK})
+            recolour_on={notes_panel.COMMENT_ICON_COLOR: notes_panel.COMMENT_ICON_COLOR})
 
     def _on_note_saved(self, _key: str) -> None:
         """A note was saved: repaint the grid so the tile's note badge appears or disappears."""
@@ -3079,7 +3079,7 @@ class AmazePanel(QtWidgets.QWidget):
             return
         current = ui_helpers.live_current_index(self.cat_list)
         if current is None or current.row() != row.row():
-            self._stand_on_category(row.data())    # the row is still there and the selection moved off it
+            self._select_category(row.data())    # the row is still there and the selection moved off it
 
     @staticmethod
     def _sidebar_row_stored(proxy, stored: str):
@@ -3096,9 +3096,9 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _select_all_category(self) -> None:
         """Point the sidebar at All and refilter - the hidden-category fallback."""
-        self._stand_on_category("All")
+        self._select_category("All")
 
-    def _stand_on_category(self, label: str) -> bool:
+    def _select_category(self, label: str) -> bool:
         """Point the sidebar at the row showing display name `label` and refilter; whether it exists."""
         view = getattr(self, "cat_list", None)
         proxy = view.model() if view is not None else None

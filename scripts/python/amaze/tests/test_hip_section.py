@@ -173,7 +173,7 @@ class CaptureStoreTest(unittest.TestCase):
             with self.subTest(section=section):
                 self.assertEqual(os.path.join(str(self.prefs.dir), folder, "abc123.png"),
                                  tile_icons.thumbnail_path(self.prefs, "abc123", section))
-                with self.assertRaises(hostos.PathEscape):
+                with self.assertRaises(hostos.PathOutsideBase):
                     tile_icons.thumbnail_path(self.prefs, "../../escape", section)
 
     def test_the_shelf_and_the_tile_reach_one_file(self):

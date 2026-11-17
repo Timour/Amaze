@@ -101,7 +101,7 @@ class TheAssetWriterMakesItsFolderInsideTheLibraryOnly(unittest.TestCase):
 
     def test_a_refused_destination_is_not_created(self):
         """Raising after making the folder would be the same bug with a better error message."""
-        with self.assertRaises(hostos.PathEscape):
+        with self.assertRaises(hostos.PathOutsideBase):
             self._save(os.path.join(self.outside, "elsewhere"))
         self.assertFalse(os.path.exists(os.path.join(self.outside, "elsewhere")))
 

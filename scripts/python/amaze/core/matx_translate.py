@@ -58,7 +58,7 @@ def _resolve_file(value: str, mtlx_dir: str, prefix: str) -> str:
             continue
         try:
             contained.append(hostos.contained_join(mtlx_dir, base))
-        except hostos.PathEscape:
+        except hostos.PathOutsideBase:
             continue
     for base in contained:
         if os.path.exists(base):

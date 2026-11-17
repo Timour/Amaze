@@ -139,7 +139,7 @@ class DeletingTheLastOfACategoryStandsTheSidebarOnAll(unittest.TestCase):
         proxy.hide_empty = True
         panel.refresh_sidebar_categories()
         self.assertTrue(
-            panel._stand_on_category("Karma_Mats"),
+            panel._select_category("Karma_Mats"),
             "the fixture sidebar has no Karma_Mats row to select")
         model = panel.material_model
         rows = [model.index(row, 0) for row, asset in enumerate(model.assets)

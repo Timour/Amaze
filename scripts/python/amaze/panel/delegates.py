@@ -202,7 +202,7 @@ class TickCellDelegate(GridCellDelegate):
             return
         if not index.siblingAtColumn(0).data(self._role):
             return
-        self._tiles._paint_tick(
+        self._tiles._paint_check_mark(
             painter, self._box(option.rect), self._colour)
 
 
@@ -246,8 +246,8 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
     GRID_BOTTOM_PAD = theme.ui_px(_TILE["bottom_pad"])
     GRID_IMG_TEXT_GAP = theme.ui_px(_TILE["img_text_gap"])
 
-    CATEGORY_COLOR = QtGui.QColor(amazetheme.LIST_INK)    # the Category column for a category with no colour
-    LIST_TEXT_COLOR = QtGui.QColor(amazetheme.LIST_INK)    # list mode's text colour, all but Category
+    CATEGORY_COLOR = QtGui.QColor(amazetheme.LIST_TEXT_COLOR)    # the Category column for a category with no colour
+    LIST_TEXT_COLOR = QtGui.QColor(amazetheme.LIST_TEXT_COLOR)    # list mode's text colour, all but Category
     SELECTED_TEXT = QtGui.QColor(amazetheme.LIST_SELECTED_TEXT)     # every column's text colour on a selected row
 
     _badge_cache = {}    # rendered badge per (art, size, dpr, opacity), app-wide
@@ -507,7 +507,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
     NOTE_MARK_COLOR = LIST_TEXT_COLOR
 
     @staticmethod
-    def _paint_tick(painter, rect, color):
+    def _paint_check_mark(painter, rect, color):
         """Draw a tick in `color` centred in `rect`, the badge art's own shape; nothing under 4px."""
         side = min(rect.width(), rect.height())
         if side < 4:

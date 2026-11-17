@@ -192,7 +192,7 @@ class TheDatabasesRowShowsOneCheck(unittest.TestCase):
         self.assertEqual("Repair", button)
         sheet = self.dialog._btn_check.styleSheet()
         self.assertIn(amazetheme.P01_REPAIR_FILL, sheet)
-        self.assertIn(amazetheme.P01_REPAIR_INK, sheet)
+        self.assertIn(amazetheme.P01_REPAIR_TEXT_COLOR, sheet)
         self.assertIn("QPushButton:hover { background-color: %s; }" % amazetheme.P01_REPAIR_HOVER, sheet)
         self.assertIn(
             "QPushButton:pressed { background-color: %s; }" % amazetheme.P01_REPAIR_PRESSED, sheet)
@@ -237,8 +237,8 @@ class TheDatabasesRowShowsOneCheck(unittest.TestCase):
         with mock.patch.object(guard.Guard, "_waiting", lambda self: True):
             self.dialog._btn_check.click()
         fills, counts, _info, button = self.row()
-        self.assertEqual([amazetheme.P01_LIGHT_UNJUDGED] * 3, fills)
-        self.assertEqual([amazetheme.LABEL_UNJUDGED] * 3, counts)
+        self.assertEqual([amazetheme.P01_LIGHT_UNCHECKED] * 3, fills)
+        self.assertEqual([amazetheme.LABEL_UNCHECKED] * 3, counts)
         self.assertEqual("Check", button)
 
     def test_picking_another_library_empties_the_row(self):

@@ -160,19 +160,19 @@ class SwitchingVersionsIsAllOrNothing(unittest.TestCase):
 
     def test_a_held_file_leaves_the_base_on_one_version(self):
         """A sync client with one file open must not leave .mat and .json on different versions."""
-        real_promote = hostos.promote_scratch
+        real_promote = hostos.replace_with_scratch
 
         def held_record(scratch, target):
             if target.endswith(".json") and self.mat_id in os.path.basename(target):
                 raise PermissionError("held by another process")
             return real_promote(scratch, target)
 
-        hostos.promote_scratch = held_record
-        self.addCleanup(setattr, hostos, "promote_scratch", real_promote)
+        hostos.replace_with_scratch = held_record
+        self.addCleanup(setattr, hostos, "replace_with_scratch", real_promote)
         try:
             switched = versions.switch_active(self.prefs, self.mat_id, 1)
         finally:
-            hostos.promote_scratch = real_promote
+            hostos.replace_with_scratch = real_promote
 
         self.assertTrue(switched, "a recorded switch that waits on one file was reported as failed")
         self._released()
@@ -214,19 +214,19 @@ class SwitchingVersionsIsAllOrNothing(unittest.TestCase):
         """A file kind the base lacked is written with the rest, never alone beside the old ones."""
         os.remove(self.base[".json"])
 
-        real_promote = hostos.promote_scratch
+        real_promote = hostos.replace_with_scratch
 
         def held_png(scratch, target):
             if target.endswith(".png") and "/versions/" not in target.replace(os.sep, "/"):    # the base picture
                 raise PermissionError("held by another process")
             return real_promote(scratch, target)
 
-        hostos.promote_scratch = held_png
-        self.addCleanup(setattr, hostos, "promote_scratch", real_promote)
+        hostos.replace_with_scratch = held_png
+        self.addCleanup(setattr, hostos, "replace_with_scratch", real_promote)
         try:
             switched = versions.switch_active(self.prefs, self.mat_id, 1)
         finally:
-            hostos.promote_scratch = real_promote
+            hostos.replace_with_scratch = real_promote
 
         self.assertTrue(switched, "a recorded switch that waits on one file was reported as failed")
         self._released()

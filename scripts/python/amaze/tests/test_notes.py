@@ -527,13 +527,13 @@ class PanelWidgetTest(unittest.TestCase):
             notes.note_key("material", "c1"), "brushed_steel", "USD Karma"))
         self.assertEqual(("brushed_steel", "USD Karma"),
                          (self.widget.name_label.text(), self.widget.type_label.text()))
-        sibling = QtWidgets.QLabel()    # a point-sized font below the minimum, as adopt_look can receive
+        sibling = QtWidgets.QLabel()    # a point-sized font below the minimum, as copy_font_and_text_color can receive
         small = sibling.font()
         small.setPointSizeF(9.0)
         sibling.setFont(small)
-        for moment in ("as built", "after adopt_look"):
-            if moment == "after adopt_look":
-                self.widget.adopt_look(sibling)
+        for moment in ("as built", "after copy_font_and_text_color"):
+            if moment == "after copy_font_and_text_color":
+                self.widget.copy_font_and_text_color(sibling)
             name, kind = self.widget.name_label.font(), self.widget.type_label.font()
             self.assertTrue(name.bold(), "the name is not bold %s" % moment)
             self.assertFalse(kind.bold(), "the type is bold %s" % moment)
@@ -780,8 +780,8 @@ class PanelWiringTest(unittest.TestCase):
         self.assertTrue(panel.notes_panel.isHidden())
         self.assertFalse(panel.prefs.show_notes)
 
-    def test_the_chip_and_pane_agree_and_the_lit_colour_is_COMMENT_INK(self):
-        """The button is checked while the pane is open, and checked it shows COMMENT_INK."""
+    def test_the_chip_and_pane_agree_and_the_lit_colour_is_COMMENT_ICON_COLOR(self):
+        """The button is checked while the pane is open, and checked it shows COMMENT_ICON_COLOR."""
         panel = self.panel
         self.assertEqual(panel.prefs.show_notes,
                          panel.btn_notes.isChecked())
@@ -793,7 +793,7 @@ class PanelWiringTest(unittest.TestCase):
         from amaze.panel import notes_panel as notes_pane
         panel._sync_notes_button_pixmaps()
         blue_name = QtGui.QColor(uih.IconMenuButton.IDLE_BODY).name()
-        art_name = QtGui.QColor(notes_pane.COMMENT_INK).name()
+        art_name = QtGui.QColor(notes_pane.COMMENT_ICON_COLOR).name()
 
         def seen_in(state):
             image = panel.btn_notes._pms[state].toImage()
@@ -809,7 +809,7 @@ class PanelWiringTest(unittest.TestCase):
                          "the open chip still shows the toolbar blue")
         self.assertIn(blue_name, seen, "the closed chip is not the toolbar's blue")
         self.assertNotIn(
-            QtGui.QColor(uih.IconMenuButton.LIT_BODY).name(), seen,
+            QtGui.QColor(uih.IconMenuButton.HOVER_BODY).name(), seen,
             "the closed chip went white")
         self.assertNotIn(  # and not the pane's own blue: a tint keyed on a colour the art lacks does nothing
             art_name, seen,
@@ -825,8 +825,8 @@ class PanelWiringTest(unittest.TestCase):
         distinctive = QtGui.QFont(original)
         distinctive.setPointSizeF(17.5)
         panel.cat_list.setFont(distinctive)
-        panel.notes_panel.adopt_look(panel.cat_list)
-        self.addCleanup(panel.notes_panel.adopt_look, panel.cat_list)
+        panel.notes_panel.copy_font_and_text_color(panel.cat_list)
+        self.addCleanup(panel.notes_panel.copy_font_and_text_color, panel.cat_list)
         note_font = panel.notes_panel.text_edit.font()
         self.assertEqual(17.5, note_font.pointSizeF(),
                          "pane %.1fpt after the category list moved to "
@@ -1631,8 +1631,8 @@ class TheCommentsPaneStandsOnItsFrame(unittest.TestCase):
                 edit._paint_todo_glyphs(painter)
         finally:
             painter.end()
-        self.assertEqual([("circle", amazetheme.COMMENT_OPEN_INK),
-                          ("check-circle", amazetheme.COMMENT_DONE_INK)],
+        self.assertEqual([("circle", amazetheme.COMMENT_OPEN_COLOR),
+                          ("check-circle", amazetheme.COMMENT_DONE_COLOR)],
                          [(c.args[0], c.args[2]) for c in glyph.call_args_list])
 
     def test_the_plus_is_its_drawn_art_and_dims_to_the_N01B_ink(self):
@@ -1642,14 +1642,14 @@ class TheCommentsPaneStandsOnItsFrame(unittest.TestCase):
         from amaze.helpers import ui_helpers
         with open(amaze.package_file("ui", "icon_comments_add.svg"), encoding="utf-8") as handle:
             art = handle.read().lower()
-        self.assertIn(amazetheme.COMMENT_ADD_INK.lower(), art)
+        self.assertIn(amazetheme.COMMENT_ADD_COLOR.lower(), art)
         with mock.patch.object(ui_helpers, "device_pixmap",
                                wraps=ui_helpers.device_pixmap) as drawn:
             self.pane._show_no_selection()
         swaps = [c.args[3] for c in drawn.call_args_list
                  if c.args[0].endswith("icon_comments_add.svg")]
         self.assertEqual(
-            [{amazetheme.COMMENT_ADD_INK: amazetheme.COMMENT_DIM_ADD_INK}], swaps)
+            [{amazetheme.COMMENT_ADD_COLOR: amazetheme.COMMENT_DIM_ADD_COLOR}], swaps)
 
 
 class TheEmptyPaneStandsOnN01B(unittest.TestCase):
@@ -1741,7 +1741,7 @@ class TheEmptyPaneStandsOnN01B(unittest.TestCase):
 
     def test_the_speech_bubble_is_at_a_quarter_and_whole_when_live(self):
         from amaze import amazetheme
-        ink, bg = (QtGui.QColor(amazetheme.COMMENT_DIM_ICON_INK),
+        ink, bg = (QtGui.QColor(amazetheme.COMMENT_DIM_ICON_COLOR),
                    QtGui.QColor(amazetheme.COMMENT_HEADER_BG))
         opacity = amazetheme.COMMENT_DIM_ICON_OPACITY
         alpha, shown = self._bubble_on_header()
@@ -1751,7 +1751,7 @@ class TheEmptyPaneStandsOnN01B(unittest.TestCase):
             self.assertAlmostEqual(want, getattr(shown, part)(), delta=1.5, msg=part)
         self._live()
         alpha, shown = self._bubble_on_header()
-        self.assertEqual((255, amazetheme.COMMENT_INK), (alpha, shown.name()))
+        self.assertEqual((255, amazetheme.COMMENT_ICON_COLOR), (alpha, shown.name()))
 
     def test_the_dead_plus_paints_exactly_as_a_live_one_would(self):
         """Disabled, the style fades the triangle and the art; N01B keeps the triangle and dims the art."""

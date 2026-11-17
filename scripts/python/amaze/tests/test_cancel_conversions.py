@@ -143,7 +143,7 @@ class TheChipFollowsTheBar(unittest.TestCase):
         """Enter the File section and settle any batch the fixture queued."""
         panel = self.panel
         if panel._is_online():
-            panel.leave_online_world()
+            panel.leave_online_mode()
         panel.section_tabs.setChecked("file")
         QtWidgets.QApplication.processEvents()
         self.assertEqual("file", panel.current_section)

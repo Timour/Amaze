@@ -28,9 +28,9 @@ def add_asset(model, node: hou.Node, cats: str, tags: str, fav: bool,
                     name=new_mat.name, mat_id=new_mat.mat_id)
         debug.refuse(messages.ASSET_NOT_SAVED_DATABASE_REFUSED % new_mat.name)
         return ""
-    for render in handler.after_landing:
+    for render in handler.after_commit:
         render()
-    if handler.after_landing:
+    if handler.after_commit:
         row = model.find_asset_row_by_id(new_mat.mat_id)
         if row >= 0:
             model._add_thumb_paths(row)    # the thumbnail was rendered after the tile appeared

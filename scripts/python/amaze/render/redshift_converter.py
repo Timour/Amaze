@@ -54,7 +54,7 @@ def wire_redshift_output(builder, shader, displacement=None) -> bool:
     if terminal is None:
         return False
     names = list(terminal.inputNames())
-    landed = False
+    surface_wired = False
     for role, node in (("surface", shader), ("displacement", displacement)):
         if node is None:
             continue
@@ -62,12 +62,12 @@ def wire_redshift_output(builder, shader, displacement=None) -> bool:
             if spelling in names:
                 try:
                     terminal.setNamedInput(spelling, node, 0)
-                    landed = landed or role == "surface"
+                    surface_wired = surface_wired or role == "surface"
                 except hou.Error as exc:    # InvalidInput is not an OperationFailed ▸r/hou-errors
                     debug.event("redshift", "could not wire the terminal",
                                 role=role, error=str(exc))
                 break
-    return landed
+    return surface_wired
 
 
 def build_redshift_material(parent, name, produce) -> RedshiftMaterial:

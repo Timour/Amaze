@@ -1096,7 +1096,7 @@ def _what_can_be_recovered(findings: dict) -> list:
     if rest and sentences:
         sentences.append("The rest are halves of an asset whose other file is not "
                          "in the folder, so they can only be moved to the trash.")
-    spared = len(_files_of(findings, stamped_unlisted(findings)))
+    spared = len(_files_of(findings, recoverable_unlisted(findings)))
     if spared:
         one = spared == 1
         sentences.append("Moving files to the trash leaves %s where %s: the metadata of what "
@@ -1138,7 +1138,7 @@ def _raise_if_library_open_in_houdini(refusal=ValueError) -> None:
 
 def movable(findings: dict) -> dict:
     """`findings` minus the files of unlisted pairs with readable metadata: Recover adds those."""
-    kept = set(_files_of(findings, stamped_unlisted(findings)))
+    kept = set(_files_of(findings, recoverable_unlisted(findings)))
     if not kept:
         return findings
     return dict(findings, unaccounted={
@@ -1373,7 +1373,7 @@ def on_record(findings: dict, filename: str) -> list:
     return found
 
 
-def stamped_unlisted(findings: dict) -> list:
+def recoverable_unlisted(findings: dict) -> list:
     """The unlisted ids with readable metadata, in a pair or alone: what can still be recovered."""
     if "asset_dirs" not in findings:
         return []

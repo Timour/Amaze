@@ -147,7 +147,7 @@ class TestOpinionComposition(unittest.TestCase):
         hv = self._hv()
         cap = hv.Capability(
             base="documented", base_evidence="e" * 50,
-            opinions=(hv.Opinion(
+            overrides=(hv.Override(
                 "workaround",
                 (("houdini", lambda env: bool(env.houdini)),
                  ("macos", lambda env: env.macos)),
@@ -161,10 +161,10 @@ class TestOpinionComposition(unittest.TestCase):
         always = lambda env: True                        # noqa: E731
         cap = hv.Capability(
             base="base", base_evidence="e" * 50,
-            opinions=(hv.Opinion("weak", (("a", always),), "e" * 50,
-                                 strength=0),
-                      hv.Opinion("strong", (("b", always),), "e" * 50,
-                                 strength=10)))
+            overrides=(hv.Override("weak", (("a", always),), "e" * 50,
+                                   priority=0),
+                       hv.Override("strong", (("b", always),), "e" * 50,
+                                   priority=10)))
         self.assertEqual("strong", cap.resolve(self._env()))
 
     def test_explain_names_the_condition_that_vetoed(self):
@@ -173,7 +173,7 @@ class TestOpinionComposition(unittest.TestCase):
         report = hv.OBJ_PICK_DEVICE_PIXELS.explain(
             self._env(macos=False, windows=True))
         self.assertFalse(report["resolved"])
-        vetoes = [o["vetoed_by"] for o in report["opinions"]
+        vetoes = [o["failed_conditions"] for o in report["overrides"]
                   if not o["applied"]]
         self.assertTrue(any("macOS" in (v or "") for v in vetoes),
                         "explain() did not name the macOS veto: %s" % vetoes)
@@ -203,10 +203,10 @@ class TestOpinionComposition(unittest.TestCase):
 
         cap = hv.Capability(
             base="base", base_evidence="e" * 50,
-            opinions=(hv.Opinion("never", (("boom", _boom),), "e" * 50),))
+            overrides=(hv.Override("never", (("boom", _boom),), "e" * 50),))
         self.assertEqual("base", cap.resolve(self._env()))
         report = cap.explain(self._env())
-        self.assertIn("raised", report["opinions"][0]["vetoed_by"])
+        self.assertIn("raised", report["overrides"][0]["failed_conditions"])
 
     def test_every_opinion_and_base_carries_real_evidence(self):
         """Every base and opinion carries evidence; a version branch without it is a guess."""
@@ -219,7 +219,7 @@ class TestOpinionComposition(unittest.TestCase):
             self.assertGreater(
                 len(cap.base_evidence or ""), 40,
                 "%s base has no real evidence" % name)
-            for opinion in cap.opinions:
+            for opinion in cap.overrides:
                 self.assertGreater(
                     len(opinion.evidence or ""), 40,
                     "%s opinion %r has no real evidence"
@@ -278,13 +278,13 @@ class AFailedWriteSaysWhichFailure(unittest.TestCase):
         """A destination open elsewhere fails only on Windows, raised as EACCES, not EBUSY."""
         from amaze.helpers import hostos
 
-        for winerror, cause in ((32, hostos.FAILED_HELD), (33, hostos.FAILED_HELD),
+        for winerror, cause in ((32, hostos.FAILED_IN_USE), (33, hostos.FAILED_IN_USE),
                                 (5, hostos.FAILED_READ_ONLY)):    # EACCES alone is ambiguous
             with self.subTest(winerror=winerror):
                 got, sentence = self._windows_cause(winerror)
                 self.assertEqual(cause, got,
                                  "winerror %d got the wrong cause" % winerror)
-                self.assertEqual(cause == hostos.FAILED_HELD,
+                self.assertEqual(cause == hostos.FAILED_IN_USE,
                                  "another program" in sentence)
 
 
@@ -331,7 +331,7 @@ class AWindowsReplaceRefusalNamesTheFile(unittest.TestCase):
         self.assertNotEqual(wintypes.HANDLE(-1).value, held, "premise: CreateFileW opened the file")
         self.addCleanup(kernel32.CloseHandle, held)
         cause, sentence = self._refusal()
-        self.assertEqual(hostos.FAILED_HELD, cause)
+        self.assertEqual(hostos.FAILED_IN_USE, cause)
         self.assertIn("another program", sentence)
 
 

@@ -20,7 +20,7 @@ from amaze.helpers import helpers, hostos
 # (module reloads consolidated into panel.py's single chain)
 
 
-def _undo_free(method):
+def _without_undo(method):
     """Run `method` entirely inside one undo disabler: its temporary nodes never reach Ctrl+Z."""
     @functools.wraps(method)
     def run(*args, **kwargs):
@@ -153,7 +153,7 @@ class ThumbNailRenderer:
         """Fallback picker for assets saved without a recorded source-node name."""
         return helpers.pick_cop_display_child(temp)
 
-    @_undo_free
+    @_without_undo
     def create_thumb_geo_file(
         self, file_path: str, out_path: str, size: int
     ) -> bool:
@@ -401,7 +401,7 @@ class ThumbNailRenderer:
             return bool(self.create_thumb_cop(str(asset_id),
                                               str(thumb_node)))
 
-    @_undo_free
+    @_without_undo
     def create_thumb_sop(self, asset_id: str) -> bool:
         """Thumbnail for a saved SOP asset, from the archive; False means no thumbnail, not a failure."""
         out_path = tile_icons.thumbnail_path(self._preferences, asset_id, nodes.NODES)
@@ -461,7 +461,7 @@ class ThumbNailRenderer:
                 except OSError:
                     pass
 
-    @_undo_free
+    @_without_undo
     def create_thumb_cop(self, asset_id: str, source_name: str = "") -> bool:
         """Thumbnail for a COP asset: its own output image; False means no thumbnail, not a failure."""
         out_path = tile_icons.thumbnail_path(self._preferences, asset_id, nodes.NODES)

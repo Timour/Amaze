@@ -82,7 +82,7 @@ class TheThumbnailPathIsComposedInOnePlace(unittest.TestCase):
 
     def test_an_unsafe_id_cannot_escape_the_image_directory(self):
         """`thumbnail_path` raises on an id leaving the folder, for readers and writers alike."""
-        with self.assertRaises(hostos.PathEscape):
+        with self.assertRaises(hostos.PathOutsideBase):
             tile_icons.thumbnail_path(self.prefs, "../../../Documents/x", library_files.MATERIALS)
 
     def test_a_format_3_picture_is_never_read(self):

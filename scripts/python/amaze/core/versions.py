@@ -416,7 +416,7 @@ def record_base(preferences, mat_id: str, kind: str, section: Section = MATERIAL
             data = handle.read()
         if not _commit_files(preferences, {target: data}, why="active slot"):
             return False
-    except (OSError, hostos.PathEscape) as exc:    # best-effort: it follows a save, never raises
+    except (OSError, hostos.PathOutsideBase) as exc:    # best-effort: it follows a save, never raises
         debug.event("versions", "base not recorded to the active slot",
                     mat_id=str(mat_id), n=active, kind=kind, error=str(exc))
         return False

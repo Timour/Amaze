@@ -176,7 +176,7 @@ class TestViewportResolutionStillWorks(unittest.TestCase):
 
 
 class TheCursorIsReadOnlyForARecord(unittest.TestCase):
-    """`_cursor_truth` feeds only the pick record, so a pick with the debug log off never reads it."""
+    """`_cursor_state` feeds only the pick record, so a pick with the debug log off never reads it."""
 
     class _Seen(_Viewer):
         def qtWindow(self):
@@ -188,20 +188,20 @@ class TheCursorIsReadOnlyForARecord(unittest.TestCase):
             return (-1, "")
 
     def _picked(self, log_on):
-        """[(world, record data)] for one obj and one lop pick; counts `_cursor_truth` reads."""
+        """[(world, record data)] for one obj and one lop pick; counts `_cursor_state` reads."""
         from unittest import mock
         _Version(self, 21)
         vp = _Viewport()
         vp.resolutionInPixels = lambda: (962, 558)
         reads, records = [], []
-        real = dragengine._cursor_truth
+        real = dragengine._cursor_state
 
         def counting(viewer):
             reads.append(viewer)
             return real(viewer)
 
         dragengine.begin("material")
-        with mock.patch.object(dragengine, "_cursor_truth", counting), \
+        with mock.patch.object(dragengine, "_cursor_state", counting), \
                 mock.patch.object(dragengine, "_dbg_on", return_value=log_on), \
                 mock.patch.object(dragengine, "_dbg",
                                   lambda msg, **kw: records.append(kw)):

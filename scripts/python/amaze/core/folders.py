@@ -278,7 +278,7 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
                 str(getattr(preferences, "dir", "")),
                 str(getattr(preferences, "library_user", "")))
 
-    def _answered(self, write) -> tuple:
+    def _write_and_signal(self, write) -> tuple:
         """Run one prefs write while views still get the old rows, then signal what it changed."""
         before = list(self._folders())
         self._held = before
@@ -719,7 +719,7 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
         """Register a folder; True when its row was added, False if already registered."""
         if not path or path in self._folders():
             return False
-        before, after = self._answered(
+        before, after = self._write_and_signal(
             lambda: getattr(self.preferences, self.add_folder_method)(path))
         return len(after) > len(before)
 
@@ -732,7 +732,7 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
         path = self.registered_at(row)
         if not path:
             return False
-        _before, after = self._answered(
+        _before, after = self._write_and_signal(
             lambda: getattr(self.preferences, self.remove_folder_method)(path))
         return path not in after
 

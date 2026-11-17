@@ -160,7 +160,7 @@ class TheCodeTextIsHalfStrength(unittest.TestCase):
         image = code_library.paint_code_preview("MMMMMMMM")
         brightest = max(QtGui.QColor(image.pixel(x, y)).red()
                         for x in range(image.width()) for y in range(120))
-        ground = QtGui.QColor(amazetheme.CODE_TILE_GROUND).red()
+        ground = QtGui.QColor(amazetheme.CODE_TILE_BACKGROUND).red()
         half = round(vex_syntax.DEFAULT.red() * amazetheme.CODE_TEXT_OPACITY
                      + ground * (1 - amazetheme.CODE_TEXT_OPACITY))
         self.assertLessEqual(abs(brightest - half), 2,

@@ -243,7 +243,7 @@ class GradientLibrary(library.AssetLibrary):
         mat._extra = {"colors": colors, "ramp": ramp_data}
         self._append_record(mat)
         if not self.save():  # nothing was saved, so the row is removed from the view too
-            self._take_back_refused_append(mat)
+            self._remove_unsaved_record(mat)
             debug.alert(
                 messages.PALETTE_NOT_SAVED % (name or "this palette"),
                 key="colors-not-saved")
@@ -254,7 +254,7 @@ class GradientLibrary(library.AssetLibrary):
         """A palette has at most one file, its captured picture: the rest is stored inline."""
         try:
             return list(self.asset_files(mat_id).values())
-        except hostos.PathEscape:
+        except hostos.PathOutsideBase:
             return []
 
     def _report_refused_delete(self, asset) -> None:

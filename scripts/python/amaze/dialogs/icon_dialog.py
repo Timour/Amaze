@@ -185,7 +185,7 @@ class IconDialog(base_dialog.AssetDialog):
         block.setSpacing(theme.ui_px(amazetheme.D02_STACK_GAP))
 
         self.preview = QtWidgets.QLabel()
-        ui_helpers.pin_drawn(self.preview, self.FRAME_KEY, "QLabel", None)
+        ui_helpers.fit_drawn(self.preview, self.FRAME_KEY, "QLabel", None)
         self.preview.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         preview_column = QtWidgets.QVBoxLayout()
         preview_column.setSpacing(0)
@@ -212,11 +212,11 @@ class IconDialog(base_dialog.AssetDialog):
         face_row = QtWidgets.QHBoxLayout()    # the Image menu: Render, Capture, Generic, Custom
         face_row.setSpacing(theme.ui_px(amazetheme.D02_FACE_GAP))
         face_label = QtWidgets.QLabel(amazetheme.LABEL_ICON)
-        ui_helpers.pin_drawn(face_label, self.FRAME_KEY, "QLabel", amazetheme.LABEL_ICON,
+        ui_helpers.fit_drawn(face_label, self.FRAME_KEY, "QLabel", amazetheme.LABEL_ICON,
                              height=False, grow=True)
         face_row.addWidget(face_label)
         self.face_combo = ui_helpers.DesignedComboBox()
-        ui_helpers.pin_drawn(self.face_combo, self.FRAME_KEY, "QComboBox", None, nth=1)
+        ui_helpers.fit_drawn(self.face_combo, self.FRAME_KEY, "QComboBox", None, nth=1)
         self.face_combo.setToolTip(ui_helpers.tooltip_text(tooltips.CUSTOMIZE_ICON))
         for face, label in zip(tile_icons.FACES, amazetheme.FACE_LABELS):
             self.face_combo.addItem(label, face)
@@ -264,7 +264,7 @@ class IconDialog(base_dialog.AssetDialog):
                 lambda _checked=False, picked=colour: self._set_bg(picked))
             swatches.addWidget(swatch)
             self._swatches.append(swatch)
-        ui_helpers.pin_drawn_series(   # the chip is drawn first, above the four
+        ui_helpers.fit_drawn_series(   # the chip is drawn first, above the four
             [self.custom_chip] + self._swatches, self.FRAME_KEY,
             "QToolButton")
         stack.addLayout(swatches)
@@ -291,7 +291,7 @@ class IconDialog(base_dialog.AssetDialog):
         actions.addWidget(self.apply_button)
 
         self.accept_button = QtWidgets.QPushButton(amazetheme.BTN_ACCEPT)
-        ui_helpers.pin_drawn_series((self.apply_button, self.accept_button),
+        ui_helpers.fit_drawn_series((self.apply_button, self.accept_button),
                                     self.FRAME_KEY, "QPushButton")
         self.accept_button.setDefault(True)
         self.accept_button.clicked.connect(self._accept)

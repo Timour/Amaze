@@ -386,7 +386,7 @@ class AnUnderscoredCategoryKeepsItsStoredName(unittest.TestCase):
         self._assert_filed_under_the_stored_name(seen["saved"])
 
     def test_standing_on_WIP_pre_selects_it(self):
-        self.assertTrue(self.panel._stand_on_category("WIP"),
+        self.assertTrue(self.panel._select_category("WIP"),
                         "premise: no row shows WIP")
         seen = self._save()
         self.assertEqual("WIP", seen["shown"],
@@ -461,7 +461,7 @@ class ASaveOpensOnTheSidebarRowOnlyInItsOwnSection(unittest.TestCase):
             with self.subTest(standing_in=standing):
                 self.panel.section_tabs.setChecked(standing)
                 QtWidgets.QApplication.processEvents()
-                self.assertTrue(self.panel._stand_on_category(self.SHARED), "premise: no row")
+                self.assertTrue(self.panel._select_category(self.SHARED), "premise: no row")
                 for key, (names, current) in self._offered().items():
                     self.assertIn(self.SHARED, names, "%s does not list its own category" % key)
                     self.assertEqual(self.SHARED if key == standing else "", current,
@@ -471,14 +471,14 @@ class ASaveOpensOnTheSidebarRowOnlyInItsOwnSection(unittest.TestCase):
         from amaze.core import matx_sources
         self.panel.section_tabs.setChecked("cop")
         QtWidgets.QApplication.processEvents()
-        self.panel.enter_online_world()
+        self.panel.enter_online_mode()
         QtWidgets.QApplication.processEvents()
         online = self.panel.matx_online_model
         self.addCleanup(setattr, online, "_all", online._all)
         online._all = [matx_sources.MatxRecord(source=online._source_filter, uid="shared-probe",
                                                title="Probe", category=self.SHARED)]
         self.panel.matx_source_model.refresh()
-        self.assertTrue(self.panel._stand_on_category(self.SHARED), "premise: no online row")
+        self.assertTrue(self.panel._select_category(self.SHARED), "premise: no online row")
         for key, (_names, current) in self._offered().items():
             self.assertEqual("", current, "a %s save opened on an online category" % key)
 

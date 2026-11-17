@@ -103,7 +103,7 @@ class AssetDialog(QtWidgets.QDialog):
     def finish(self, ok_cancel: bool = True, margins: int | tuple | None = None) -> None:
         """Lay out the rows or content and OK/Cancel, once; `margins`: house 5px, an int or (l, t, r, b)."""
         for kind, widgets in self._rows_built.items():
-            ui_helpers.pin_drawn_series(widgets, self.FRAME_KEY, kind)
+            ui_helpers.fit_drawn_series(widgets, self.FRAME_KEY, kind)
         if ok_cancel:
             self._buttons = QtWidgets.QDialogButtonBox(
                 QtWidgets.QDialogButtonBox.StandardButton.Ok
@@ -144,7 +144,7 @@ class AssetDialog(QtWidgets.QDialog):
         elif isinstance(margins, tuple):
             sides = [theme.ui_px(side) for side in margins]
         else:
-            sides = [theme.ui_px(amazetheme.HOUSE_MARGIN if margins is None else margins)] * 4
+            sides = [theme.ui_px(amazetheme.FORM_DIALOG_MARGIN if margins is None else margins)] * 4
         layout.setContentsMargins(*sides)
         if self.FORM_WIDTH:
             layout.addStrut(theme.ui_px(self.FORM_WIDTH) - sides[0] - sides[2])    # ▸r/fixed-size-constraint
@@ -179,7 +179,7 @@ class AssetDialog(QtWidgets.QDialog):
             if button is None:
                 continue
             if self.FRAME_KEY:
-                ui_helpers.pin_drawn(button, self.FRAME_KEY, "QPushButton",
+                ui_helpers.fit_drawn(button, self.FRAME_KEY, "QPushButton",
                                      label)
             else:
                 button.setFixedSize(theme.ui_px(width), height)
@@ -206,7 +206,7 @@ class AssetDialog(QtWidgets.QDialog):
         row.setSpacing(theme.ui_px(amazetheme.drawn_pair_gap(self.FRAME_KEY)))
         row.addStretch(1)
         for button in (primary, cancel):
-            ui_helpers.pin_drawn(button, self.FRAME_KEY, "QPushButton", button.text())
+            ui_helpers.fit_drawn(button, self.FRAME_KEY, "QPushButton", button.text())
             button.setAutoDefault(False)    # Enter goes to the button a dialog makes default, or none
             row.addWidget(button)
         primary.clicked.connect(on_primary)

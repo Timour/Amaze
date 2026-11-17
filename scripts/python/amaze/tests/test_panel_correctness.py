@@ -954,8 +954,8 @@ class TheOnlineWorldNeedsALibrary(unittest.TestCase):
         self.assertFalse(self.panel.btn_online.isChecked(),
                          "the Online chip shows as on with no online view loaded")
 
-    def test_enter_online_world_and_every_route_through_it_refuse(self):
-        self.panel.enter_online_world()
+    def test_enter_online_mode_and_every_route_through_it_refuse(self):
+        self.panel.enter_online_mode()
         self._assert_still_local()
         self.panel.open_online_source("PhysicallyBased")
         self._assert_still_local()
@@ -1036,11 +1036,11 @@ class LeavingOnlineLandsOnAShownSection(unittest.TestCase):
         panel.section_tabs.setChecked("cop")
         QtWidgets.QApplication.processEvents()
         self.assertEqual("cop", panel.current_section, "premise: on Node")
-        panel.enter_online_world()
+        panel.enter_online_mode()
         self.assertTrue(panel._is_online(), "premise: online")
 
         self._close_preferences_hiding("cop")
-        panel.leave_online_world()
+        panel.leave_online_mode()
         QtWidgets.QApplication.processEvents()
 
         landed = panel.section_tabs._checked_key
@@ -1096,7 +1096,7 @@ class TheGridCannotBeSqueezedOutOfExistence(unittest.TestCase):
         self.panel = test_support.fixture_panel(self)
 
     def _splitter(self):
-        """By search: a `HeldPane` makes the splitter a grandparent."""
+        """By search: a `SavedWidthPane` makes the splitter a grandparent."""
         from PySide6 import QtWidgets
 
         found = self.panel.findChildren(QtWidgets.QSplitter)
@@ -1249,7 +1249,7 @@ class TheCodeLooksLikeHoudinis(unittest.TestCase):
         from amaze import amazetheme
         with mock.patch.object(theme, "houdini_color",
                                lambda name, fallback: QtGui.QColor("#2e3440")):
-            inks = theme.syntax_inks()
+            inks = theme.syntax_colors()
         self.assertEqual({kind: fallback for kind, (_n, fallback) in amazetheme.CODE_SYNTAX.items()},
                          {kind: ink.name() for kind, ink in inks.items()},
                          "dark ink from Houdini's light scheme reached the dark editor")
@@ -1259,9 +1259,9 @@ class TheCodeLooksLikeHoudinis(unittest.TestCase):
         from amaze.helpers import vex_syntax
         kinds = list(amazetheme.CODE_SYNTAX)
         live = {kind: QtGui.QColor("#%02x8080" % (0x40 + 8 * i)) for i, kind in enumerate(kinds)}
-        self.addCleanup(vex_syntax.use_inks, {
+        self.addCleanup(vex_syntax.use_syntax_colors, {
             kind: QtGui.QColor(fallback) for kind, (_n, fallback) in amazetheme.CODE_SYNTAX.items()})
-        with mock.patch.object(theme, "syntax_inks", lambda: live):
+        with mock.patch.object(theme, "syntax_colors", lambda: live):
             test_support.fixture_panel(self)
         painted = {colour.name() for _s, _l, colour in vex_syntax.spans('int a = f(1); // "x"')}
         self.assertLessEqual(painted, {ink.name() for ink in live.values()},

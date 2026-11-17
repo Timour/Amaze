@@ -745,14 +745,14 @@ def _pick_trace(world, x, y, result, viewer=None):
     """One record per pick: the coordinates PASSED and the result, the cursor read only here."""
     if not (_dbg_on() and _pick_log_budget(hit=bool(result))):
         return
-    data = _cursor_truth(viewer) if viewer is not None else {}
+    data = _cursor_state(viewer) if viewer is not None else {}
     data.update(world=str(world), passed=(int(x), int(y)),
                 hit=str(result or ""),
                 houdini=hou.applicationVersionString())
     _dbg("pick", **data)
 
 
-def _cursor_truth(viewer):
+def _cursor_state(viewer):
     """The cursor in the GL widget's logical coordinates, sampled after the pick."""
     try:
         from PySide6 import QtGui

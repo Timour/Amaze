@@ -678,9 +678,9 @@ class TheFileTabMovesWhatLandsOnAFolderTest(unittest.TestCase):
         self.panel = test_support.fixture_panel(self)
         self.said = []
         previous = debug._ui
-        debug.hand_over(types.SimpleNamespace(status=self.said.append,
-                                              dialog=self.said.append))
-        self.addCleanup(debug.hand_over, previous)
+        debug.set_ui(types.SimpleNamespace(status=self.said.append,
+                                           dialog=self.said.append))
+        self.addCleanup(debug.set_ui, previous)
         self.folders = self.panel.file_folders_model
         self.loc = self.folders.registered_at(self.folders._offset())    # the first location
         self.a, self.b = _child(self.loc, "a"), _child(self.loc, "b")

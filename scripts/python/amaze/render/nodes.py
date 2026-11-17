@@ -74,7 +74,7 @@ def wire_builder_output(builder, surface_node, displacement_node=None):
     return False
 
 
-def _plumbing_role(node):
+def _connector_role(node):
     """What a connector or subnet input/output is for: equal roles mean the same output."""
     tname = node.type().name()
     if tname == "subnetconnector":
@@ -85,16 +85,16 @@ def _plumbing_role(node):
     return None
 
 
-def replace_stock_plumbing(builder, loaded) -> int:
+def replace_stock_connectors(builder, loaded) -> int:
     """Saved connectors replace the builder's own of the same role, keeping their wiring."""
     saved = {}
     for node in loaded:
-        role = _plumbing_role(node)
+        role = _connector_role(node)
         if role is not None:
             saved.setdefault(role, node)
     replaced = 0
     for stock in [c for c in builder.children() if c not in loaded]:
-        keeper = saved.get(_plumbing_role(stock))
+        keeper = saved.get(_connector_role(stock))
         if keeper is None:
             continue
         name = stock.name()
@@ -104,14 +104,14 @@ def replace_stock_plumbing(builder, loaded) -> int:
     return replaced
 
 
-def place_plumbing_beside(plumbing, saved, gap: float = 1.0) -> None:
+def place_connectors_beside(connectors, saved, gap: float = 1.0) -> None:
     """Amaze's own connectors beside the saved nodes, left in place: inputs left, outputs right."""
     from amaze.helpers import helpers
     around = helpers.bounds(saved)
     if around is None:
         return
-    outputs = [node for node in plumbing if _is_output_plumbing(node)]
-    inputs = [node for node in plumbing if node not in outputs]
+    outputs = [node for node in connectors if _is_output_connector(node)]
+    inputs = [node for node in connectors if node not in outputs]
     for side, edge in ((outputs, around[2] + gap), (inputs, around[0] - gap)):
         own = helpers.bounds(side)
         if own is None:
@@ -120,7 +120,7 @@ def place_plumbing_beside(plumbing, saved, gap: float = 1.0) -> None:
         helpers.shift_items(side, hou.Vector2(x, around[3] - own[3]))    # their stock order, top-aligned
 
 
-def _is_output_plumbing(node) -> bool:
+def _is_output_connector(node) -> bool:
     kind = node.type().name()
     if kind == "subnetconnector":
         parm = node.parm("connectorkind")
@@ -226,7 +226,7 @@ def ensure_asset_folder(preferences, path: str) -> None:
     try:
         inside = os.path.relpath(folder, root)
     except ValueError:  # another drive, a UNC share or an empty path: never inside ▸r/relpath-valueerror
-        raise hostos.PathEscape("%r does not stay inside %r" % (folder, root))
+        raise hostos.PathOutsideBase("%r does not stay inside %r" % (folder, root))
     hostos.contained_join(root, inside)  # also checks a library folder not created yet
     os.makedirs(folder, exist_ok=True)
 
@@ -533,7 +533,7 @@ def karma_destination(prefs):
     """The Material Library the editor is in, else the Material Network it is in, else /mat; or None."""
     handler = NodeHandler(prefs)
     try:
-        world = handler._auto_world()
+        world = handler._network_context()
     except AttributeError:
         world = "mat"      # no UI (headless): /mat is always valid
     if world == "lop":
@@ -650,7 +650,7 @@ class NodeHandler:
                 record_path = asset_record.path_for(
                     preferences, str(asset_id), section)
                 builder = capture_builder(builder_node)
-            except (hou.Error, hostos.PathEscape, OSError) as exc:
+            except (hou.Error, hostos.PathOutsideBase, OSError) as exc:
                 debug.event("save", "builder not captured - the asset keeps its .mat",
                             asset_id=str(asset_id), error=str(exc))
                 record_path, builder = "", {}
@@ -680,7 +680,7 @@ class NodeHandler:
                 asset_record.commit_staged_files(preferences, staged)
             else:
                 for kind, target, held in staged:
-                    hostos.promote_scratch(held, target)
+                    hostos.replace_with_scratch(held, target)
             tmp_mat = ""
         finally:
             if tmp_mat:
@@ -723,7 +723,7 @@ class NodeHandler:
     def __init__(self, preferences: prefs.Prefs) -> None:
         self._preferences = preferences
         self.staging = None    # a list: an asset's files stay there until the caller commits them with its row
-        self.after_landing = []    # callables that read the staged files, run by the caller after the commit
+        self.after_commit = []    # callables that read the staged files, run by the caller after the commit
         self.supplied_thumbnail = ""    # an image an import supplied, saved instead of a render
         self.render_after_save = True    # False: a new save skips its render, a batch follows
         self._builder_node = None
@@ -817,7 +817,7 @@ class NodeHandler:
         try:
             return (material.payload_path(
                 self._preferences, mat.mat_id, self._preferences.ext, section), "")
-        except hostos.PathEscape:
+        except hostos.PathOutsideBase:
             debug.event("import", "refused escaping asset path",
                         material=mat.name, mat_id=str(mat.mat_id)[:120])
             return ("",
@@ -834,12 +834,12 @@ class NodeHandler:
         """The import entry point: (ok, reason, created); [] on refusal."""
         self._builder_node = None
         self._context_override = context_node    # the network the target is read from, this import only
-        self._held_builder = {}    # the builder is read once for this import, and only for it
+        self._builder_cache = {}    # the builder is read once for this import, and only for it
         try:
             ok, reason = self._import_asset_to_scene_inner(mat, target)
         finally:
             self._context_override = None
-            self._held_builder = None
+            self._builder_cache = None
         created = ([self._builder_node]
                    if ok and self._builder_node is not None else [])
         return ok, reason, created
@@ -894,9 +894,9 @@ class NodeHandler:
             rebuilt, refusal = self._load_saved(mat, saved_type)
             if not rebuilt:
                 return (False, refusal)
-            landed = self.companion_ref_map(mat)
-            if landed and self._builder_node is not None:
-                self.rewrite_cop_refs((self._builder_node,), landed)    # the token path to the companion
+            ref_map = self.companion_ref_map(mat)
+            if ref_map and self._builder_node is not None:
+                self.rewrite_cop_refs((self._builder_node,), ref_map)    # the token path to the companion
 
             loaded_ok = True
             if (
@@ -1038,7 +1038,7 @@ class NodeHandler:
         elif target == "lop":
             world = "lop"
         else:  # auto
-            world = self._auto_world()
+            world = self._network_context()
 
         if world == "lop" and "lop" not in allowed:
             return (
@@ -1064,7 +1064,7 @@ class NodeHandler:
             self._use_existing_node = True
         return (True, "")
 
-    def _auto_world(self) -> str:
+    def _network_context(self) -> str:
         """The editor's context as 'lop', 'sop', or 'mat' (the default), by what the network holds."""
         curr = self.get_current_network_node()
         if curr is None:
@@ -1120,7 +1120,7 @@ class NodeHandler:
 
     def _saved_builder(self, mat: material.Material) -> dict:
         """A material's `builder`, `<id>.json` first; cached only during one import or rebuild."""
-        held = getattr(self, "_held_builder", None)
+        held = getattr(self, "_builder_cache", None)
         if held is None:    # outside an import nothing is cached, so nothing can be stale
             return asset_record.saved_builder(self._preferences, mat.mat_id, MATERIALS)
         key = str(mat.mat_id)
@@ -1155,11 +1155,11 @@ class NodeHandler:
         self._hou_parent = scratch
         self._import_path = scratch
         self._use_existing_node = True
-        self._held_builder = {}
+        self._builder_cache = {}
         try:
             ok, refusal = self._load_saved(mat)
         finally:
-            self._held_builder = None
+            self._builder_cache = None
         if not ok:
             raise hou.OperationFailed(refusal)
         return self._builder_node
@@ -1268,7 +1268,7 @@ class NodeHandler:
         if len(loaded) == 1 and loaded[0].type().name() == "subnet":
             self._place_whole_builder(mat, loaded[0])
             return
-        replace_stock_plumbing(self._builder_node, loaded)    # one wired set, not two ▸r/save-shape
+        replace_stock_connectors(self._builder_node, loaded)    # one wired set, not two ▸r/save-shape
 
         shader_node = None
         displacement_node = None
@@ -1300,7 +1300,7 @@ class NodeHandler:
         kept = [c for c in loaded if c not in collect_nodes]
         for collect in collect_nodes:
             collect.destroy()
-        place_plumbing_beside(
+        place_connectors_beside(
             [c for c in self._builder_node.children() if c not in kept], kept)
         helpers.auto_place(self._builder_node)
 
@@ -1458,7 +1458,7 @@ class NodeHandler:
                             error=str(exc))
 
     @staticmethod
-    def _companion_home(beside):
+    def _companion_parent_network(beside):
         """The companion's network: /stage beside a library, /obj for /mat, the geo for a matnet."""
         obj = hou.node("/obj")
         if beside is None:
@@ -1474,10 +1474,10 @@ class NodeHandler:
     def companion_ref_map(self, mat) -> dict:
         """The token path in saved files, mapped to where this import put the COP network."""
         info = getattr(mat, "cop_net", {}) or {}
-        landed = getattr(self, "_cop_companion_path", None)
-        if not info.get("name") or not landed:
+        companion_path = getattr(self, "_cop_companion_path", None)
+        if not info.get("name") or not companion_path:
             return {}
-        return {"op:" + self.COP_LIB_ROOT + "/" + info["name"]: "op:" + landed}
+        return {"op:" + self.COP_LIB_ROOT + "/" + info["name"]: "op:" + companion_path}
 
     def restore_cop_companion(self, mat: material.Material, beside):
         """Restore the saved COP network beside `beside`; returns only what THIS call made."""
@@ -1491,11 +1491,11 @@ class NodeHandler:
         if not os.path.exists(file_name):
             debug.note("COP companion file missing for " + mat.name + " - skipped")
             return
-        home = self._companion_home(beside)
-        if home is None:
+        parent_network = self._companion_parent_network(beside)
+        if parent_network is None:
             debug.note("no network for the COP companion of " + mat.name + " - skipped")
             return
-        existing = home.node(info["name"])
+        existing = parent_network.node(info["name"])
         if existing is not None and existing.childTypeCategory() is not None \
                 and existing.childTypeCategory().name() in ("Cop", "Cop2"):
             self._cop_companion_path = existing.path()
@@ -1503,9 +1503,9 @@ class NodeHandler:
                         name=info["name"], reused=True)
             return
         try:
-            copnet = home.createNode(info.get("type", "copnet"))
+            copnet = parent_network.createNode(info.get("type", "copnet"))
         except hou.Error:
-            copnet = home.createNode("copnet")
+            copnet = parent_network.createNode("copnet")
         try:
             copnet.setName(info["name"], unique_name=True)
         except hou.OperationFailed:
@@ -1587,7 +1587,7 @@ class NodeHandler:
         if self.staging is None:
             render_later()
         else:
-            self.after_landing.append(render_later)
+            self.after_commit.append(render_later)
         return True
 
     def import_cop_asset(
@@ -1597,11 +1597,11 @@ class NodeHandler:
     ):
         """The COP import seam: (ok, reason, created), nodes then notes, boxes, dots; [] on refusal."""
         self._imported_cop_nodes = []
-        self._imported_cop_riders = []    # notes, boxes and dots, after the nodes
+        self._imported_cop_notes_boxes_dots = []    # notes, boxes and dots, after the nodes
         ok, reason = self._import_cop_asset_inner(
             mat, context_node=context_node)
         created = (list(self._imported_cop_nodes)
-                   + list(self._imported_cop_riders)) if ok else []
+                   + list(self._imported_cop_notes_boxes_dots)) if ok else []
         return ok, reason, created
 
     def _import_cop_asset_inner(
@@ -1668,11 +1668,11 @@ class NodeHandler:
                 for loaded in new_children:    # only what this load added ▸r/inherited-stamps
                     clear_inherited_stamps(loaded, include_self=True)
                 self._imported_cop_nodes = list(new_children)
-                self._imported_cop_riders = [    # moved with the nodes, as a paste moves them
+                self._imported_cop_notes_boxes_dots = [    # moved with the nodes, as a paste moves them
                     item for item in dest.allItems()
                     if item.path() not in held and not isinstance(item, hou.Node)]
                 helpers.clear_of(    # saved arrangement kept, as a paste keeps it; a drop point moves it after
-                    self._imported_cop_nodes + self._imported_cop_riders,
+                    self._imported_cop_nodes + self._imported_cop_notes_boxes_dots,
                     [item for item in dest.allItems() if item.path() in held])
                 return (True, "")
 

@@ -105,7 +105,7 @@ class _VersionTabs(QtWidgets.QWidget):
             painter.drawRoundedRect(QtCore.QRectF(box.x(), 0, box.width(), box.height() + radius),
                                     radius, radius)    # its lower corners are below the clip rect
             room = box.width() - inset - close_w
-            painter.setPen(QtGui.QColor(amazetheme.CODE_TAB_INK))
+            painter.setPen(QtGui.QColor(amazetheme.CODE_TAB_TEXT_COLOR))
             painter.drawText(QtCore.QRectF(box.x() + inset, top, room, high),
                              QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter,
                              painter.fontMetrics().elidedText(
@@ -208,7 +208,7 @@ class CodeEditor(QtWidgets.QPlainTextEdit):
         painter = QtGui.QPainter(self._gutter)
         self._paint_current_line(painter, 0)
         x = theme.ui_px(self._drawn["gutter"][0])
-        painter.setPen(QtGui.QColor(amazetheme.CODE_LINE_NUMBER_INK))
+        painter.setPen(QtGui.QColor(amazetheme.CODE_LINE_NUMBER_TEXT_COLOR))
         painter.setFont(self.font())
         block = self.firstVisibleBlock()
         number = block.blockNumber()
@@ -321,7 +321,7 @@ class CodeDialog(base_dialog.AssetDialog):
     def paintEvent(self, event):
         """The window's drawn background; painted here so no child inherits it as its colour."""
         painter = QtGui.QPainter(self)
-        painter.fillRect(self.rect(), QtGui.QColor(amazetheme.CODE_GROUND))
+        painter.fillRect(self.rect(), QtGui.QColor(amazetheme.CODE_BACKGROUND))
         painter.end()
 
     def build_header_band(self):

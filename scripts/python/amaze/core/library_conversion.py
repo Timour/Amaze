@@ -401,7 +401,7 @@ def _copy_in(source: str, target: str) -> None:
     scratch = hostos.unique_scratch(target)
     try:
         shutil.copyfile(source, scratch)
-        hostos.promote_scratch(scratch, target)
+        hostos.replace_with_scratch(scratch, target)
     finally:
         hostos.discard_scratch(scratch)
 
@@ -431,7 +431,7 @@ def _convert_asset(library_dir: str, asset_id: str, section: str, rows: dict,
     created, stopped = [], None
     try:
         ok, old_files = _convert_one(library_dir, asset_id, section, rows, faces, counts, created)
-    except (ValueError, hostos.PathEscape) as exc:
+    except (ValueError, hostos.PathOutsideBase) as exc:
         ok, old_files = _kept(asset_id, str(exc), counts), _old_files(library_dir, asset_id,
                                                                       section)
     except OSError as exc:    # a file in use or a full disk: the asset converts in the next run
@@ -550,7 +550,7 @@ def _classics(library_dir: str, rows: dict) -> dict:
             builder = asset_record.read(asset_record.path_for(
                 _Prefs(library_dir), asset_id, library_files.MATERIALS))[asset_record.BUILDER] \
                 or _old_builder(old[BUILDER], old[INTERFACE])
-        except (OSError, ValueError, hostos.PathEscape):
+        except (OSError, ValueError, hostos.PathOutsideBase):
             continue    # an id with no file here: its own conversion step sets it aside
         renderer = CLASSIC.get(builder.get("type", ""))
         if renderer is not None:

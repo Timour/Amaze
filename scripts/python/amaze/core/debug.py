@@ -470,10 +470,10 @@ def _print(message: str) -> None:
 
 
 _alerted: set = globals().get("_alerted", set())
-_ui = globals().get("_ui")    # what `hand_over` was given, kept across a reload
+_ui = globals().get("_ui")    # what `set_ui` was given, kept across a reload
 
 
-def hand_over(ui) -> None:
+def set_ui(ui) -> None:
     """Set the object that shows alerts and refusals and describes the host; until then, they print."""
     global _ui
     _ui = ui

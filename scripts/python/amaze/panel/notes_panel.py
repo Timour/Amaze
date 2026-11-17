@@ -12,7 +12,7 @@ from amaze.helpers import theme, ui_helpers
 from amaze import messages
 from amaze import tooltips
 
-COMMENT_INK = amazetheme.COMMENT_INK    # defined once, in amazetheme ▸p/one-design-document
+COMMENT_ICON_COLOR = amazetheme.COMMENT_ICON_COLOR    # defined once, in amazetheme ▸p/one-design-document
 
 SAVE_DELAY_MS = 600       # a crash loses a sentence at most, and typing is not a write per key
 
@@ -235,7 +235,7 @@ class _NoteEdit(QtWidgets.QTextEdit):
 
     @staticmethod
     def _label_format(done: bool) -> QtGui.QTextCharFormat:
-        fmt = QtGui.QTextCharFormat()   # strike-through only; colour comes from the palette adopt_look() copies from the category list
+        fmt = QtGui.QTextCharFormat()   # strike-through only; colour from the category list's palette, via copy_font_and_text_color()
         fmt.setFontStrikeOut(bool(done))
         return fmt
 
@@ -387,8 +387,8 @@ class _NoteEdit(QtWidgets.QTextEdit):
                         done = self.block_done(block)
                         pixmap = _feather_icon(
                             "check-circle" if done else "circle", side,
-                            amazetheme.COMMENT_DONE_INK if done
-                            else amazetheme.COMMENT_OPEN_INK, self)
+                            amazetheme.COMMENT_DONE_COLOR if done
+                            else amazetheme.COMMENT_OPEN_COLOR, self)
                         y = (tlayout.position().y() + line.y()
                              + (line.height() - side) / 2.0 - y_scroll)
                         painter.drawPixmap(
@@ -479,7 +479,7 @@ class _NoteEdit(QtWidgets.QTextEdit):
         return items
 
 
-class NotesPanel(ui_helpers.HeldPane):
+class NotesPanel(ui_helpers.SavedWidthPane):
     """The dockable page for one asset's notes; saves emit `changed`."""
 
     changed = QtCore.Signal(str)
@@ -556,27 +556,27 @@ class NotesPanel(ui_helpers.HeldPane):
         body_box.addWidget(self.text_edit, 1)
         self.body_widget = body
         page_box.addWidget(body, 1)
-        self._ghost = True
+        self._dimmed = True
         self._show_no_selection()
 
     def _paint_accents(self) -> None:
         import amaze
         dpr = theme.screen_ratio(self)
         side, plus_side = theme.ui_px(_DRAWN["icon"]), theme.ui_px(_DRAWN["plus"])
-        dimmed = getattr(self, "_ghost", False)    # nothing selected: labels and icons dimmed as in N01B
+        dimmed = getattr(self, "_dimmed", False)    # nothing selected: labels and icons dimmed as in N01B
         text = amazetheme.COMMENT_DIM_TEXT_OPACITY if dimmed else 1.0
         _set_text_color(self.name_label, "text_bright", text)
         _set_text_color(self.type_label, "text", text)
         self._icon_label.setPixmap(_faded(ui_helpers.device_pixmap(
             amaze.package_file("ui", "icon_comments.svg"), side, dpr,
-            {amazetheme.COMMENT_INK: amazetheme.COMMENT_DIM_ICON_INK} if dimmed else None),
+            {amazetheme.COMMENT_ICON_COLOR: amazetheme.COMMENT_DIM_ICON_COLOR} if dimmed else None),
             amazetheme.COMMENT_DIM_ICON_OPACITY if dimmed else 1.0, dpr))
         self.add_button.setIcon(QtGui.QIcon(ui_helpers.device_pixmap(
             amaze.package_file("ui", "icon_comments_add.svg"), plus_side, dpr,
-            {amazetheme.COMMENT_ADD_INK: amazetheme.COMMENT_DIM_ADD_INK} if dimmed else None)))
+            {amazetheme.COMMENT_ADD_COLOR: amazetheme.COMMENT_DIM_ADD_COLOR} if dimmed else None)))
         self.add_button.setIconSize(QtCore.QSize(plus_side, plus_side))
 
-    def adopt_look(self, source: QtWidgets.QWidget) -> None:
+    def copy_font_and_text_color(self, source: QtWidgets.QWidget) -> None:
         """Clone font and text colour from a .ui-loaded sibling."""
         self.text_edit.setFont(source.font())
         palette = self.text_edit.palette()
@@ -607,7 +607,7 @@ class NotesPanel(ui_helpers.HeldPane):
             self.text_edit.load_items(note.get("items", []))
         finally:
             self._loading = False
-        self._ghost = False
+        self._dimmed = False
         self.text_edit.setEnabled(True)
         self.add_button.setEnabled(True)
         self._paint_accents()
@@ -625,7 +625,7 @@ class NotesPanel(ui_helpers.HeldPane):
 
     def _show_no_selection(self) -> None:
         """The no-selection look (N01B): the SAME window dimmed, never a different layout."""
-        self._ghost = True
+        self._dimmed = True
         self._loading = True
         try:
             self.set_header(amazetheme.COMMENT_DIM_NAME, amazetheme.COMMENT_DIM_TYPE)

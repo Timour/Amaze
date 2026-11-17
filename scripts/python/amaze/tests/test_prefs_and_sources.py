@@ -506,7 +506,7 @@ class ContainmentAnswersAsRealpathDoes(unittest.TestCase):
         composed = os.path.join(base, *parts)
         real_base, real = os.path.realpath(base), os.path.realpath(composed)
         if real != real_base and not real.startswith(real_base.rstrip(os.sep) + os.sep):
-            raise hostos.PathEscape(composed)
+            raise hostos.PathOutsideBase(composed)
         return composed
 
     def setUp(self):
@@ -532,9 +532,9 @@ class ContainmentAnswersAsRealpathDoes(unittest.TestCase):
             with self.subTest(parts=parts):
                 try:
                     expected = self._by_realpath(self.base, *parts)
-                except hostos.PathEscape:
+                except hostos.PathOutsideBase:
                     refused += 1
-                    with self.assertRaises(hostos.PathEscape):
+                    with self.assertRaises(hostos.PathOutsideBase):
                         hostos.contained_join(self.base, *parts)
                     continue
                 self.assertEqual(expected, hostos.contained_join(self.base, *parts))
@@ -546,7 +546,7 @@ class ContainmentAnswersAsRealpathDoes(unittest.TestCase):
             hostos.contained_join(self.base, "mat", "a.mat")
             hostos.contained_join(self.base, "mat", "missing.mat")
             self.assertEqual(0, realpath.call_count, "a plain name was resolved component by component")
-            with self.assertRaises(hostos.PathEscape):
+            with self.assertRaises(hostos.PathOutsideBase):
                 hostos.contained_join(self.base, "mat", "o.mat")
             self.assertEqual(1, realpath.call_count, "a link was not passed to realpath")
 

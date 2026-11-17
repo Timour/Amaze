@@ -1985,7 +1985,7 @@ class OnlineKindFilterTest(unittest.TestCase):
 
     def test_build_filter_menu_leaves_the_online_eye_alone(self):
         panel = self.panel
-        panel.enter_online_world()
+        panel.enter_online_mode()
         try:
             panel.build_filter_menu()
             self.assertIn(
@@ -1996,7 +1996,7 @@ class OnlineKindFilterTest(unittest.TestCase):
                 ["All", "Materials", "Colors", "Nodes", "Code"],
                 [a.text() for a in panel.btn_filter.menu().actions()])
         finally:
-            panel.leave_online_world()
+            panel.leave_online_mode()
 
     def test_the_tile_labels_are_the_sections_own(self):
         from amaze.core import matx_library
@@ -2013,7 +2013,7 @@ class OnlineKindFilterTest(unittest.TestCase):
 
     def test_the_online_eye_offers_the_five_kinds(self):
         panel = self.panel
-        panel.enter_online_world()
+        panel.enter_online_mode()
         try:
             self.assertTrue(
                 panel.btn_filter.isEnabled(),
@@ -2031,7 +2031,7 @@ class OnlineKindFilterTest(unittest.TestCase):
             self.assertEqual("gradient",
                              panel.matx_online_model._kind_filter)
         finally:
-            panel.leave_online_world()
+            panel.leave_online_mode()
         self.assertNotIn(
             "Colors",
             [a.text() for a in panel.btn_filter.menu().actions()],
@@ -2207,7 +2207,7 @@ class OnlineTilePaintingTest(unittest.TestCase):
                    "tiles in a grid of colours is a package that "
                    "'does not show up'")
         self.assertEqual(image.pixelColor(2, 2).name(),
-                         QtGui.QColor(amazetheme.CODE_TILE_GROUND).name(),
+                         QtGui.QColor(amazetheme.CODE_TILE_BACKGROUND).name(),
                          "the snippet preview is not on the background "
                          "the Code section uses")
 

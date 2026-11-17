@@ -26,7 +26,7 @@ def paint_code_preview(code: str) -> QtGui.QImage:
     image = QtGui.QImage(
         PREVIEW_SIZE, PREVIEW_SIZE, QtGui.QImage.Format.Format_RGB32
     )
-    image.fill(QtGui.QColor(amazetheme.CODE_TILE_GROUND))
+    image.fill(QtGui.QColor(amazetheme.CODE_TILE_BACKGROUND))
     text = QtGui.QImage(PREVIEW_SIZE, PREVIEW_SIZE,
                         QtGui.QImage.Format.Format_ARGB32_Premultiplied)
     text.fill(QtCore.Qt.GlobalColor.transparent)

@@ -112,7 +112,7 @@ class Prefs(_Persistence):
     @dir.setter
     def dir(self, val: str) -> None:
         self._directory = val
-        self._adopt_shared()  # read the library's values before this machine's defaults are saved
+        self._apply_shared_settings()  # read the library's values before this machine's defaults are saved
 
     @property
     def libraries(self) -> list[str]:
@@ -274,14 +274,14 @@ class Prefs(_Persistence):
             self._file_favorites = list(favourites)
         self.save()
 
-    def hold_folder_order(self, order) -> None:
+    def stage_folder_order(self, order) -> None:
         """Stage a sidebar order without saving; `commit_registered_order` persists it."""
         self._file_folders = [str(p) for p in (order or [])]
 
     def add_file_folder(self, path: str) -> None:
         from amaze.core import locations
-        landed = locations.register(self, path)
-        if landed and locations.record(self, path).get("kinds") is None:    # new: Show ▸'s defaults
+        registered = locations.register(self, path)
+        if registered and locations.record(self, path).get("kinds") is None:    # new: Show ▸'s defaults
             self.set_file_folder_kinds(path, locations.SHOWN_BY_DEFAULT)
 
     def remove_file_folder(self, path: str) -> None:

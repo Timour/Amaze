@@ -268,9 +268,9 @@ class _AssetSidebarPaths(_HighlightCase):
 
         def online_and_back():
             self.stand()
-            panel.enter_online_world()
+            panel.enter_online_mode()
             _pump()
-            panel.leave_online_world()
+            panel.leave_online_mode()
         self.check("entering and leaving Online", online_and_back, grid="Kept")
         self.check("a library switch", self.switch_library, grid="")
 
@@ -539,7 +539,7 @@ class OnlineSidebarTest(_HighlightCase, unittest.TestCase):
 
     def test_every_path_leaves_the_highlight_on_the_grids_row(self):
         panel = self.panel
-        self.check("entering Online", panel.enter_online_world, grid="")
+        self.check("entering Online", panel.enter_online_mode, grid="")
         self.check("a catalogue landing", lambda: self.land("Metal", "Wood"), grid="")
         self.check("a click on a category", lambda: self.click(self.row("Metal")), grid="Metal")
         self.check("a catalogue landing that keeps it",
@@ -563,9 +563,9 @@ class OnlineSidebarTest(_HighlightCase, unittest.TestCase):
         self.check("a catalogue landing that drops it", landing_drops_it, grid="")
 
         def leave_and_return():
-            panel.leave_online_world()
+            panel.leave_online_mode()
             _pump()
-            panel.enter_online_world()
+            panel.enter_online_mode()
         self.check("leaving and entering again", leave_and_return, grid="")
         self.check("a library switch", self.switch_library, grid="")
 

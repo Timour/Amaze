@@ -430,7 +430,7 @@ class TheCategoryVerbsMoveNoRowInsideALayoutChange(unittest.TestCase):
             "segfaults H21: %s" % (verb, caught))
 
     def test_rename(self):
-        self.assertTrue(self.panel._stand_on_category("usds"))
+        self.assertTrue(self.panel._select_category("usds"))
         index = self._row("usds")
         with mock.patch.object(self.panel, "ask_category_name",
                                lambda _title, _default="": "Surfaces"), \
@@ -450,7 +450,7 @@ class TheCategoryVerbsMoveNoRowInsideALayoutChange(unittest.TestCase):
 
     def test_rename_opens_on_the_name_being_renamed(self):
         from amaze.dialogs import base_dialog
-        self.assertTrue(self.panel._stand_on_category("usds"))
+        self.assertTrue(self.panel._select_category("usds"))
         index = self._row("usds")
         shown = []
 
@@ -708,7 +708,7 @@ class ANameThatReadsAsAnotherIsThatCategory(unittest.TestCase):
         filed = [asset for asset in self.panel.material_model.assets
                  if stored in asset.categories]
         self.assertTrue(filed, "premise: nothing is filed under %r" % stored)
-        self.assertTrue(self.panel._stand_on_category(stored), "premise: no row to select")
+        self.assertTrue(self.panel._select_category(stored), "premise: no row to select")
         index = self._sidebar_row(stored)
         with self._typing(typed):
             self.section.menu_rename_category([index], index)

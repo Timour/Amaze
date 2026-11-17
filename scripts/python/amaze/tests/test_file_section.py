@@ -662,7 +662,7 @@ class CreationRuleTest(unittest.TestCase):
         home = self._geo()
         anchor = home.createNode("box")
         seen, passes = [], []
-        real = helpers._put_editors_back
+        real = helpers._restore_editors
 
         def _watch(editors, pass_name):
             passes.append(pass_name)
@@ -670,7 +670,7 @@ class CreationRuleTest(unittest.TestCase):
 
         with mock.patch.object(hou, "ui", self._editor_showing(home, anchor, seen),
                                create=True), \
-                mock.patch.object(helpers, "_put_editors_back", _watch):
+                mock.patch.object(helpers, "_restore_editors", _watch):
             with helpers.preserving_selection_and_current():
                 with helpers.preserving_selection_and_current():
                     pass

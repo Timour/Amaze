@@ -564,7 +564,7 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
         depth = []
 
         def offline(record):
-            depth.append(helpers._open_blocks)
+            depth.append(helpers._selection_block_depth)
             return None, None, "offline in the test"
 
         index = mock.MagicMock()

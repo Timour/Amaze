@@ -1166,7 +1166,7 @@ class AnyIdTheWriterTakesIsReadBackTest(_Library):
         self.metadata("odd_id.1")
         findings = repair.survey(self.dir)
         self.assertIn("odd_id.1.json", findings["unaccounted"]["materials/"])
-        self.assertIn("odd_id.1", repair.stamped_unlisted(findings))
+        self.assertIn("odd_id.1", repair.recoverable_unlisted(findings))
 
 
 class APairIsOneFolderTest(_Library):

@@ -171,7 +171,7 @@ def _measured_roughness(facts, kind, rng, fallback):
     return _clamp(rng.choice(pool) * rng.uniform(0.75, 1.3))
 
 
-def _drift(color, rng, amount=0.04):
+def _vary(color, rng, amount=0.04):
     """A colour scaled per channel by up to `amount` of itself."""
     return [_clamp(c * rng.uniform(1.0 - amount, 1.0 + amount))
             for c in color]
@@ -199,7 +199,7 @@ def spec_from_fact(fact: dict, rng=None, facts=None):
     varied = []
 
     if kind == "metal":
-        color = _drift([_clamp(c) for c in fact["color"]], rng)
+        color = _vary([_clamp(c) for c in fact["color"]], rng)
         others = [f for f in facts
                   if fact_kind(f) == "metal" and f["name"] != fact["name"]]
         if others and rng.random() < 0.4:    # alloy-like: blended toward another measured metal
@@ -231,10 +231,10 @@ def spec_from_fact(fact: dict, rng=None, facts=None):
             varied.append("measured edge tint")
     elif kind == "transmissive":
         spec.update({
-            "base_color": _drift(fact["color"], rng, 0.08),    # the measured IOR below is this material's identity, copied exactly - water 1.333, diamond 2.417
+            "base_color": _vary(fact["color"], rng, 0.08),    # the measured IOR below is this material's identity, copied exactly - water 1.333, diamond 2.417
             "metalness": 0.0,
             "transmission": 1.0,
-            "transmission_color": _drift(fact["color"], rng, 0.08),
+            "transmission_color": _vary(fact["color"], rng, 0.08),
             "specular_roughness": _clamp(rng.uniform(0.0, 0.12)),
         })
         if fact["ior"] > 1.0:

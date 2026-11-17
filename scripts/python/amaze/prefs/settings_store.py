@@ -11,7 +11,7 @@ from amaze.helpers import hostos
 
 FILENAME = "settings.json"    # machine-local: it holds the library's path and is never copied to another machine
 
-READ, FRESH, BLIND = "read", "fresh", "blind"    # parsed; missing; present but unreadable: no writes
+READ, FRESH, UNREADABLE = "read", "fresh", "blind"    # parsed; missing; present but unreadable: no writes
 
 COMBINE, FIELDS = "combine", "fields"    # a list: this pane's, then the other's; a table: field by field
 RULES = {    # merge of another pane's save per key; a key with no rule keeps ours if both changed it
@@ -42,7 +42,7 @@ def _deeper(path: tuple) -> bool:
                for parts in (pattern.split("/") for pattern in RULES))
 
 
-def _fold(rule: str, ours, theirs, path: tuple = ()):
+def _merge_by_rule(rule: str, ours, theirs, path: tuple = ()):
     """This pane's value with the other pane's additions merged in; None when there are none."""
     if rule == COMBINE:
         if not (isinstance(ours, list) and isinstance(theirs, list)):
@@ -60,7 +60,7 @@ def _fold(rule: str, ours, theirs, path: tuple = ()):
             below = path + (str(key),)
             named = _rule(below) or (FIELDS if _deeper(below) else "")
             if named:
-                folded = _fold(named, merged[key], value, below)
+                folded = _merge_by_rule(named, merged[key], value, below)
             elif isinstance(merged[key], dict) and isinstance(value, dict):
                 missing = {f: v for f, v in value.items() if f not in merged[key]}
                 folded = {**merged[key], **missing} if missing else None
@@ -91,7 +91,7 @@ class SettingsFile:
                     raise ValueError("settings hold %s, not a table" % type(loaded).__name__)
                 self._table, self._raw, self.state = loaded, raw, READ
             except (OSError, ValueError) as exc:
-                self.state = BLIND
+                self.state = UNREADABLE
                 hostos.preserve_unreadable(self.path, why="settings")
                 debug.event("prefs", "settings.json unreadable - not written this session",
                             path=self.path, error=str(exc))
@@ -102,10 +102,10 @@ class SettingsFile:
     def writable(self) -> bool:
         return self.state in (READ, FRESH)
 
-    def everyones(self) -> dict:
+    def whole_document(self) -> dict:
         return copy.deepcopy(self._table)
 
-    def _theirs(self):
+    def _changed_on_disk(self):
         """What is on disk now, when another SettingsFile saved since our read; None otherwise."""
         try:
             with open(self.path, "rb") as handle:
@@ -133,7 +133,7 @@ class SettingsFile:
                 continue
             named = _rule((key,)) or (FIELDS if _deeper((key,)) else "")
             if named:
-                folded = _fold(named, staged[key], value, (key,))
+                folded = _merge_by_rule(named, staged[key], value, (key,))
                 if folded is not None:
                     staged[key] = folded
                 continue
@@ -143,20 +143,20 @@ class SettingsFile:
             if key not in theirs and key in base and staged[key] == base[key]:
                 staged.pop(key)    # the other pane deleted a key we did not change
 
-    def replace(self, document: dict, settle=None) -> bool:
+    def replace(self, document: dict, before_write=None) -> bool:
         """Write a whole document, merged with another pane's save; False when not written."""
         if not self.writable:
             return False
         staged = {str(key): value for key, value in document.items()}
-        theirs = self._theirs()
+        theirs = self._changed_on_disk()
         if theirs is False:
-            self.state = BLIND
+            self.state = UNREADABLE
             hostos.preserve_unreadable(self.path, why="settings")
             return False
         if theirs is not None:
             self._merge(staged, theirs)
-        if settle is not None:
-            settle(staged)
+        if before_write is not None:
+            before_write(staged)
         try:
             os.makedirs(os.path.dirname(self.path), exist_ok=True)
             raw = (json.dumps(staged, indent=1, sort_keys=True) + "\n").encode("utf-8")

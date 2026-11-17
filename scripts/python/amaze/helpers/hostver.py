@@ -6,7 +6,7 @@ from amaze.helpers import hostos
 
 
 class Env(object):
-    """The environment an Opinion's conditions are tested in; pass the `scale` you will apply."""
+    """The environment an Override's conditions are tested in; pass the `scale` you will apply."""
 
     def __init__(self, houdini=None, macos=None, windows=None,
                  linux=None, scale=None):
@@ -25,17 +25,17 @@ class Env(object):
                    self.scale))
 
 
-class Opinion(object):
+class Override(object):
     """One claim about a capability; `conditions` are (description, predicate) pairs, all must hold."""
 
-    def __init__(self, value, conditions, evidence, strength=0):
+    def __init__(self, value, conditions, evidence, priority=0):
         self.value = value
         self.conditions = conditions
         self.evidence = evidence
-        self.strength = strength
+        self.priority = priority
 
     def applies_to(self, env):
-        """(applied, vetoed_by), with every failed condition joined in vetoed_by."""
+        """(applied, failed_conditions), the failed conditions joined with AND."""
         failed = []
         for description, predicate in self.conditions:
             try:
@@ -53,40 +53,40 @@ class Opinion(object):
 
 
 class Capability(object):
-    """A base value plus the opinions that may override it."""
+    """A base value plus the overrides that may replace it."""
 
-    def __init__(self, base, base_evidence, opinions=()):
+    def __init__(self, base, base_evidence, overrides=()):
         self.base = base
         self.base_evidence = base_evidence
-        self.opinions = tuple(opinions)
+        self.overrides = tuple(overrides)
 
     def resolve(self, env):
         value, best = self.base, None
-        for opinion in self.opinions:
-            applied, _vetoed = opinion.applies_to(env)
+        for override in self.overrides:
+            applied, _failed = override.applies_to(env)
             if not applied:
                 continue
-            if best is None or opinion.strength >= best.strength:
-                value, best = opinion.value, opinion
+            if best is None or override.priority >= best.priority:
+                value, best = override.value, override
         return value
 
     def explain(self, env):
-        """Every opinion, whether it applied, and what vetoed it, for the debug log."""
+        """Every override, whether it applied, and which conditions failed, for the debug log."""
         considered = []
-        for opinion in self.opinions:
-            applied, vetoed = opinion.applies_to(env)
+        for override in self.overrides:
+            applied, failed = override.applies_to(env)
             considered.append({
-                "value": opinion.value,
-                "when": opinion.describe(),
+                "value": override.value,
+                "when": override.describe(),
                 "applied": applied,
-                "vetoed_by": vetoed,
-                "strength": opinion.strength,
+                "failed_conditions": failed,
+                "priority": override.priority,
             })
         return {
             "env": repr(env),
             "base": self.base,
             "resolved": self.resolve(env),
-            "opinions": considered,
+            "overrides": considered,
         }
 
 
@@ -114,8 +114,8 @@ OBJ_PICK_DEVICE_PIXELS = Capability(  # whether queryNodeAtPixel expects device 
         "retina lasso and contained picking in the new UI on macOS - "
         "documentation for a reader of this report, NOT a boundary "
         "this engine tests against."),
-    opinions=(
-        Opinion(
+    overrides=(
+        Override(
             value=True,
             conditions=(_houdini_below((22, 0, 0)), _ON_MACOS, _SCALED),
             evidence=(
@@ -149,8 +149,8 @@ NEW_COPS = Capability(  # whether EXR->PNG can use the new COPs (copnet) with fu
         "21.x and 22.x ship copnet with full OCIO, in continuous use for "
         "every EXR->PNG thumbnail conversion. This is the base because "
         "it is current and because future versions should inherit it."),
-    opinions=(
-        Opinion(
+    overrides=(
+        Override(
             value=False,
             conditions=(_houdini_below((21, 0, 0)),),
             evidence=(
@@ -181,7 +181,7 @@ def obj_pick_wants_device_pixels(device_scale):
 
 
 def explain_pick(device_scale):
-    """OBJ_PICK_DEVICE_PIXELS's base, opinions and resolved value, for the debug log."""
+    """OBJ_PICK_DEVICE_PIXELS's base, overrides and resolved value, for the debug log."""
     return OBJ_PICK_DEVICE_PIXELS.explain(Env(scale=device_scale))
 
 

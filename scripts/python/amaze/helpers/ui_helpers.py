@@ -206,19 +206,19 @@ class DesignedComboBox(QtWidgets.QComboBox):
             QtCore.QPoint(0, self.height())))
 
 
-_DRAWN_PINS: set = set()    # every drawn node a pin has read, for the drawn-binding completeness test ▸p/one-design-document
+_DRAWN_NODES_FITTED: set = set()    # every drawn node a pin has read, for the drawn-binding completeness test ▸p/one-design-document
 
 
-def drawn_pins() -> frozenset:
+def drawn_nodes_fitted() -> frozenset:
     """Every `(frame, kind, x, y)` a pin has read; read by the drawn-binding completeness test."""
-    return frozenset(_DRAWN_PINS)
+    return frozenset(_DRAWN_NODES_FITTED)
 
 
-def forget_drawn_pins() -> None:
-    _DRAWN_PINS.clear()
+def forget_drawn_nodes_fitted() -> None:
+    _DRAWN_NODES_FITTED.clear()
 
 
-def _wear_drawn(widget, frame_key: str, kind: str, box, height: bool,
+def _fit_to_box(widget, frame_key: str, kind: str, box, height: bool,
                 grow: bool = False) -> None:
     """Size `widget` to one drawn box and record its node, keyed by its position in the frame."""
     if grow:
@@ -228,10 +228,10 @@ def _wear_drawn(widget, frame_key: str, kind: str, box, height: bool,
     if height:
         widget.setFixedHeight(theme.ui_px(box[3]))
     widget.drawn_box = tuple(box)    # where it is drawn, for a caller placing several pinned widgets in one row
-    _DRAWN_PINS.add((frame_key, kind, box[0], box[1]))
+    _DRAWN_NODES_FITTED.add((frame_key, kind, box[0], box[1]))
 
 
-def pin_drawn(widget, frame_key: str, kind: str, text: str,
+def fit_drawn(widget, frame_key: str, kind: str, text: str,
               height: bool = True, nth: int = 0, grow: bool = False) -> None:
     """Size `widget` to the drawn box for `<kind> ▸ <text>` in `frame_key`. ▸p/one-design-document"""
     found = amazetheme.drawn_repeats(frame_key, kind, text)
@@ -239,10 +239,10 @@ def pin_drawn(widget, frame_key: str, kind: str, text: str,
         debug.event("ui", "no drawn box for this widget",
                     frame=frame_key, kind=kind, text=text, nth=nth)
         return
-    _wear_drawn(widget, frame_key, kind, found[nth], height, grow)
+    _fit_to_box(widget, frame_key, kind, found[nth], height, grow)
 
 
-def pin_drawn_stem(widget, frame_key: str, kind: str, stem: str,
+def fit_drawn_stem(widget, frame_key: str, kind: str, stem: str,
                    height: bool = True) -> None:
     """Size `widget` from the one drawn node whose text starts with `stem`; else no change."""
     found = [box for (drawn_kind, text), box
@@ -252,7 +252,7 @@ def pin_drawn_stem(widget, frame_key: str, kind: str, stem: str,
         debug.event("ui", "no ONE drawn box opens with this stem",
                     frame=frame_key, kind=kind, stem=stem, found=len(found))
         return
-    _wear_drawn(widget, frame_key, kind, found[0], height)
+    _fit_to_box(widget, frame_key, kind, found[0], height)
 
 
 def drawn_kind(widget, frame_key: str) -> str:
@@ -264,7 +264,7 @@ def drawn_kind(widget, frame_key: str) -> str:
     return type(widget).__name__
 
 
-def pin_drawn_series(widgets, frame_key: str, kind: str,
+def fit_drawn_series(widgets, frame_key: str, kind: str,
                      height: bool = True) -> None:
     """Pin widgets of one kind from the frame's rects of that kind, drawn order against creation order."""
     drawn = amazetheme.drawn_repeats(frame_key, kind, None)
@@ -274,7 +274,7 @@ def pin_drawn_series(widgets, frame_key: str, kind: str,
                     "number", frame=frame_key, kind=kind, drawn=len(drawn),
                     built=len(widgets))
     for widget, box in zip(widgets, drawn):
-        _wear_drawn(widget, frame_key, kind, box, height)
+        _fit_to_box(widget, frame_key, kind, box, height)
 
 
 def header_band(parent, text: str, height: int = amazetheme.HEADER_BAND_H,
@@ -297,10 +297,10 @@ def header_band(parent, text: str, height: int = amazetheme.HEADER_BAND_H,
     font.setPixelSize(theme.ui_px(amazetheme.HEADER_BAND_TEXT_PX))
     font.setBold(amazetheme.HEADER_BAND_TEXT_BOLD)
     label.setFont(font)
-    ink = label.palette()
-    ink.setColor(QtGui.QPalette.ColorRole.WindowText,
-                 theme.color("text_bright"))
-    label.setPalette(ink)
+    text_palette = label.palette()
+    text_palette.setColor(QtGui.QPalette.ColorRole.WindowText,
+                          theme.color("text_bright"))
+    label.setPalette(text_palette)
     row.addWidget(label)
     row.addStretch(1)
     return band
@@ -765,11 +765,11 @@ def draw_chip(painter, rect, fill, ring, inner_border=None):
         draw_ring(painter, inner, inner_border, ring_w, theme.ui_px(4))
 
 
-def draw_ring(painter, rect, ink, width, radius,
+def draw_ring(painter, rect, color, width, radius,
               fill=QtCore.Qt.BrushStyle.NoBrush) -> None:
     """A rounded ring `width` wide drawn wholly inside `rect`, over `fill`."""
     half = width / 2.0
-    painter.setPen(QtGui.QPen(ink, width))
+    painter.setPen(QtGui.QPen(color, width))
     painter.setBrush(fill)
     painter.drawRoundedRect(
         QtCore.QRectF(rect).adjusted(half, half, -half, -half), radius, radius)
@@ -862,12 +862,12 @@ class IconMenuButton(QtWidgets.QWidget):
     """The toolbar's hand-painted icon button that pops a QMenu, its hover cleared on `aboutToHide`."""
 
     IDLE_BODY = amazetheme.MENU_IDLE_BODY
-    LIT_BODY = amazetheme.MENU_LIT_BODY
+    HOVER_BODY = amazetheme.MENU_HOVER_BODY
     IDLE_TRIANGLE = amazetheme.MENU_IDLE_TRIANGLE
-    LIT_TRIANGLE = amazetheme.MENU_LIT_TRIANGLE
-    PUNCH_OUT = amazetheme.MENU_PUNCH_OUT
-    OPEN_PUNCH_OUT = amazetheme.MENU_OPEN_PUNCH_OUT
-    HOVER_PUNCH_OUT = amazetheme.MENU_HOVER_PUNCH_OUT
+    HOVER_TRIANGLE = amazetheme.MENU_HOVER_TRIANGLE
+    CUTOUT = amazetheme.MENU_CUTOUT
+    OPEN_CUTOUT = amazetheme.MENU_OPEN_CUTOUT
+    HOVER_CUTOUT = amazetheme.MENU_HOVER_CUTOUT
     CHIP_FILL = QtGui.QColor(amazetheme.MENU_CHIP_FILL)
     CHIP_BORDER = QtGui.QColor(amazetheme.MENU_CHIP_BORDER)
     CHIP_RING = QtGui.QColor(amazetheme.MENU_CHIP_RING)
@@ -905,18 +905,18 @@ class IconMenuButton(QtWidgets.QWidget):
             svg_path,
             render_size,
             {
-                self.IDLE_BODY: self.LIT_BODY,
-                self.IDLE_TRIANGLE: self.LIT_TRIANGLE,
-                self.PUNCH_OUT: self.HOVER_PUNCH_OUT,
+                self.IDLE_BODY: self.HOVER_BODY,
+                self.IDLE_TRIANGLE: self.HOVER_TRIANGLE,
+                self.CUTOUT: self.HOVER_CUTOUT,
             },
         )
         self._open_pm = render_svg_pixmap(
             svg_path,
             render_size,
             {
-                self.IDLE_BODY: self.LIT_BODY,
-                self.IDLE_TRIANGLE: self.LIT_TRIANGLE,
-                self.PUNCH_OUT: self.OPEN_PUNCH_OUT,
+                self.IDLE_BODY: self.HOVER_BODY,
+                self.IDLE_TRIANGLE: self.HOVER_TRIANGLE,
+                self.CUTOUT: self.OPEN_CUTOUT,
             },
         )
         self._fallback_text = (   # a missing asset degrades to the menu title or the given label, drawn as text
@@ -1033,7 +1033,7 @@ class ChipToggleButton(QtWidgets.QToolButton):
         base = dict(recolour or {})
         on_map = dict(recolour_on) if recolour_on else base   # the on state may recolour differently from the off state
         lit = dict(base)
-        lit[IconMenuButton.IDLE_BODY] = IconMenuButton.LIT_BODY
+        lit[IconMenuButton.IDLE_BODY] = IconMenuButton.HOVER_BODY
 
         def art(path, tints):
             return render_svg_pixmap(path, size, tints) if tints \
@@ -1185,7 +1185,7 @@ def pick_color(initial, parent=None, title="Select Color"):
     return picked if picked.isValid() else None
 
 
-class HeldPane(QtWidgets.QWidget):
+class SavedWidthPane(QtWidgets.QWidget):
     """A splitter side pane whose width hint is the saved dragged width, else the design width."""
 
     def __init__(self, preferences, pref_key, default_px, parent=None):

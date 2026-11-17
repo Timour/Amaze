@@ -164,8 +164,8 @@ class GridGestureMixin:
                         self._drag_panel, self._drag_section,
                         pane_tab, pane_kind
                     )
-                    self._ghost_update(self._drag_panel, pane_tab,
-                                       pane_kind)    # the outline, cleared by dragengine.end() on every exit path
+                    self._update_drop_outline(self._drag_panel, pane_tab,
+                                              pane_kind)    # the outline, cleared by dragengine.end() on every exit path
             return
         super().mouseMoveEvent(event)
 
@@ -398,7 +398,7 @@ class GridGestureMixin:
                 name = ""
         return name or ""
 
-    def _ghost_update(self, panel, pane_tab, pane_type) -> None:
+    def _update_drop_outline(self, panel, pane_tab, pane_type) -> None:
         """Per move: outline where the node would go; pass the tracked pane. ▸p/drag-move-cost"""
         from amaze.core import dragengine
         section = self._drag_section

@@ -86,7 +86,7 @@ class TickIsDrawnNotTyped(unittest.TestCase):
         painter = QtGui.QPainter(canvas)
         try:
             painter.setFont(QtGui.QFont("A Font That Does Not Exist", 9))
-            delegates.AssetItemDelegate._paint_tick(
+            delegates.AssetItemDelegate._paint_check_mark(
                 painter, QtCore.QRect(0, 0, 24, 24),
                 QtGui.QColor("#fcb900"))
         finally:
@@ -399,7 +399,7 @@ class EveryChipUsesTheOneEngine(unittest.TestCase):
     def setUpClass(cls):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))  # the isolated panel, never the live settings
         cls.LIT = QtGui.QColor(
-            ui_helpers.IconMenuButton.LIT_BODY).name()
+            ui_helpers.IconMenuButton.HOVER_BODY).name()
 
     @classmethod
     def tearDownClass(cls):
@@ -441,12 +441,12 @@ class TheOnlineWorld(unittest.TestCase):
 
     def setUp(self):
         if self.panel._is_online():
-            self.panel.leave_online_world()
+            self.panel.leave_online_mode()
 
     def test_the_strip_becomes_the_sources(self):
         from amaze.core import matx_sources
-        self.panel.enter_online_world()
-        self.addCleanup(self.panel.leave_online_world)
+        self.panel.enter_online_mode()
+        self.addCleanup(self.panel.leave_online_mode)
         expected = [s.name for s in matx_sources.all_sources()]
         self.assertEqual(
             expected, [k for k, _l in self.panel._online_segments()],
@@ -459,8 +459,8 @@ class TheOnlineWorld(unittest.TestCase):
     def test_a_tab_click_picks_a_SOURCE_not_a_section(self):
         from amaze.core import matx_sources
         names = [s.name for s in matx_sources.all_sources()]
-        self.panel.enter_online_world()
-        self.addCleanup(self.panel.leave_online_world)
+        self.panel.enter_online_mode()
+        self.addCleanup(self.panel.leave_online_mode)
         self.panel._on_tab_toggled(names[1], True)
         QtWidgets.QApplication.processEvents()
         self.assertEqual(
@@ -474,11 +474,11 @@ class TheOnlineWorld(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
         came_from = panel.current_section
 
-        panel.enter_online_world()
+        panel.enter_online_mode()
         QtWidgets.QApplication.processEvents()
         self.assertTrue(panel._is_online(), "did not enter the online world")
 
-        panel.leave_online_world()
+        panel.leave_online_mode()
         QtWidgets.QApplication.processEvents()
         self.assertFalse(panel._is_online(), "did not leave")
         self.assertEqual(
@@ -505,7 +505,7 @@ class TheOnlineWorld(unittest.TestCase):
         def _restore_the_panel():  # class-scoped panel: a grid left on the online model would fail every later test
 
             if panel._is_online():
-                panel.leave_online_world()
+                panel.leave_online_mode()
             section = panel.active_section()
             if section is not None:
                 section.activate()
@@ -518,14 +518,14 @@ class TheOnlineWorld(unittest.TestCase):
             "the Color tab is not on its own proxy, so this test cannot "
             "tell a restored grid from an online one")
 
-        panel.enter_online_world()
+        panel.enter_online_mode()
         QtWidgets.QApplication.processEvents()
         self.assertIs(
             panel.thumblist.model(), panel.matx_sorted_model,
             "entering the online world did not put the online model in "
             "the grid, so this test proves nothing")
 
-        panel.leave_online_world()
+        panel.leave_online_mode()
         QtWidgets.QApplication.processEvents()
         self.assertIs(
             panel.thumblist.model(), local_model,
@@ -556,8 +556,8 @@ class TheOnlineWorld(unittest.TestCase):
         self.assertEqual(
             0.5, ui_helpers.ChipToggleButton.DISABLED_OPACITY)
         panel = self.panel
-        panel.enter_online_world()
-        self.addCleanup(panel.leave_online_world)
+        panel.enter_online_mode()
+        self.addCleanup(panel.leave_online_mode)
         QtWidgets.QApplication.processEvents()
         self.assertFalse(
             panel.cb_favsonly.isEnabled(),
@@ -568,7 +568,7 @@ class TheOnlineWorld(unittest.TestCase):
             "Comments is still enabled online - a comment is written "
             "against a library asset, which an online result is not")
 
-        panel.leave_online_world()
+        panel.leave_online_mode()
         QtWidgets.QApplication.processEvents()
         self.assertTrue(panel.cb_favsonly.isEnabled(),
                         "the star was not enabled again")

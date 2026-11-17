@@ -568,13 +568,13 @@ class TestUnsafeAssetIds(unittest.TestCase):
         self.addCleanup(shutil.rmtree, base, True)
         inside = hostos.contained_join(base, "materials/", "asset.mat")
         self.assertTrue(inside.startswith(base))
-        with self.assertRaises(hostos.PathEscape):
+        with self.assertRaises(hostos.PathOutsideBase):
             hostos.contained_join(base, "materials/", "../../escaped.mat")
         outside = tempfile.mkdtemp(prefix="amaze_outside_")
         self.addCleanup(shutil.rmtree, outside, True)
         os.makedirs(os.path.join(base, "materials"))
         os.symlink(outside, os.path.join(base, "materials", "away"))
-        with self.assertRaises(hostos.PathEscape):
+        with self.assertRaises(hostos.PathOutsideBase):
             hostos.contained_join(base, "materials", "away", "asset.mat")
 
     def test_payload_path_composes_with_or_without_a_separator_and_contains(self):
@@ -602,7 +602,7 @@ class TestUnsafeAssetIds(unittest.TestCase):
                                                    ".mat", MATERIALS)),
             "a library path without its trailing separator composed "
             "wrong - which is what concatenation did here")
-        with self.assertRaises(hostos.PathEscape):    # the PATH check, next to the RECORD's
+        with self.assertRaises(hostos.PathOutsideBase):    # the PATH check, next to the RECORD's
             material.payload_path(_P, "../../.ssh/authorized_keys", ".mat", MATERIALS)
 
     def test_nothing_is_read_from_the_old_shared_folder(self):

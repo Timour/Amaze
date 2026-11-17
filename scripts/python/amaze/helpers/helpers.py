@@ -11,7 +11,7 @@ from amaze.helpers import hostos
 
 PATH_STYLES = ("absolute", "hip", "job", "home")  # Write Paths As: one variable or absolute; home by default
 _STYLE_VARS = {"hip": "$HIP", "job": "$JOB", "home": "$HOME"}
-_open_blocks = 0    # open preserving_selection_and_current blocks; only the outermost defers a restore
+_selection_block_depth = 0    # open preserving_selection_and_current blocks; only the outermost defers a restore
 _RETRY_MS = 100
 
 
@@ -279,12 +279,12 @@ def preserving_selection_and_current():
                                     pane_tab.pwd()))
         except (AttributeError, hou.Error):
             editors = []
-    global _open_blocks
-    _open_blocks += 1
+    global _selection_block_depth
+    _selection_block_depth += 1
     try:
         yield
     finally:
-        _open_blocks -= 1
+        _selection_block_depth -= 1
         with hou.undos.disabler():
             try:
                 after = hou.selectedNodes()
@@ -301,10 +301,10 @@ def preserving_selection_and_current():
                     node.setSelected(True)
                 except (hou.OperationFailed, hou.ObjectWasDeleted):
                     pass
-            _put_editors_back(editors, "immediate")
-        if not _open_blocks:    # an inner block's restore would run last and apply a mid-operation state
-            run_at_top_of_loop(functools.partial(_put_editors_back, editors, "deferred"),
-                               "editor put-back")    # Houdini's posted dive runs after the first restore ▸r/editor-put-back
+            _restore_editors(editors, "immediate")
+        if not _selection_block_depth:    # an inner block's restore would run last and apply a mid-operation state
+            run_at_top_of_loop(functools.partial(_restore_editors, editors, "deferred"),
+                               "editor restore")    # Houdini's posted dive runs after the first restore ▸r/editor-put-back
 
 
 @contextlib.contextmanager
@@ -330,10 +330,10 @@ def run_at_top_of_loop(fn, what: str) -> None:
 
 def _run_when_idle(fn, what: str, waited: int) -> None:
     """Run `fn` with no Amaze block open and no Amaze frame below; otherwise retry in 100 ms."""
-    if _open_blocks or inside_amaze_work(sys._getframe(0).f_back):
+    if _selection_block_depth or inside_amaze_work(sys._getframe(0).f_back):
         if not waited:
             from amaze.core import debug
-            debug.event("interact", "%s waits" % what, open_blocks=_open_blocks)
+            debug.event("interact", "%s waits" % what, open_blocks=_selection_block_depth)
         from PySide6 import QtCore
         QtCore.QTimer.singleShot(
             _RETRY_MS, functools.partial(_run_when_idle, fn, what, waited + _RETRY_MS))
@@ -351,7 +351,7 @@ def inside_amaze_work(frame) -> bool:
     return False
 
 
-def _put_editors_back(editors, pass_name: str) -> None:
+def _restore_editors(editors, pass_name: str) -> None:
     """Return each editor to the network and current node it had."""
     from amaze.core import debug
     moved = []
@@ -374,7 +374,7 @@ def _put_editors_back(editors, pass_name: str) -> None:
                     hou.ObjectWasDeleted):
                 pass
     if moved:
-        debug.event("interact", "editor put back after a dive",
+        debug.event("interact", "editor restored after a dive",
                     pass_name=pass_name, moves=moved)
 
 
@@ -502,8 +502,8 @@ def place_nodes(nodes, position) -> None:
         return
     debug.event("interact", "placed at the drop point",
                 asked=[round(position.x(), 3), round(position.y(), 3)],
-                landed=[round(after_x, 3), round(after_y, 3)],
+                placed=[round(after_x, 3), round(after_y, 3)],
                 drift=[round(after_x - position.x(), 3),
                        round(after_y - position.y(), 3)],
-                nodes=len(nodes), riders=len(items) - len(nodes),
+                nodes=len(nodes), other_items=len(items) - len(nodes),
                 first=nodes[0].path())

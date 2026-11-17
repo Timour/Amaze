@@ -218,7 +218,7 @@ class AfterASwitchAnAssetGridFollowsItsSidebar(unittest.TestCase):
                 sidebar = panel.cat_list.model()
                 sidebar.hide_empty = False
                 sidebar.invalidateFilter()
-                self.assertTrue(panel._stand_on_category("Probe"), "premise: Probe is a row")
+                self.assertTrue(panel._select_category("Probe"), "premise: Probe is a row")
                 self.assertEqual("Probe", st.proxy.filter_value(st.model.CategoryRole),
                                  "premise: the grid is filtered on Probe")
                 self._switch_to_a_fresh_library(panel)

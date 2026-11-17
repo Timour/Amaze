@@ -11,7 +11,7 @@ from amaze.core import debug
 from amaze.helpers import helpers
 
 
-class HoudiniSpeaker:
+class HoudiniUI:
     """Shows the log's dialogs and status line in Houdini, and records Houdini's details."""
 
     @staticmethod
@@ -74,7 +74,7 @@ class HoudiniSpeaker:
 
 def start() -> None:
     """The first call of the pane and every shelf tool: the log shows its messages in Houdini."""
-    debug.hand_over(HoudiniSpeaker)
+    debug.set_ui(HoudiniUI)
 
 
 def _find_panel():
@@ -201,11 +201,11 @@ def convert(node, target, swap=False) -> None:
     elif not skipped and made_count == len(chosen) \
             and all(report.is_clean() for _made, report in reports):    # summary_lines always holds the name line
         if len(chosen) > 1:
-            HoudiniSpeaker.status(messages.NODES_SWAPPED % (made_count, word) if swap
+            HoudiniUI.status(messages.NODES_SWAPPED % (made_count, word) if swap
                                   else messages.NODES_CONVERTED % (made_count, word))
         else:
             name = reports[0][1].mat_name    # the source's name, which a swapped copy now has
-            HoudiniSpeaker.status(messages.NODE_SWAPPED % (name, word) if swap
+            HoudiniUI.status(messages.NODE_SWAPPED % (name, word) if swap
                                   else messages.NODE_CONVERTED % (name, word))
     else:
         shown = " and ".join(renderers.label(source)
@@ -248,7 +248,7 @@ def capture() -> None:
     except scene_captures.CaptureRefused as exc:
         ui.displayMessage(str(exc), title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
     else:
-        HoudiniSpeaker.status("thumbnail captured for %s"
+        HoudiniUI.status("thumbnail captured for %s"
                               % hou.hipFile.basename())    # "untitled.hip" when unsaved, never ""
 
 
@@ -293,4 +293,4 @@ def reload_asset_files() -> None:
             else:
                 hou.hda.installFile(path)
                 new.append(path)
-    HoudiniSpeaker.status("%d asset files reloaded, %d new" % (len(again), len(new)))
+    HoudiniUI.status("%d asset files reloaded, %d new" % (len(again), len(new)))

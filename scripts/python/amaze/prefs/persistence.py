@@ -91,7 +91,7 @@ RENDERER_KEYS = {"_" + r.switch: r.switch_stored for r in renderers.ALL}  # keys
 
 IMG_SUBDIR = "img/"  # with each asset section's folder, what a library needs ▸p/library-creation
 
-_UNSEEN = object()  # a shared key this session never read from nor wrote to the library: the next push writes it
+_NEVER_SYNCED = object()  # a shared key this session never read from nor wrote to the library: the next push writes it
 
 POINTERS = (  # settings.json's own scalars as (stored key, setter, decode)
     ("library_user", "library_user", lambda value: str(value or "")),
@@ -188,16 +188,16 @@ class _Persistence:
         if not store.writable:
             debug.event("prefs", "save refused - settings.json could not "
                         "be read this session", path=self.path)
-            return  # checked before _push_shared, so unloaded defaults are never written to the library
-        self._push_shared()  # the shared keys are written to the LIBRARY first; the document built below holds a copy
+            return  # checked before _write_shared_settings, so unloaded defaults are never written to the library
+        self._write_shared_settings()  # the shared keys are written to the LIBRARY first; the document built below holds a copy
         self.refresh_data()
         composed = self.data    # the commit may merge another pane's values over it
-        if store.replace(composed, settle=self._drop_departed_merged):
-            self._absorb_committed(store, composed)
+        if store.replace(composed, before_write=self._drop_removed_users_from_merge):
+            self._apply_saved_document(store, composed)
 
-    def _absorb_committed(self, store, composed=None) -> None:
+    def _apply_saved_document(self, store, composed=None) -> None:
         """Copy the committed document back into the attributes the panel draws from."""
-        self.data = store.everyones()
+        self.data = store.whole_document()
         stored = self.data.get("users")
         self._users_blocks = {
             uid: dict(block) for uid, block in stored.items()
@@ -221,9 +221,9 @@ class _Persistence:
             if key in self.data and self.data[key] != composed.get(key):    # the merge kept the other pane's value
                 setattr(self, setter, decode(self.data[key]))
 
-    def _adopt_shared(self, follow: bool = False) -> None:
-        """Apply the library's shared settings to attributes; `follow`: only keys unchanged here."""
-        if not follow or not hasattr(self, "_shared_seen"):
+    def _apply_shared_settings(self, unchanged_only: bool = False) -> None:
+        """Apply the library's shared settings to attributes; `unchanged_only`: keys unchanged here."""
+        if not unchanged_only or not hasattr(self, "_shared_seen"):
             self._shared_seen = {}    # a load or another library: nothing written there yet
         directory = self.dir  # every setter that changes `dir` calls this, so save unsaved edits before changing it
         if not directory or not os.path.isdir(directory):
@@ -234,7 +234,7 @@ class _Persistence:
         for stored, (prop, attr, _default) in SHARED_KEYS.items():
             if stored not in values:
                 continue
-            if follow and getattr(self, attr) != seen.get(stored, _UNSEEN):
+            if unchanged_only and getattr(self, attr) != seen.get(stored, _NEVER_SYNCED):
                 continue    # changed here since last read or written: the next push writes it
             value = values[stored]
             if prop is None:
@@ -245,11 +245,11 @@ class _Persistence:
                                 getattr(self, attr, None))
             seen[stored] = getattr(self, attr)
 
-    def follow_shared(self) -> None:
+    def apply_shared_changes(self) -> None:
         """After a library store re-read: apply other sessions' changes to keys unchanged here."""
-        self._adopt_shared(follow=True)
+        self._apply_shared_settings(unchanged_only=True)
 
-    def _push_shared(self) -> None:
+    def _write_shared_settings(self) -> None:
         """Write the shared keys THIS session changed to the library's store in ONE write."""
         directory = self.dir
         if not directory or not os.path.isdir(directory):
@@ -257,14 +257,14 @@ class _Persistence:
         from amaze.core import library_settings
         if not library_settings.takes_writes(self):
             return
-        self._adopt_shared(follow=True)    # first read what other sessions wrote, for each key unchanged here
+        self._apply_shared_settings(unchanged_only=True)    # first read what other sessions wrote, for each key unchanged here
         seen = self._shared_seen
         changed = {stored: getattr(self, attr)
                    for stored, (_prop, attr, _default) in SHARED_KEYS.items()
-                   if getattr(self, attr) != seen.get(stored, _UNSEEN)}
+                   if getattr(self, attr) != seen.get(stored, _NEVER_SYNCED)}
         if changed and library_settings.set_values(self, changed):    # on failure: retried at the next save
             seen.update(changed)
-            self._adopt_shared(follow=True)    # the commit may have merged in another session's keys
+            self._apply_shared_settings(unchanged_only=True)    # the commit may have merged in another session's keys
 
     def _user_state_document(self) -> dict:
         """The current per-user state as its stored keys."""
@@ -336,7 +336,7 @@ class _Persistence:
         self._users_blocks.pop(uid, None)
         self.save()
 
-    def _departed(self, blocks: dict, roster=None) -> list:
+    def _removed_users(self, blocks: dict, roster=None) -> list:
         """The uids in `blocks` to remove, logged; reads `roster` only when a uid is a candidate."""
         library = _encode_path(str(self.dir or ""))
         if not library:
@@ -352,13 +352,13 @@ class _Persistence:
             roster = users.roster(self)
         if not roster:
             return []    # unread, unreadable or empty: no roster to compare against
-        doomed = [uid for uid in candidates if uid not in roster]
-        for uid in doomed:
+        removed = [uid for uid in candidates if uid not in roster]
+        for uid in removed:
             debug.event("prefs", "a user the library no longer lists "
                         "- their view state dropped", uid=uid)
-        return doomed
+        return removed
 
-    def _settle_user_blocks(self) -> None:
+    def _update_user_blocks(self) -> None:
         """Record the open library in its users' blocks; drop users the roster no longer lists."""
         library = _encode_path(str(self.dir or ""))
         roster = users.roster(self) if library else set()
@@ -367,20 +367,20 @@ class _Persistence:
             if block.get(LIBRARY_FIELD) != library:
                 self._users_blocks[uid] = dict(
                     block, **{LIBRARY_FIELD: library})
-        for uid in self._departed(self._users_blocks, roster):
+        for uid in self._removed_users(self._users_blocks, roster):
             del self._users_blocks[uid]
 
-    def _drop_departed_merged(self, document: dict) -> None:
+    def _drop_removed_users_from_merge(self, document: dict) -> None:
         """The same removal for blocks a save's merge added from disk, because a merge only adds."""
         blocks = document.get("users")
         if not isinstance(blocks, dict):
             return
         merged = {uid: block for uid, block in blocks.items()
                   if uid not in self._users_blocks}
-        doomed = self._departed(merged) if merged else []
-        if doomed:
+        removed = self._removed_users(merged) if merged else []
+        if removed:
             document["users"] = {uid: block for uid, block in blocks.items()
-                                 if uid not in doomed}
+                                 if uid not in removed}
 
     def refresh_data(self) -> dict:
         """Rebuild self.data as the exact dict save() serializes, and return it."""
@@ -396,7 +396,7 @@ class _Persistence:
             block = dict(self._users_blocks.get(self._library_user, {}))
             block.update(self._user_state_document())
             self._users_blocks[self._library_user] = block
-        self._settle_user_blocks()
+        self._update_user_blocks()
         self.data["users"] = {
             uid: dict(block) for uid, block in self._users_blocks.items()}
         return self.data
@@ -412,7 +412,7 @@ class _Persistence:
             debug.event("prefs", "settings unreadable - opening without a "
                         "library", path=self.path)
             return False  # the store kept the `.unreadable` copy; writes are blocked for the session
-        data = store.everyones()
+        data = store.whole_document()
         self.data = dict(data)  # a copy: refresh_data() mutates it, and the store's document must not change
         if not usable(data):
             debug.event("prefs", "settings.json is in no layout this Amaze reads - "
@@ -437,8 +437,8 @@ class _Persistence:
         self._cache_dir = _decode_path(data.get("cache_dir", ""))
         self._libraries = _listed_libraries(data.get("libraries"))
         self._directory = _normalised_dir(self._directory)    # a folder saved without its slash runs into the file names joined to it
-        self._settle_user_blocks()
-        self._adopt_shared()  # a pure read: load() never writes the library
+        self._update_user_blocks()
+        self._apply_shared_settings()  # a pure read: load() never writes the library
         library = self.dir
         if library and os.path.exists(library):
             return True

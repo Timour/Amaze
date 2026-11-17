@@ -5,7 +5,7 @@ from amaze import amazetheme
 from amaze.helpers import theme
 from amaze.panel import grid
 
-NOTHING_YET = "nothing-yet"
+EMPTY_SECTION = "nothing-yet"
 NO_MATCH = "nothing-matches"
 NO_FAVOURITES = "no-favourites"
 UNREACHABLE = "unreachable"
@@ -43,7 +43,7 @@ def verdict(panel) -> tuple:
     section = panel.active_section()
     empty = section.shows_empty_state(source) if section is not None else not total
     if empty:
-        return (NOTHING_YET, "")
+        return (EMPTY_SECTION, "")
 
     search = ""
     box = getattr(panel, "line_filter", None)
@@ -100,7 +100,7 @@ def unreadable_folder(panel) -> str:
 
 def quote_for(panel, blank: str) -> tuple:
     """(line, attribution) from the section's `QUOTE` for the first-run blank, else two empty strings."""
-    if blank != NOTHING_YET:
+    if blank != EMPTY_SECTION:
         return ("", "")
     section = panel.active_section()
     quote = getattr(section, "QUOTE", None) or ()

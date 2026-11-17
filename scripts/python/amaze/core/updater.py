@@ -271,7 +271,7 @@ def stage_release(archive: str, into: str) -> str:
         raise OSError(
             "the downloaded file is not a zip archive (%s). Nothing has "
             "been changed." % exc)
-    except hostos.PathEscape as exc:
+    except hostos.PathOutsideBase as exc:
         shutil.rmtree(unpacked, ignore_errors=True)
         raise OSError(
             "the release archive holds a file that would be written "

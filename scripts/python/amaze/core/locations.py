@@ -248,10 +248,10 @@ def move_registered(preferences, path: str, row: int) -> bool:
     if at == row:
         return False
     current.insert(row, current.pop(at))
-    hold = getattr(preferences, "hold_folder_order", None)
-    if not callable(hold):
+    stage = getattr(preferences, "stage_folder_order", None)
+    if not callable(stage):
         return False
-    hold([hostos.storage_path_key(p) for p in current])
+    stage([hostos.storage_path_key(p) for p in current])
     return True
 
 

@@ -63,13 +63,13 @@ def section_folder(library_dir: str, section: str, area: str = "") -> str:
 
 
 def owned_path(preferences, section: str, area: str, name: str) -> str:
-    """`name` in a section's folder or its `area`; `PathEscape` if the path is outside it."""
+    """`name` in a section's folder or its `area`; `PathOutsideBase` if the path is outside it."""
     from amaze.helpers import hostos
     return hostos.contained_join(section_folder(preferences.dir, section, area), name)
 
 
 def payload_path(preferences, asset_id, suffix: str, section: str) -> str:
-    """`<section folder>/<id><suffix>`; `PathEscape` if the path is outside that folder."""
+    """`<section folder>/<id><suffix>`; `PathOutsideBase` if the path is outside that folder."""
     return owned_path(preferences, section, "", str(asset_id) + suffix)
 
 

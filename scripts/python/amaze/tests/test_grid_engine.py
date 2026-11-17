@@ -209,7 +209,7 @@ class ASavedAssetHoldsItsSortedRow(unittest.TestCase):
         row = model._append_record(record)
         self.assertIs(record, model._assets[row])
         self.assertEqual(0, row, "a name sorting first was not put at row 0")
-        model._take_back_refused_append(record)
+        model._remove_unsaved_record(record)
 
 
 if __name__ == "__main__":

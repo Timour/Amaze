@@ -205,7 +205,7 @@ class Reader:
             debug.event("octane", "reader wire refused", input=name, error=str(exc))
             return False
 
-    def carry(self, source, octane_name, target, mtlx_name, role="", poly=False) -> None:
+    def copy_input(self, source, octane_name, target, mtlx_name, role="", poly=False) -> None:
         """One input across: its value always, what feeds it when wired."""
         role = role or _role_of(target, mtlx_name)
         values = _values(source, octane_name)
@@ -217,7 +217,7 @@ class Reader:
         if fed is not None:
             self.wire(target, mtlx_name, self.read(fed[0], role, fed[1]))
 
-    def said_unless_default(self, node, names, why) -> None:
+    def report_unless_default(self, node, names, why) -> None:
         """Each of `names` wired or set away from its default, said once with `why`."""
         wired = _feeds(node)
         for name in names:
@@ -250,7 +250,7 @@ def _shader(reader, node, kind, pairs, extra=None, consumed=()):
     """An uber shader across by its table; `extra` carries the `consumed` inputs by hand."""
     shader = reader.make(kind, node)
     for octane_name, mtlx_name in pairs:
-        reader.carry(node, octane_name, shader, mtlx_name)
+        reader.copy_input(node, octane_name, shader, mtlx_name)
     if extra is not None:
         extra(reader, node, shader)
     _normals(reader, node, shader, NORMALS.get(kind, ()))
@@ -261,7 +261,7 @@ def _shader(reader, node, kind, pairs, extra=None, consumed=()):
         if name not in handled:
             reader.report.skip('"%s" feeds %s, which has no conversion mapping yet' % (
                 upstream.name(), name))
-    reader.said_unless_default(node, NO_FORM, "which MaterialX has no form for")
+    reader.report_unless_default(node, NO_FORM, "which MaterialX has no form for")
     return shader
 
 
@@ -272,10 +272,10 @@ def _dispersion(reader, node, shader, kind) -> None:
     target = ("transmission_dispersion" if kind == "mtlxstandard_surface"
               else "transmission_dispersion_abbe_number")
     if _token(node, "dispersionMode") == "2":
-        reader.said_unless_default(node, ("dispersion_coefficient_B",),
-                                   "a Cauchy coefficient, which MaterialX has no form for")
+        reader.report_unless_default(node, ("dispersion_coefficient_B",),
+                                     "a Cauchy coefficient, which MaterialX has no form for")
         return
-    reader.carry(node, "dispersion_coefficient_B", shader, target)
+    reader.copy_input(node, "dispersion_coefficient_B", shader, target)
 
 
 def _normals(reader, node, shader, pairs) -> None:
@@ -353,7 +353,7 @@ def _lobe(reader, node, octane_name, shader, weight, colour) -> None:
     on = octane_name in _feeds(node) or any(v > 0 for v in values)
     _set(shader, weight, 1.0 if on else 0.0)
     if on:
-        reader.carry(node, octane_name, shader, colour)
+        reader.copy_input(node, octane_name, shader, colour)
 
 
 def _metal_ior(reader, node, shader) -> bool:
@@ -396,9 +396,9 @@ SHARED = (("roughness", "specular_roughness"), ("anisotropyTexture", "specular_a
 def read_universal(reader, node, role):
     def lobes(reader, node, shader):
         _set(shader, "base", 1.0)
-        reader.carry(node, "albedo", shader, "base_color")
-        reader.carry(node, "metallic", shader, "metalness")
-        reader.carry(node, "edgeTint", shader, "specular_color")
+        reader.copy_input(node, "albedo", shader, "base_color")
+        reader.copy_input(node, "metallic", shader, "metalness")
+        reader.copy_input(node, "edgeTint", shader, "specular_color")
         _metal_ior(reader, node, shader)
         _lobe(reader, node, "transmission", shader, "transmission", "transmission_color")
         _lobe(reader, node, "coating", shader, "coat", "coat_color")
@@ -417,9 +417,9 @@ def read_diffuse(reader, node, role):
     def lobes(reader, node, shader):
         _set(shader, "base", 1.0)
         _set(shader, "specular", 0.0)
-        reader.carry(node, "diffuse", shader, "base_color")
-        reader.carry(node, "roughness", shader, "diffuse_roughness")
-        reader.said_unless_default(node, ("transmission",), "which MaterialX has no form for")
+        reader.copy_input(node, "diffuse", shader, "base_color")
+        reader.copy_input(node, "roughness", shader, "diffuse_roughness")
+        reader.report_unless_default(node, ("transmission",), "which MaterialX has no form for")
         _approximated(reader, node, "Octane's Diffuse material")
     return _shader(reader, node, "mtlxstandard_surface", (("opacity", "opacity"),), lobes,
                    ("diffuse", "roughness", "transmission"))
@@ -428,7 +428,7 @@ def read_diffuse(reader, node, role):
 def read_glossy(reader, node, role):
     def lobes(reader, node, shader):
         _set(shader, "base", 1.0)
-        reader.carry(node, "diffuse", shader, "base_color")
+        reader.copy_input(node, "diffuse", shader, "base_color")
         _lobe(reader, node, "sheen", shader, "sheen", "sheen_color")
         _film(reader, node, shader)
         _approximated(reader, node, "Octane's Glossy material")
@@ -442,8 +442,8 @@ def read_specular(reader, node, role):
     def lobes(reader, node, shader):
         _set(shader, "base", 0.0)
         _set(shader, "transmission", 1.0)
-        reader.carry(node, "transmission", shader, "transmission_color")
-        reader.carry(node, "reflection", shader, "specular_color")
+        reader.copy_input(node, "transmission", shader, "transmission_color")
+        reader.copy_input(node, "reflection", shader, "specular_color")
         _film(reader, node, shader)
         _approximated(reader, node, "Octane's Specular material")
     pairs = SHARED + (("ior", "specular_IOR"), ("thinWall", "thin_walled"))
@@ -456,8 +456,8 @@ def read_metal(reader, node, role):
         _set(shader, "base", 1.0)
         _set(shader, "metalness", 1.0)
         if not _metal_ior(reader, node, shader):
-            reader.carry(node, "specular", shader, "base_color")
-        reader.carry(node, "edgeTint", shader, "specular_color")
+            reader.copy_input(node, "specular", shader, "base_color")
+        reader.copy_input(node, "edgeTint", shader, "specular_color")
         _lobe(reader, node, "sheen", shader, "sheen", "sheen_color")
         _film(reader, node, shader)
         _approximated(reader, node, "Octane's Metallic material")
@@ -480,7 +480,7 @@ def read_mix_material(reader, node, role):
     mix = reader.make("mtlxmix", node)
     reader.wire(mix, "fg", first)
     reader.wire(mix, "bg", second)
-    reader.carry(node, "amount", mix, "mix", "float")
+    reader.copy_input(node, "amount", mix, "mix", "float")
     return mix
 
 
@@ -532,9 +532,9 @@ def _texcoord(reader, node, image) -> None:
     place = reader.make("mtlxplace2d", transform[0])
     place.parmTuple("pivot").set((0.5, 0.5))    # Octane scales and turns about the UV centre
     _set(place, "operationorder", "1")    # translate, rotate, scale: Octane's order (measured)
-    reader.carry(transform[0], "scale", place, "scale", "vector2")
-    reader.carry(transform[0], "rotation", place, "rotate", "float")
-    reader.carry(transform[0], "translation", place, "offset", "vector2")
+    reader.copy_input(transform[0], "scale", place, "scale", "vector2")
+    reader.copy_input(transform[0], "rotation", place, "rotate", "float")
+    reader.copy_input(transform[0], "translation", place, "offset", "vector2")
     reader.wire(place, "texcoord", (texcoord, 0))
     reader.wire(image, "texcoord", (place, 0))
 
@@ -571,7 +571,7 @@ def read_image(reader, node, role):
     if power is not None or (_values(node, "power") and _values(node, "power")[0] != 1.0):
         multiply = reader.make("mtlxmultiply", node, role)
         reader.wire(multiply, "in1", made)
-        reader.carry(node, "power", multiply, "in2", role, poly=True)
+        reader.copy_input(node, "power", multiply, "in2", role, poly=True)
         made = (multiply, 0)
     return made
 
@@ -606,8 +606,8 @@ def _two(kind, first, second):
     """A two-input node: Octane's `first` and `second` onto MaterialX's in1 and in2."""
     def read(reader, node, role):
         made = reader.make(kind, node, role)
-        reader.carry(node, first, made, "in1", role, poly=True)
-        reader.carry(node, second, made, "in2", role, poly=True)
+        reader.copy_input(node, first, made, "in1", role, poly=True)
+        reader.copy_input(node, second, made, "in2", role, poly=True)
         return made
     return read
 
@@ -615,32 +615,32 @@ def _two(kind, first, second):
 def read_mix_texture(reader, node, role):
     """A Mix texture: amount 0 shows texture1, MaterialX's background (measured)."""
     mix = reader.make("mtlxmix", node, role)
-    reader.carry(node, "texture1", mix, "bg", role, poly=True)
-    reader.carry(node, "texture2", mix, "fg", role, poly=True)
-    reader.carry(node, "amount", mix, "mix", "float")
+    reader.copy_input(node, "texture1", mix, "bg", role, poly=True)
+    reader.copy_input(node, "texture2", mix, "fg", role, poly=True)
+    reader.copy_input(node, "amount", mix, "mix", "float")
     return mix
 
 
 def read_invert(reader, node, role):
     invert = reader.make("mtlxinvert", node, role)
-    reader.carry(node, "texture", invert, "in", role, poly=True)
+    reader.copy_input(node, "texture", invert, "in", role, poly=True)
     return invert
 
 
 def read_clamp(reader, node, role):
     clamp = reader.make("mtlxclamp", node, role)
-    reader.carry(node, "input", clamp, "in", role, poly=True)
-    reader.carry(node, "min", clamp, "low", role, poly=True)
-    reader.carry(node, "max", clamp, "high", role, poly=True)
+    reader.copy_input(node, "input", clamp, "in", role, poly=True)
+    reader.copy_input(node, "min", clamp, "low", role, poly=True)
+    reader.copy_input(node, "max", clamp, "high", role, poly=True)
     return clamp
 
 
 def read_range(reader, node, role):
     ranged = reader.make("mtlxrange", node, role)
-    reader.carry(node, "input", ranged, "in", role, poly=True)
+    reader.copy_input(node, "input", ranged, "in", role, poly=True)
     for octane_name, mtlx_name in (("inputMin", "inlow"), ("inputMax", "inhigh"),
                                    ("outputMin", "outlow"), ("outputMax", "outhigh")):
-        reader.carry(node, octane_name, ranged, mtlx_name, role, poly=True)
+        reader.copy_input(node, octane_name, ranged, mtlx_name, role, poly=True)
     _set(ranged, "doclamp", 1 if _values(node, "clamp") and _values(node, "clamp")[0] else 0)
     curve = _token(node, "interpolationType")
     if curve and curve != "0":
@@ -686,7 +686,7 @@ def _merge(names):
             return reader.read(fed[0], "float", fed[1]) if fed is not None else None
         combine = reader.make("mtlxcombine3", node, role)
         for octane_name, mtlx_name in zip(names, ("in1", "in2", "in3")):
-            reader.carry(node, octane_name, combine, mtlx_name, "float")
+            reader.copy_input(node, octane_name, combine, mtlx_name, "float")
         return _convert_space(reader, node, (combine, 0), role)
     return read
 
@@ -777,8 +777,8 @@ def read_compare(reader, node, role):
     _operand(reader, node, "texture1", made, values[0], "float")
     _operand(reader, node, "texture2", made, values[1], "float")
     results = ("in1", "in2") if true_first else ("in2", "in1")
-    reader.carry(node, "texture3", made, results[0], role, poly=True)
-    reader.carry(node, "texture4", made, results[1], role, poly=True)
+    reader.copy_input(node, "texture3", made, results[0], role, poly=True)
+    reader.copy_input(node, "texture4", made, results[1], role, poly=True)
     return made
 
 
@@ -813,7 +813,7 @@ def read_gradient(reader, node, role):
 
 def read_color_correction(reader, node, role):
     """The texture passes through; each correction set away from neutral is said."""
-    reader.said_unless_default(
+    reader.report_unless_default(
         node, ("brightness", "invert", "hue", "saturation", "gamma", "contrast", "gain",
                "exposure", "mask"),
         "a colour correction with no faithful MaterialX twin, so the texture crosses "
@@ -865,7 +865,7 @@ def read_displacement(reader, node, role):
             _set(shifted, "in2", level)
             height = (shifted, 0)
         reader.wire(displacement, "displacement", height)
-    reader.carry(node, "amount", displacement, "scale", "float")
+    reader.copy_input(node, "amount", displacement, "scale", "float")
     if vector:
         reader.report.approximate('"%s" displaces by a vector map - its axes and space are '
                                   "assumed to be MaterialX's" % node.name())

@@ -171,7 +171,7 @@ class TheSubjectIsRightForEachContext(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
         self.assertIsNotNone(self._subject_for_last_row("material")[0])
 
-        panel.enter_online_world()
+        panel.enter_online_mode()
         QtWidgets.QApplication.processEvents()
         self.assertTrue(panel._is_online(), "not online, so this proves "
                                             "nothing")
@@ -180,7 +180,7 @@ class TheSubjectIsRightForEachContext(unittest.TestCase):
 
     def _leave_online(self):
         if self.panel._is_online():
-            self.panel.leave_online_world()
+            self.panel.leave_online_mode()
         QtWidgets.QApplication.processEvents()
 
 
@@ -281,8 +281,8 @@ class TheCommentsPaneHOLDSItsOwnWidth(unittest.TestCase):
         for name in ("cat_wrapper", "notes_panel"):
             with self.subTest(pane=name):
                 self.assertIsInstance(
-                    getattr(self.panel, name), ui_helpers.HeldPane,
-                    "%s is not a `HeldPane`, so its width is kept by "
+                    getattr(self.panel, name), ui_helpers.SavedWidthPane,
+                    "%s is not a `SavedWidthPane`, so its width is kept by "
                     "code written just for it" % name)
 
     def test_opening_it_gives_it_the_REMEMBERED_width(self):

@@ -113,7 +113,7 @@ class TheToolbarFollowsTheContextLive(unittest.TestCase):
         self.addCleanup(self._restore)
         panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()
-        panel.enter_online_world()
+        panel.enter_online_mode()
         QtWidgets.QApplication.processEvents()
 
         context = panel.active_section()
@@ -145,7 +145,7 @@ class TheToolbarFollowsTheContextLive(unittest.TestCase):
     def _restore(self):
         panel = self.panel
         if panel._is_online():
-            panel.leave_online_world()
+            panel.leave_online_mode()
         QtWidgets.QApplication.processEvents()
 
 

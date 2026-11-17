@@ -107,7 +107,7 @@ class TheVersionsWindowStandsOnItsFrame(unittest.TestCase):
         def ink(x, y):
             return QtGui.QColor(picture.pixel(int(x * ratio), int(y * ratio))).name()
 
-        selected = QtGui.QColor(amazetheme.D01_SELECTED_INK).name()
+        selected = QtGui.QColor(amazetheme.D01_SELECTED_BACKGROUND).name()
         self.assertEqual(selected, ink(px(rows["box_x"]) + 1, top + 1),
                          "the selected row is not painted at its position in the design")
         self.assertNotEqual(selected, ink(px(rows["box_x"]) + 1, top - 1),

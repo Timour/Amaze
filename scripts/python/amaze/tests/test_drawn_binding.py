@@ -364,7 +364,7 @@ class ThePinRefusesRatherThanCrashes(unittest.TestCase):
         self.addCleanup(button.deleteLater)
         before = button.maximumWidth()
         with mock.patch.object(debug, "event") as recorded:
-            ui_helpers.pin_drawn(button, "P01", "QPushButton",
+            ui_helpers.fit_drawn(button, "P01", "QPushButton",
                                  "Not A Drawn Label")
         self.assertEqual(before, button.maximumWidth(),
                          "a label the document does not draw still pinned "
@@ -606,11 +606,11 @@ class EveryDrawnNodeIsBoundOrNamed(unittest.TestCase):
 
     def setUp(self):
         amazetheme.forget_drawn_boxes()
-        ui_helpers.forget_drawn_pins()
+        ui_helpers.forget_drawn_nodes_fitted()
         self.addCleanup(amazetheme.forget_drawn_boxes)
-        self.addCleanup(ui_helpers.forget_drawn_pins)
+        self.addCleanup(ui_helpers.forget_drawn_nodes_fitted)
         build_every_frame(self)
-        self.pins = ui_helpers.drawn_pins()
+        self.pins = ui_helpers.drawn_nodes_fitted()
 
     def test_every_drawn_node_pins_a_widget_or_is_named(self):
         loose = []
@@ -734,7 +734,7 @@ class TheCodeDialogStandsOnItsFrame(unittest.TestCase):
         ratio = shot.devicePixelRatio()
         name = self._drawn("QLineEdit")[0]    # beside it, on the Name label's bare left end
         x, y = theme.ui_px(12), name[1] + name[3] // 2
-        self.assertEqual(QtGui.QColor(amazetheme.CODE_GROUND).name(),
+        self.assertEqual(QtGui.QColor(amazetheme.CODE_BACKGROUND).name(),
                          QtGui.QColor(shot.pixel(int(x * ratio), int(y * ratio))).name(),
                          "the window behind the form is not the drawn ground")
 
@@ -906,7 +906,7 @@ class TheShowHidePageWearsItsLines(unittest.TestCase):
         stack = lines.parentWidget().findChild(QtWidgets.QStackedWidget)
         self.assertEqual(stack.geometry(), lines.geometry(), "the lines do not lie over the page")
         picture = lines.grab().toImage()
-        ink = QtGui.QColor(amazetheme.PREFS_PAGE_LINE_INK).rgb()
+        ink = QtGui.QColor(amazetheme.PREFS_PAGE_LINE_COLOR).rgb()
         right, bottom = picture.width() - 1, picture.height() - 1
         for x, y in ((0, 0), (right // 2, 0), (right, 0), (right, bottom // 2), (right, bottom)):
             self.assertEqual(ink, picture.pixel(x, y), "no line at %d,%d" % (x, y))

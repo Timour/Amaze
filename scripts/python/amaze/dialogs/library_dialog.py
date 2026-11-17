@@ -29,11 +29,11 @@ class ListRows(QtWidgets.QStyledItemDelegate):
     """A row as a drawn list paints it: name, second column, `not connected` when unreachable."""
 
     def __init__(self, parent=None, frame_key: str = "D15",
-                 selected_ink: str = amazetheme.D15_SELECTED_INK, second=None,
+                 selected_background: str = amazetheme.D15_SELECTED_BACKGROUND, second=None,
                  whole_second: bool = False) -> None:
         super().__init__(parent)
         self._drawn = amazetheme.drawn_list_rows(frame_key)
-        self._selected_ink = selected_ink
+        self._selected_background = selected_background
         self._second = second or (lambda index: shown_path(str(index.data(FOLDER_ROLE) or "")))
         self._whole_second = whole_second    # a short text such as a date: drawn whole, never cut
 
@@ -55,14 +55,14 @@ class ListRows(QtWidgets.QStyledItemDelegate):
         if option.state & QtWidgets.QStyle.StateFlag.State_Selected:
             painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
             painter.setPen(QtCore.Qt.PenStyle.NoPen)
-            painter.setBrush(QtGui.QColor(self._selected_ink))
+            painter.setBrush(QtGui.QColor(self._selected_background))
             painter.drawRoundedRect(box, px(amazetheme.LIST_RADIUS), px(amazetheme.LIST_RADIUS))
         painter.setFont(option.font)
         if not reached:
             flag = amazetheme.LABEL_NOT_CONNECTED
             wide = metrics.horizontalAdvance(flag)
             _draw(painter, metrics, flag, QtCore.QRect(right - wide, top, wide, high),
-                  QtGui.QColor(amazetheme.D15_DIM_INK), QtCore.Qt.TextElideMode.ElideNone)
+                  QtGui.QColor(amazetheme.D15_DIM_TEXT_COLOR), QtCore.Qt.TextElideMode.ElideNone)
             right -= wide + px(drawn["flag_right"])
         second = self._second(index)
         name_end, elide = path_x, QtCore.Qt.TextElideMode.ElideMiddle
@@ -71,11 +71,11 @@ class ListRows(QtWidgets.QStyledItemDelegate):
             name_end, elide = path_x - px(drawn["name_x"]), QtCore.Qt.TextElideMode.ElideNone
         _draw(painter, metrics, str(index.data() or ""),
               QtCore.QRect(name_x, top, max(0, name_end - name_x), high),
-              theme.color("text_bright") if reached else QtGui.QColor(amazetheme.D15_DIM_INK),
+              theme.color("text_bright") if reached else QtGui.QColor(amazetheme.D15_DIM_TEXT_COLOR),
               QtCore.Qt.TextElideMode.ElideRight)
         _draw(painter, metrics, second,
               QtCore.QRect(path_x, top, max(0, right - path_x), high),
-              theme.color("text") if reached else QtGui.QColor(amazetheme.D15_DIM_PATH_INK),
+              theme.color("text") if reached else QtGui.QColor(amazetheme.D15_DIM_PATH_TEXT_COLOR),
               elide)
         painter.restore()
 
@@ -89,7 +89,7 @@ def set_list_background(view) -> None:
     """A drawn list's background: Houdini's list colour, with the drawn corner radius."""
     view.setStyleSheet(
         "QListWidget { background-color: %s; border: none; border-radius: %dpx; }"
-        % (theme.list_ground().name(), theme.ui_px(amazetheme.LIST_RADIUS)))
+        % (theme.list_background().name(), theme.ui_px(amazetheme.LIST_RADIUS)))
 
 
 def drawn_list(frame_key: str, selection_mode, delegate) -> QtWidgets.QListWidget:
@@ -102,7 +102,7 @@ def drawn_list(frame_key: str, selection_mode, delegate) -> QtWidgets.QListWidge
     delegate.setParent(view)    # the view does not own its delegate ▸r/delegate-orphans
     view.setItemDelegate(delegate)
     set_list_background(view)
-    ui_helpers.pin_drawn(view, frame_key, "QListWidget", None)
+    ui_helpers.fit_drawn(view, frame_key, "QListWidget", None)
     return view
 
 

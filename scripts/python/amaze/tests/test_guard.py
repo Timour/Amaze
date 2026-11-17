@@ -473,7 +473,7 @@ class AChangeMeetsTheFileAsItIsTest(_Library):
         change = self.guard.change("u1")
         change.put_file("materials/ok.mat", b"fine")
         change.put_file("../outside.mat", b"escaped")
-        with self.assertRaises(hostos.PathEscape):
+        with self.assertRaises(hostos.PathOutsideBase):
             change.commit()
         self.assertEqual(before, state(self.dir))
         self.assertFalse(os.path.exists(os.path.join(os.path.dirname(self.dir), "outside.mat")))

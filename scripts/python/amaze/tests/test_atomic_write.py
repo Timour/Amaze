@@ -962,7 +962,7 @@ class SandboxRefusesAWriteOutsideTempTest(unittest.TestCase):
         self.arm()
         outside = os.path.join(os.path.expanduser("~"), "amaze_sandbox_probe.json")
         self.assertFalse(os.path.exists(outside), "the fixture path exists")
-        with self.assertRaises(hostos.SandboxRefused):
+        with self.assertRaises(hostos.WriteOutsideSandbox):
             hostos.write_json_atomic(outside, {"a": 1})
         self.assertFalse(
             os.path.exists(outside),
@@ -1009,7 +1009,7 @@ class SandboxRefusesEveryPrimitiveTest(unittest.TestCase):
 
     def _refused(self, call, *args):
         before = sorted(os.listdir(self.outside))
-        with self.assertRaises(hostos.SandboxRefused):
+        with self.assertRaises(hostos.WriteOutsideSandbox):
             call(*args)
         self.assertEqual(before, sorted(os.listdir(self.outside)),
                          "%s wrote outside the temp dir before refusing"
@@ -1038,7 +1038,7 @@ class SandboxRefusesEveryPrimitiveTest(unittest.TestCase):
 
     def test_a_promote_or_replace_onto_an_outside_path_is_refused(self):
         target = os.path.join(self.outside, "a.json")
-        self._refused(hostos.promote_scratch, self._inside_file(), target)
+        self._refused(hostos.replace_with_scratch, self._inside_file(), target)
         self._refused(hostos.replace_file, self._inside_file(), target)
 
     def test_the_unreadable_copy_is_refused(self):
@@ -1054,7 +1054,7 @@ class SandboxRefusesEveryPrimitiveTest(unittest.TestCase):
             handle.write("x")
         change = guard.Guard(library).change("")
         change.trash("materials/LEFTOVER.mat")
-        with self.assertRaises(hostos.SandboxRefused):
+        with self.assertRaises(hostos.WriteOutsideSandbox):
             change.commit()
         self.assertTrue(os.path.exists(leftover), "the refused move still moved the file")
 

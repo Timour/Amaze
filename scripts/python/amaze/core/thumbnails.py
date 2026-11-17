@@ -47,7 +47,7 @@ def _encoded(image, dest: str, source: str):
     try:
         os.makedirs(os.path.dirname(dest), exist_ok=True)
         scratch = hostos.unique_scratch(dest)
-    except (OSError, hostos.SandboxRefused) as exc:
+    except (OSError, hostos.WriteOutsideSandbox) as exc:
         why = str(exc)
     else:
         if image.save(scratch, "PNG", CACHE_PNG_QUALITY):    # returns False, does not raise ▸r/model-contracts
@@ -320,8 +320,8 @@ class ThumbnailEngine(QtCore.QObject):
     def _file_png(self, key, scratch, dest) -> None:
         """Promote a current conversion's scratch PNG to `dest` and emit `converted`; a failure is logged."""
         try:
-            hostos.promote_scratch(scratch, dest)
-        except (OSError, hostos.SandboxRefused) as exc:
+            hostos.replace_with_scratch(scratch, dest)
+        except (OSError, hostos.WriteOutsideSandbox) as exc:
             hostos.discard_scratch(scratch)
             debug.event("thumbnails", "converted png not written", path=dest, error=str(exc))
             return

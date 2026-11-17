@@ -205,7 +205,7 @@ class _PageLines(QtWidgets.QWidget):
 
     def paintEvent(self, _event) -> None:
         painter = QtGui.QPainter(self)
-        painter.setPen(QtGui.QColor(amazetheme.PREFS_PAGE_LINE_INK))
+        painter.setPen(QtGui.QColor(amazetheme.PREFS_PAGE_LINE_COLOR))
         right, bottom = self.width() - 1, self.height() - 1
         painter.drawLine(0, 0, right, 0)
         painter.drawLine(right, 0, right, bottom)
@@ -223,7 +223,7 @@ class PrefsDialog(base_dialog.AssetDialog):
                          fixed_size=False, parent=parent)
         self._prefs = prefs
         model_registry.refresh_all(prefs)    # re-read first: every list below shows what other sessions saved ▸r/peer-read
-        prefs.follow_shared()    # and so do the shared settings this session has not changed
+        prefs.apply_shared_changes()    # and so do the shared settings this session has not changed
         # the panel owns the library operations and this only forwards; None in tests is allowed
         self._panel = panel
         self._file_files_model = file_files_model
@@ -244,7 +244,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._page_steps = dict(zip(PREFS_FRAMES, self._steps_to_pages()))
 
         self.set_content(tabs)
-        self.finish(ok_cancel=False,   # a tabbed window keeps a wider margin; HOUSE_MARGIN is for compact forms
+        self.finish(ok_cancel=False,   # a tabbed window keeps a wider margin; FORM_DIALOG_MARGIN is for compact forms
                     margins=amazetheme.PREFS_DIALOG_MARGIN)
 
         for combo in self.findChildren(QtWidgets.QComboBox):   # combos never take focus; runs after setLayout so findChildren sees them
@@ -723,7 +723,7 @@ class PrefsDialog(base_dialog.AssetDialog):
 
     def _dim_label(self, text: str = "") -> QtWidgets.QLabel:
         label = QtWidgets.QLabel(text)
-        _set_text_color(label, amazetheme.P01_DIM_INK)
+        _set_text_color(label, amazetheme.P01_DIM_TEXT_COLOR)
         return label
 
     def _build_check_rows(self, form: QtWidgets.QFormLayout) -> None:
@@ -782,7 +782,7 @@ class PrefsDialog(base_dialog.AssetDialog):
             "QPushButton { background-color: %s; color: %s; border: none; border-radius: %dpx; }"
             " QPushButton:hover { background-color: %s; }"
             " QPushButton:pressed { background-color: %s; }"
-            % (amazetheme.P01_REPAIR_FILL, amazetheme.P01_REPAIR_INK,
+            % (amazetheme.P01_REPAIR_FILL, amazetheme.P01_REPAIR_TEXT_COLOR,
                amazetheme.P01_REPAIR_RADIUS, amazetheme.P01_REPAIR_HOVER,
                amazetheme.P01_REPAIR_PRESSED) if fixable else "")
 
@@ -791,12 +791,12 @@ class PrefsDialog(base_dialog.AssetDialog):
         found = library_check.summary(findings)
         fills = {library_check.CLEAN: amazetheme.P01_LIGHT_CLEAN,
                  library_check.FOUND: amazetheme.P01_LIGHT_FOUND,
-                 library_check.UNCHECKED: amazetheme.P01_LIGHT_UNJUDGED}
+                 library_check.UNCHECKED: amazetheme.P01_LIGHT_UNCHECKED}
         for part, light, count in zip(library_check.PARTS, self._check_lights,
                                       self._check_counts):
             state, number = found["lights"][part]
             light.set_fill(fills[state])
-            count.setText(amazetheme.LABEL_UNJUDGED if number is None else str(number))
+            count.setText(amazetheme.LABEL_UNCHECKED if number is None else str(number))
         self._set_check_info(found["info"])
         self._check_found = findings if found["lines"] else None
         self._set_check_button(bool(found["lines"]))
@@ -840,9 +840,9 @@ class PrefsDialog(base_dialog.AssetDialog):
             return
         shown, line, warn, _may_apply = self._library_note(self._picked_library())
         label.setText(shown)
-        _set_text_color(label, amazetheme.P01_WARNING_INK if warn else amazetheme.P01_FORMAT_INK)
+        _set_text_color(label, amazetheme.P01_WARNING_TEXT_COLOR if warn else amazetheme.P01_FORMAT_TEXT_COLOR)
         self._lbl_library_apply.setText(line)
-        _set_text_color(self._lbl_library_apply, amazetheme.P01_WARNING_INK)
+        _set_text_color(self._lbl_library_apply, amazetheme.P01_WARNING_TEXT_COLOR)
         self._sync_library_buttons()
 
     def _build_render_tab(self) -> QtWidgets.QWidget:
@@ -1272,9 +1272,9 @@ class PrefsDialog(base_dialog.AssetDialog):
         picture.adjustSize()
         built = {"add-on picture": picture}
         for kind, text, color in (
-                ("add-on version", messages.ADDON_VERSION % manifest["version"], amazetheme.P05_DIM_INK),
-                ("add-on author", messages.ADDON_AUTHOR % manifest["author"], amazetheme.P05_DIM_INK),
-                ("add-on short description", group["short_description"], amazetheme.P05_TEXT_INK)):
+                ("add-on version", messages.ADDON_VERSION % manifest["version"], amazetheme.P05_DIM_TEXT_COLOR),
+                ("add-on author", messages.ADDON_AUTHOR % manifest["author"], amazetheme.P05_DIM_TEXT_COLOR),
+                ("add-on short description", group["short_description"], amazetheme.P05_TEXT_COLOR)):
             label = QtWidgets.QLabel(text, holder)
             label.setStyleSheet("color: %s;" % color)
             if kind == "add-on short description":
@@ -1297,7 +1297,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         if index:
             divider = QtWidgets.QWidget(holder)
             divider.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
-            divider.setStyleSheet("background-color: %s;" % amazetheme.PREFS_DIVIDER_INK)
+            divider.setStyleSheet("background-color: %s;" % amazetheme.PREFS_DIVIDER_COLOR)
             divider.setGeometry(*box["QWidget ▸ group divider"])
             built["QWidget ▸ group divider"] = divider
         picture.lower()
@@ -1332,7 +1332,7 @@ class PrefsDialog(base_dialog.AssetDialog):
     def _set_addons_button(self, offer: bool) -> None:
         """Check for Updates, or Update once a check found something; one drawn box for both."""
         self._btn_addons.setText("Update" if offer else "Check for Updates")
-        ui_helpers.pin_drawn(self._btn_addons, "P05", "QPushButton", "Check for Updates")
+        ui_helpers.fit_drawn(self._btn_addons, "P05", "QPushButton", "Check for Updates")
         self._btn_addons.setToolTip(ui_helpers.tooltip_text(
             tooltips.PREFS_ADDONS_UPDATE if offer else tooltips.PREFS_ADDONS_CHECK))
 
@@ -1386,22 +1386,22 @@ class PrefsDialog(base_dialog.AssetDialog):
                 label = button.text()
                 nth = drawn_again.get(label, 0)
                 drawn_again[label] = nth + 1
-                ui_helpers.pin_drawn(button, frame_key, "QPushButton",
+                ui_helpers.fit_drawn(button, frame_key, "QPushButton",
                                      label, nth=nth)
             for kind, widgets in self._tab_built.get(frame_key, {}).items():
-                ui_helpers.pin_drawn_series(widgets, frame_key, kind)
-        ui_helpers.pin_drawn_stem(self._lbl_version, "P06", "QLabel",
+                ui_helpers.fit_drawn_series(widgets, frame_key, kind)
+        ui_helpers.fit_drawn_stem(self._lbl_version, "P06", "QLabel",
                                   VERSION_STEM, height=False)
-        ui_helpers.pin_drawn_stem(self._lbl_library_format, "P01", "QLabel",
+        ui_helpers.fit_drawn_stem(self._lbl_library_format, "P01", "QLabel",
                                   FORMAT_STEM, height=False)
-        ui_helpers.pin_drawn_stem(self._lbl_library_apply, "P01", "QLabel",
+        ui_helpers.fit_drawn_stem(self._lbl_library_apply, "P01", "QLabel",
                                   APPLY_LINE_STEM, height=False)
         for label in self._check_heads + [self._lbl_databases]:
-            ui_helpers.pin_drawn(label, "P01", "QLabel", label.text(), height=False)
-        ui_helpers.pin_drawn_stem(self._lbl_check_info, "P01", "QLabel",
+            ui_helpers.fit_drawn(label, "P01", "QLabel", label.text(), height=False)
+        ui_helpers.fit_drawn_stem(self._lbl_check_info, "P01", "QLabel",
                                   CHECK_INFO_STEM, height=False)
-        ui_helpers.pin_drawn(self._addon_list, "P05", "QTextBrowser", None, height=False)
-        ui_helpers.pin_drawn(self._lbl_addons, "P05", "QLabel", None, height=False)
+        ui_helpers.fit_drawn(self._addon_list, "P05", "QTextBrowser", None, height=False)
+        ui_helpers.fit_drawn(self._lbl_addons, "P05", "QLabel", None, height=False)
         for row in self._path_rows:
             self._space_pinned_row(row)
         for row in self._drawn_rows:
@@ -1532,7 +1532,7 @@ class PrefsDialog(base_dialog.AssetDialog):
             QtCore.Qt.WidgetAttribute.WA_StyledBackground, True
         )
         divider.setStyleSheet("background-color: %s;"
-                              % amazetheme.PREFS_DIVIDER_INK)
+                              % amazetheme.PREFS_DIVIDER_COLOR)
         divider.setFixedHeight(theme.ui_px(amazetheme.PREFS_DIVIDER_H))
         divider.setFixedWidth(theme.ui_px(amazetheme.PREFS_CONTENT_WIDTH))    # the drawn rule
         v.addWidget(divider)
@@ -1699,7 +1699,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         """Set the one button to one of its two labels; the tooltip changes with the label."""
         self._btn_update.setText(
             "Install Update" if offer else "Check for Updates")
-        ui_helpers.pin_drawn(   # ONE drawn box for both labels: the text changes, the geometry does not
+        ui_helpers.fit_drawn(   # ONE drawn box for both labels: the text changes, the geometry does not
             self._btn_update, "P06", "QPushButton", "Check for Updates")
         self._btn_update.setToolTip(ui_helpers.tooltip_text(
             tooltips.PREFS_INSTALL_UPDATE

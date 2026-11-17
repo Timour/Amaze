@@ -232,7 +232,7 @@ def houdini_color(name: str, fallback: str) -> QtGui.QColor:
     return QtGui.QColor(fallback)
 
 
-def syntax_inks() -> dict:
+def syntax_colors() -> dict:
     """Houdini's syntax colours by kind; its dark scheme's when the current ones are for light."""
     from amaze import amazetheme
     live = {kind: houdini_color(name, fallback)
@@ -243,12 +243,12 @@ def syntax_inks() -> dict:
     return live
 
 
-def list_ground() -> QtGui.QColor:
+def list_background() -> QtGui.QColor:
     """Houdini's list colour, or its dark scheme's when the live one is light."""
     from amaze import amazetheme
-    name, fallback = amazetheme.LIST_GROUND
-    ground = houdini_color(name, fallback)
-    return ground if ground.lightnessF() < 0.5 else QtGui.QColor(fallback)    # Amaze's text is light
+    name, fallback = amazetheme.LIST_BACKGROUND
+    background = houdini_color(name, fallback)
+    return background if background.lightnessF() < 0.5 else QtGui.QColor(fallback)    # Amaze's text is light
 
 
 def _derive(theme, name):

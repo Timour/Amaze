@@ -64,8 +64,8 @@ class TheDeclarationsAreWellFormed(unittest.TestCase):
             self.assertTrue(getattr(cls, "empty_noun", ""),
                             "%s declares no empty_noun, so the shared "
                             "sentences cannot name it" % key)
-            self.assertIn(empty_state.NOTHING_YET, getattr(cls, "EMPTY", {}),
-                          "%s declares no NOTHING_YET text, and there is no "
+            self.assertIn(empty_state.EMPTY_SECTION, getattr(cls, "EMPTY", {}),
+                          "%s declares no EMPTY_SECTION text, and there is no "
                           "shared one to use instead" % key)
 
     def test_every_declared_verb_is_a_method_on_the_panel(self):
@@ -349,7 +349,7 @@ class TheQuoteRidesTheFirstRunBlankOnly(unittest.TestCase):
                              empty_state.quote_for(panel, blank),
                              "%s drew a quotation" % blank)
         page = empty_state.page(panel)
-        page.say(panel, empty_state.NOTHING_YET, "")
+        page.say(panel, empty_state.EMPTY_SECTION, "")
         page.say(panel, empty_state.NO_MATCH, "brick")
         self.assertTrue(page._quote.isHidden(),    # isHidden: isVisible is False under a never-shown parent ▸r/qt-text-checklists
                         "the quotation stayed visible on an empty state "
@@ -374,7 +374,7 @@ class AnEmptyCategoryIsThePlainGrid(unittest.TestCase):
         with mock.patch.object(panel, "ask_category_name",
                                lambda _title, _default="": "Probe"):
             panel.active_section().menu_add_category([], None)
-        self.assertTrue(panel._stand_on_category("Probe"),
+        self.assertTrue(panel._select_category("Probe"),
                         "premise: Probe is a sidebar row")
         QtWidgets.QApplication.processEvents()
         proxy = grid.visible_view(panel).model()
@@ -462,10 +462,10 @@ class AnEmptyCategoryIsThePlainGrid(unittest.TestCase):
         proxy = self._stand_on_a_new_category("cop")
         self.assertEqual(0, proxy.sourceModel().rowCount(),
                          "premise: the fixture saves no Node asset")
-        self.assertEqual((empty_state.NOTHING_YET, ""),
+        self.assertEqual((empty_state.EMPTY_SECTION, ""),
                          empty_state.verdict(self.panel))
         self.assertEqual(["blank"], faces(self.panel))
-        self.assertEqual(amazetheme.EMPTY_NODE[empty_state.NOTHING_YET][0],
+        self.assertEqual(amazetheme.EMPTY_NODE[empty_state.EMPTY_SECTION][0],
                          self.panel.empty_page._head.text())
 
     def test_an_unreadable_location_still_says_so(self):
@@ -479,7 +479,7 @@ class AnEmptyCategoryIsThePlainGrid(unittest.TestCase):
                         "premise: the location registered")
         shutil.rmtree(gone)    # what an unmounted share looks like
         self.assertTrue(
-            panel._stand_on_category(os.path.basename(gone.rstrip("/"))),
+            panel._select_category(os.path.basename(gone.rstrip("/"))),
             "premise: the location is a sidebar row")
         QtWidgets.QApplication.processEvents()
         self.assertEqual((empty_state.UNREACHABLE, gone),
@@ -559,9 +559,9 @@ class AnEmptyLocationIsThePlainGrid(unittest.TestCase):
     def test_no_location_keeps_the_first_run_blank(self):
         self._drop_fixture()
         self._stand(0)
-        self.assertEqual((empty_state.NOTHING_YET, ""), empty_state.verdict(self.panel))
+        self.assertEqual((empty_state.EMPTY_SECTION, ""), empty_state.verdict(self.panel))
         self.assertEqual(["blank"], faces(self.panel))
-        self.assertEqual(amazetheme.EMPTY_FILE[empty_state.NOTHING_YET][0],
+        self.assertEqual(amazetheme.EMPTY_FILE[empty_state.EMPTY_SECTION][0],
                          self.panel.empty_page._head.text())
 
 

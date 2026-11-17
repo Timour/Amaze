@@ -599,7 +599,7 @@ class GPUOpenSource(MatxSource):
                 for member in zf.namelist():
                     try:
                         hostos.contained_join(dest_dir, member)    # realpaths, not normpath, so a symlink cannot lead outside dest_dir
-                    except hostos.PathEscape:
+                    except hostos.PathOutsideBase:
                         skipped.append(member)
                     else:
                         safe.append(member)
@@ -700,7 +700,7 @@ class PolyHavenSource(MatxSource):
         for rel, info in (doc.get("include") or {}).items():
             try:
                 target = hostos.contained_join(dest_dir, rel)    # remote paths ▸r/matx-network-hardening
-            except hostos.PathEscape:
+            except hostos.PathOutsideBase:
                 unsafe.append(rel)
                 continue
             files.append((info["url"], target))
@@ -1539,7 +1539,7 @@ class SimReadySource(MatxSource):
             name = posixpath.normpath(posixpath.join(folder, ref.replace("\\", "/")))
             try:
                 hostos.contained_join(dest_dir, name)
-            except hostos.PathEscape:
+            except hostos.PathOutsideBase:
                 unsafe.append(ref)
                 continue
             if name in held:    # a texture missing from the archive is skipped here

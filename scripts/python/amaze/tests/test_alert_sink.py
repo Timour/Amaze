@@ -72,8 +72,8 @@ class SayUnlistedNamesWhatTheListDidNotTake(unittest.TestCase):
         from amaze.utils import rc_calls
         self.said = []
         self.shown = []
-        self.addCleanup(debug.hand_over, debug._ui)
-        debug.hand_over(rc_calls.HoudiniSpeaker)
+        self.addCleanup(debug.set_ui, debug._ui)
+        debug.set_ui(rc_calls.HoudiniUI)
 
     def _ui(self):
         return types.SimpleNamespace(
@@ -145,8 +145,8 @@ class TheOnlineImportEndsOnThatLine(unittest.TestCase):
         from amaze.utils import rc_calls
         self.said = []
         self.shown = []
-        self.addCleanup(debug.hand_over, debug._ui)
-        debug.hand_over(rc_calls.HoudiniSpeaker)
+        self.addCleanup(debug.set_ui, debug._ui)
+        debug.set_ui(rc_calls.HoudiniUI)
 
     def test_a_landed_but_unlisted_record_is_named_and_is_no_failure(self):
         from amaze.core import library as library_mod
@@ -182,8 +182,8 @@ class RefuseIsTheGestureSinkTest(unittest.TestCase):
         self.said = []
         self.shown = []
         self.printed = []
-        self.addCleanup(debug.hand_over, debug._ui)
-        debug.hand_over(rc_calls.HoudiniSpeaker)    # what the pane and every shelf tool pass to `hand_over`
+        self.addCleanup(debug.set_ui, debug._ui)
+        debug.set_ui(rc_calls.HoudiniUI)    # what the pane and every shelf tool pass to `set_ui`
 
     def _ui(self):
         """Both calls, so a wrong branch fills the wrong list instead of raising an AttributeError."""
@@ -254,8 +254,8 @@ class RefuseIsTheGestureSinkTest(unittest.TestCase):
                          "the dialog did not open once the event loop was idle")
 
     def test_with_nothing_handed_over_the_log_only_prints(self):
-        """The log shows messages in Houdini only through the object given to `hand_over`."""
-        debug.hand_over(None)
+        """The log shows messages in Houdini only through the object given to `set_ui`."""
+        debug.set_ui(None)
         with mock.patch.object(hou, "ui", self._ui(), create=True), \
                 mock.patch("builtins.print", self.printed.append):
             debug.refuse("no ramp here")
@@ -278,7 +278,7 @@ class RefuseIsTheGestureSinkTest(unittest.TestCase):
     def test_on_windows_the_fallback_prints_nothing(self):
         """A print opens the Windows Console; alert, refuse and note skip it. ▸r/platform-files"""
         from amaze.helpers import hostos
-        debug.hand_over(None)
+        debug.set_ui(None)
         self.addCleanup(debug._alerted.clear)
         with mock.patch.object(hostos, "is_windows", lambda: True), \
                 mock.patch("builtins.print", self.printed.append):
@@ -466,8 +466,8 @@ class AFailedReleaseSpeaksThroughTheSink(unittest.TestCase):
     def setUp(self):
         from amaze.utils import rc_calls
         self.shown, self.said = [], []
-        self.addCleanup(debug.hand_over, debug._ui)
-        debug.hand_over(rc_calls.HoudiniSpeaker)
+        self.addCleanup(debug.set_ui, debug._ui)
+        debug.set_ui(rc_calls.HoudiniUI)
         ui = types.SimpleNamespace(
             displayMessage=lambda text, *a, **k: self.shown.append(text),
             setStatusMessage=lambda text, *a, **k: self.said.append(text))
@@ -556,7 +556,7 @@ class TheTenSitesAreConvertedTest(unittest.TestCase):
 
 
 class EveryWayInHandsTheLogItsSpeaker(unittest.TestCase):
-    """Houdini shows the log's messages only after `hand_over`; every entry point calls it first."""
+    """Houdini shows the log's messages only after `set_ui`; every entry point calls it first."""
 
     REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__))))))
@@ -567,7 +567,7 @@ class EveryWayInHandsTheLogItsSpeaker(unittest.TestCase):
         import xml.etree.ElementTree as ET
         from amaze.utils import rc_calls
         self.assertFalse(hasattr(hou, "ui"), "premise: a screen would run the tools for real")
-        self.addCleanup(debug.hand_over, debug._ui)
+        self.addCleanup(debug.set_ui, debug._ui)
         root = ET.parse(os.path.join(self.REPO, "toolbar", "Amaze.shelf")).getroot()
         missing = []
         for tool in root.findall("tool"):
@@ -577,9 +577,9 @@ class EveryWayInHandsTheLogItsSpeaker(unittest.TestCase):
             for name in re.findall(r"\brc_calls\.(\w+)\(", script):
                 if not hasattr(rc_calls, name):
                     continue
-                debug.hand_over(None)
+                debug.set_ui(None)
                 getattr(rc_calls, name)()    # with no screen each stops after its prologue
-                if debug._ui is not rc_calls.HoudiniSpeaker:
+                if debug._ui is not rc_calls.HoudiniUI:
                     missing.append("%s (%s)" % (tool.get("name"), name))
         self.assertEqual([], missing, "these tools' alerts would print instead of showing")
 

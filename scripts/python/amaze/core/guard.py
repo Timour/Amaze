@@ -95,7 +95,7 @@ class Disk:
         """`scratch` becomes `target` in one rename, keeping the replaced file's mode."""
         hostos.check_sandbox(target)
         os.makedirs(os.path.dirname(target), exist_ok=True)    # a file added by `take` may go into a new folder
-        hostos.promote_scratch(scratch, target)
+        hostos.replace_with_scratch(scratch, target)
 
     def move(self, source: str, target: str) -> None:
         hostos.check_sandbox(target)
@@ -181,7 +181,7 @@ class Guard:
         return self._now().strftime(STAMP)
 
     def path(self, *parts: str) -> str:
-        """A path inside the library; `hostos.PathEscape` for one outside it."""
+        """A path inside the library; `hostos.PathOutsideBase` for one outside it."""
         return hostos.contained_join(self.dir, *parts)
 
     def _relative(self, relative: str) -> str:
@@ -249,7 +249,7 @@ class Guard:
             for name in names:
                 if not isinstance(step.get(name), str) or not step[name]:
                     raise ValueError("a journal step names no file")
-                self._relative(step[name])    # `hostos.PathEscape`, a ValueError, for one outside
+                self._relative(step[name])    # `hostos.PathOutsideBase`, a ValueError, for one outside
             known = known and step["op"] in STEPS
         return known
 
