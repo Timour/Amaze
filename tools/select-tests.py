@@ -19,7 +19,7 @@ _spec.loader.exec_module(impact_map)
 
 
 class Everything(Exception):
-    """Only the whole suite can answer; the message says why."""
+    """Raised when the whole suite must run; the message gives the reason."""
 
 
 def git(*args):
@@ -255,7 +255,7 @@ def cost(found, impact):
 
 
 def select(changed, impact, suite, read):
-    """start_test.sh's arguments for `changed`; None when only the whole suite can say."""
+    """start_test.sh's arguments for `changed`; None when the whole suite must run."""
     if impact is None:
         return None
     selection = Selection(impact, read, suite)

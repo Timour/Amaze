@@ -38,7 +38,7 @@ def run_module(name):
 
 
 def main(argv):
-    if argv:  # named modules only, no pin bookkeeping - the fast lane
+    if argv:  # named modules only, no pin bookkeeping - a quick run
         status = 0
         for name in argv:
             verdict, ran, out = run_module(name.removeprefix("amaze.tests."))

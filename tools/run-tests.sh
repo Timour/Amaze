@@ -8,7 +8,7 @@ repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 . "$repo/tools/houdini-env.sh"
 
 # Resolved BEFORE $AMAZE is repointed at scratch, with the commit the
-# suite is about to prove - so a commit landing mid-run cannot ship.
+# suite is about to test - so a commit made mid-run cannot be synced.
 live_amaze="${AMAZE:-}"
 gate_head="$(git -C "$repo" rev-parse HEAD 2>/dev/null || echo none)"
 
@@ -20,7 +20,7 @@ export AMAZE="$scratch"
 export HOUDINI_PACKAGE_SKIPLIST="Amaze"
 # Headless decided HERE, not by whichever module imports first: the
 # first QApplication picks the Qt platform for the whole process, and
-# the native one answers different fonts and geometry, so an unguarded
+# the native one returns different fonts and geometry, so an unguarded
 # module fails asserts in OTHER modules. ▸p/first-app-picks-the-platform
 export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-offscreen}"
 # Keep `;` as the separator: `:` makes the whole string one entry on Windows.
@@ -78,7 +78,7 @@ if [ "${1:-}" = "--all-versions" ]; then
     found=0
     # DEAD COVER: skips are intersected across hosts, because a test
     # skipped on EVERY host protects nothing while reading as coverage.
-    # Only this branch can ask - one run cannot tell the two apart.
+    # Only this branch can check - one run cannot tell the two apart.
     reports_dir="$(mktemp -d "${TMPDIR:-/tmp}/amaze_skips.XXXXXX")"
     trap 'rm -rf "$reports_dir"' EXIT
     reports=""
@@ -108,7 +108,7 @@ if [ "${1:-}" = "--all-versions" ]; then
         echo "  dead-cover check SKIPPED - only one Houdini installed"
     else
         # Through amaze_python, never the shebang - Windows has no
-        # executable bit to honour.
+        # executable bit to read.
         checker_python="$(amaze_python || echo python3)"
         # Unquoted on purpose - a space-separated list of paths this
         # script built itself, under a mktemp dir with no spaces.

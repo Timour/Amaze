@@ -103,7 +103,7 @@ if [ -z "$scratch" ] \
         exit 1
     fi
 elif [ -n "$scratch" ]; then
-    # The scratch exemption, said out loud - it fires on every suite run.
+    # The scratch exemption is printed - it applies on every suite run.
     echo "sync-install: scratch install, so the commit check does not apply" >&2
 else
     # A zip download has no .git. Say so rather than claiming a check

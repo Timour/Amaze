@@ -11,7 +11,7 @@ amaze_is_windows() {
     esac
 }
 
-# Every install, oldest first. Counted by holding bin/hython, never by
+# Every install, oldest first. Counted if it has bin/hython, never by
 # name. NOT `ls -d <glob>` - that exits non-zero on no match and kills
 # the caller under pipefail.
 amaze_houdini_roots() {
@@ -33,7 +33,7 @@ amaze_houdini_roots() {
         # build, so the glob matches every install twice. Keep the
         # symlink, drop the directory it resolves to, and KEY IT ON THE
         # BUILD - keyed on itself, hfs22.0 sorts below every point-build
-        # beside it and tail -1 answers a stale leftover.
+        # beside it and tail -1 returns a stale leftover.
         local resolved covered=$'\n'
         for d in /opt/hfs*; do
             if [ -L "$d" ] && [ -x "$d/bin/hython" ]; then
