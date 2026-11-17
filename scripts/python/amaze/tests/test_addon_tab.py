@@ -222,6 +222,18 @@ class MoreGroupsThanTheFrameHoldsTest(_Tab):
         self.assertGreater(self.dialog._addon_list.widget().height(), budget, "the rows overflow")
         self.assertLessEqual(page.sizeHint().height(), budget)
 
+    def test_the_list_scrolls_up_and_down_only(self):
+        tabs = self.dialog.findChild(QtWidgets.QTabWidget)
+        page = next(tabs.widget(i) for i in range(tabs.count()) if tabs.tabText(i) == "Add-On")
+        tabs.setCurrentWidget(page)
+        self.dialog.show()
+        self.addCleanup(self.dialog.hide)
+        QtWidgets.QApplication.processEvents()
+        area = self.dialog._addon_list
+        self.assertGreater(area.verticalScrollBar().maximum(), 0, "the rows do not overflow")
+        self.assertEqual(0, area.horizontalScrollBar().maximum(), "the rows move sideways")
+        self.assertEqual(area.viewport().width(), area.widget().width())
+
 
 if __name__ == "__main__":
     unittest.main()

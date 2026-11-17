@@ -1202,11 +1202,13 @@ class PrefsDialog(base_dialog.AssetDialog):
         page = QtWidgets.QWidget()
         outer = QtWidgets.QVBoxLayout(page)
         _m = theme.ui_px(amazetheme.PREFS_PAGE_MARGIN)
-        outer.setContentsMargins(_m, _m, _m, _m)
+        outer.setContentsMargins(_m, _m, 0, _m)    # the scroll bar is drawn in the right margin
+        bar_x, _y, bar_w, _h = _p05("QScrollBar")[0]
         inner = QtWidgets.QVBoxLayout()
         inner.setSpacing(theme.ui_px(amazetheme.P05_LIST_TO_BUTTON))
         self._addon_list = QtWidgets.QScrollArea()
         self._addon_list.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        self._addon_list.setWidgetResizable(True)    # the rows are as wide as the view ▸r/scroll-area-size-hint
         self._addon_list.setHorizontalScrollBarPolicy(
             QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._addon_list.setSizePolicy(    # the rows scroll in what the page leaves ▸r/scroll-area-size-hint
@@ -1222,9 +1224,10 @@ class PrefsDialog(base_dialog.AssetDialog):
             theme.ui_px(_p05("QPushButton")[0][0] - _p05("QTextBrowser")[0][0]), 0, 0, 0)
         row.addWidget(self._btn_addons)
         row.addWidget(self._lbl_addons, 1)
+        bottom.setFixedWidth(theme.ui_px(amazetheme.PREFS_CONTENT_WIDTH))
         inner.addWidget(bottom)
         self._path_rows.append(bottom)
-        outer.addWidget(_content_holder(inner),
+        outer.addWidget(_content_holder(inner, bar_x + bar_w - _p05("QTextBrowser")[0][0]),
                         alignment=QtCore.Qt.AlignmentFlag.AlignLeft)
         self._addons_found = []
         self._set_addons_button(False)
@@ -1248,8 +1251,8 @@ class PrefsDialog(base_dialog.AssetDialog):
             blank.adjustSize()
         for index, (folder, manifest, group) in enumerate(rows):
             self.addon_rows.append(self._addon_row(holder, index, root, folder, manifest, group))
-        holder.setFixedSize(width, max(child.geometry().bottom() + 1
-                                       for child in holder.findChildren(QtWidgets.QWidget)))
+        holder.setFixedHeight(max(child.geometry().bottom() + 1
+                                  for child in holder.findChildren(QtWidgets.QWidget)))
         self._addon_list.setWidget(holder)
 
     def _addon_row(self, holder, index, root, folder, manifest, group) -> dict:
