@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.34.10
+
+- The delete prompts say that the files are deleted permanently.
+- Clearer wording when a save fails, when a folder cannot be reached or is read-only, in Recover, and when a capture finds no viewport.
+
 ## 1.34.9
 
 - The library format shown in Preferences counts every format change: 2.1, 2.2 and so on.
