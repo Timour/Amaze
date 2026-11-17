@@ -11,6 +11,7 @@ import functools
 import sys
 import threading
 import types
+import uuid
 
 from PySide6 import QtWidgets, QtGui, QtCore
 import hou
@@ -619,9 +620,19 @@ class AmazePanel(QtWidgets.QWidget):
             if not chosen:
                 return False
             user = ids[chosen[0]]
-        return self._convert(folder, user)
+        name = ""
+        if not known:    # a library from before users: its favourites and locations need one
+            picked, name = ui.readInput(messages.CONVERT_OLD_LIBRARY_NAME,
+                                        buttons=messages.BUTTONS_CONVERT_OLD_LIBRARY_NAME,
+                                        default_choice=0, close_choice=1,
+                                        title=messages.TITLE_AMAZE)
+            name = str(name or "").strip()
+            if picked != 0 or not name:
+                return False
+            user = uuid.uuid4().hex
+        return self._convert(folder, user, name)
 
-    def _convert(self, folder: str, user: str) -> bool:
+    def _convert(self, folder: str, user: str, user_name: str = "") -> bool:
         """Convert an older library whole, after a confirmation, with progress; True if done."""
         from amaze.core import library_conversion, library_policy
         ui = hou.ui
@@ -657,8 +668,12 @@ class AmazePanel(QtWidgets.QWidget):
                 folder, confirm, progress, user=user,
                 machine_stars=library_conversion.machine_stars(self.prefs),
                 show_unknown=self.prefs.file_show_unknown,
-                classic=classic_rebuild.Rebuilder(at, trash_classic))
+                classic=classic_rebuild.Rebuilder(at, trash_classic), user_name=user_name)
         library_db.release(at)    # the data read during the conversion no longer matches the disk
+        if outcome.status == library_conversion.STOPPED:
+            ui.displayMessage(messages.CONVERT_LIBRARY_STOPPED % outcome.why,
+                              severity=hou.severityType.Warning, title=messages.TITLE_AMAZE)
+            return False
         if outcome.status == library_conversion.BLOCKED:
             ui.displayMessage(messages.CONVERT_LIBRARY_BLOCKED % outcome.why,
                               severity=hou.severityType.Warning, title=messages.TITLE_AMAZE)

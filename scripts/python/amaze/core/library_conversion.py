@@ -34,6 +34,11 @@ OLD_VERSION_SUFFIXES = library_files.VERSION_SUFFIXES + (library_files.CODE_VERS
 _CREATE_NODE = re.compile(rb'createNode\(\s*[\'"]([^\'"]+)[\'"]')
 
 DONE, NOTHING, BLOCKED, CANCELLED = ("done", "nothing", "blocked", "cancelled")
+STOPPED = "stopped"    # a file could not be read or written partway: running it again finishes it
+
+
+class Stopped(Exception):
+    """A file of the library could not be read or written; `str()` names it and the error."""
 
 
 class Outcome:
@@ -214,6 +219,13 @@ def _converted_databases(library_dir: str) -> bool:
 def _databases(library_dir: str) -> tuple:
     """({2.0 section database: {id: row}}, why the conversion may not run, or "")."""
     found = {}
+    master, why = _read_old(library_dir, library_files.MASTER)
+    if master is None:
+        return {}, "the Library database is corrupt/unreadable."
+    entry = (master.get("policy") or {}).get("library") or {}
+    version = entry.get("version") if isinstance(entry, dict) else 0
+    if (isinstance(version, int) and version > library_policy.LIBRARY_VERSION) or _ahead(master):
+        return {}, "the library was saved by a newer Amaze."
     if _converted_databases(library_dir):
         for name, _prefix in OLD_SECTIONS.values():
             document, _why = _read_old(library_dir, name)
@@ -227,20 +239,27 @@ def _databases(library_dir: str) -> tuple:
                 and _old_traces(library_dir, filename):
             return {}, ("there is no %s database in the library folder, though Amaze can "
                         "see there was one here before." % _old_label(filename))
-        try:
-            ahead = int(document.get("format", 0) or 0) > branding.LIBRARY_FORMAT
-        except (TypeError, ValueError):
-            ahead = False
-        if ahead:
+        if _ahead(document):
             return {}, "the %s database was saved by a newer Amaze." % _old_label(filename)
-        found[OLD_SECTIONS[filename][0]] = {
-            _row_id(row, index): row for index, row in enumerate(document.get("assets") or [])
-            if isinstance(row, dict)}
+        listed = [(_row_id(row, index), row)
+                  for index, row in enumerate(document.get("assets") or []) if isinstance(row, dict)]
+        found[OLD_SECTIONS[filename][0]] = dict(listed)
+        if len(found[OLD_SECTIONS[filename][0]]) != len(listed):
+            debug.event("convert", "two rows share an id - the later one is kept", file=filename,
+                        rows=len(listed), ids=len(found[OLD_SECTIONS[filename][0]]))
     for filename in OLD_TABLES:
         document, why = _read_old(library_dir, filename)
         if document is None:
             return {}, "the %s file is corrupt/unreadable." % filename
     return found, ""
+
+
+def _ahead(document: dict) -> bool:
+    """Whether a database's `format` is one a newer Amaze wrote."""
+    try:
+        return int(document.get("format", 0) or 0) > branding.LIBRARY_FORMAT
+    except (TypeError, ValueError):
+        return False
 
 
 def _old_label(filename: str) -> str:
@@ -396,18 +415,24 @@ def _shown_picture(faces: dict, asset_id: str, section: str, render: str, captur
 def _convert_asset(library_dir: str, asset_id: str, section: str, rows: dict,
                    faces: dict, counts: dict) -> tuple:
     """One asset as a unit: (converted, its format 3 files); a failure undoes what it wrote."""
-    created = []
+    created, stopped = [], None
     try:
         ok, old_files = _convert_one(library_dir, asset_id, section, rows, faces, counts, created)
-    except (OSError, ValueError, hostos.PathEscape) as exc:
+    except (ValueError, hostos.PathEscape) as exc:
         ok, old_files = _kept(asset_id, str(exc), counts), _old_files(library_dir, asset_id,
                                                                       section)
+    except OSError as exc:    # a file in use or a full disk: the asset converts in the next run
+        ok, old_files, stopped = False, [], exc
     if not ok:
         for path in created:    # the files written for this asset; its format 3 files stay untouched
             try:
                 hostos.remove_file(path)
             except OSError:
                 pass
+    if stopped is not None:
+        debug.event("convert", "conversion stopped at an asset", mat_id=asset_id,
+                    error=str(stopped))
+        raise Stopped(str(stopped)) from stopped
     return ok, old_files
 
 
@@ -683,9 +708,22 @@ def _remove_empty(folder: str) -> None:
 
 
 def convert(directory: str, confirm, progress=None, user: str = "",
-            machine_stars=(), show_unknown: bool = True, classic=None) -> Outcome:
+            machine_stars=(), show_unknown: bool = True, classic=None,
+            user_name: str = "") -> Outcome:
     """Convert an older library to 2.0 whole once `confirm()` says yes; `progress(done, total)`."""
-    library_dir = str(directory or "")
+    try:
+        return _convert(str(directory or ""), confirm, progress, user, machine_stars,
+                        show_unknown, classic, user_name)
+    except Stopped as exc:
+        return Outcome(STOPPED, str(exc))
+    except (OSError, guard.Refused) as exc:
+        debug.event("convert", "conversion stopped", error=str(exc))
+        return Outcome(STOPPED, str(exc))
+
+
+def _convert(library_dir: str, confirm, progress, user: str, machine_stars, show_unknown: bool,
+             classic, user_name: str) -> Outcome:
+    """`convert`'s work; `Stopped`, OSError or `guard.Refused` when a file cannot be reached."""
     if not needs_conversion(library_dir):
         return Outcome(NOTHING)
     rows, why = _databases(library_dir)
@@ -752,8 +790,9 @@ def convert(directory: str, confirm, progress=None, user: str = "",
         if not ok:
             set_aside.append(SetAside(item, owner, row, old_files))
     trashed = [one for one in doomed.values() if one is not None]
-    if trashed:
-        trash_set_aside(library_dir, trashed)
+    if trashed and not trash_set_aside(library_dir, trashed):
+        set_aside.extend(trashed)    # still in the folder: named in the result with the others
+        trashed = []
     for root in [material.section_folder(library_dir, section, library_files.VERSIONS)
                  for section in library_files.ASSET_SECTIONS] + [
                      os.path.join(library_dir, library_files.CODE_FOLDER, library_files.VERSIONS)]:
@@ -775,7 +814,7 @@ def convert(directory: str, confirm, progress=None, user: str = "",
         built = build_databases(library_dir, {(one.section, one.asset_id)
                                               for one in set_aside + trashed
                                               if one.row is not None}, user, machine_stars,
-                                show_unknown)
+                                show_unknown, user_name)
         _write_databases(library_dir, built, user)
         if not _read_back(library_dir, built):
             debug.event("convert", "the new databases did not read back - the old files stay")
@@ -936,7 +975,7 @@ def _show_ticks(record: dict, show_unknown: bool) -> dict:
 
 
 def build_databases(library_dir: str, set_aside=(), user: str = "", machine_stars=(),
-                    show_unknown: bool = True) -> dict:
+                    show_unknown: bool = True, user_name: str = "") -> dict:
     """The six 2.0 databases, {name: document}, built from every old root file in one pass."""
     sections = {name: {"assets": {}, "categories": {}, "comments": {}, "icons": {}, "favorites": {}}
                 for name, _prefix in OLD_SECTIONS.values()}
@@ -1026,6 +1065,8 @@ def build_databases(library_dir: str, set_aside=(), user: str = "", machine_star
     for uid, record in _old_table(library_dir, "users.json").items():
         if isinstance(record, dict) and str(record.get("name") or "").strip():
             master["users"][str(uid)] = dict(record, name=str(record["name"]).strip())
+    if user and user not in master["users"] and str(user_name or "").strip():
+        master["users"][user] = {"name": str(user_name).strip()}    # a library from before users
     for key, record in _old_table(library_dir, "prefs.json").items():
         if isinstance(record, dict) and "value" in record:
             master["settings"][str(key)] = {"value": record["value"]}
@@ -1050,6 +1091,9 @@ def _write_databases(library_dir: str, built: dict, user: str) -> None:
     """The six databases, as ONE change; OSError propagates."""
     held = guard.Guard(library_dir)
     change = held.change(user)
+    if "code.json" in built and os.path.lexists(os.path.join(library_dir, "code.json")) \
+            and not _is_new_code(library_dir):
+        change.trash("code.json")    # the old one: the new one is written to the same name
     for name, document in built.items():
         change.replace(name, document)
     change.commit()
@@ -1069,7 +1113,7 @@ def _read_back(library_dir: str, built: dict) -> bool:
 
 
 def _remove_old_root_files(library_dir: str, user: str) -> int:
-    """Every old root file, marker and copy beside them, removed as ONE change; how many went."""
+    """Every old root file, marker and copy beside them, into the trash as ONE change; how many."""
     held = guard.Guard(library_dir)
     change = held.change(user)
     gone = []
@@ -1079,7 +1123,7 @@ def _remove_old_root_files(library_dir: str, user: str) -> int:
             gone.append(name)
         gone.extend(_old_traces(library_dir, name))
     for name in gone:
-        change.remove(name)
+        change.trash(name)
     change.commit()
     return len(gone)
 

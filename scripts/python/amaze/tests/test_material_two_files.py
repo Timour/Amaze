@@ -505,6 +505,105 @@ class AnInterruptedConversionRerunsTest(_OldLibrary):
         self.assertFalse(os.path.exists(os.path.join(self.old, "RUN1.mat")))
 
 
+class WhatTheConversionReplacesIsKeptTest(_OldLibrary):
+    """The old databases go to the library trash; a file in use stops the run and loses nothing."""
+
+    def lay_out(self):
+        self.database("library.json", ["KEEP1", "KEEP2"])
+        self.database("code.json", ["CODE1"])
+        write(self.at("notes.json"), {"notes": {"material:KEEP1": {"items": [
+            {"t": "text", "text": "a comment", "id": "c1", "author": ""}]}}})
+        for one in ("KEEP1", "KEEP2"):
+            self.old_asset(one)
+
+    def in_trash(self, name: str) -> str:
+        days = self.at(guard.TRASH_DIR)
+        found = [os.path.join(days, day, name) for day in sorted(os.listdir(days))
+                 if os.path.exists(os.path.join(days, day, name))] if os.path.isdir(days) else []
+        return found[0] if found else ""
+
+    def test_every_old_database_is_in_the_trash_as_it_was(self):
+        self.lay_out()
+        before = {name: read_bytes(self.at(name))
+                  for name in ("library.json", "code.json", "notes.json", "policy.json")}
+        outcome, _asked = self.convert()
+        self.assertEqual(library_conversion.DONE, outcome.status)
+        for name, data in before.items():
+            self.assertTrue(self.in_trash(name), "%s was deleted, not moved to the trash" % name)
+            self.assertEqual(data, read_bytes(self.in_trash(name)), name)
+        self.assertFalse(os.path.exists(self.at("library.json")))
+        self.assertIsInstance(json.loads(read_bytes(self.at("code.json")))["assets"], dict)
+
+    def test_a_file_in_use_stops_the_run_and_the_next_run_converts_everything(self):
+        self.lay_out()
+        real = library_conversion._copy_in
+
+        def held(source, target):
+            if os.path.basename(target) == "KEEP1.mat":
+                raise PermissionError(13, "The file is in use", source)
+            real(source, target)
+        with mock.patch.object(library_conversion, "_copy_in", held):
+            outcome, _asked = self.convert()
+        self.assertEqual(library_conversion.STOPPED, outcome.status)
+        self.assertIn("in use", outcome.why)
+        self.assertTrue(os.path.exists(self.at("library.json")), "the old database is gone")
+        self.assertFalse(os.path.exists(self.at(library_files.MASTER)),
+                         "the databases were written without the asset that was in use")
+        self.assertTrue(os.path.exists(os.path.join(self.old, "KEEP1.mat")))
+        outcome, _asked = self.convert()
+        self.assertEqual((library_conversion.DONE, []), (outcome.status, outcome.set_aside))
+        self.assertEqual({"KEEP1", "KEEP2"}, set(self.rows("library.json")))
+        stored = json.loads(read_bytes(self.at(MATERIALS)))
+        self.assertEqual("a comment", stored["comments"]["KEEP1"]["items"][0]["text"])
+
+    def test_a_database_write_that_fails_stops_the_run_and_says_why(self):
+        self.lay_out()
+        with mock.patch.object(library_conversion, "_write_databases",
+                               side_effect=OSError(28, "No space left on device")):
+            outcome, _asked = self.convert()
+        self.assertEqual(library_conversion.STOPPED, outcome.status)
+        self.assertIn("No space left", outcome.why)
+        outcome, _asked = self.convert()
+        self.assertEqual(library_conversion.DONE, outcome.status)
+
+    def test_a_library_of_a_newer_amaze_is_not_converted(self):
+        self.lay_out()
+        newer = {"policy": {"library": {"version": library_policy.LIBRARY_VERSION + 1}},
+                 "users": {"u1": {"name": "Anna"}}}
+        write(self.at(library_files.MASTER), newer)
+        before = listing(self.dir)
+        outcome, asked = self.convert()
+        self.assertEqual((library_conversion.BLOCKED, []), (outcome.status, asked))
+        self.assertEqual(before, listing(self.dir))
+
+    def test_a_library_database_that_does_not_read_is_not_written_over(self):
+        self.lay_out()
+        write(self.at(library_files.MASTER), "{ half a fi")
+        before = listing(self.dir)
+        outcome, asked = self.convert()
+        self.assertEqual((library_conversion.BLOCKED, []), (outcome.status, asked))
+        self.assertEqual(before, listing(self.dir))
+
+    def test_classic_materials_that_could_not_be_trashed_are_named_in_the_result(self):
+        self.database("library.json", ["OLD1"], OLD1="Old Brick")
+        self.old_asset("OLD1", stamp=False)
+        write(os.path.join(self.old, "OLD1.builder.json"), dict(OLD_BUILDER, type="redshift_vopnet"))
+        with mock.patch.object(library_conversion, "trash_set_aside", return_value=0):
+            outcome, _asked = self.convert(classic=_Classic(self, loaded=False, trash=True))
+        self.assertEqual(["Old Brick"], [one.name for one in outcome.set_aside])
+
+    def test_a_library_from_before_users_gives_its_favorites_to_the_named_user(self):
+        self.lay_out()
+        write(self.at("favourites.json"), {"favourites": {"KEEP1": True}})
+        uid = "c" * 32
+        outcome, _asked = self.convert(user=uid, user_name=" Anna ")
+        self.assertEqual(library_conversion.DONE, outcome.status)
+        master = json.loads(read_bytes(self.at(library_files.MASTER)))
+        self.assertEqual("Anna", master["users"][uid]["name"])
+        stored = json.loads(read_bytes(self.at(MATERIALS)))
+        self.assertEqual({uid: {"KEEP1": True}}, stored["favorites"])
+
+
 class NothingChangesUnlessItRunsTest(_OldLibrary):
     """Blocked, cancelled or opened headless: the library is byte for byte what it was."""
 
@@ -589,6 +688,7 @@ class TheBoxesTest(_OldLibrary):
             ui=types.SimpleNamespace(
                 displayMessage=display,
                 selectFile=lambda **kwargs: pick if pick is not None else self.dir,
+                readInput=lambda text, **kwargs: (shown.append((text, kwargs)) or self.named),
                 selectFromList=lambda names, **kwargs: (0,)),
             text=types.SimpleNamespace(expandString=lambda text: text),
             fileType=types.SimpleNamespace(Directory="directory"),
@@ -613,11 +713,31 @@ class TheBoxesTest(_OldLibrary):
         opened, shown = self.run_panel([], pick=empty, tool=True)
         self.assertFalse(opened)
         self.assertEqual([messages.CONVERT_OLD_LIBRARY_NONE], [text for text, _k in shown])
+        self.named = (1, "Anna")    # Cancel at the name
+        opened, shown = self.run_panel([0], tool=True)
+        self.assertEqual((False, [messages.CONVERT_OLD_LIBRARY_NAME]),
+                         (opened, [text for text, _k in shown]))
+        self.assertTrue(library_conversion.needs_conversion(self.dir))
+        self.named = (0, "Anna")
         opened, shown = self.run_panel([0], tool=True)    # Convert
         self.assertTrue(opened)
         self.assertEqual(messages.CONVERT_LIBRARY_DONE, shown[-1][0])
         self.assertFalse(library_conversion.needs_conversion(self.dir))
         self.assertTrue(os.path.isfile(os.path.join(self.materials, "MAT1.mat")))
+        users = json.loads(read_bytes(self.at(library_files.MASTER)))["users"]
+        self.assertEqual(["Anna"], [record["name"] for record in users.values()])
+
+    named = (0, "Anna")    # what the fake `readInput` answers: the button, the text
+
+    def test_a_run_that_stopped_says_where_and_how_to_finish(self):
+        self.database("library.json", ["MAT1"])
+        self.old_asset("MAT1")
+        with mock.patch.object(library_conversion, "_write_databases",
+                               side_effect=OSError(28, "No space left on device")):
+            opened, shown = self.run_panel([0])
+        self.assertFalse(opened)
+        self.assertEqual(messages.CONVERT_LIBRARY_STOPPED % "[Errno 28] No space left on device",
+                         shown[-1][0])
 
     def test_the_older_library_s_users_are_read_and_no_save_writes_into_it(self):
         from amaze.core import library_settings
@@ -746,7 +866,7 @@ class AClassicMaterialIsRebuiltTest(_OldLibrary):
         self.assertEqual({"USD1", "OLD1"}, set(self.rows("library.json")))
         self.assertFalse(os.path.exists(os.path.join(self.materials, "versions", "OLD1")),
                          "a version only a classic container can load was kept")
-        self.assertEqual(0, trashed(self.dir))
+        self.assertEqual(2, trashed(self.dir), "the trash holds more than the two old databases")
 
     def test_cancel_at_the_renderer_box_changes_nothing(self):
         before = listing(self.dir)
