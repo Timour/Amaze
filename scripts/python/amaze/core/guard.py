@@ -22,6 +22,7 @@ MASTER = "DataBase.json"
 MANIFEST = "manifest"    # in MASTER: the databases this library has, so a missing one is detected
 BACKUP_DIR, TRASH_DIR = "backup", "trash"
 JOURNAL = ".amaze-journal"    # present only while a change of several files is being applied
+STEPS = ("swap", "move", "remove")    # the journal steps `_apply` carries out
 SCRATCH = ".writing"
 BACKUP_TAIL = ".bak"
 UNDO_TAIL = ".before-restore.bak"
@@ -223,14 +224,34 @@ class Guard:
             return False
         try:
             steps = json.loads(self.disk.read(journal).decode("utf-8"))["steps"]
-        except (OSError, ValueError, KeyError, TypeError) as exc:
+            runs = self._runnable(steps)
+        except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
             debug.event("guard", "journal unreadable - set aside", error=str(exc))
             self._quietly(self.disk.move, journal, journal + UNREADABLE_MARK + "journal")
+            return False
+        if not runs:
+            debug.event("guard", "journal holds a step this Amaze does not know - left in place")
             return False
         self._apply(steps)
         self.disk.remove(journal)
         debug.event("guard", "a change left half applied was finished", steps=len(steps))
         return True
+
+    def _runnable(self, steps) -> bool:
+        """Whether `_apply` knows every step; ValueError for steps that are no steps at all."""
+        if not isinstance(steps, list):
+            raise ValueError("the journal's steps are %s, not a list" % type(steps).__name__)
+        known = True
+        for step in steps:
+            if not isinstance(step, dict) or not isinstance(step.get("op"), str):
+                raise ValueError("a journal step is not a step")
+            names = ("to",) if step["op"] == "remove" else ("from", "to")
+            for name in names:
+                if not isinstance(step.get(name), str) or not step[name]:
+                    raise ValueError("a journal step names no file")
+                self._relative(step[name])    # `hostos.PathEscape`, a ValueError, for one outside
+            known = known and step["op"] in STEPS
+        return known
 
     def _apply(self, steps: list) -> None:
         """Carry out journal steps; each is skipped when a run before this one already did it."""
@@ -240,7 +261,8 @@ class Guard:
             try:
                 if step["op"] == "swap" and self.disk.exists(source):
                     self.disk.swap(source, target)
-                elif step["op"] == "move" and self.disk.exists(source):
+                elif step["op"] == "move" and self.disk.exists(source) and not self.disk.exists(
+                        target):    # a trash target is new in its change: one that exists was moved already
                     self.disk.move(source, target)
                 elif step["op"] == "remove" and self.disk.exists(target):
                     self.disk.remove(target)
@@ -341,7 +363,8 @@ class Guard:
         there = len((backed or {}).get(kind.counted) or {})
         return (here, there) if there > SHRUNK_FLOOR and here * 2 < there else None
 
-    def _backup_steps(self, name: str, raw: bytes, tail: str = BACKUP_TAIL, spaced=True) -> list:
+    def _backup_steps(self, name: str, raw: bytes, tail: str = BACKUP_TAIL, spaced=True,
+                      written=None) -> list:
         """Write the old bytes of a database as a new backup's scratch; its swap step, or none."""
         now = self._now()
         newest = self._plain_backups(name)
@@ -355,6 +378,8 @@ class Guard:
                 pass
         target = "%s/%s.%s%s" % (BACKUP_DIR, name, now.strftime(STAMP), tail)
         scratch = "%s.%s%s" % (target, uuid.uuid4().hex[:8], SCRATCH)
+        if written is not None:
+            written.append(scratch)    # before the write: a write that fails halfway leaves a file
         self.disk.write(self._relative(scratch), raw)
         return [{"op": "swap", "from": scratch, "to": target}]
 
@@ -475,6 +500,8 @@ class Change:
             if not locked:    # another session here is mid-change: nothing is written at the same time
                 raise OSError("another Amaze session on this computer is writing to the library")
             guard._finish_journal()
+            if disk.exists(guard.path(JOURNAL)):
+                raise OSError("a change recorded in the library is still waiting to be applied")
             steps, tickets, written = [], {}, []
             try:
                 writes = self._judged()
@@ -484,23 +511,26 @@ class Change:
                     if old:
                         undo = name in self._forced and name not in self._replacing
                         tail = UNDO_TAIL if undo else BACKUP_TAIL
-                        steps += guard._backup_steps(name, old, tail, name not in self._forced)
+                        steps += guard._backup_steps(name, old, tail, name not in self._forced,
+                                                     written)
                     tickets[name] = Ticket(name, data)
                 steps += [{"op": "move", "from": relative, "to": self._trash_target(relative)}
                           for relative in self._trashed]    # first: so a file written to the same path is kept
                 for relative, data in list(writes.items()) + list(self._files.items()):
                     payload = data[1] if isinstance(data, tuple) else data
                     scratch = "%s.%s%s" % (relative, uuid.uuid4().hex[:8], SCRATCH)
+                    written.append(scratch)
                     disk.write(guard._relative(scratch), payload)
                     steps.append({"op": "swap", "from": scratch, "to": relative})
                 for relative, source in self._taken.items():
                     inside = guard.inside(source)
                     if not inside:    # written outside the library: copied in, then swapped
                         inside = "%s.%s%s" % (relative, uuid.uuid4().hex[:8], SCRATCH)
+                        written.append(inside)
                         disk.write(guard._relative(inside), disk.read(source))
                     steps.append({"op": "swap", "from": inside, "to": relative})
                 steps += [{"op": "remove", "to": relative} for relative in self._removals]
-                written =[step["from"] for step in steps if step["op"] == "swap"]
+                written = [step["from"] for step in steps if step["op"] == "swap"]
                 if len(steps) == 1:
                     guard._apply(steps)    # one rename is atomic by itself
                 elif steps:
@@ -517,7 +547,8 @@ class Change:
                         self.waiting = str(exc)
             except OSError:
                 for scratch in written:
-                    guard._quietly(disk.remove, guard._relative(scratch))
+                    if disk.exists(guard._relative(scratch)):
+                        guard._quietly(disk.remove, guard._relative(scratch))
                 raise
             for name in tickets:
                 guard._prune_backups(name)

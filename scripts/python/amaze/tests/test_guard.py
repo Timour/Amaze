@@ -133,7 +133,15 @@ class _Library(unittest.TestCase):
 class StoppedAtEveryStepTest(unittest.TestCase):
     """Each operation, stopped at each step in turn: the reopened library is all old or all new."""
 
-    OPERATIONS = ("one_database", "a_new_database", "many_files", "a_restore", "a_taken_file")
+    OPERATIONS = ("one_database", "a_new_database", "many_files", "a_restore", "a_taken_file",
+                  "a_trashed_path_written_again")
+
+    def a_trashed_path_written_again(self, g):
+        change = g.change("u1")
+        change.trash("materials/A001.json")
+        change.put_file("materials/A001.json", b'{"metadata": {"name": "written again"}}')
+        change.put_file("materials/A009.mat", b"nodes of A009")
+        change.commit()
 
     def one_database(self, g):
         reading = g.read(MATERIALS)
@@ -212,6 +220,74 @@ class StoppedAtEveryStepTest(unittest.TestCase):
         self.assertTrue(guard.Guard(last, now=Clock()).recover() is False)
         self.assertEqual(after, state(last))
         self.assertNotEqual(before, after)
+
+
+class FullDisk(guard.Disk):
+    """A real disk that has no room left from its write number `at` on."""
+
+    def __init__(self, at: int) -> None:
+        self.at, self.writes = at, 0
+
+    def write(self, path, data):
+        self.writes += 1
+        if self.writes >= self.at:
+            raise OSError(28, "No space left on device", path)
+        super().write(path, data)
+
+
+class AWriteThatFailsLeavesNoScratchTest(_Library):
+    """A change whose scratch files cannot all be written removes the ones it wrote."""
+
+    def scratches(self) -> list:
+        return sorted(name for _root, _dirs, names in os.walk(self.dir)
+                      for name in names if name.endswith(guard.SCRATCH))
+
+    def test_every_scratch_written_before_the_failure_is_removed(self):
+        for at in (2, 3, 4):
+            held = guard.Guard(self.dir, disk=FullDisk(at), now=self.clock)
+            before = state(self.dir)
+            change = held.change("u1")
+            change.put(held.read(MATERIALS).ticket, assets(3, "tile"))
+            change.put_file("materials/A009.mat", b"nodes of A009")
+            change.put_file("materials/A010.mat", b"nodes of A010")
+            with self.assertRaises(OSError):
+                change.commit()
+            self.assertEqual([], self.scratches(), "write %d failed and left a scratch" % at)
+            self.assertEqual(before, state(self.dir))
+
+
+class AJournalThisBuildCannotRunTest(_Library):
+    """A journal that is no list of known steps never stops the library from opening."""
+
+    def journal(self, steps) -> None:
+        put(self.dir, guard.JOURNAL, json.dumps({"steps": steps}))
+
+    def test_a_step_with_no_target_is_set_aside_and_the_library_reads(self):
+        for steps in ([{"op": "swap"}], [{"op": "remove", "to": "../outside"}], "none", [7]):
+            self.journal(steps)
+            before = self.files()
+            before.pop(guard.JOURNAL)
+            held = guard.Guard(self.dir, now=self.clock)
+            self.assertEqual(guard.FINE, held.read(MATERIALS).verdict, repr(steps))
+            self.assertFalse(os.path.exists(self.at(guard.JOURNAL)), repr(steps))
+            self.assertEqual(before, self.files(), repr(steps))
+
+    def files(self) -> dict:
+        return {name: data for name, data in state(self.dir).items()
+                if guard.UNREADABLE_MARK not in name}
+
+    def test_a_step_of_a_newer_amaze_is_left_for_it_and_nothing_is_written_meanwhile(self):
+        steps = [{"op": "move", "from": "materials/A003.png", "to": "trash/x/A003.png"},
+                 {"op": "link", "from": "materials/A001.mat", "to": "materials/A011.mat"}]
+        self.journal(steps)
+        before = state(self.dir)
+        held = guard.Guard(self.dir, now=self.clock)
+        self.assertEqual(guard.HELD, held.read(MATERIALS).verdict)
+        change = held.change("u1")
+        change.put_file("materials/A009.mat", b"nodes of A009")
+        with self.assertRaises(OSError):
+            change.commit()
+        self.assertEqual(before, state(self.dir), "a journal with an unknown step was part applied")
 
 
 class BusyDisk(guard.Disk):
