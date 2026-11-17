@@ -15,6 +15,7 @@ _said: dict = globals().get("_said", {})    # (library key, database) -> the ver
 _listeners: dict = globals().get("_listeners", {})    # called after each save: the models
 _in_use: set = globals().get("_in_use", set())    # library keys in use by a panel's models
 _present: set = globals().get("_present", set())    # folders found on disk; `look_again` clears
+_users: dict = globals().get("_users", {})    # library key -> the user last making changes there
 
 TROUBLE = (guard.CORRUPT, guard.MISSING, guard.NEWER)
 
@@ -27,11 +28,14 @@ def key_of(preferences) -> str:
 def _user_of(key: str) -> str:
     """The user making changes at `key`; `""` with no folder; a found folder is not rechecked."""
     preferences = _preferences.get(key)
+    if key_of(preferences) != key:    # the Prefs names another library now: the user it had here
+        return _users.get(key, "")
     folder = str(getattr(preferences, "dir", "") or "")
     if not folder or (folder not in _present and not os.path.isdir(folder)):
         return ""
     _present.add(folder)
-    return str(getattr(preferences, "library_user", "") or "")
+    _users[key] = str(getattr(preferences, "library_user", "") or "")
+    return _users[key]
 
 
 def look_again() -> None:
@@ -313,6 +317,8 @@ def release(preferences=None) -> None:
         _libraries.clear()
         _said.clear()
         _in_use.clear()
+        _users.clear()
         return
+    _users.pop(key_of(preferences), None)
     _libraries.pop(key_of(preferences), None)
     _in_use.discard(key_of(preferences))

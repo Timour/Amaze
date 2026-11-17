@@ -11,8 +11,8 @@ from PySide6.QtGui import QCloseEvent
 import amaze
 from amaze import amazetheme
 from amaze import branding
-from amaze.core import (debug, library_check, library_policy, library_settings, model_registry,
-                        renderers, repair, section_list, texture_library, users)
+from amaze.core import (debug, library_check, library_db, library_policy, library_settings,
+                        model_registry, renderers, repair, section_list, texture_library, users)
 from amaze.actions import check as check_actions
 from amaze.actions import library as library_actions
 from amaze.dialogs import base_dialog, library_dialog, user_dialog
@@ -521,6 +521,7 @@ class PrefsDialog(base_dialog.AssetDialog):
                     self._say_name_taken(name)
                 self._fill_libraries()
                 return False
+        library_db.flush()    # pending changes are saved as the user who made them
         users.adopt(self._prefs, uid)
         debug.event("prefs", "library and user applied", library=self._prefs.dir, user=uid)
         self._added_libraries = [known for known in self._added_libraries
@@ -534,6 +535,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         if self._panel is not None and not self._panel.takes_library(folder):
             return False    # checked before anything is written to it
         before, before_dir = str(self._prefs.library_user or ""), self._prefs.dir
+        library_db.flush()    # the open library's pending changes, saved as the user who made them
         if uid != self.NEW_USER:
             self._prefs.library_user = uid    # before the models switch, so they read this user's favourites
         self._prefs.dir = folder

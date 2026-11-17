@@ -637,5 +637,33 @@ class AHeldDatabaseIsNeverCalledCorrupt(unittest.TestCase):
         self.assertIn("ZZ9", again["assets"], "the change made after it opened was not saved")
 
 
+class APendingChangeKeepsItsUser(unittest.TestCase):
+    """A change waiting for the save timer is saved as the user who made it, in its own library."""
+
+    def test_a_switch_to_another_library_and_user_does_not_take_it_over(self):
+        import shutil
+        from amaze.core import documents, guard, library_db, library_files
+        prefs = test_support.fixture_prefs(self)
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        first, anna = prefs.dir, prefs.library_user
+        other = test_support.scratch_dir("amaze_other_library_")
+        self.addCleanup(shutil.rmtree, other, True)
+        library_db.set_scheduler(lambda: None)    # a panel's timer that has not fired yet
+        held = library_db.document(prefs, library_files.MATERIALS)
+        asset = sorted(held.table("assets"))[0]
+        self.assertTrue(held.put_mine("favorites", asset, True))
+        peer = documents.Library(first, "peer").document(library_files.MATERIALS)
+        peer.put("assets", "PEER1", {"id": "PEER1", "name": "theirs"})
+        self.assertTrue(peer.save())
+        prefs.library_user, prefs.dir = "someone-else", other
+        saved = library_db.flush()
+        self.assertTrue(saved[library_files.MATERIALS])
+        stored = guard.Guard(first).read(library_files.MATERIALS).document
+        self.assertTrue(stored["favorites"].get(anna, {}).get(asset),
+                        "the favorite made before the switch was dropped or saved as another user")
+        self.assertNotIn("someone-else", stored["favorites"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
