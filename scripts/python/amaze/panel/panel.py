@@ -823,7 +823,7 @@ class AmazePanel(QtWidgets.QWidget):
         library_dir = str(self.prefs.dir or "")
         if ui.displayMessage(
                 messages.LIBRARY_NEEDS_NEWER_AMAZE % library_settings.version_label(
-                    library_settings.library_version(library_dir)),
+                    library_settings.library_formats(library_dir)),
                 buttons=messages.BUTTONS_UPDATE_AMAZE, default_choice=0, close_choice=1,
                 severity=hou.severityType.Warning, title=messages.TITLE_AMAZE) != 0:
             return

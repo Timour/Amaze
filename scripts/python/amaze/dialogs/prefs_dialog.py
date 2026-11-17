@@ -555,7 +555,7 @@ class PrefsDialog(base_dialog.AssetDialog):
 
     def _library_note(self, folder: str) -> tuple:
         """(Format line, line beside Apply, whether they warn, whether Apply may run) for `folder`."""
-        known = library_policy.LIBRARY_VERSION
+        known = library_settings.THIS_AMAZE    # the three format numbers, shown as one `2.x`
         label = library_settings.version_label
         if not folder:
             return "", "", False, False
@@ -563,11 +563,11 @@ class PrefsDialog(base_dialog.AssetDialog):
             return "", amazetheme.LABEL_LIBRARY_UNREACHABLE, True, False
         if not library_actions.index_present(folder):
             return amazetheme.LABEL_LIBRARY_FORMAT % label(known), "", False, True    # set up on Apply
-        found = library_settings.library_version(folder)
+        found = library_settings.library_formats(folder)
         shown = amazetheme.LABEL_LIBRARY_FORMAT % label(found)
-        if found > known:
+        if any(one > ours for one, ours in zip(found, known)):
             return shown, amazetheme.LABEL_LIBRARY_TOO_NEW, True, False
-        if found < known:
+        if any(one < ours for one, ours in zip(found, known)):
             return shown, amazetheme.LABEL_UPGRADES_LIBRARY % label(known), True, True
         return shown, "", False, True
 

@@ -116,15 +116,29 @@ def release_library(tag: str) -> tuple:
         return 0, ""
     version = re.search(r"^LIBRARY_VERSION\s*=\s*(\d+)", text, re.MULTILINE)
     since = re.search(r"^LIBRARY_VERSION_SINCE\s*=\s*[\"']([^\"']+)[\"']", text, re.MULTILINE)
+    _RELEASE_FORMATS[tag] = tuple(
+        int(found.group(1)) if found else 0 for found in (
+            re.search(r"^%s\s*=\s*(\d+)" % name, text, re.MULTILINE)
+            for name in ("DATABASE_FORMAT", "RECORD_FORMAT")))
     return (int(version.group(1)) if version else 1), (since.group(1) if since else "")
+
+
+_RELEASE_FORMATS: dict = {}    # release tag -> (database format, record format) its policy file names
+
+
+def release_formats(found) -> tuple:
+    """(library version, database format, record format) of a release; 0 for one its file omits."""
+    return (int(getattr(found, "library_version", 0) or 0),) + _RELEASE_FORMATS.get(
+        getattr(found, "version", ""), (0, 0))
 
 
 def updates_library(found, library_dir: str) -> bool:
     """Whether installing `found` updates the library at `library_dir`: the red Install Update."""
-    from amaze.core import library_settings
-    wanted = int(getattr(found, "library_version", 0) or 0)
-    return (bool(found) and bool(library_dir)
-            and wanted > library_settings.library_version(library_dir))
+    from amaze.core import library_policy, library_settings
+    wanted = [one or base for one, base in zip(release_formats(found), library_policy.FORMAT_2_0)]
+    wanted[0] = int(getattr(found, "library_version", 0) or 0)
+    return (bool(found) and bool(library_dir) and bool(wanted[0]) and any(
+        one > here for one, here in zip(wanted, library_settings.library_formats(library_dir))))
 
 
 def configured_library() -> str:
@@ -143,7 +157,7 @@ def offer_line(found, library_dir: str) -> str:
     from amaze.core import library_settings
     if updates_library(found, library_dir):
         return messages.UPDATE_LIBRARY_AVAILABLE % (
-            found.version, library_settings.version_label(found.library_version))
+            found.version, library_settings.version_label(release_formats(found)))
     return found.sentence
 
 

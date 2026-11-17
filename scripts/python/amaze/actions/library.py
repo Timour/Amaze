@@ -101,8 +101,8 @@ def update(preferences) -> bool:
     from amaze.core import library_db, locations
     library_db.guard_of(preferences).expire_trash()
     locations.fold_duplicate_ids(preferences)
-    before = library_settings.library_version(library_dir)
-    if before >= library_policy.LIBRARY_VERSION:
+    before = library_settings.library_formats(library_dir)
+    if all(found >= ours for found, ours in zip(before, library_settings.THIS_AMAZE)):
         return False
     return library_settings.stamp_version(preferences)
 

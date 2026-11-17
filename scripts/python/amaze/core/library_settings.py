@@ -22,30 +22,45 @@ def _folder(library_dir: str):
     return types.SimpleNamespace(dir=str(library_dir or ""), library_user="")
 
 
-def version_label(version: int) -> str:
-    """A library version as shown to the user: 4 is `2.0`, an older one its own number."""
-    version = int(version or 0)
-    if version >= library_policy.LIBRARY_VERSION:
-        return "2.%d" % (version - library_policy.LIBRARY_VERSION)
-    return "%d" % version
+THIS_AMAZE = (library_policy.LIBRARY_VERSION, library_policy.DATABASE_FORMAT,
+              library_policy.RECORD_FORMAT)    # the three numbers this Amaze writes
+_STAMPED = ("version", "database", "record")    # their fields in the policy's `library` entry
+
+
+def version_label(version, database: int = 0, record: int = 0) -> str:
+    """The format shown to the user, from a library version or the three numbers together."""
+    if isinstance(version, (tuple, list)):
+        version, database, record = version
+    return library_policy.format_label(version, database, record)
+
+
+def library_formats(library_dir: str) -> tuple:
+    """(library version, database format, record format) the library's policy records; zeros for none."""
+    if not library_dir:
+        return 0, 0, 0
+    reading = guard.Guard(str(library_dir)).read(library_files.MASTER)
+    entry = ((reading.document or {}).get(POLICY) or {}).get(VERSION_ENTRY) or {}
+    found = [entry.get(field) if isinstance(entry, dict) else None for field in _STAMPED]
+    found = [one if isinstance(one, int) and not isinstance(one, bool) and one > 0 else 0
+             for one in found]
+    if not found[0]:
+        return 0, 0, 0
+    return tuple(one or base for one, base in zip(found, library_policy.FORMAT_2_0))
 
 
 def library_version(library_dir: str) -> int:
     """The version in the policy of the library in `library_dir`; 0 for a folder that holds none."""
-    if not library_dir:
-        return 0
-    reading = guard.Guard(str(library_dir)).read(library_files.MASTER)
-    entry = ((reading.document or {}).get(POLICY) or {}).get(VERSION_ENTRY) or {}
-    found = entry.get("version") if isinstance(entry, dict) else None
-    return found if isinstance(found, int) and not isinstance(found, bool) and found > 0 else 0
+    return library_formats(library_dir)[0]
 
 
 def stamp_version(preferences) -> bool:
-    """Record this Amaze's library version in the library's policy; True once it is there."""
+    """Record this Amaze's three format numbers in the library's policy; True once they are there."""
     held = _master(preferences)
-    if held.get(POLICY, VERSION_ENTRY) == {"version": library_policy.LIBRARY_VERSION}:
+    wanted = dict(zip(_STAMPED, THIS_AMAZE))
+    entry = held.get(POLICY, VERSION_ENTRY) or {}
+    if {field: entry.get(field) for field in _STAMPED} == wanted:
         return True
-    return held.put(POLICY, VERSION_ENTRY, {"version": library_policy.LIBRARY_VERSION}) and \
+    return held.put(POLICY, VERSION_ENTRY, wanted) and \
         bool(library_db.save(preferences, library_files.MASTER))
 
 

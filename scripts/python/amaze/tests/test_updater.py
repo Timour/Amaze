@@ -161,6 +161,24 @@ class TheReleaseNamesItsLibraryVersion(_FeedMixin):
         self.assertEqual((3, "9.8.0"), (found.library_version, found.library_since))
         self.assertEqual(updater.RELEASES_URL, calls[0], "the API is still called once, first")
 
+    def test_a_release_that_only_raises_the_database_format_updates_the_library_to_2_1(self):
+        from amaze import messages
+        from amaze.core import library_policy
+        version, database, _record = library_policy.FORMAT_2_0
+        self.answer_each({
+            updater.RELEASES_URL: self.FEED,
+            updater.LIBRARY_POLICY_URL % "9.9": (
+                "LIBRARY_VERSION = %d\nLIBRARY_VERSION_SINCE = \"9.8.0\"\n"
+                "DATABASE_FORMAT = %d\n" % (version, database + 1)).encode()})
+        found = updater.check("1.0")
+        self.assertEqual((version, database + 1, 0), updater.release_formats(found))
+        library = tempfile.mkdtemp(prefix="amaze_libformat_")
+        self.addCleanup(shutil.rmtree, library, ignore_errors=True)
+        test_support.set_library_version(library, version)
+        self.assertTrue(updater.updates_library(found, library))
+        self.assertEqual(messages.UPDATE_LIBRARY_AVAILABLE % ("9.9", "2.1"),
+                         updater.offer_line(found, library))
+
     def test_a_release_from_before_library_versions_brings_version_1(self):
         self.answer_each({updater.RELEASES_URL: self.FEED,
                           updater.LIBRARY_POLICY_URL % "9.9": b"POLICY_VERSION = 1\n"})

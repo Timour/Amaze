@@ -12,7 +12,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import library_db, library_files, library_policy, library_settings  # noqa: E402
+from amaze.core import guard, library_db, library_files, library_policy, library_settings  # noqa: E402
 from amaze.prefs import prefs as prefs_mod  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
@@ -38,6 +38,43 @@ class TheLibraryVersionTest(_Library):
         self.assertEqual(library_policy.LIBRARY_VERSION, library_settings.library_version(self.dir))
         self.assertEqual("2.0", library_settings.version_label(
             library_settings.library_version(self.dir)))
+
+    def test_the_format_shown_counts_every_step_of_the_three_numbers(self):
+        from amaze import branding
+        from amaze.core import asset_record
+        self.assertEqual((library_policy.LIBRARY_VERSION, branding.LIBRARY_FORMAT,
+                          asset_record.FORMAT), library_settings.THIS_AMAZE,
+                         "library_policy.py names a number the code does not write")
+        version, database, record = library_policy.FORMAT_2_0
+        for found, shown in (((version, database, record), "2.0"),
+                             ((version, database + 1, record), "2.1"),
+                             ((version + 1, database, record), "2.1"),
+                             ((version, database, record + 1), "2.1"),
+                             ((version + 1, database + 1, record), "2.2"),
+                             ((version + 1, database + 1, record + 2), "2.4"),
+                             ((version, 0, 0), "2.0"), ((version - 1, 0, 0), "3")):
+            self.assertEqual(shown, library_settings.version_label(found), found)
+        self.assertEqual("2.1", library_settings.version_label(version + 1))
+
+    def test_the_three_numbers_are_read_from_the_policy_and_default_to_2_0(self):
+        self.assertTrue(prefs_mod.create_library(self.dir))
+        self.assertEqual(library_policy.FORMAT_2_0, library_settings.library_formats(self.dir))
+        held = guard.Guard(self.dir)
+        reading = held.read(library_files.MASTER)
+        change = held.change("")
+        change.put(reading.ticket, dict(reading.document, policy={"library": {
+            "version": 4, "database": 6, "record": 2}}))
+        change.commit()
+        self.assertEqual((4, 6, 2), library_settings.library_formats(self.dir))
+        self.assertEqual("2.2", library_settings.version_label(
+            library_settings.library_formats(self.dir)))
+
+    def test_a_library_already_at_this_amazes_numbers_is_not_written_at_open(self):
+        from amaze.actions import library as library_actions
+        self.assertTrue(prefs_mod.create_library(self.dir))
+        before = self.master()
+        self.assertFalse(library_actions.update(self.prefs))
+        self.assertEqual(before, self.master())
 
     def test_an_older_library_is_no_library_to_the_version_read(self):
         with open(os.path.join(self.dir, "policy.json"), "w", encoding="utf-8") as handle:
