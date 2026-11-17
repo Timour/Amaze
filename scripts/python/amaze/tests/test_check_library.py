@@ -741,8 +741,47 @@ class TheTwoFixesTest(_Broken):
         for step in (restore, replace, trash):
             step.assert_not_called()
 
-    def test_fix_all_also_removes_the_entry_and_trashes_the_leftovers(self):
+    def test_fix_all_with_nothing_confirmed_trashes_only_what_amaze_wrote(self):
         done = library_check.fix_all(self.survey(), guard_session=False)
+        self.assertEqual(["1 material added to the database.", "1 file moved to the trash."],
+                         library_check.done_lines(done))
+        self.assertEqual(["AAA2.interface"], self.trashed())
+        self.assertIn("AAA1", _read(self.dir, MATERIALS)["assets"], "an unconfirmed row was removed")
+        for kept in ("notes.txt", "stuff/a.bin", "materials/AAA1.png", "materials/AAA1.json"):
+            self.assertTrue(os.path.exists(os.path.join(self.dir, *kept.split("/"))), kept)
+
+    def test_what_is_confirmed_is_named_one_per_line(self):
+        findings = self.survey()
+        found = library_check.confirmable(findings)
+        _make(os.path.join(self.materials, "LONE7.mat"))
+        findings = self.survey()
+        found = library_check.confirmable(findings)
+        self.assertEqual(["Materials: Brick", "materials/LONE7.mat", "notes.txt", "stuff/"],
+                         library_check.confirmable_names(findings, found))
+
+    def test_a_file_that_appears_after_the_confirm_is_not_trashed(self):
+        findings = self.survey()
+        confirmed = library_check.confirmable(findings)
+        _make(os.path.join(self.dir, "later.txt"))
+        library_check.fix_all(findings, guard_session=False, confirmed=confirmed)
+        self.assertTrue(os.path.exists(os.path.join(self.dir, "later.txt")),
+                        "a file nobody was shown went to the trash")
+        self.assertIn("notes.txt", self.trashed())
+
+    def test_a_file_in_the_import_folder_is_the_users_whatever_its_name(self):
+        lock = _make(os.path.join(self.dir, "import", "project", "yarn.lock"))
+        os.utime(lock, (1_700_000_000, 1_700_000_000))
+        findings = self.survey()
+        self.assertEqual([], [entry[0] for entry in findings["leftovers"]
+                              if entry[0].startswith("import/")])
+        library_check.fix_all(findings, guard_session=False,
+                              confirmed=library_check.confirmable(findings))
+        self.assertTrue(os.path.exists(lock))
+
+    def test_fix_all_also_removes_the_entry_and_trashes_the_leftovers(self):
+        findings = self.survey()
+        done = library_check.fix_all(findings, guard_session=False,
+                                     confirmed=library_check.confirmable(findings))
         self.assertEqual(["1 material added to the database.",
                           "1 material removed from the database.",
                           "4 files and 1 folder moved to the trash."],
@@ -763,8 +802,8 @@ class TheTwoFixesTest(_Broken):
         self.assertEqual([MATERIALS], done["restored"])
         self.assertEqual([], done["rebuilt"])
         self.assertIn("1 database restored from its backup.", library_check.done_lines(done))
-        self.assertEqual({"AAA2", "NEW1"}, set(_read(self.dir, MATERIALS)["assets"]),
-                         "the files were not repaired once the database could be read again")
+        self.assertEqual({"AAA1", "AAA2", "NEW1"}, set(_read(self.dir, MATERIALS)["assets"]),
+                         "NEW1 was not recovered, or AAA1 was removed with no confirm")
 
     def test_fix_all_restores_a_missing_database(self):
         test_support.backup_now(self.dir, MATERIALS)
@@ -779,7 +818,42 @@ class TheTwoFixesTest(_Broken):
         self.assertEqual([MATERIALS], done["rebuilt"])
         self.assertIn("1 database rebuilt from the assets' own files.",
                       library_check.done_lines(done))
-        self.assertEqual({"AAA2", "NEW1"}, set(_read(self.dir, MATERIALS)["assets"]))
+        self.assertEqual({"AAA1", "AAA2", "NEW1"}, set(_read(self.dir, MATERIALS)["assets"]))
+
+    def test_a_database_with_no_backup_and_no_asset_files_starts_empty(self):
+        for name in (library_files.COLORS, library_files.FILES):
+            _write(self.dir, name, {"assets": {}} if name == library_files.COLORS else {})
+        master = _read(self.dir, library_files.MASTER)
+        master["manifest"].update({library_files.COLORS: {"by": ""}, library_files.FILES: {"by": ""}})
+        _write(self.dir, library_files.MASTER, master)
+        _corrupt(self.dir, library_files.COLORS)
+        os.remove(os.path.join(self.dir, library_files.FILES))
+        found = library_check.summary(self.survey())
+        self.assertIn("The Colors database has no backup. Fix All starts it empty.", found["lines"])
+        self.assertTrue(found["fixable"])
+        done = library_check.fix_all(self.survey(), guard_session=False)
+        self.assertEqual([library_files.COLORS, library_files.FILES], done["emptied"])
+        self.assertIn("2 databases start empty.", library_check.done_lines(done))
+        held = guard.Guard(self.dir)
+        for name in (library_files.COLORS, library_files.FILES):
+            self.assertEqual(guard.FINE, held.read(name).verdict, name)
+        kept = [name for name in os.listdir(os.path.join(self.dir, "backup"))
+                if name.startswith(library_files.COLORS + guard.UNREADABLE_MARK)]
+        self.assertEqual(1, len(kept), "the corrupt file was not kept in backup/")
+
+    def test_a_library_database_with_no_backup_starts_empty_and_lists_what_is_here(self):
+        _corrupt(self.dir, library_files.MASTER)
+        done = library_check.fix_all(self.survey(), guard_session=False)
+        self.assertEqual([library_files.MASTER], done["emptied"])
+        master = _read(self.dir, library_files.MASTER)
+        self.assertEqual([MATERIALS], sorted(master["manifest"]))
+        self.assertEqual(library_check.repair.library_policy.LIBRARY_VERSION,
+                         master["policy"]["library"]["version"])
+        held = guard.Guard(self.dir)
+        change = held.change("u1")
+        change.put(held.read(NODES).ticket, {"assets": {}})
+        change.commit()
+        self.assertEqual(guard.FINE, held.read(NODES).verdict)
 
     def test_fix_safe_leaves_a_corrupt_database_as_it_is(self):
         _corrupt(self.dir)
@@ -798,7 +872,7 @@ class TheRepairDialogTest(_Broken):
 
         def display(text, **kwargs):
             shown.append((text, kwargs))
-            return pick if len(shown) == 1 else 0
+            return pick if len(shown) == 1 else (self.second if len(shown) == 2 else 0)
 
         changed = []
         with mock.patch.object(repair_dialog.hou, "ui",
@@ -836,13 +910,36 @@ class TheRepairDialogTest(_Broken):
         self.assertEqual((True, 1), (self.landed, self.changed))
         self.assertEqual([], self.trashed())
 
-    def test_fix_all_says_what_it_did_as_counts(self):
+    second = 0    # the button the fake picks in the second message: Move to Trash
+
+    def test_fix_all_names_what_goes_to_the_trash_and_says_what_it_did_as_counts(self):
         shown = self.run_dialog(0)
+        text, asked = shown[1]
+        self.assertEqual(messages.CONFIRM_FIX_ALL_TRASH, text)
+        self.assertEqual(("Move to Trash", "Skip These", "Cancel"), tuple(asked["buttons"]))
+        self.assertEqual((2, 2), (asked["default_choice"], asked["close_choice"]))
+        self.assertEqual(["Materials: Brick", "notes.txt", "stuff/"], asked["details"].split("\n"))
         self.assertEqual(["1 material added to the database.\n"
                           "1 material removed from the database.\n"
                           "4 files and 1 folder moved to the trash."],
-                         [text for text, _asked in shown[1:]])
+                         [text for text, _asked in shown[2:]])
         self.assertNotIn("AAA1", _read(self.dir, MATERIALS)["assets"])
+
+    def test_skip_these_fixes_the_rest_and_leaves_what_was_named(self):
+        self.second = 1
+        shown = self.run_dialog(0)
+        self.assertEqual(["1 material added to the database.\n1 file moved to the trash."],
+                         [text for text, _asked in shown[2:]])
+        self.assertIn("AAA1", _read(self.dir, MATERIALS)["assets"])
+        self.assertEqual(["AAA2.interface"], self.trashed())
+
+    def test_cancel_in_the_second_message_changes_nothing(self):
+        self.second = 2
+        shown = self.run_dialog(0)
+        self.assertEqual(2, len(shown))
+        self.assertEqual((False, 0), (self.landed, self.changed))
+        self.assertEqual([], self.trashed())
+        self.assertNotIn("NEW1", _read(self.dir, MATERIALS)["assets"])
 
     def test_with_nothing_safe_to_do_fix_safe_is_not_offered(self):
         os.remove(os.path.join(self.materials, "NEW1.mat"))

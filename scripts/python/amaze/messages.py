@@ -374,6 +374,14 @@ FIXED_RESTORED = '%s restored from %s.'
 
 FIXED_REBUILT = "%s rebuilt from the assets' own files."
 
+FIXED_EMPTIED = '%s start%s empty.'
+
+CHECK_DATABASE_NO_BACKUP = 'The %s database has no backup. Fix All starts it empty.'
+
+CONFIRM_FIX_ALL_TRASH = 'Fix All moves these to the trash. An asset named here is removed from its database.'
+
+BUTTONS_FIX_ALL_TRASH = ('Move to Trash', 'Skip These', 'Cancel')
+
 FIXED_RECOVERED = '%s added to the database.'
 
 FIXED_REMOVED = '%s removed from the database.'

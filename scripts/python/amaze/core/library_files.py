@@ -235,6 +235,8 @@ def classify(relative: str, is_dir: bool = False) -> tuple:
     name = parts[-1]
     if is_os_noise(name):
         return OS_NOISE_KIND, ""
+    if parts[0] == IMPORT_FOLDER and len(parts) > 1:    # the user's own files, whatever their names
+        return (FOLDER if is_dir else PACKAGE), ""
     if is_scratch(name):
         return SCRATCH, ""
     if parts[0] in (PACKAGE_FOLDER, IMPORT_FOLDER, TRASH_FOLDER) and len(parts) > 1:
@@ -252,7 +254,7 @@ def classify(relative: str, is_dir: bool = False) -> tuple:
 
 
 def walk(library_dir: str, packages: bool = False):
-    """Yield (relative, kind, detail, stat) listing each folder once; matX/ only with `packages`."""
+    """Yield (relative, kind, detail, stat) per entry; inside matX/ and import/ only with `packages`."""
     pending = [[]]
     while pending:
         parts = pending.pop(0)
@@ -272,7 +274,7 @@ def walk(library_dir: str, packages: bool = False):
             if is_dir and kind == FOLDER:
                 if here[0] == TRASH_FOLDER:
                     pass    # `trash/` is counted by guard.py; `walk` never lists its contents
-                elif here[0] != PACKAGE_FOLDER or packages:
+                elif here[0] not in (PACKAGE_FOLDER, IMPORT_FOLDER) or packages:
                     pending.append(here)
                 yield join(here), kind, detail, None
                 continue

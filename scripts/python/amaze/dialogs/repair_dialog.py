@@ -126,9 +126,22 @@ def repair_found(findings: dict, guard: bool = True, changed=None) -> bool:
         details="\n".join(found["names"]) or None, details_expanded=True)
     if not 0 <= picked < len(buttons) - 1:
         return False
-    fix = (library_check.fix_all if buttons[picked] == messages.BUTTON_FIX_ALL
-           else library_check.fix_safe)
-    done = fix(findings, guard_session=guard)
+    skipped = False
+    if buttons[picked] == messages.BUTTON_FIX_ALL:
+        confirmed = library_check.confirmable(findings)
+        names = library_check.confirmable_names(findings, confirmed)
+        if names:
+            asked = hou.ui.displayMessage(                # type: ignore
+                messages.CONFIRM_FIX_ALL_TRASH, buttons=messages.BUTTONS_FIX_ALL_TRASH,
+                default_choice=2, close_choice=2, title=messages.TITLE_AMAZE,
+                severity=hou.severityType.Warning,        # type: ignore
+                details="\n".join(names), details_expanded=True)
+            if asked not in (0, 1):
+                return False
+            confirmed, skipped = (confirmed, False) if asked == 0 else (None, True)
+        done = library_check.fix_all(findings, guard_session=guard, confirmed=confirmed)
+    else:
+        done = library_check.fix_safe(findings, guard_session=guard)
     if changed is not None:
         changed()
     lines = library_check.done_lines(done)
@@ -137,6 +150,8 @@ def repair_found(findings: dict, guard: bool = True, changed=None) -> bool:
     elif done["failed"]:
         said = messages.NOTHING_CHANGED_REASON % done["failed"][0]
         severity = hou.severityType.Warning               # type: ignore
+    elif skipped:
+        return False    # Skip These left nothing else for Fix All to do
     else:
         said = messages.LIBRARY_CHANGED_SINCE_CHECK
         severity = hou.severityType.Warning               # type: ignore

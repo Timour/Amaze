@@ -50,7 +50,13 @@ def _unread_line(entry: dict) -> str:
 
 
 def _error_lines(findings: dict) -> list:
-    return [_unread_line(entry) for entry in _in_state(findings, _UNREAD)]
+    said = []
+    for entry in _in_state(findings, _UNREAD):
+        said.append(_unread_line(entry))
+        if (entry["state"] in _MENDABLE and entry["filename"] not in naming.ASSET_SECTIONS
+                and not _backup_to_restore(entry)):
+            said.append(messages.CHECK_DATABASE_NO_BACKUP % entry["label"])
+    return said
 
 
 def _file_lines(findings: dict) -> list:
@@ -147,13 +153,53 @@ def _backup_to_restore(entry: dict):
 
 
 def _mendable(findings: dict) -> list:
-    """(database, backup or None) of each corrupt or missing one that can be brought back."""
-    found = []
-    for entry in _in_state(findings, _MENDABLE):
-        backup = _backup_to_restore(entry)
-        if backup or entry["filename"] in naming.ASSET_SECTIONS:
-            found.append((entry["filename"], backup))
+    """(database, backup or None) of each corrupt or missing one, `DataBase.json` first."""
+    return [(entry["filename"], _backup_to_restore(entry))
+            for entry in _in_state(findings, _MENDABLE)]
+
+
+def confirmable(findings: dict) -> dict:
+    """What Fix All only does once the user has seen each name: {rows, unlisted, unknown}."""
+    found = {"rows": {}, "unlisted": [], "unknown": []}
+    if lights(findings)[FILES][0] != FOUND:
+        return found
+    found["rows"] = repair.rows_without_a_mat(findings)
+    if not repair.why_unlisted_stay(findings):
+        found["unlisted"] = [(folder, name)
+                             for folder, names in repair.movable(findings)["unaccounted"].items()
+                             for name in names]
+    found["unknown"] = [entry[0] for key in ("unknown", "unknown_folders")
+                        for entry in findings.get(key) or ()]
     return found
+
+
+def confirmable_names(findings: dict, found: dict) -> list:
+    """Each thing in `confirmable`, one per line: a row by section and name, a file by its path."""
+    names = []
+    for filename, ids in found["rows"].items():
+        shown = dict((findings.get("missing_files") or {}).get(filename) or ())
+        names.extend("%s: %s" % (naming.section_label(filename), shown.get(one, one))
+                     for one in ids)
+    names.extend("%s%s" % (folder, name) for folder, name in found["unlisted"])
+    folders = {entry[0] for entry in findings.get("unknown_folders") or ()}
+    names.extend(one + "/" if one in folders else one for one in found["unknown"])
+    return [str(name) for name in names]
+
+
+def _only_confirmed(findings: dict, confirmed) -> dict:
+    """`findings` with the rows, unlisted files and unknown files cut down to `confirmed`."""
+    confirmed = confirmed or {"rows": {}, "unlisted": [], "unknown": []}
+    unlisted, unknown = set(map(tuple, confirmed["unlisted"])), set(confirmed["unknown"])
+    return dict(
+        findings,
+        missing_files={filename: [row for row in rows
+                                  if row[0] in confirmed["rows"].get(filename, ())]
+                       for filename, rows in (findings.get("missing_files") or {}).items()},
+        unaccounted={folder: [name for name in names if (folder, name) in unlisted]
+                     for folder, names in findings["unaccounted"].items()},
+        unknown=[entry for entry in findings.get("unknown") or () if entry[0] in unknown],
+        unknown_folders=[entry for entry in findings.get("unknown_folders") or ()
+                         if entry[0] in unknown])
 
 
 def _to_trash(findings: dict) -> tuple:
@@ -223,7 +269,7 @@ def summary(findings: dict) -> dict:
 
 
 def _nothing_done() -> dict:
-    return {"restored": [], "rebuilt": [], "recovered": {}, "removed": {}, "files": 0,
+    return {"restored": [], "rebuilt": [], "emptied": [], "recovered": {}, "removed": {}, "files": 0,
             "folders": 0, "favorites": 0, "locations": 0, "failed": []}
 
 
@@ -269,7 +315,7 @@ def fix_safe(findings: dict, guard_session: bool = True) -> dict:
 
 
 def _mend_databases(findings: dict, done: dict, guard_session: bool) -> None:
-    """Each corrupt or missing database: its newest backup that reads, else a rebuild."""
+    """Each corrupt or missing database: its newest backup that reads, else a rebuild, else empty."""
     rebuild = []
     for filename, backup in _mendable(findings):
         if backup and _attempt(done, "restore", repair.put_back, findings, filename, backup,
@@ -277,14 +323,18 @@ def _mend_databases(findings: dict, done: dict, guard_session: bool) -> None:
             done["restored"].append(filename)
         elif filename in naming.ASSET_SECTIONS:
             rebuild.append(filename)
+        elif _attempt(done, "empty", repair.start_empty, findings["directory"], filename,
+                      guard_session=guard_session) is not None:
+            done["emptied"].append(filename)
     for filename in rebuild:
-        if _attempt(done, "rebuild", repair.rebuild, findings["directory"], filename,
-                    guard_session=guard_session) is not None:
-            done["rebuilt"].append(filename)
+        built = _attempt(done, "rebuild", repair.rebuild, findings["directory"], filename,
+                         guard_session=guard_session, or_empty=True)
+        if built is not None:
+            done["rebuilt" if built["assets"] else "emptied"].append(filename)
 
 
-def fix_all(findings: dict, guard_session: bool = True) -> dict:
-    """Fix Safe, and: databases restored or rebuilt, rows with no `.mat` out, leftovers trashed."""
+def fix_all(findings: dict, guard_session: bool = True, confirmed=None) -> dict:
+    """Fix Safe, databases mended, leftovers trashed; and what `confirmed` names of `confirmable`."""
     done = _nothing_done()
     if not all_fixes(findings):
         return done
@@ -292,14 +342,14 @@ def fix_all(findings: dict, guard_session: bool = True) -> dict:
         _mend_databases(findings, done, guard_session)
         findings = _surveyed_again(findings)
     _fix_safe(findings, done, guard_session)
-    findings = _surveyed_again(findings)
+    findings = _only_confirmed(_surveyed_again(findings), confirmed)
     fixes = all_fixes(findings)
     if "rows" in fixes:
         dropped = _attempt(done, "rows", repair.drop_rows_without_files, findings,
                            guard_session=guard_session) or {}
         done["removed"].update(dropped.get("removed") or {})
         done["files"] += len(dropped.get("moved") or ())
-        findings = _surveyed_again(findings)
+        findings = _only_confirmed(_surveyed_again(findings), confirmed)
         fixes = all_fixes(findings)
     if "trash" in fixes:
         result = _attempt(done, "trash", repair.move_aside, findings, _to_trash(findings),
@@ -330,6 +380,9 @@ def done_lines(done: dict) -> list:
             "its backup" if len(done["restored"]) == 1 else "their backups"))
     if done["rebuilt"]:
         said.append(messages.FIXED_REBUILT % _databases(done["rebuilt"]))
+    if done["emptied"]:
+        said.append(messages.FIXED_EMPTIED % (
+            _databases(done["emptied"]), "s" if len(done["emptied"]) == 1 else ""))
     recovered, removed = (
         wording.and_list(["%d %s" % (count, naming.section_noun(filename, count))
                           for filename, count in done[key].items() if count])

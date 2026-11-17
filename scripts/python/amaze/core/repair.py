@@ -5,7 +5,7 @@ import json
 import os
 import time
 
-from amaze.core import debug, documents, guard, library_db, material, renderers
+from amaze.core import debug, documents, guard, library_db, library_policy, material, renderers
 from amaze.core import library_files as naming
 from amaze.core import asset_record
 from amaze.core.material import RECORD_SUFFIX
@@ -90,7 +90,7 @@ def survey(preferences_or_directory, img_dir: str = "img/") -> dict:
         entry = _survey_one(held, reading)
         lists.append(entry)
         ids |= entry["ids"]
-        if entry["state"] in ("unreadable", "absent-but-known", "newer") and \
+        if entry["state"] in ("unreadable", "absent-but-known", "newer", "held") and \
                 entry["filename"] in naming.LISTS:
             complete = False
         if reading.shrunk:
@@ -520,7 +520,32 @@ def rebuildable(findings: dict) -> list:
             if entry["state"] == "unreadable" and entry["filename"] in naming.ASSET_SECTIONS]
 
 
-def rebuild(directory: str, name: str = naming.MATERIALS, guard_session: bool = True) -> dict:
+def start_empty(directory: str, name: str, guard_session: bool = True) -> dict:
+    """A database that does not read and has no backup, written new and empty; {} when done."""
+    if guard_session:
+        _refuse_a_houdini_that_holds_the_library()
+    held = _guard(directory)
+    if held.read(name).verdict not in (guard.CORRUPT, guard.MISSING):
+        raise ValueError("that database reads, so it was left as it is")
+    document = {}
+    if name == naming.MASTER:    # what `prefs.create_library` writes, and the databases that are here
+        document = {"policy": {"library": {"version": library_policy.LIBRARY_VERSION}},
+                    guard.MANIFEST: {other: {"created": held.stamp(), "by": ""}
+                                     for other in DATABASES if other != name
+                                     and os.path.lexists(held.path(other))}}
+    try:
+        change = held.change("")
+        change.replace(name, document)
+        change.commit()
+    except OSError as exc:
+        debug.event("repair", "empty database could not be written", file=name, error=str(exc))
+        raise ValueError("the empty database could not be written") from exc
+    debug.event("repair", "database started empty", file=name)
+    return {}
+
+
+def rebuild(directory: str, name: str = naming.MATERIALS, guard_session: bool = True,
+            or_empty: bool = False) -> dict:
     """`name` rebuilt from each asset's metadata as one change; {assets, damaged}, else ValueError."""
     if guard_session:
         _refuse_a_houdini_that_holds_the_library()
@@ -530,7 +555,7 @@ def rebuild(directory: str, name: str = naming.MATERIALS, guard_session: bool = 
                     files=document["unreadable"])
         raise ValueError("%s cannot be read, so a rebuild cannot tell its assets from this "
                          "database's" % wording.and_list(document["unreadable"]))
-    if not document["assets"]:
+    if not document["assets"] and not or_empty:
         raise ValueError("no asset metadata was found in its folder")
     try:
         change = _guard(directory).change("")

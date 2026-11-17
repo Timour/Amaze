@@ -2044,8 +2044,9 @@ class CheckLibraryConfirmsBeforeChangingTest(unittest.TestCase):
         start = code.find("def repair_found(")
         body = code[start:code.find("\ndef ", start)]
         self.assertTrue(body, "premise: the Repair dialog is gone")
-        self.assertEqual(2, body.count("displayMessage("),
-                         "the Repair dialog shows messages beyond what it found and what the fix did")
+        self.assertEqual(3, body.count("displayMessage("),
+                         "the Repair dialog shows more than what it found, what Fix All moves to "
+                         "the trash, and what the fix did")
 
 
 if __name__ == "__main__":
