@@ -99,7 +99,7 @@ def drawn_list(frame_key: str, selection_mode, delegate) -> QtWidgets.QListWidge
     view.setSelectionMode(selection_mode)
     view.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     view.setUniformItemSizes(True)
-    delegate.setParent(view)    # the view does not own its delegate ▸r/delegate-orphans
+    delegate.setParent(view)    # the view does not own its delegate ▸r/replaced-delegate-stays-alive
     view.setItemDelegate(delegate)
     set_list_background(view)
     ui_helpers.fit_drawn(view, frame_key, "QListWidget", None)

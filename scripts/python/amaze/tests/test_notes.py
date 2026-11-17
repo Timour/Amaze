@@ -1427,7 +1427,7 @@ class ThePictureButtonIsActuallyRun(unittest.TestCase):
                          "there ▸r/select-file-write")
 
     def test_it_does_not_raise_where_there_is_no_hou_ui(self):
-        """Headless has no `hou.ui`, so an unguarded use raises AttributeError. ▸p/refusal-sink"""
+        """Headless has no `hou.ui`, so an unguarded use raises AttributeError. ▸p/refuse-vs-alert"""
         self.assertFalse(hasattr(hou, "ui"),
                          "this host HAS hou.ui, so the guard is untested here")
         self._menu_entry("Image").trigger()      # must not raise

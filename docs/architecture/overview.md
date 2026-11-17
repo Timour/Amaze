@@ -1196,7 +1196,7 @@ messages.py               EVERY message Amaze shows in a dialog, in one
                           document - `displayMessage` and `debug.alert`
                           alike. Keyed by NAME, never a line number, so
                           the Figma register stays correct when lines move
-                          ▸p/messages-need-one-home
+                          ▸p/messages-in-three-places
 dialogs/                  save / preferences / about / code / gradient dialogs
 dialogs/user_dialog.py    the User list's rows, A to Z then the create
                           row

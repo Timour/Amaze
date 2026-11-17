@@ -1,4 +1,4 @@
-"""Every hover text Amaze shows, in one document. ▸p/messages-need-one-home"""
+"""Every hover text Amaze shows, in one document. ▸p/messages-in-three-places"""
 
 from __future__ import annotations
 

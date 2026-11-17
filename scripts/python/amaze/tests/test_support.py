@@ -44,7 +44,7 @@ def pump_until(done, timeout=10.0) -> bool:
 
 
 def scratch_dir(prefix: str) -> str:
-    """Make a directory in the system temp folder, where all test dirs go. ▸p/suite-debris-home"""
+    """Make a directory in the system temp folder, where all test dirs go. ▸p/suite-scratch-folders"""
     return tempfile.mkdtemp(prefix=prefix)
 
 
@@ -794,5 +794,5 @@ def art_colours(name: str) -> set:
     with open(path, encoding="utf-8") as handle:
         body = handle.read().lower()
     found = set(re.findall(r'(?:fill|stroke)="(#[0-9a-f]{3,8})"', body))
-    found |= set(re.findall(r'(?<![-\w])(?:fill|stroke)\s*:\s*(#[0-9a-f]{3,8})', body))    # style-declared paints too: style outranks the presentation attribute ▸r/svg-style-wins
+    found |= set(re.findall(r'(?<![-\w])(?:fill|stroke)\s*:\s*(#[0-9a-f]{3,8})', body))    # style-declared paints too: style outranks the presentation attribute ▸r/svg-style-overrides
     return {c for c in found if c != "none"}

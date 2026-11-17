@@ -945,7 +945,7 @@ class IconAssetsTest(unittest.TestCase):
 
     @staticmethod
     def _effective_paint(tag):
-        """A tag's painted fill and fill-opacity: `style` overrides attributes. ▸r/svg-style-wins"""
+        """A tag's painted fill and fill-opacity: `style` overrides attributes. ▸r/svg-style-overrides"""
         def attribute(name):
             found = re.search(r'\b%s="([^"]*)"' % name, tag)
             return found.group(1) if found else None
@@ -994,7 +994,7 @@ class IconAssetsTest(unittest.TestCase):
             return re.findall(r'\sd="([^"]+)"', fh.read())
 
     def _paint(self, name):
-        """How the geometry is painted: fills, strokes, opacities, style attributes. ▸r/svg-style-wins"""
+        """How the geometry is painted: fills, strokes, opacities, style attributes. ▸r/svg-style-overrides"""
         with open(self._ui(name), encoding="utf-8") as fh:
             return self._paint_of(fh.read())
 

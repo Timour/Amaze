@@ -656,7 +656,7 @@ class NotesPanel(ui_helpers.SavedWidthPane):
         """Pick a picture, copy it into the library, and put it at the cursor. ▸p/comment-images"""
         import hou
 
-        ui = getattr(hou, "ui", None)    # absent headless, so every use of it is guarded ▸p/refusal-sink
+        ui = getattr(hou, "ui", None)    # absent headless, so every use of it is guarded ▸p/refuse-vs-alert
         if ui is None:
             return
         chosen = ui.selectFile(

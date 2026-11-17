@@ -1,4 +1,4 @@
-"""The multi-drop material import: the first failed import stops it. ▸p/refusal-sink"""
+"""The multi-drop material import: the first failed import stops it. ▸p/refuse-vs-alert"""
 
 import os
 import sys

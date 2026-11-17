@@ -1,4 +1,4 @@
-"""Dialog messages are in `messages.py` and match their callers ▸p/messages-need-one-home"""
+"""Dialog messages are in `messages.py` and match their callers ▸p/messages-in-three-places"""
 import ast
 import os
 import re

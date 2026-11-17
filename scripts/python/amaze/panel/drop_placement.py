@@ -78,7 +78,7 @@ class DropPlacement:
                     pass
             debug.event("import", "geometry import failed",
                         file=base, error=str(exc))
-            debug.refuse(messages.GEOMETRY_IMPORT_FAILED % (base, exc))    # ▸p/refusal-sink
+            debug.refuse(messages.GEOMETRY_IMPORT_FAILED % (base, exc))    # ▸p/refuse-vs-alert
             return
         parm = helpers.find_file_parm(loader)
         if parm is None:
@@ -146,7 +146,7 @@ class DropPlacement:
         from amaze.helpers import helpers
         stock = dragengine.stock_lop()
         if stock is None:
-            debug.refuse(messages.STOCK_LOP_HELPERS_UNAVAILABLE)    # ▸p/refusal-sink
+            debug.refuse(messages.STOCK_LOP_HELPERS_UNAVAILABLE)    # ▸p/refuse-vs-alert
             return False
         try:
             lopnet = viewer.pwd()

@@ -118,7 +118,7 @@ _reload_loaded("amaze.core.repair")
 _reload(folders)
 _reload(prefs)
 _reload(library_actions)    # after captures and prefs, which its steps call
-_reload(messages)      # the wording every dialog shows ▸p/messages-need-one-home
+_reload(messages)      # the wording every dialog shows ▸p/messages-in-three-places
 _reload(tooltips)      # every hover text; before the dialogs, delegates and models that read it
 _reload(amazetheme)    # before theme and ui_helpers, whose class bodies read it ▸p/one-design-document
 _reload(theme)    # before ui_helpers, whose class bodies read theme colours
@@ -2590,7 +2590,7 @@ class AmazePanel(QtWidgets.QWidget):
         except hou.PermissionError as refusal:    # only this class; anything else still raises
             debug.exception("click failed - permission error", refusal,
                             section=getattr(section, "key", ""))
-            debug.refuse(str(refusal),    # ▸p/refusal-sink
+            debug.refuse(str(refusal),    # ▸p/refuse-vs-alert
                          section=getattr(section, "key", ""))
             return
         if not applied:
@@ -2674,7 +2674,7 @@ class AmazePanel(QtWidgets.QWidget):
                         material=mat.name, target=target,
                         reason=reason or "(no reason reported)")
             if reason:
-                debug.refuse(reason)    # the import marks library damage, which shows the dialog ▸p/refusal-sink
+                debug.refuse(reason)    # the import marks library damage, which shows the dialog ▸p/refuse-vs-alert
             return None
         return handler.builder_node
 
@@ -2734,8 +2734,8 @@ class AmazePanel(QtWidgets.QWidget):
                 self.material_model, idx, "auto", context_node=context
             )
             if not ok and reason:
-                debug.refuse(reason, net=context.path())    # library damage shows the dialog ▸p/refusal-sink
-                break    # ONE failure message per multi-drop, never one per asset ▸p/dialogs-are-a-bill
+                debug.refuse(reason, net=context.path())    # library damage shows the dialog ▸p/refuse-vs-alert
+                break    # ONE failure message per multi-drop, never one per asset ▸p/dialogs-interrupt
             if position is not None:
                 helpers.place_nodes(created, hou.Vector2(
                     position.x() + offset * 0.6,

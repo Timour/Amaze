@@ -237,7 +237,7 @@ def log_path() -> str:
 
 
 def _blank_slate(forget_alerts: bool = False) -> None:
-    """Reset to the state of a new log file; only clear_log clears alerts ▸p/log-blank-slate"""
+    """Reset to the state of a new log file; only clear_log clears alerts ▸p/list-written-three-times"""
     global _session, _seq, _rotation_blocked
     _session = ""
     _seq = 0
@@ -480,7 +480,7 @@ def set_ui(ui) -> None:
 
 
 def alert(message: str, /, key: str = "", **data) -> bool:
-    """Show once per key, True if shown; pass a stable `key` ▸p/dialogs-are-a-bill ▸p/queue-time-needs"""
+    """Show once per key, True if shown; pass a stable `key` ▸p/dialogs-interrupt ▸p/queue-time-needs"""
     stable = key or message
     if _enabled and not _rotation_blocked:
         _write({"cat": "alert", "msg": message,
@@ -498,13 +498,13 @@ def alert(message: str, /, key: str = "", **data) -> bool:
 
 
 class Damage(str):
-    """A refusal meaning the library is broken; `%` drops it, so wrap formatted text ▸p/refusal-sink"""
+    """A refusal meaning the library is broken; `%` drops it, so wrap formatted text ▸p/refuse-vs-alert"""
 
     __slots__ = ()
 
 
 def refuse(reason: str, /, **data) -> bool:
-    """Report that a user action failed, True when shown; repeats and never raises ▸p/refusal-sink"""
+    """Report that a user action failed, True when shown; repeats and never raises ▸p/refuse-vs-alert"""
     damage = isinstance(reason, Damage)
     if _enabled and not _rotation_blocked:
         _write({"cat": "refuse", "msg": str(reason),

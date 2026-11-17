@@ -124,7 +124,7 @@ class TestPruneWaitsForItsOwnDeliveries(unittest.TestCase):
 
 
 class TestAFileIsMissingOnlyWhenItsLoadFails(unittest.TestCase):
-    """A file key is missing only when its read FAILED. ▸p/prune-outran-deliveries"""
+    """A file key is missing only when its read FAILED. ▸p/prune-ran-before-deliveries"""
 
     def setUp(self):
         self.engine = thumbnails.ThumbnailEngine()

@@ -1,4 +1,4 @@
-"""Every hover text is in `tooltips.py`, so a rewording is one edit. ▸p/messages-need-one-home"""
+"""Every hover text is in `tooltips.py`, so a rewording is one edit. ▸p/messages-in-three-places"""
 
 import ast
 import os

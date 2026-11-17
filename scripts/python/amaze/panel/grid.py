@@ -219,7 +219,7 @@ def _needs(entries, verb) -> str:
 
 
 def restore_drag_mode(panel) -> None:
-    """Re-enable Qt's native file-path drag; call after any setViewMode() ▸r/static-kills-drag"""
+    """Re-enable Qt's native file-path drag; call after any setViewMode() ▸r/static-disables-drag"""
     panel.thumblist.setDragEnabled(True)
     panel.thumblist.setDragDropMode(
         QtWidgets.QAbstractItemView.DragDropMode.DragOnly
@@ -313,7 +313,7 @@ def bind_table_cell_delegates(panel, tile_delegate) -> None:
     if table is None:
         return
 
-    for previous in getattr(table, "_amaze_cell_delegates", ()):    # previous set first ▸r/delegate-orphans
+    for previous in getattr(table, "_amaze_cell_delegates", ()):    # previous set first ▸r/replaced-delegate-stays-alive
         try:
             previous.setParent(None)    # leaves the child list at once; deleteLater then frees it under the real event loop
             previous.deleteLater()

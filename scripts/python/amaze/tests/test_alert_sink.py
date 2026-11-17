@@ -1,4 +1,4 @@
-"""How `debug` reports: `alert` once per condition, `refuse` once per action. ▸p/refusal-sink"""
+"""How `debug` reports: `alert` once per condition, `refuse` once per action. ▸p/refuse-vs-alert"""
 
 import ast
 import os
@@ -175,7 +175,7 @@ class AnOnlineImportReportsUnlistedRecordsLast(unittest.TestCase):
 
 
 class DebugRefuseReportsGestureFailuresTest(unittest.TestCase):
-    """`debug.refuse`: a wrong target on the status line, damage in a dialog. ▸p/refusal-sink"""
+    """`debug.refuse`: a wrong target on the status line, damage in a dialog. ▸p/refuse-vs-alert"""
 
     def setUp(self):
         from amaze.utils import rc_calls
@@ -289,7 +289,7 @@ class DebugRefuseReportsGestureFailuresTest(unittest.TestCase):
         self.assertEqual([], self.printed, "a fallback printed on Windows")
 
 class TheImportFunctionsMarkTheirFailureReasonsTest(unittest.TestCase):
-    """Every literal refusal the import functions in nodes.py return, classified. ▸p/refusal-sink"""
+    """Every literal refusal the import functions in nodes.py return, classified. ▸p/refuse-vs-alert"""
 
     ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     FUNCTIONS = ("_payload_or_refusal", "_import_asset_to_scene_inner",
@@ -379,7 +379,7 @@ class TheImportFunctionsMarkTheirFailureReasonsTest(unittest.TestCase):
 
 
 class NoReleaseVerbOpensAModalInline(unittest.TestCase):
-    """A release verb calls `debug.refuse`: a modal in a release gets its click. ▸p/refusal-sink"""
+    """A release verb calls `debug.refuse`: a modal in a release gets its click. ▸p/refuse-vs-alert"""
 
     ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     MODALS = {"displayMessage", "displayConfirmation", "displayCustomConfirmation", "readInput",

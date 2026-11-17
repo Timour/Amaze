@@ -993,7 +993,7 @@ class CopSection(AssetSection):
                 panel.cop_model, source_index, context_node=context
             )
         if not ok and reason:
-            debug.refuse(reason, net=context.path())    # the import marks library damage, so a dialog shows, not the status line ▸p/refusal-sink
+            debug.refuse(reason, net=context.path())    # the import marks library damage, so a dialog shows, not the status line ▸p/refuse-vs-alert
         if ok:
             helpers.place_nodes(created,
                                 panel.drop_placement.release_position_in(context))
@@ -1179,7 +1179,7 @@ class CodeSection(AssetSection):
             )
         if not ok:
             if reason:
-                debug.refuse(reason)    # the miss icon shows the failure, the status line the reason ▸p/refusal-sink
+                debug.refuse(reason)    # the miss icon shows the failure, the status line the reason ▸p/refuse-vs-alert
             return False
         return True
 
@@ -1863,7 +1863,7 @@ class FileSection(FolderSection):
         if not path:
             return
         if not os.path.isfile(path):
-            debug.refuse(debug.Damage(messages.SCENE_FILE_MISSING % path))    # ▸p/refusal-sink
+            debug.refuse(debug.Damage(messages.SCENE_FILE_MISSING % path))    # ▸p/refuse-vs-alert
             debug.event("hip", "scene missing", file=path)
             return
         try:

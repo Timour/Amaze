@@ -174,7 +174,7 @@ class TheNodeDropIsCreatedWhereItWasReleased(_ReleaseCase):
         self.assertFalse(self.section.drop_cop_at_release(index))
 
     def test_a_wrong_context_is_reported_by_debug_refuse_with_the_network(self):
-        """A wrong context is a user aiming error: `debug.refuse`, no dialog. ▸p/refusal-sink"""
+        """A wrong context is a user aiming error: `debug.refuse`, no dialog. ▸p/refuse-vs-alert"""
         index = self._saved_cop_asset()
         dest = hou.node("/obj").createNode("matnet", "vop_dest")
         self._patch(_fake_editor(dest))

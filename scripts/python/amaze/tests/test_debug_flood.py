@@ -385,7 +385,7 @@ def _slate_fields():
 
 
 class TheBlankSlate(unittest.TestCase):
-    """What `configure`, `redirect` and `clear_log` reset and keep. ▸p/log-blank-slate"""
+    """What `configure`, `redirect` and `clear_log` reset and keep. ▸p/list-written-three-times"""
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="amaze_slate_")

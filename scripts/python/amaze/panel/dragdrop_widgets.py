@@ -379,7 +379,7 @@ class GridGestureMixin:
             except hou.PermissionError as refusal:    # only this class: a locked network raises it; any other error propagates
                 debug.exception("drop failed - permission error", refusal,
                                 section=self._drag_section)
-                debug.refuse(str(refusal),    # Houdini's own message; `outcome` stays False so the red X shows ▸p/refusal-sink
+                debug.refuse(str(refusal),    # Houdini's own message; `outcome` stays False so the red X shows ▸p/refuse-vs-alert
                              section=self._drag_section)
             finally:
                 self._finish_preview(outcome)

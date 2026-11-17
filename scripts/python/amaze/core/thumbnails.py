@@ -363,7 +363,7 @@ class ThumbnailEngine(QtCore.QObject):
                         self.ready.emit(key)
                     except RuntimeError:
                         return   # the engine's C++ object was deleted by a reload between turns; nothing to repaint
-        QtCore.QTimer.singleShot(0, _forget)    # one event-loop turn later: its own queued loads are handled first ▸p/prune-outran-deliveries
+        QtCore.QTimer.singleShot(0, _forget)    # one event-loop turn later: its own queued loads are handled first ▸p/prune-ran-before-deliveries
 
 
 _previous_engine = globals().get("engine")    # its signals are disconnected below; install() stops it

@@ -1,4 +1,4 @@
-"""The sections in tab order, key and label, without Houdini. ▸p/dialog-sections-registry-weld"""
+"""The sections in tab order, key and label, without Houdini. ▸p/prefs-dialog-needs-houdini"""
 
 SECTIONS = (
     ("material", "Material"),

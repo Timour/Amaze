@@ -45,7 +45,7 @@ def direct_hou_ui_uses(relpath):
 
 
 class GuardedFilesNeverUseHouUiDirectlyTest(unittest.TestCase):
-    """Fails when a direct `hou.ui` access is added to any file in GUARDED. ▸p/refusal-sink"""
+    """Fails when a direct `hou.ui` access is added to any file in GUARDED. ▸p/refuse-vs-alert"""
 
     def test_no_guarded_file_uses_hou_ui_directly(self):
         self.assertTrue(direct_hou_ui_uses("dialogs/repair_dialog.py"),    # ▸p/vacuous-register

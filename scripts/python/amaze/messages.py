@@ -1,4 +1,4 @@
-"""Every dialog message; a button set puts the accepting one first. ▸p/messages-need-one-home"""
+"""Every dialog message; a button set puts the accepting one first. ▸p/messages-in-three-places"""
 
 from __future__ import annotations
 
