@@ -2,6 +2,7 @@
 
 import os
 import platform
+import re
 import urllib.parse
 
 from PySide6 import QtWidgets, QtCore, QtGui
@@ -33,6 +34,7 @@ FORMAT_STEM = amazetheme.LABEL_LIBRARY_FORMAT.split("%")[0]    # P01's drawn For
 APPLY_LINE_STEM = amazetheme.LABEL_UPGRADES_LIBRARY.split("%")[0]    # and the line beside Apply
 CHECK_INFO_STEM = "Info box"    # P01's drawn sample of the Databases row's line starts with it
 
+_SVG_SIZE = re.compile(r'viewBox="0 0 ([0-9.]+) ([0-9.]+)"')    # an SVG file's drawn width and height
 _logo_cache = None   # rendered once, reused as a QTextDocument resource for the About page
 
 
@@ -46,7 +48,10 @@ def _logo_image(widget=None):
     path = amaze.package_file("ui", "logo.svg")
     image = None
     try:
-        full = QtGui.QImage(1024, 512, QtGui.QImage.Format.Format_ARGB32)
+        with open(path, encoding="utf-8") as handle:
+            drawn = _SVG_SIZE.search(handle.read())
+        tall = round(1024 * float(drawn.group(2)) / float(drawn.group(1)))    # paint_svg fills the image
+        full = QtGui.QImage(1024, tall, QtGui.QImage.Format.Format_ARGB32)
         if ui_helpers.paint_svg(full, path):
             box = QtGui.QRegion(
                 QtGui.QBitmap.fromImage(full.createAlphaMask())
@@ -1087,8 +1092,7 @@ class PrefsDialog(base_dialog.AssetDialog):
             '<p><span style="color:%s;">v' % LINK_COLOR
             + branding.APP_VERSION + "</span></p>"
             "<p>An asset library for Houdini: materials, textures, "
-            "node setups, color palettes, geometry and code - browse, "
-            "save, drag and assign.</p>"
+            "node setups, color palettes, geometry and code.</p>"
             "<p>By Fredrik Timour.<br>"
             "<a href='https://github.com/Timour/Amaze'>"
             "github.com/Timour/Amaze</a></p>"

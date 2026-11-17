@@ -1012,6 +1012,15 @@ class TheAboutLogoCarriesItsDensityTest(unittest.TestCase):
                          image.height(),
                          "the logo's pixel height is not density-scaled")
 
+    def test_the_logo_keeps_the_proportions_of_its_file(self):
+        """`logo.svg` draws from x 17 to 528.664 and y 16 to 125, so it is 4.69 times as wide as tall."""
+        from amaze.dialogs import prefs_dialog
+        prefs_dialog._logo_cache = None
+        image = prefs_dialog._logo_image()
+        if image is None:
+            self.skipTest("logo asset not renderable here")
+        self.assertAlmostEqual((528.664 - 17) / (125 - 16), image.width() / image.height(), delta=0.15)
+
 
 class EveryGridModelDeclaresTheFieldsItEdits(unittest.TestCase):
     """`TILE_FIELDS` lists the fields a model has setters for; Customize reads it, not the model."""
