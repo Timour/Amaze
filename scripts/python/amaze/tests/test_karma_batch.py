@@ -122,7 +122,7 @@ class TheBatchWritesOneStage(unittest.TestCase):
 class WithNoSceneViewerNothingIsImported(unittest.TestCase):
     """Every renderer takes OCIO from a Scene Viewer, so with none open nothing in a batch renders."""
 
-    def test_two_rows_import_nothing_and_say_so_once(self):
+    def test_two_rows_import_nothing_and_show_no_scene_viewer_once(self):
         from amaze import messages
         from amaze.core import library
         from amaze.render import nodes
@@ -172,7 +172,7 @@ def _viewer_and_husk(testcase):
     return submitted
 
 
-class AnOctaneTwinWithoutOctaneIsRefusedNotRaised(unittest.TestCase):
+class AnOctaneTwinWithoutOctaneShowsAMessageAndRaisesNothing(unittest.TestCase):
     """Update Render on a Convert-to-Octane twin where Octane is not loaded. ▸r/hou-errors"""
 
     @classmethod
@@ -236,7 +236,7 @@ class AnOctaneTwinWithoutOctaneIsRefusedNotRaised(unittest.TestCase):
         self.assertEqual([len(karma)], [len(job.frames) for job in self.submitted],
                          "the MaterialX materials in the same Update Render did not render")
 
-    def test_a_stage_the_host_refuses_is_a_failed_batch(self):
+    def test_a_stage_the_host_cannot_build_is_a_failed_batch(self):
         material = hou.node("/mat").createNode("subnet", "refused_stage_probe")
         self.addCleanup(material.destroy)
         material.createNode("mtlxstandard_surface")
@@ -285,7 +285,7 @@ class ASaveAskedNotToRenderRendersNothing(unittest.TestCase):
                 self.assertEqual(renders, rendered.call_count)
 
 
-class ALandedRenderRepaintsItsTile(unittest.TestCase):
+class AWrittenRenderRepaintsItsTile(unittest.TestCase):
     """The panel connects a Material model once; a newly written PNG repaints that one tile."""
 
     def test_one_connection_however_many_panels(self):
@@ -349,10 +349,10 @@ class AMultiMaterialSaveRendersOneBatch(unittest.TestCase):
             self.addCleanup(patcher.stop)
         self.each = thumbs.ThumbNailRenderer.create_thumb    # the render a save starts
 
-    def _landed(self, action):
-        held = test_support.asset_ids(self.model)
+    def _new_asset_ids(self, action):
+        before = test_support.asset_ids(self.model)
         action()
-        return sorted(str(mat.mat_id) for mat in test_support.arrived(self.model, held))
+        return sorted(str(mat.mat_id) for mat in test_support.arrived(self.model, before))
 
     def test_convert_to_renders_its_twins_in_one_batch(self):
         from PySide6 import QtCore
@@ -381,12 +381,12 @@ class AMultiMaterialSaveRendersOneBatch(unittest.TestCase):
                              QtCore.QItemSelectionModel.SelectionFlag.Select)
         registry = {engine.HUB: engine.apis()[engine.HUB], "Octane": Plain()}
         with mock.patch.dict(engine._registry, registry, clear=True):
-            twins = self._landed(lambda: self.panel.convert_selected("Octane"))
+            twins = self._new_asset_ids(lambda: self.panel.convert_selected("Octane"))
         self.assertEqual(2, len(twins), "premise: the conversion saved no twins")
         self.assertEqual(0, self.each.call_count, "a twin started a render of its own")
         self.assertEqual([twins], self.batches, "not ONE batch of the twins")
 
-    def test_an_online_import_renders_what_landed_without_a_picture(self):
+    def test_an_online_import_renders_the_imported_assets_without_a_picture(self):
         import shutil
         import tempfile
         from PySide6 import QtGui
@@ -420,10 +420,10 @@ class AMultiMaterialSaveRendersOneBatch(unittest.TestCase):
 
         records = [record("batch-hosted", True), record("batch-plain", False)]
         with mock.patch.object(self.panel.matx_online_model, "_sources", [Source()]):
-            landed = self._landed(lambda: self.panel.online_import.import_records(records))
-        self.assertEqual(2, len(landed), "premise: the two records were not saved")
+            imported = self._new_asset_ids(lambda: self.panel.online_import.import_records(records))
+        self.assertEqual(2, len(imported), "premise: the two records were not saved")
         plain = [str(mat.mat_id) for mat in self.model.assets
-                 if mat._extra.get("online_uid") == "batch-plain" and str(mat.mat_id) in landed]
+                 if mat._extra.get("online_uid") == "batch-plain" and str(mat.mat_id) in imported]
         self.assertEqual(1, len(plain), "premise: the plain record is not one row")
         self.assertEqual(0, self.each.call_count, "a record started a render of its own")
         self.assertEqual([plain], self.batches,

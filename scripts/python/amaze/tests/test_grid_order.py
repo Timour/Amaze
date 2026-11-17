@@ -64,9 +64,9 @@ class _Case(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
 
 
-class ANewRowLandsInOrder(_Case):
+class ANewRowIsInsertedInOrder(_Case):
 
-    def test_a_saved_asset_does_not_land_at_the_bottom(self):
+    def test_a_saved_asset_is_not_placed_at_the_bottom(self):
         """A row appended at the end of source order appears in sorted position, not at the bottom."""
         source, proxy = self.build(["alpha", "gamma", "delta"])
         self.assertEqual(["alpha", "delta", "gamma"], self.shown(proxy),
@@ -89,7 +89,7 @@ class ANewRowLandsInOrder(_Case):
             ["able", "alpha", "baker", "beta", "charlie", "delta", "gamma"],
             self.shown(proxy), "several saves in one turn appeared out of order")
 
-    def test_a_filtered_grid_still_lands_it_in_order(self):
+    def test_a_filtered_grid_still_places_it_in_order(self):
         """A row added while a filter is set is still ordered and still filtered."""
         source, proxy = self.build(["alpha", "zulu"])
         proxy.setFilter(QtCore.Qt.ItemDataRole.DisplayRole, "al")
@@ -106,7 +106,7 @@ class ANewRowLandsInOrder(_Case):
             "order or not filtered")
 
 
-class AFilterChangeReordersWhatComesBack(_Case):
+class AFilterChangeShowsTheKeptRowsSorted(_Case):
     """A filter change re-tests the rows, and the ones it keeps are shown sorted, not in source order."""
 
     def test_the_rows_a_filter_LEAVES_are_in_order(self):
@@ -254,7 +254,7 @@ class AChangedRowIsRETESTED(_Case):
             "the row is still in the grid with its star off - the "
             "filter is favourites-only and the grid shows one that is not")
 
-    def test_the_row_that_arrives_lands_IN_ORDER(self):
+    def test_the_row_that_is_added_is_placed_IN_ORDER(self):
         """Same rule as an insert: a row the filter shows again appears in order, not at the end."""
         source, proxy = self.build_flagged(
             ["gamma", "alpha", "beta"], ["gamma"])
@@ -264,7 +264,7 @@ class AChangedRowIsRETESTED(_Case):
         self.assertEqual(["alpha", "beta", "gamma"], self.shown(proxy))
 
 
-class TheCoalescerDoesNotWAKEItself(_Case):
+class ThePassDoesNotSCHEDULEAnotherPass(_Case):
     """One pass per loop turn: the `rowsInserted` a pass itself emits must not schedule another."""
 
     def build_flagged(self, names, flagged):
@@ -369,7 +369,7 @@ class ACOLOURChangeIsNotAReFilter(_Case):
             "paint-only")
 
 
-class TheRuleHasOneHome(unittest.TestCase):
+class OnlyTheProxySorts(unittest.TestCase):
 
     def test_no_caller_sorts_after_saving(self):
         """No caller may `sort()` a proxy beside a mutation - the proxy guarantees its own order."""
@@ -554,7 +554,7 @@ class AnUnchangedFilterCostsNoPass(unittest.TestCase):
 class AFilterChangeIsOnePass(unittest.TestCase):
     """`refilter()` sorts at once; its own `rowsInserted` must not make `_schedule_pass` post again."""
 
-    def test_refilter_does_not_schedule_its_own_echo(self):
+    def test_refilter_does_not_schedule_a_second_pass(self):
         from amaze.core import texture_library
 
         proxy = texture_library.TextureFilterProxyModel()

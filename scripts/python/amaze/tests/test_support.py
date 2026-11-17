@@ -127,7 +127,7 @@ def settle_stamps() -> None:
     library_db.flush()
 
 
-def stop_stamp_checks() -> None:
+def flush_pending_saves() -> None:
     """Flush pending saves, so nothing writes into a test's library after the test ends."""
     from amaze.core import library_db
     library_db.flush()
@@ -179,7 +179,7 @@ def fresh_library(testcase, source=None) -> str:
     """A throwaway copy of the fixture library, as a `prefs.dir` path. ▸p/harness-isolation"""
     tmp = scratch_dir("amaze_test_lib_")
     testcase.addCleanup(shutil.rmtree, tmp, True)
-    testcase.addCleanup(stop_stamp_checks)    # runs first: no check writes into a copy being removed
+    testcase.addCleanup(flush_pending_saves)    # runs first: no check writes into a copy being removed
     dest = os.path.join(tmp, "library")
     shutil.copytree(source or FIXTURE_DIR, dest)
     return posix_path(dest) + "/"
@@ -273,12 +273,12 @@ def refused_at_open(path, error=None):
     real_open = open
     wanted = os.path.realpath(path)
 
-    def refused(name, *args, **kwargs):
+    def failing_open(name, *args, **kwargs):
         if isinstance(name, (str, os.PathLike)) and os.path.realpath(name) == wanted:
             raise error
         return real_open(name, *args, **kwargs)
 
-    return mock.patch("builtins.open", refused)
+    return mock.patch("builtins.open", failing_open)
 
 
 @contextlib.contextmanager
@@ -290,25 +290,25 @@ def full_disk_for(path):
     real_write, real_disk_write = hostos.write_json_atomic, guard.Disk.write
     wanted = os.path.realpath(path)
 
-    def _meant(name) -> bool:
+    def _is_target(name) -> bool:
         name = os.path.realpath(name)
         return name == wanted or (os.path.dirname(name) == os.path.dirname(wanted)
                                   and os.path.basename(name).startswith(
                                       os.path.basename(wanted) + ".")
                                   and name.endswith(guard.SCRATCH))
 
-    def refused(name, *args, **kwargs):
-        if _meant(name):
+    def failing_write(name, *args, **kwargs):
+        if _is_target(name):
             raise OSError(errno.ENOSPC, "No space left on device", name)
         return real_write(name, *args, **kwargs)
 
-    def refused_disk(disk, name, data):
-        if _meant(name):
+    def failing_disk_write(disk, name, data):
+        if _is_target(name):
             raise OSError(errno.ENOSPC, "No space left on device", name)
         return real_disk_write(disk, name, data)
 
-    with mock.patch.object(hostos, "write_json_atomic", refused), \
-            mock.patch.object(guard.Disk, "write", refused_disk):
+    with mock.patch.object(hostos, "write_json_atomic", failing_write), \
+            mock.patch.object(guard.Disk, "write", failing_disk_write):
         yield
 
 
@@ -337,11 +337,11 @@ def row_moves_inside_a_layout_change(*models):
     caught = []
     wired = []
 
-    def follower(model, name, depth):
-        def heard(*_args):
+    def recorder(model, name, depth):
+        def record(*_args):
             if depth[0]:
                 caught.append("%s.%s" % (type(model).__name__, name))
-        return heard
+        return record
 
     for model in models:
         depth = [0]    # open layout changes; the H21 segfault comes from a row move at depth > 0
@@ -356,7 +356,7 @@ def row_moves_inside_a_layout_change(*models):
                  (model.layoutChanged, closed)]
         for name in ("rowsInserted", "rowsRemoved", "modelReset"):
             slots.append((getattr(model, name),
-                          follower(model, name, depth)))
+                          recorder(model, name, depth)))
         for signal, slot in slots:
             signal.connect(slot)
             wired.append((signal, slot))
@@ -739,7 +739,7 @@ def stop_panel_workers(panel) -> None:
     except Exception:                                    # noqa: BLE001
         pass
     try:
-        stop_stamp_checks()
+        flush_pending_saves()
     except Exception:                                    # noqa: BLE001
         pass
 

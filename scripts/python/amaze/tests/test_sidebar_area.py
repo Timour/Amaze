@@ -118,10 +118,10 @@ class ARowActsOnTheNameItStores(unittest.TestCase):
                     "row stores - the grid is empty while the row is selected")
 
 
-class WhatMayBeDroppedOnASidebarRowIsTheCONTEXTsAnswer(unittest.TestCase):
+class EachCONTEXTDecidesWhatMayBeDroppedOnItsSidebarRows(unittest.TestCase):
     """Each section class decides what its sidebar rows accept; no branch on a section key."""
 
-    def test_every_context_answers_whether_it_takes_drops(self):
+    def test_every_context_sets_takes_category_drops(self):
         """Category sections take tiles; File's folders and the online sources take none."""
         for name, takes in (("MaterialSection", True), ("CopSection", True),
                             ("CodeSection", True), ("GradientSection", True),
@@ -146,7 +146,7 @@ class WhatMayBeDroppedOnASidebarRowIsTheCONTEXTsAnswer(unittest.TestCase):
             sections.AssetSection.accepts_category_drop(None, None, "Metal"))
 
 
-class TheSidebarStandsOnItsFrame(unittest.TestCase):
+class TheSidebarMatchesItsDesignFrame(unittest.TestCase):
     """The sidebar's width, colour bar and splitter handle match frame G01. ▸r/sidebar-from-frame"""
 
     @classmethod
@@ -163,7 +163,7 @@ class TheSidebarStandsOnItsFrame(unittest.TestCase):
         from amaze import amazetheme
         return amazetheme.drawn_nodes("G01", kind)
 
-    def test_the_frame_is_one_sidebar_the_code_can_follow(self):
+    def test_the_frame_rows_meet_edge_to_edge_at_one_height(self):
         """Rows edge to edge at one height, one bar, one text x, the handle at the list's edge."""
         rows = sorted(self._kind("row"), key=lambda n: n[2])
         self.assertEqual(1, len({r[4] for r in rows}), "the rows are drawn at different heights")

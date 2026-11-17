@@ -30,7 +30,7 @@ def _press(point):
         QtCore.Qt.KeyboardModifier.NoModifier)
 
 
-class TheCancelVerb(unittest.TestCase):
+class TheCancelConversionsModel(unittest.TestCase):
     """FileFiles.cancel_conversions - the model part, without a panel."""
 
     def setUp(self):
@@ -61,7 +61,7 @@ class TheCancelVerb(unittest.TestCase):
                 "a cancelled key must reset to UNREQUESTED - %r is "
                 "still %r" % (key, thumbnails.engine._states.get(key)))
 
-    def test_the_bar_is_settled_not_stranded(self):
+    def test_the_cancel_completes_the_progress_bar(self):
         """No reload resets the counters after a cancel, so the cancel completes the bar itself."""
         self._loaded_keys()
         seen = []
@@ -105,7 +105,7 @@ class TheCancelChip(unittest.TestCase):
         self.assertEqual([True], self.fired)
         self.assertEqual("material", self.tabs._checked_key)
 
-    def test_a_hidden_chip_takes_no_press(self):
+    def test_a_hidden_chip_ignores_a_press(self):
         self.tabs.set_cancel_visible(True)
         rect = self.tabs._cancel_rect()
         self.tabs.set_cancel_visible(False)
@@ -132,14 +132,14 @@ class TheCancelChip(unittest.TestCase):
         self.assertEqual([], self.fired)
 
 
-class TheChipFollowsTheBar(unittest.TestCase):
+class TheChipIsShownWithTheProgressBar(unittest.TestCase):
     """The panel part: one condition, one `set_conversion_bar_visible`, and the signals."""
 
     @classmethod
     def setUpClass(cls):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
-    def _file_section_quiet(self):
+    def _file_section_with_no_batch_running(self):
         """Enter the File section and settle any batch the fixture queued."""
         panel = self.panel
         if panel._is_online():
@@ -151,7 +151,7 @@ class TheChipFollowsTheBar(unittest.TestCase):
         return panel
 
     def test_the_chip_shows_exactly_when_the_bar_shows(self):
-        panel = self._file_section_quiet()
+        panel = self._file_section_with_no_batch_running()
         panel._on_file_folder_progress(1, 10)
         self.assertFalse(panel.texture_progress.isHidden())
         self.assertTrue(panel.section_tabs.cancel_visible())
@@ -159,9 +159,9 @@ class TheChipFollowsTheBar(unittest.TestCase):
         self.assertTrue(panel.texture_progress.isHidden())
         self.assertFalse(panel.section_tabs.cancel_visible())
 
-    def test_the_chip_survives_a_strip_rebuild(self):
+    def test_the_chip_is_kept_through_a_strip_rebuild(self):
         """A rebuilt tab strip reads the chip state from the bar itself, never recomputing it."""
-        panel = self._file_section_quiet()
+        panel = self._file_section_with_no_batch_running()
         panel._on_file_folder_progress(1, 10)
         panel._build_section_tabs()
         self.assertTrue(
@@ -172,7 +172,7 @@ class TheChipFollowsTheBar(unittest.TestCase):
         self.assertFalse(panel.section_tabs.cancel_visible())
 
     def test_activation_hides_the_chip_with_the_bar(self):
-        panel = self._file_section_quiet()
+        panel = self._file_section_with_no_batch_running()
         panel._on_file_folder_progress(1, 10)
         panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()
@@ -182,9 +182,9 @@ class TheChipFollowsTheBar(unittest.TestCase):
             "activation hid the bar and left the chip visible - the two "
             "follow one condition and must always match")
 
-    def test_the_chip_press_reaches_the_engine(self):
+    def test_the_chip_press_cancels_the_engine(self):
         """Press, hit test, `cancelClicked`, panel, model, engine; the flush before the cancel."""
-        panel = self._file_section_quiet()
+        panel = self._file_section_with_no_batch_running()
         panel._on_file_folder_progress(1, 10)
         panel.section_tabs.resize(600, panel.section_tabs.HEIGHT)
         rect = panel.section_tabs._cancel_rect()

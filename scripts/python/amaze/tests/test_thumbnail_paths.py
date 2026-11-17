@@ -167,7 +167,7 @@ class TheThumbnailPathIsComposedInOnePlace(unittest.TestCase):
                 self.prefs, unsafe, library_files.MATERIALS))
 
 
-class TheCacheKeyCarriesTheLibrary(unittest.TestCase):
+class TheCacheKeyIncludesTheLibrary(unittest.TestCase):
     """The RAM cache key includes the library, so two libraries with one asset id share no image."""
 
     def setUp(self):
@@ -202,16 +202,16 @@ class TheCacheKeyCarriesTheLibrary(unittest.TestCase):
 class ThumbnailsLeaveNothingOnTheUndoStack(unittest.TestCase):
     """A thumbnail leaves nothing on the undo stack, or Ctrl+Z restores the scaffold, not the edit."""
 
-    def test_a_pair_on_the_live_stack_really_does_come_back(self):
+    def test_a_create_and_destroy_on_the_live_stack_is_undone(self):
         """The measured Houdini behaviour that the source checks below rely on."""
-        def scrub():
+        def remove_obj_children():
             with hou.undos.disabler():
                 for child in list(hou.node("/obj").children()):
                     child.destroy()
             hou.undos.clear()
 
-        self.addCleanup(scrub)
-        scrub()
+        self.addCleanup(remove_obj_children)
+        remove_obj_children()
         node = hou.node("/obj").createNode("lopnet")
         node.destroy()
         after = {n.path() for n in hou.node("/obj").children()}
@@ -221,7 +221,7 @@ class ThumbnailsLeaveNothingOnTheUndoStack(unittest.TestCase):
             "createNode+destroy on the live stack no longer comes back "
             "on undo - this test's premise is gone, not its subject")
 
-        scrub()
+        remove_obj_children()
         with hou.undos.disabler():
             guarded = hou.node("/obj").createNode("lopnet")
             guarded.destroy()
@@ -444,18 +444,18 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
             "the end, and nothing puts back what was selected before")
 
     COMPANION = "amaze_preview_probe_cop"
-    HOME = "/obj/amaze_preview_probe_cop"    # a /mat import's companion: a COP Network object in /obj
+    PATH = "/obj/amaze_preview_probe_cop"    # a /mat import's companion: a COP Network object in /obj
 
-    def _sweep_companion(self):
-        left = hou.node(self.HOME)
+    def _remove_companion(self):
+        left = hou.node(self.PATH)
         if left is not None:
             test_support.drop_node(left)
 
     def _asset_with_a_companion(self):
         """A Karma fixture asset whose saved COP companion restores as a COP Network object in /obj."""
         from amaze.core import library_files, material, renderers
-        self._sweep_companion()
-        self.addCleanup(self._sweep_companion)
+        self._remove_companion()
+        self.addCleanup(self._remove_companion)
         test_support.reset_database_singletons()
         model = library_mod.MaterialLibrary(preferences=self.prefs)
         asset = next(a for a in model.assets
@@ -469,11 +469,11 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
         asset.cop_net = {"name": self.COMPANION, "type": "copnet"}
         return asset
 
-    def test_update_preview_takes_back_a_companion_it_restored(self):
+    def test_update_preview_removes_a_companion_it_restored(self):
         asset = self._asset_with_a_companion()
         thumbs.ThumbNailRenderer(self.prefs, asset).create_thumbnail()
         self.assertIsNone(
-            hou.node(self.HOME),
+            hou.node(self.PATH),
             "Update Render restored the material's COP companion for the "
             "render and left it in the artist's scene")
 
@@ -484,14 +484,14 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
             shared.createNode("null", "keep_me")
         before = (shared.sessionId(), [c.name() for c in shared.children()])
         thumbs.ThumbNailRenderer(self.prefs, asset).create_thumbnail()
-        survivor = hou.node(self.HOME)
+        kept = hou.node(self.PATH)
         self.assertIsNotNone(
-            survivor,
+            kept,
             "a companion shared by name was in the scene before the "
             "preview and the preview removed it")
         self.assertEqual(
-            before, (survivor.sessionId(),
-                     [c.name() for c in survivor.children()]),
+            before, (kept.sessionId(),
+                     [c.name() for c in kept.children()]),
             "the shared companion is not the network that was there")
 
 
@@ -552,9 +552,9 @@ class ANetworkThumbnailLeavesNothingOnTheUndoStack(unittest.TestCase):
         self.assertEqual((), hou.undos.undoLabels())
 
 
-class SafeSetSurvivesAMissingParm(unittest.TestCase):
+class SafeSetIgnoresAMissingParm(unittest.TestCase):
 
-    def test_safe_set_survives_a_missing_parm(self):
+    def test_safe_set_does_not_raise_on_a_missing_parm(self):
         class Bare:
             def parm(self, name):
                 return None
@@ -693,7 +693,7 @@ class UpdatePreviewWritesTheManifestOnce(unittest.TestCase):
                              "a one-shot invalidate is no longer written to disk")
 
 
-class ACapturePathCostsNoDisk(unittest.TestCase):
+class ACapturePathLookupReadsNoDisk(unittest.TestCase):
     """A File tile requests its capture's path on every paint: a hash and a join, nothing more."""
 
     @staticmethod
@@ -784,7 +784,7 @@ class BothRedshiftTerminalsAreLookedFor(unittest.TestCase):
             "variant is not matched there: %s" % offenders)
 
 
-class ANodeRefusalIsCaughtAsHouError(unittest.TestCase):
+class ANodeCreationFailureIsCaughtAsHouError(unittest.TestCase):
     """Every `createNode` catches `hou.Error`; `OperationFailed` misses a lock. ▸r/hou-errors"""
 
     def test_no_createNode_is_guarded_by_OperationFailed_alone(self):
@@ -925,7 +925,7 @@ class BundledFilesAreFoundThroughOneLookup(unittest.TestCase):
             "#ff0000", image.pixelColor(0, 0).name(),
             "the badge was drawn from the tree $AMAZE names, not the loaded package")
 
-    def test_a_bundled_lookup_survives_an_UNSET_install_variable(self):
+    def test_a_bundled_lookup_works_with_an_UNSET_install_variable(self):
         """With $AMAZE unset a bundled lookup still finds the file, or toolbar icons go missing."""
         import amaze
         from amaze.core import gradient_library

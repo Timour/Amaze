@@ -7,7 +7,7 @@ from amaze.core import library_files, material, repair
 from amaze.tests import test_support
 
 
-class TheThumbnailCountKnowsItsSectionTest(unittest.TestCase):
+class TheThumbnailCountIsPerSectionTest(unittest.TestCase):
     """A LOP setup is not counted as missing a render, a SOP setup is, and the count reads node."""
 
     def setUp(self):

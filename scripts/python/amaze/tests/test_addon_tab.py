@@ -77,7 +77,7 @@ class _Tab(unittest.TestCase):
         return self.dialog._lbl_addons.text()
 
 
-class TheRowsAreThePackagesOwnTest(_Tab):
+class TheRowsComeFromThePackagesTest(_Tab):
 
     NODES = (_node("Alpha", "alpha", "pictures/pair.svg", "Does two things.", group="Pair"),
              _node("Beta", "beta", "pictures/pair.svg", "Does two things.", group="Pair"),
@@ -95,7 +95,7 @@ class TheRowsAreThePackagesOwnTest(_Tab):
                          rows[0]["add-on short description"].toolTip())
         self.assertFalse(rows[0]["add-on picture"].pixmap().isNull(), "the package's picture")
 
-    def test_every_row_lands_on_the_drawn_rows(self):
+    def test_every_row_is_placed_on_the_drawn_rows(self):
         """Rows 1 and 2 at their `P05` positions, row 3 one `P05_ROW_PITCH` below row 2."""
         drawn = {}
         for kind, x, y, w, h, _text in amazetheme.DIALOG_LAYOUT["P05"]["nodes"]:
@@ -114,7 +114,7 @@ class TheRowsAreThePackagesOwnTest(_Tab):
                         self.assertEqual((theme.ui_px(w), theme.ui_px(h)),
                                          (widget.width(), widget.height()))
 
-    def test_turning_a_row_off_moves_its_files_and_says_a_restart_is_due(self):
+    def test_turning_a_row_off_moves_its_files_and_shows_a_restart_is_due(self):
         pair = self.dialog.addon_rows[0]["ToggleSwitch"]
         self.assertTrue(pair.isChecked())
         pair.setChecked(False)
@@ -137,7 +137,7 @@ class TheRowsAreThePackagesOwnTest(_Tab):
         self.assertEqual(messages.ADDONS_INSTALLED % "Example 1.3.0, Other 0.1.0", self.line())
         self.assertEqual("Check for Updates", self.dialog._btn_addons.text())
 
-    def test_update_holds_each_package_to_the_running_houdini(self):
+    def test_update_passes_the_running_houdini_version_to_each_install(self):
         from amaze.helpers import hostver
         self.dialog._addons_found = [("Example", "1.3.0", URL % ("Example", "1.3.0"))]
         seen = []
@@ -147,7 +147,7 @@ class TheRowsAreThePackagesOwnTest(_Tab):
         self.assertEqual([hostver.houdini_version()], seen,
                          "`fetch_and_install` got no `running` Houdini version")
 
-    def test_nothing_newer_says_every_add_on_is_up_to_date(self):
+    def test_nothing_newer_shows_every_add_on_is_up_to_date(self):
         with mock.patch.object(addons, "store_versions",
                                lambda betas=False: {"Example": ("1.2.3", URL % ("Example", "1.2.3"))}):
             self.dialog.check_addons()
@@ -167,7 +167,7 @@ class TheRowsAreThePackagesOwnTest(_Tab):
         self.assertEqual([True], asked)
         self.assertEqual(messages.ADDONS_AVAILABLE % "Example 1.2.0-beta", self.line())
 
-    def test_turning_the_beta_switch_drops_what_the_last_check_found(self):
+    def test_turning_the_beta_switch_clears_what_the_last_check_found(self):
         with mock.patch.object(addons, "store_versions",
                                lambda betas=False: {"Example": ("1.3.0", URL % ("Example", "1.3.0"))}):
             self.dialog.check_addons()
@@ -175,7 +175,7 @@ class TheRowsAreThePackagesOwnTest(_Tab):
         self.dialog._cbx_addon_betas.setChecked(True)
         self.assertEqual("Check for Updates", self.dialog._btn_addons.text())
 
-    def test_an_unreachable_store_is_said_in_the_line(self):
+    def test_an_unreachable_store_is_shown_in_the_status_line(self):
         def offline(betas=False):
             raise OSError("offline")
 
@@ -189,7 +189,7 @@ class ABetaInstalledTest(_Tab):
     NODES = (_node("Gamma", "gamma", "pictures/gamma.svg", "Does a third."),)
     VERSION = "1.2.4-beta"
 
-    def test_its_row_reads_its_beta_and_switched_off_the_release_goes_back(self):
+    def test_its_row_shows_its_beta_and_a_release_check_offers_the_release(self):
         self.assertEqual("version 1.2.4-beta", self.dialog.addon_rows[0]["add-on version"].text())
         with mock.patch.object(addons, "store_versions",
                                lambda betas=False: {"Example": ("1.2.3", URL % ("Example", "1.2.3"))}):
@@ -199,7 +199,7 @@ class ABetaInstalledTest(_Tab):
 
 class NoAddOnInstalledTest(_Tab):
 
-    def test_the_list_says_none_is_installed(self):
+    def test_the_list_shows_none_is_installed(self):
         self.assertEqual([], self.dialog.addon_rows)
         shown = [label.text() for label in self.dialog._addon_list.widget()
                  .findChildren(QtWidgets.QLabel)]
@@ -212,7 +212,7 @@ class MoreGroupsThanTheFrameHoldsTest(_Tab):
     NODES = tuple(_node("Node %d" % i, "node%d" % i, "pictures/node.svg", "Does thing %d." % i)
                   for i in range(10))
 
-    def test_the_page_asks_for_no_more_than_the_drawn_frame(self):
+    def test_the_page_size_hint_fits_the_drawn_frame(self):
         tabs = self.dialog.findChild(QtWidgets.QTabWidget)
         page = next(tabs.widget(i) for i in range(tabs.count()) if tabs.tabText(i) == "Add-On")
         bar = max(theme.ui_px(amazetheme.PREFS_TAB_BAR[3]), tabs.tabBar().sizeHint().height())

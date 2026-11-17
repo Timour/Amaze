@@ -65,10 +65,10 @@ def _location_prefs(testcase, settings, tag_favourites=True):
     return prefs, library
 
 
-class TheFileTabIntroducesItselfOnceTest(unittest.TestCase):
+class TheFileTabIsAddedOnceTest(unittest.TestCase):
     """A settings file from before the File section gets the tab once; turning it off is then kept."""
 
-    def test_the_file_tab_introduces_itself_once(self):
+    def test_the_file_tab_is_added_once_and_stays_off_when_disabled(self):
         old = {"enabled_sections": ["material", "code"]}
         p = _prefs_with_settings(self, old)
         self.assertIn("file", p.enabled_sections,
@@ -110,7 +110,7 @@ class LocationsLiveInTheFilesDatabaseTest(unittest.TestCase):
         return _location_prefs(self, settings or self.REAL_SHAPE,
                                tag_favourites=tag_favourites)
 
-    def test_every_location_lands_field_for_field_in_the_files_database(self):
+    def test_every_location_is_stored_field_for_field_in_the_files_database(self):
         prefs, library = _location_prefs(self, {"directory": ""})
         for path, record in self.REAL_SHAPE["file_location_records"].items():
             self.assertTrue(locations_mod.set_record(prefs, path, record), path)
@@ -137,7 +137,7 @@ class LocationsLiveInTheFilesDatabaseTest(unittest.TestCase):
         prefs.library_user = test_support.FIXTURE_USER
         self.assertEqual(["/tex/bokeh/"], list(prefs.file_folders))
 
-    def test_a_removal_takes_what_is_keyed_under_the_location(self):
+    def test_a_removal_deletes_what_is_keyed_under_the_location(self):
         from amaze.core import notes
         prefs, _library = _location_prefs(self, {"directory": ""})
         locations_mod.register(prefs, "/tex/bokeh/")
@@ -169,7 +169,7 @@ class KindRouterTest(unittest.TestCase):
                 ("l.hip.bak", "other"), ("v.vdb", "other")):    # a cache is not rendered unless requested
             self.assertEqual(kind, file_library.kind_for(name), name)
 
-    def test_the_router_answers_as_the_three_recognisers_do(self):
+    def test_the_router_agrees_with_the_three_recognisers(self):
         from amaze.core import scene_files, texture_library
 
         def by_recogniser(name):
@@ -235,7 +235,7 @@ class ScenePathsAreSpelledPerPreferenceTest(unittest.TestCase):
                          "opens it as a file")
 
 
-class AGeometryImportFrontsWhatItMade(unittest.TestCase):
+class AGeometryImportMakesItsNodeCurrent(unittest.TestCase):
     """The geometry import leaves its new node current and selected, as the Tab menu does."""
 
     @classmethod
@@ -274,7 +274,7 @@ class DropFilePathOnNodeTest(unittest.TestCase):
         import types
         return types.SimpleNamespace(data=lambda role: path)
 
-    def test_the_first_file_parm_takes_the_spelled_path_and_none_refuses(self):
+    def test_the_first_file_parm_takes_the_spelled_path_and_no_file_parm_returns_false(self):
         home = self._home()
         geo = hou.node("/obj").createNode("geo", "amaze_droptest")
         self.addCleanup(geo.destroy)
@@ -328,7 +328,7 @@ class CreationRuleTest(unittest.TestCase):
             data=lambda role: roles.get(role, path),
             isValid=lambda: True)
 
-    def test_an_image_becomes_a_mtlximage_and_a_sop_network_refuses_it(self):
+    def test_an_image_becomes_a_mtlximage_and_a_sop_network_returns_false(self):
         from amaze.helpers import helpers
 
         home = self._home()
@@ -348,7 +348,7 @@ class CreationRuleTest(unittest.TestCase):
         self.assertEqual((), sop.children(),
                          "a network that cannot hold it gained a child anyway")
 
-    def test_a_gradient_becomes_the_mtlx_ramp_carrier(self):
+    def test_a_gradient_becomes_an_mtlx_ramp_node(self):
         from amaze.helpers import helpers
 
         net = self._matnet()
@@ -363,7 +363,7 @@ class CreationRuleTest(unittest.TestCase):
             helpers.find_color_ramp_parm(children[0]),
             "the carrier has no ramp parameter for the gradient")
 
-    def test_a_vex_snippet_becomes_a_wrangle_in_sops_and_vops_refuse_it(self):
+    def test_a_vex_snippet_becomes_a_wrangle_in_sops_and_vops_return_false(self):
         from amaze.helpers import helpers
 
         net = self._geo()
@@ -391,7 +391,7 @@ class CreationRuleTest(unittest.TestCase):
         self.addCleanup(
             lambda: self.panel.__dict__.pop("_view_create_networks", None))
 
-    def test_a_positioned_carrier_never_auto_places(self):
+    def test_a_node_created_at_a_position_is_never_auto_placed(self):
         """A given position is the placement; moveToGoodPosition runs only as the no-position fallback."""
         from unittest import mock
         net = self._matnet()
@@ -430,7 +430,7 @@ class CreationRuleTest(unittest.TestCase):
             got = self.panel.drop_placement.release_position_in(outer)
         self.assertEqual((9.0, 9.0), (got.x(), got.y()))
 
-    def test_a_creation_never_steals_the_selection(self):
+    def test_a_creation_restores_the_prior_selection(self):
         """Houdini selects new nodes and makes them current; a creation restores the prior selection."""
         sop = self._geo()
         self._with_view_networks([sop])
@@ -480,11 +480,11 @@ class CreationRuleTest(unittest.TestCase):
         self.assertTrue(new[0].isCurrent(),
                         "the imported material is not the current node")
 
-    def test_the_click_dispatcher_absorbs_a_refusal_and_lets_a_crash_out(self):
+    def test_the_click_dispatcher_catches_permission_error_and_raises_other_errors(self):
         """A locked network's PermissionError is caught as on a drop; any other error still raises."""
         from amaze.panel import sections as sections_module
 
-        class RefusingSection:
+        class PermissionErrorSection:
             key = "refusing"
             DROP = sections_module.DropRule(
                 click_resolve="refuse_for_the_test")
@@ -502,11 +502,11 @@ class CreationRuleTest(unittest.TestCase):
                 raise RuntimeError("a real defect")
 
         index = self.panel.code_sorted_model.index(0, 0)
-        self.panel.click_on_row(RefusingSection(), index)
+        self.panel.click_on_row(PermissionErrorSection(), index)
         with self.assertRaises(RuntimeError):
             self.panel.click_on_row(CrashingSection(), index)
 
-    def test_the_ghost_promises_what_the_drop_delivers(self):
+    def test_the_drag_preview_names_the_node_the_drop_creates(self):
         """The drag preview names the node a drop on empty space creates, from the same DropRule."""
         from amaze.panel import dragdrop_widgets, sections as sections_mod
         sop = self._geo()
@@ -529,24 +529,24 @@ class CreationRuleTest(unittest.TestCase):
                 self.panel, rule, "code", vop),
             "a network with no carrier still got a preview node type")
 
-    def test_every_borrowed_overlay_is_given_back(self):
+    def test_dragengine_end_clears_every_overlay(self):
         """The overlay is one slot per editor; dragengine.end() clears it on release, cancel and leave."""
         from amaze.core import dragengine
-        given_back = []
+        cleared = []
 
         class _Editor:
             def setOverlayShapes(self, shapes):
                 if not shapes:
-                    given_back.append(True)
+                    cleared.append(True)
 
         editor = _Editor()
         dragengine._editors_with_overlay.append(editor)
         dragengine.end()
-        self.assertTrue(given_back, "the overlay was never cleared")
+        self.assertTrue(cleared, "the overlay was never cleared")
         self.assertEqual([], dragengine._editors_with_overlay,
                          "`dragengine._editors_with_overlay` still lists an editor")
 
-    def test_the_editor_is_put_back_in_its_own_network(self):
+    def test_the_editor_is_restored_to_its_own_network(self):
         """An import moves an unpinned editor elsewhere, so its PWD is saved and restored."""
         from unittest import mock
         import types
@@ -584,7 +584,7 @@ class CreationRuleTest(unittest.TestCase):
                          "import moved it into")
         self.assertIn(("pwd", home.path()), seen)
 
-    def test_the_selection_is_put_back_and_it_costs_no_undo_steps(self):
+    def test_the_selection_is_restored_with_no_undo_steps(self):
         """Selection calls push undo entries, so the restore runs under hou.undos.disabler()."""
         from unittest import mock
         from amaze.helpers import helpers
@@ -634,7 +634,7 @@ class CreationRuleTest(unittest.TestCase):
 
         return types.SimpleNamespace(paneTabs=lambda: [_Tab()])
 
-    def test_the_deferred_put_back_waits_while_amaze_is_still_at_work(self):
+    def test_the_deferred_restore_waits_while_amaze_is_still_busy(self):
         """A save's deferred pass must not run inside processEvents. ▸r/editor-put-back"""
         from amaze.helpers import helpers
         home = self._geo()
@@ -656,7 +656,7 @@ class CreationRuleTest(unittest.TestCase):
                          [s for s in seen if s[0] == "current"],
                          "the put-back did not run once the event loop was idle")
 
-    def test_a_nested_block_arms_no_put_back_of_its_own(self):
+    def test_a_nested_block_schedules_no_restore_of_its_own(self):
         """An inner block's deferred pass would run last and restore a mid-operation state."""
         from amaze.helpers import helpers
         home = self._geo()
@@ -680,7 +680,7 @@ class CreationRuleTest(unittest.TestCase):
             test_support.settle(lambda: "deferred" in passes)
         self.assertEqual(["immediate", "immediate", "deferred"], passes)
 
-    def test_a_selection_is_a_hint_the_click_and_the_menu_read_alike(self):
+    def test_the_click_and_the_menu_treat_a_selected_node_alike(self):
         """A selected node that cannot take the snippet falls through to creation; one that can gets it."""
         index = self.panel.code_sorted_model.index(0, 0)
         source = self.panel.code_sorted_model.mapToSource(index)
@@ -709,7 +709,7 @@ class CreationRuleTest(unittest.TestCase):
                     "created beside a node that could take it"
                     % (route, selected))
 
-    def test_a_locked_asset_is_skipped_and_the_editable_one_takes_it(self):
+    def test_a_locked_asset_is_skipped_and_the_editable_subnet_gets_the_node(self):
         """The walk skips a locked HDA's levels to its editable `create` subnet and unlocks nothing."""
         stage = hou.node("/stage")
         sc = stage.createNode("sopcreate")
@@ -758,7 +758,7 @@ class CreationRuleTest(unittest.TestCase):
             "the double-click imported beside the selection instead of "
             "filling it")
 
-    def test_an_invisible_selection_cannot_hijack_click_on_row(self):
+    def test_click_on_row_ignores_a_selection_outside_the_visible_editors(self):
         """A double-click considers only selected nodes inside the visible editors' networks."""
         sop = self._geo()
         elsewhere = self._matnet()
@@ -775,7 +775,7 @@ class CreationRuleTest(unittest.TestCase):
             1, len(sop.children()),
             "a selected node in no visible network took the double-click")
 
-    def test_double_click_with_nothing_selected_creates_the_carrier(self):
+    def test_double_click_with_nothing_selected_creates_a_new_node(self):
         from amaze.helpers import helpers
 
         home = self._home()
@@ -838,7 +838,7 @@ class HoudiniPathTest(unittest.TestCase):
         self.assertTrue(collapsed.startswith("$HOME/"),
                         "the default style is not $HOME: %r" % collapsed)
 
-    def test_default_puts_the_cache_path_back(self):
+    def test_default_restores_the_cache_path(self):
         """Default on the Cache Path row clears the preference, so the machine default applies."""
         from amaze.dialogs import prefs_dialog
         from amaze.helpers import hostos as hostos_mod
@@ -1063,7 +1063,7 @@ class FileKeyIsCanonicalTest(unittest.TestCase):
         self.assertEqual("", model.file_key(999))    # normpath("") is ".", truthy past every `if not key`
         self.assertEqual("", model.file_key(-1))
 
-    def test_a_capture_taken_by_path_lands_on_the_tile(self):
+    def test_a_capture_taken_by_path_shows_on_the_tile(self):
         """The shelf names a scene by its path, the menu by its row: both find one capture file."""
         from amaze.core import captures
         tmp = tempfile.mkdtemp(prefix="amaze_key_")
@@ -1257,7 +1257,7 @@ class DoubleClickDispatchTest(unittest.TestCase):
 class CopyPathTest(unittest.TestCase):
     """Copy Path fills the clipboard with HOUDINI paths, one per line, and no dialog."""
 
-    def test_paths_land_houdini_shaped_one_per_line(self):
+    def test_paths_are_copied_houdini_spelled_one_per_line(self):
         from amaze.panel import drop_placement
         from amaze.panel import panel as panel_mod
         home = hou.expandString("$HOME").replace("\\", "/").rstrip("/")
@@ -1279,7 +1279,7 @@ class CopyPathTest(unittest.TestCase):
 class HipDragLoadsNothingTest(unittest.TestCase):
     """A hip dragged out of Amaze and released loads nothing; a double-click opens the scene."""
 
-    def _armed_hip(self):
+    def _hip_harness(self):
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import test_drag_gesture as harness_mod
         h = harness_mod._Harness(self, "file", kind="hip")
@@ -1302,11 +1302,11 @@ class HipDragLoadsNothingTest(unittest.TestCase):
         h.view.mouseReleaseEvent(event)
 
     def test_released_outside_or_inside_the_panel_loads_nothing(self):
-        h = self._armed_hip()
+        h = self._hip_harness()
         self._release_at_global(h, QtCore.QPoint(5000, 5000))
         self.assertNotIn("open", h.panel.calls,
                          "a hip dragged out of Amaze loaded the scene")
-        h = self._armed_hip()
+        h = self._hip_harness()
         inside = h.panel.mapToGlobal(QtCore.QPoint(5, 5))
         self._release_at_global(h, inside)
         self.assertNotIn("open", h.panel.calls,
@@ -1381,7 +1381,7 @@ class TooltipWidthTest(unittest.TestCase):
                       "800 logical is 1600 real pixels on that screen")
 
 
-class EveryDelegateCapsTheWordsItsItemsSay(unittest.TestCase):
+class EveryDelegateCapsTheTooltipsOfItsItems(unittest.TestCase):
     """Models return plain text; the tile, list cell and sidebar row delegates wrap it at the cap."""
 
     def _shown(self, delegate, words):
@@ -1413,10 +1413,10 @@ class EveryDelegateCapsTheWordsItsItemsSay(unittest.TestCase):
                                      self._shown(delegate, words))
 
 
-class StarRowsLeftPreferencesTest(unittest.TestCase):
+class StarColourRowsAreNotInPreferencesTest(unittest.TestCase):
     """The badges draw the star as drawn, so the star-colour rows and keys left the preferences."""
 
-    def test_every_key_the_settings_code_does_not_know_survives_a_save(self):
+    def test_every_key_the_settings_code_does_not_know_is_kept_by_a_save(self):
         """save() leaves a key it does not know as it is: no list of older names is kept."""
         import json
         p = test_support.fixture_prefs(self)
@@ -1446,7 +1446,7 @@ class StarRowsLeftPreferencesTest(unittest.TestCase):
 class PrefsComboFocusTest(unittest.TestCase):
     """No Preferences dropdown takes focus: Houdini's stylesheet paints a focused combo navy."""
 
-    def test_every_prefs_combo_refuses_focus(self):
+    def test_every_prefs_combo_takes_no_focus(self):
         from amaze.dialogs import prefs_dialog
         p = test_support.fixture_prefs(self)
         dlg = prefs_dialog.PrefsDialog(p, panel=None)
@@ -1518,7 +1518,7 @@ class LocationManagementTest(unittest.TestCase):
                          "the flat location descended anyway - "
                          "one location's recursion applied to another")
         folders_model = file_library.FileFolders(prefs)
-        counts = _landed_counts(folders_model)[1:]
+        counts = _wait_for_counts(folders_model)[1:]
         self.assertEqual([2, 1], counts,
                          "the counts do not follow each location's own "
                          "recursion flag")
@@ -1637,7 +1637,7 @@ class LocationManagementTest(unittest.TestCase):
         self.assertEqual([model.display_name(path) for path in model._folders()],
                          texts[1:], "a hidden count was shown")
 
-    def test_a_rename_wins_and_an_empty_rename_clears(self):
+    def test_a_rename_sets_the_name_and_an_empty_rename_clears_it(self):
         model, prefs = self._folders_model("/assets/textures/")
         prefs.set_file_folder_name("/assets/textures/", "Set Dressing")
         self.assertEqual("Set Dressing", model.data(
@@ -1648,7 +1648,7 @@ class LocationManagementTest(unittest.TestCase):
         self.assertIn("textures", label,
                       "clearing the name did not fall back to the path")
 
-    def test_locate_carries_name_and_recursion(self):
+    def test_locate_keeps_name_and_recursion(self):
         old = self._tmpdir()
         new = self._tmpdir()
         model, prefs = self._folders_model(old)
@@ -1698,7 +1698,7 @@ class LocationManagementTest(unittest.TestCase):
         import hashlib
         from amaze.helpers import hostos as hostos_mod
 
-        doomed_dir = self._tmpdir()
+        removed_dir = self._tmpdir()
         kept_dir = self._tmpdir()
         cache_root = hostos_mod.cache_root()
         cache_dir = os.path.join(cache_root, "texture_thumbnails_256")
@@ -1714,9 +1714,9 @@ class LocationManagementTest(unittest.TestCase):
                 handle.write(b"png")
             return path, png
 
-        doomed_path, doomed_png = entry(doomed_dir, "a.png")
+        removed_path, removed_png = entry(removed_dir, "a.png")
         kept_path, kept_png = entry(kept_dir, "b.png")
-        manifest = {doomed_path: {"mtime": 1, "size": 3},
+        manifest = {removed_path: {"mtime": 1, "size": 3},
                     kept_path: {"mtime": 1, "size": 3}}
         with open(os.path.join(cache_dir, "manifest.json"), "w") as f:
             json.dump(manifest, f)
@@ -1738,9 +1738,9 @@ class LocationManagementTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, prefs.dir, ignore_errors=True)
 
         removed = file_library.sweep_folder_cache(
-            prefs, doomed_dir, [kept_dir])
+            prefs, removed_dir, [kept_dir])
         self.assertEqual(1, removed)
-        self.assertFalse(os.path.exists(doomed_png),
+        self.assertFalse(os.path.exists(removed_png),
                          "the removed folder's thumbnail was not deleted")
         self.assertTrue(os.path.exists(kept_png),
                         "another location's thumbnail was deleted")
@@ -1757,7 +1757,7 @@ class LocationManagementTest(unittest.TestCase):
     def test_a_swept_entry_stays_gone_when_the_live_cache_saves(self):
         """The grid's own cache object held the removed folder's entries, saved and unsaved."""
         from amaze.core import texture_library
-        doomed_dir = self._tmpdir()
+        removed_dir = self._tmpdir()
         kept_dir = self._tmpdir()
         image = QtGui.QImage(8, 8, QtGui.QImage.Format.Format_ARGB32)
         image.fill(QtGui.QColor("red"))
@@ -1768,7 +1768,7 @@ class LocationManagementTest(unittest.TestCase):
                 handle.write(b"x")
             return hostos.canonical_path_key(path)
 
-        saved, unsaved = (source(doomed_dir, n) for n in ("a.png", "b.png"))
+        saved, unsaved = (source(removed_dir, n) for n in ("a.png", "b.png"))
         kept, later = (source(kept_dir, n) for n in ("c.png", "d.png"))
         cache = texture_library.ThumbnailCache(
             256, prefix="texture_thumbnails_sweep_live")
@@ -1780,7 +1780,7 @@ class LocationManagementTest(unittest.TestCase):
         prefs = _Prefs([])
         self.addCleanup(shutil.rmtree, prefs.dir, ignore_errors=True)
 
-        file_library.sweep_folder_cache(prefs, doomed_dir, [kept_dir])
+        file_library.sweep_folder_cache(prefs, removed_dir, [kept_dir])
         cache.put(later, image)
         cache.save()
 
@@ -1827,7 +1827,7 @@ class LocationManagementTest(unittest.TestCase):
         sweep.assert_called_once_with(prefs, tmp, [kept])
 
 
-def _landed_counts(model, timeout=10.0):
+def _wait_for_counts(model, timeout=10.0):
     """Every row's count, All first, once no walk is queued or running; a paint only requests."""
     from amaze.core import category
     deadline = time.monotonic() + timeout
@@ -1879,7 +1879,7 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
             lambda: not getattr(model, "_walking", None)))
         return model, roots
 
-    def _held_listing(self, held_root):
+    def _blocked_listing(self, blocked_root):
         """An `os.scandir` that blocks a WORKER inside one location until released."""
         main = threading.get_ident()
         entered, release = threading.Event(), threading.Event()
@@ -1888,7 +1888,7 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
 
         def listing(path="."):
             if (threading.get_ident() != main
-                    and _same_path(path, held_root)):
+                    and _same_path(path, blocked_root)):
                 entered.set()
                 release.wait(10)
             return real(path)
@@ -1918,11 +1918,11 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
             view.resize(260, 200)
             view.show()
             view.grab()
-            counts = _landed_counts(model)
+            counts = _wait_for_counts(model)
         self.assertEqual([], on_gui, "a paint read folders on the GUI thread")
         self.assertEqual([5, 2, 3], counts, "the counts are wrong")
 
-    def test_counts_land_and_all_shows_the_total(self):
+    def test_counts_arrive_and_all_shows_the_total(self):
         from amaze.core import category
         model, _roots = self._model(2, 3, 4)
         changed = []
@@ -1932,46 +1932,46 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
                  for row in range(model.rowCount())]
         self.assertEqual([None] * 4, first,
                          "a first paint returned counts only a walk could know")
-        self.assertEqual([9, 2, 3, 4], _landed_counts(model),
+        self.assertEqual([9, 2, 3, 4], _wait_for_counts(model),
                          "the counts or the All total did not arrive")
         for row in (0, 1, 2, 3):
             self.assertIn((row, row), changed,
                           "row %d never got dataChanged for its count" % row)
 
-    def test_a_held_location_holds_back_no_other_count(self):
+    def test_a_blocked_location_delays_no_other_count(self):
         """A hung share blocks only its own worker; every other location's count still arrives."""
         model, roots = self._model(*[1] * 8)
-        held_key = model._folders()[0]
+        blocked_key = model._folders()[0]
         others = model._folders()[1:]
-        listing, entered, release = self._held_listing(roots[0])
+        listing, entered, release = self._blocked_listing(roots[0])
         with mock.patch("os.scandir", listing):
             for row in range(1, model.rowCount()):
                 model.data(model.index(row, 0), model.COUNT_ROLE)
-            landed = test_support.pump_until(
+            counted = test_support.pump_until(
                 lambda: all(model._counts.get(p) == 1 for p in others), timeout=5.0)
             self.assertTrue(entered.is_set(), "premise: the held walk never ran on a worker")
-            self.assertIsNone(model._counts.get(held_key),
+            self.assertIsNone(model._counts.get(blocked_key),
                               "premise: the blocked location's count arrived while blocked")
             waiting = [p for p in others if model._counts.get(p) is None]
             release.set()
-            counts = _landed_counts(model)
-        self.assertTrue(landed, "%d location(s) had no count while another walked: %s"
+            counts = _wait_for_counts(model)
+        self.assertTrue(counted, "%d location(s) had no count while another walked: %s"
                         % (len(waiting), waiting))
         self.assertEqual([8] + [1] * 8, counts, "the counts are wrong")
 
     def test_a_location_removed_mid_walk_keeps_no_count(self):
         model, roots = self._model(2, 3)
-        doomed = model._folders()[0]
-        listing, entered, release = self._held_listing(roots[0])
+        removed = model._folders()[0]
+        listing, entered, release = self._blocked_listing(roots[0])
         with mock.patch("os.scandir", listing):
             model.data(model.index(1, 0), model.COUNT_ROLE)
             self.assertTrue(test_support.pump_until(entered.is_set),
                             "the walk never ran on a worker")
             self.assertTrue(model.remove_folder(1), "premise: remove_folder failed")
             release.set()
-            counts = _landed_counts(model)
+            counts = _wait_for_counts(model)
         self.assertEqual([3, 3], counts, "All or the surviving row is wrong")
-        self.assertNotIn(doomed, model._counts,
+        self.assertNotIn(removed, model._counts,
                          "the removed location kept the count its walk brought back")
 
     def test_a_count_walked_under_an_old_rule_is_dropped(self):
@@ -1987,7 +1987,7 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
         shown = []
         model.dataChanged.connect(
             lambda first, last, roles=(): shown.append(model._counts.get(key)))
-        listing, entered, release = self._held_listing(root)
+        listing, entered, release = self._blocked_listing(root)
         with mock.patch("os.scandir", listing):
             model.data(model.index(1, 0), model.COUNT_ROLE)
             self.assertTrue(test_support.pump_until(entered.is_set),
@@ -1995,14 +1995,14 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
             prefs.set_file_folder_kinds(root, locations_mod.SHOWN_BY_DEFAULT)
             model.refresh_counts()
             release.set()
-            counts = _landed_counts(model)
+            counts = _wait_for_counts(model)
         self.assertEqual([2, 2], counts,
                          "a count walked under the old rule was kept")
         self.assertNotIn(1, shown, "the old rule's count was emitted with dataChanged")
 
     def test_a_relocate_recounts_only_that_location(self):
         model, roots = self._model(1, 2, 3)
-        _landed_counts(model)
+        _wait_for_counts(model)
         new = tempfile.mkdtemp(prefix="amaze_walk_moved_")
         self.addCleanup(shutil.rmtree, new, ignore_errors=True)
         for i in range(4):
@@ -2019,12 +2019,12 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
         with mock.patch("os.scandir", listing):
             self.assertGreaterEqual(model.relocate_folder(2, new), 0,
                                     "premise: Locate failed")
-            counts = _landed_counts(model)
+            counts = _wait_for_counts(model)
         self.assertEqual([8, 1, 4, 3], counts, "the moved location's count is wrong")
         self.assertEqual([_norm(new)], walked,
                          "a Locate recounted locations it did not move")
 
-    def test_a_count_asked_from_another_thread_still_lands(self):
+    def test_a_count_requested_from_another_thread_still_arrives(self):
         """hrpyc reads models off the GUI thread; a zero-timer started there never fires."""
         model, _roots = self._model(5)
         asker = threading.Thread(
@@ -2033,7 +2033,7 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
         asker.join(10)
         self.assertTrue(test_support.pump_until(lambda: model._counts.get(model._folders()[0]) == 5),
                         "a count requested from another thread never arrived")
-        self.assertEqual([5, 5], _landed_counts(model),
+        self.assertEqual([5, 5], _wait_for_counts(model),
                          "the sidebar stopped counting after a request from another thread")
 
     def test_shutdown_does_not_wait_out_a_walk(self):
@@ -2101,7 +2101,7 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
             started = list(walked)
         self.assertEqual(model.COUNT_WORKERS, len(started),
                          "the stopped walks started the queued ones after the shutdown")
-        self.assertEqual([6] + [1] * 6, _landed_counts(model),
+        self.assertEqual([6] + [1] * 6, _wait_for_counts(model),
                          "after a shutdown the counts never arrived")
 
 
@@ -2257,7 +2257,7 @@ class RemovingANestedLocationTest(unittest.TestCase):
             "a removed location no other location covers kept a star, "
             "comment or icon, so re-adding it does not start empty")
 
-    def test_a_refused_move_retires_nothing(self):
+    def test_a_failed_move_unregisters_nothing(self):
         prefs = self._nested(self.outer, self.inner)
         self._annotate(prefs)
         with mock.patch.object(locations_mod, "files_moved", lambda *_a: False):
@@ -2352,7 +2352,7 @@ class TheFolderOrderHasOneSpellingTest(unittest.TestCase):
             "of the sidebar")
 
 
-class ALocationWriteIsAnnouncedOnlyWhenItLandsTest(unittest.TestCase):
+class ALocationWriteIsAnnouncedOnlyWhenItSucceedsTest(unittest.TestCase):
     """The sidebar is notified of a row change only after its prefs write succeeded."""
 
     def setUp(self):
@@ -2365,14 +2365,14 @@ class ALocationWriteIsAnnouncedOnlyWhenItLandsTest(unittest.TestCase):
         self.prefs = _Prefs([self.folder])
         self.addCleanup(shutil.rmtree, self.prefs.dir, ignore_errors=True)
         self.model = file_library.FileFolders(self.prefs)
-        self.heard = []
+        self.signals = []
         for name in ("rowsAboutToBeInserted", "rowsInserted",
                      "rowsAboutToBeRemoved", "rowsRemoved", "modelReset"):
             getattr(self.model, name).connect(
-                lambda *args, name=name: self.heard.append(
+                lambda *args, name=name: self.signals.append(
                     (name, self.model.rowCount())))
 
-    def _refused(self):
+    def _full_disk(self):
         return test_support.full_disk_for(os.path.join(self.prefs.dir, locations_mod.FILES))
 
     def _on_disk(self):
@@ -2382,7 +2382,7 @@ class ALocationWriteIsAnnouncedOnlyWhenItLandsTest(unittest.TestCase):
         return (sorted(document.get(locations_mod.LOCATIONS, {}).get(user, {})),
                 sorted(document.get(locations_mod.FAVORITES, {}).get(user, {})))
 
-    def test_a_refused_remove_waits_whole_and_lands_as_one(self):
+    def test_a_failed_remove_waits_whole_and_is_written_as_one(self):
         from amaze.core import library_db
         files = file_library.FileFiles(self.prefs)
         files.set_folder(self.folder)
@@ -2390,7 +2390,7 @@ class ALocationWriteIsAnnouncedOnlyWhenItLandsTest(unittest.TestCase):
         library_db.flush()
         before = self._on_disk()
         self.assertTrue(before[0] and before[1], "premise: no location or star on disk")
-        with self._refused():
+        with self._full_disk():
             self.model.remove_folder(1)
             library_db.flush()
         self.assertEqual(before, self._on_disk(),
@@ -2399,7 +2399,7 @@ class ALocationWriteIsAnnouncedOnlyWhenItLandsTest(unittest.TestCase):
         self.assertEqual(([], []), self._on_disk(),
                          "the pending removal was not written in full once the disk had room")
 
-    def test_a_landed_write_is_announced_around_the_change(self):
+    def test_a_successful_write_is_announced_around_the_change(self):
         other = tempfile.mkdtemp(prefix="amaze_landed_other_")
         self.addCleanup(shutil.rmtree, other, ignore_errors=True)
         self.assertTrue(self.model.add_folder(other))
@@ -2407,7 +2407,7 @@ class ALocationWriteIsAnnouncedOnlyWhenItLandsTest(unittest.TestCase):
         self.assertEqual(
             [("rowsAboutToBeInserted", 2), ("rowsInserted", 3),
              ("rowsAboutToBeRemoved", 3), ("rowsRemoved", 2)],
-            self.heard,
+            self.signals,
             "a row change was not bracketed: the model must return the "
             "old rows until the views are notified")
 
@@ -2435,7 +2435,7 @@ class CheckLibraryResetsTheFolderModelTest(unittest.TestCase):
     def setUpClass(cls):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
-    def test_dead_locations_go_with_a_structural_signal(self):
+    def test_missing_locations_are_removed_with_a_structural_signal(self):
         panel = self.panel
         model = panel.file_folders_model
         dead_a, alive, dead_b = [
@@ -2449,23 +2449,23 @@ class CheckLibraryResetsTheFolderModelTest(unittest.TestCase):
         for path in (dead_a, dead_b):
             shutil.rmtree(path)
 
-        told = []
-        model.rowsRemoved.connect(lambda *_a: told.append("rows"))
-        model.modelReset.connect(lambda: told.append("reset"))
+        events = []
+        model.rowsRemoved.connect(lambda *_a: events.append("rows"))
+        model.modelReset.connect(lambda: events.append("reset"))
         screen = _check_ui("Fix Safe")
         answer = screen.displayMessage
 
-        def said(text, *args, **kwargs):
+        def display_message(text, *args, **kwargs):
             if not kwargs.get("buttons"):
-                told.append("said")
+                events.append("said")
             return answer(text, *args, **kwargs)
 
-        screen.displayMessage = said
+        screen.displayMessage = display_message
         with mock.patch.object(hou, "ui", screen, create=True):
             test_support.repair_from_preferences(self, panel)
 
-        self.assertIn("said", told, "premise: nothing was set aside")
-        self.assertNotEqual("said", told[0], "the result box was shown before the model was reset, "
+        self.assertIn("said", events, "premise: nothing was set aside")
+        self.assertNotEqual("said", events[0], "the result box was shown before the model was reset, "
                                              "so a view paints a stale row count under it")
         survivors = list(panel.prefs.file_folders)
         self.assertIn(    # the locations API returns CANONICAL absolute paths, so the expectation converts too
@@ -2481,7 +2481,7 @@ class CheckLibraryResetsTheFolderModelTest(unittest.TestCase):
 class CheckLibraryReachesTheFoldersTest(unittest.TestCase):
     """Check Library reports registered folders too, not only asset lists, and sets them aside."""
 
-    def test_a_dead_location_is_named_set_aside_and_said(self):
+    def test_a_missing_location_is_named_set_aside_and_reported(self):
         panel = test_support.fixture_panel(self)
         dead = tempfile.mkdtemp(prefix="amaze_dead_location_")
         self.addCleanup(shutil.rmtree, dead, ignore_errors=True)
@@ -2504,7 +2504,7 @@ class CheckLibraryReachesTheFoldersTest(unittest.TestCase):
 class CheckLibraryDropsOnlyFileStarsTest(unittest.TestCase):
     """The favourites store holds every section's stars; only a File one names a file to check."""
 
-    def test_a_material_star_survives_and_a_dead_file_star_goes(self):
+    def test_a_material_star_is_kept_and_a_missing_file_star_is_removed(self):
         panel = test_support.fixture_panel(self)
         model = panel.material_model
         mat_id = model.assets[1].mat_id    # row 0 is the fixture's odd id -1
@@ -2591,7 +2591,7 @@ class CheckLibrarySetsAFolderMissingHereAsideTest(unittest.TestCase):
         repair.set_aside_folders(findings, guard_session=False)
         return lines
 
-    def test_the_pointer_goes_and_what_its_files_carry_stays(self):
+    def test_the_registration_is_removed_and_its_files_annotations_are_kept(self):
         lines = self._clean_while_elsewhere()
         self.assertNotIn(hostos.canonical_path_key(self.folder), self._registered(),
                          "Check Library kept the registration of a folder that is not here")
@@ -2599,13 +2599,13 @@ class CheckLibrarySetsAFolderMissingHereAsideTest(unittest.TestCase):
                          "the location's id was removed with its registration")
         self.assertEqual((True, True, True), self._kept(),
                          "comment, icon and star of a file in it were deleted")
-        said = [line for line in lines if os.path.basename(self.folder) in line]
-        self.assertEqual(1, len(said), lines)
-        self.assertIn("aside", said[0])
-        self.assertIn("keeps its comments, icons and favorites", said[0])
-        self.assertNotIn("removed", said[0])
+        naming = [line for line in lines if os.path.basename(self.folder) in line]
+        self.assertEqual(1, len(naming), lines)
+        self.assertIn("aside", naming[0])
+        self.assertIn("keeps its comments, icons and favorites", naming[0])
+        self.assertNotIn("removed", naming[0])
 
-    def test_the_folder_coming_back_brings_them_with_it(self):
+    def test_the_folder_coming_back_shows_its_annotations_again(self):
         self._clean_while_elsewhere()
         os.rename(self.folder + ".elsewhere", self.folder)
         self.assertTrue(self.model.add_folder(self.folder), "premise: the folder was not re-added")
@@ -2613,7 +2613,7 @@ class CheckLibrarySetsAFolderMissingHereAsideTest(unittest.TestCase):
                          "the returning folder was given a new id")
         self.assertEqual((True, True, True), self._kept())
 
-    def test_the_sidebar_remove_still_forgets_everything(self):
+    def test_the_sidebar_remove_still_deletes_everything(self):
         row = self._registered().index(hostos.canonical_path_key(self.folder)) + 1
         self.assertTrue(self.model.remove_folder(row))
         self.assertEqual((False, False, False), self._kept(),
@@ -2637,7 +2637,7 @@ class ShowTicksTest(unittest.TestCase):
         model = file_library.FileFiles(self.prefs)
         model.set_folder(self.tmp)
         names = sorted(model._files[row][1] for row in range(len(model._files)))
-        count = _landed_counts(file_library.FileFolders(self.prefs))[1]
+        count = _wait_for_counts(file_library.FileFolders(self.prefs))[1]
         self.assertEqual(len(names), count, "the sidebar counts what the grid does not list")
         return names
 
@@ -2711,7 +2711,7 @@ class FileSectionScanAndRerenderPinsTest(unittest.TestCase):
         os.makedirs(os.path.join(tmp, "sub_two"))
         prefs = _Prefs([tmp])
         folders_model = file_library.FileFolders(prefs)
-        count = _landed_counts(folders_model)[1]
+        count = _wait_for_counts(folders_model)[1]
         self.assertEqual(3, count,
                          "the sidebar counts entries the grid never "
                          "shows (subdirectories)")
@@ -2737,7 +2737,7 @@ class FileSectionScanAndRerenderPinsTest(unittest.TestCase):
                          "the recursive scan descends into hidden "
                          "directories: %r" % names)
         folders_model = file_library.FileFolders(prefs)
-        count = _landed_counts(folders_model)[1]
+        count = _wait_for_counts(folders_model)[1]
         self.assertEqual(1, count, "the count still includes hidden-"
                          "directory contents")
 
@@ -2935,7 +2935,7 @@ class LocationColorTest(unittest.TestCase):
             handle.write("x")
         self.prefs = _Prefs([self.tmp])
 
-    def test_the_sidebar_and_the_tile_answer_the_locations_colour(self):
+    def test_the_sidebar_and_the_tile_return_the_locations_colour(self):
         from amaze.core import category as category_mod
         folders = file_library.FileFolders(self.prefs)
         files = file_library.FileFiles(self.prefs)
@@ -2995,10 +2995,10 @@ class ABarePrefsLoadWritesNothingButItsOwnFile(unittest.TestCase):
             "functions do that, after the product requests a favourite")
 
 
-class AStarSurvivesTheMoveThroughRelocateFolder(unittest.TestCase):
+class AStarIsKeptThroughRelocateFolder(unittest.TestCase):
     """Star a row, Locate the folder, re-scan: the star is keyed to the location id and stays set."""
 
-    def test_the_star_is_still_lit_at_the_new_path(self):
+    def test_the_star_is_still_set_at_the_new_path(self):
         old = tempfile.mkdtemp(prefix="amaze_move_")
         self.addCleanup(shutil.rmtree, old, ignore_errors=True)
         open(os.path.join(old, "wood.png"), "w").close()
@@ -3091,16 +3091,16 @@ class TheUserPickerFollowsTheLibrary(unittest.TestCase):
             % ", ".join(offenders))
 
 
-class ReadinessIsAskedOncePerGeneration(unittest.TestCase):
+class ReadinessIsCheckedOncePerGeneration(unittest.TestCase):
     """A list page reads stars per cell: the library is checked once until a location write."""
 
-    def _looks_at_the_library(self, prefs, read):
+    def _isdir_calls_on_the_library(self, prefs, read):
         """How many times `read` stat'ed the library folder."""
         with mock.patch.object(locations_mod.os.path, "isdir", wraps=os.path.isdir) as isdir:
             read()
         return sum(1 for call in isdir.call_args_list if call.args[:1] == (prefs.dir,))
 
-    def test_a_page_of_reads_looks_once_and_a_write_looks_again(self):
+    def test_a_page_of_reads_checks_once_and_a_write_checks_again(self):
         prefs, _library = _location_prefs(self, {})
         self.assertTrue(locations_mod.ready(prefs), "premise: the library is not ready")
 
@@ -3108,10 +3108,10 @@ class ReadinessIsAskedOncePerGeneration(unittest.TestCase):
             for _ in range(48):
                 locations_mod.is_favourite(prefs, "139888336268658010")
 
-        self.assertEqual(0, self._looks_at_the_library(prefs, page),
+        self.assertEqual(0, self._isdir_calls_on_the_library(prefs, page),
                          "every star read checked the library folder again")
         locations_mod.touch()
-        self.assertEqual(1, self._looks_at_the_library(prefs, page),
+        self.assertEqual(1, self._isdir_calls_on_the_library(prefs, page),
                          "after `touch()` the library folder was not checked again exactly once")
 
     def test_a_library_that_appears_is_seen_after_forget(self):
@@ -3197,7 +3197,7 @@ class NewFolderAndSaveScene(unittest.TestCase):
         self.assertEqual([], saved)
         self.assertEqual([messages.SAVE_SCENE_TAKEN % (name, self.folder)], self.refused)
 
-    def test_both_grey_while_all_is_showing(self):
+    def test_both_disabled_while_all_is_showing(self):
         self.files.set_all_folders()
         self.assertFalse(self.section.menu_new_enabled([], None))
         self.files.set_folder(self.folder)

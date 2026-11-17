@@ -60,7 +60,7 @@ class EveryContextDeclaresWhatItOffers(unittest.TestCase):
                           "takes_filter_menu": False, "takes_capture": False},
     }
 
-    def test_each_context_answers_every_fact(self):
+    def test_each_context_declares_every_fact(self):
         for name, facts in self.EXPECTED.items():
             context = getattr(sections, name)
             for fact, expected in facts.items():
@@ -149,7 +149,7 @@ class TheToolbarFollowsTheContextLive(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
 
 
-class TheToolbarStandsOnItsFrame(unittest.TestCase):
+class TheToolbarMatchesFrameB01(unittest.TestCase):
     """The toolbar's height, edges, gaps and controls match frame B01. ▸r/toolbar-from-frame"""
 
     @classmethod

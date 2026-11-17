@@ -24,39 +24,39 @@ class StoppingDisk(guard.Disk):
     """A real disk that stops at step `at`: before the step, or halfway through a write."""
 
     def __init__(self, at: int = 0, torn: bool = False) -> None:
-        self.at, self.torn, self.steps, self.dead = at, torn, 0, False
+        self.at, self.torn, self.steps, self.stopped = at, torn, 0, False
 
-    def _dies(self) -> bool:
-        if self.dead:
+    def _stops_here(self) -> bool:
+        if self.stopped:
             raise Stop()
         self.steps += 1
-        self.dead = self.steps == self.at
-        return self.dead
+        self.stopped = self.steps == self.at
+        return self.stopped
 
     def write(self, path, data):
-        if self._dies():
+        if self._stops_here():
             if self.torn:
                 super().write(path, data[: len(data) // 2])
             raise Stop()
         super().write(path, data)
 
     def swap(self, scratch, target):
-        if self._dies():
+        if self._stops_here():
             raise Stop()
         super().swap(scratch, target)
 
     def move(self, source, target):
-        if self._dies():
+        if self._stops_here():
             raise Stop()
         super().move(source, target)
 
     def remove(self, path):
-        if self._dies():
+        if self._stops_here():
             raise Stop()
         super().remove(path)
 
     def remove_folder(self, path):
-        if self._dies():
+        if self._stops_here():
             raise Stop()
         super().remove_folder(path)
 
@@ -210,7 +210,7 @@ class StoppedAtEveryStepTest(unittest.TestCase):
                         self.assertIn(reading.verdict, (guard.FINE, guard.FRESH),
                                       "%s: %s reads %s" % (where, reading.name, reading.verdict))
 
-    def test_a_stop_after_the_journal_lands_gives_the_new_state(self):
+    def test_a_stop_after_the_journal_is_written_gives_the_new_state(self):
         before = state(self.library())
         counting = StoppingDisk()
         after = state(self.run_one("many_files", counting))
@@ -305,7 +305,7 @@ class BusyDisk(guard.Disk):
 class AChangeThatWaitsOnAFileTest(_Library):
     """A change with a file in use is recorded: it reports done, and finishes when it is free."""
 
-    def test_it_is_not_reported_failed_and_lands_once_the_file_is_free(self):
+    def test_it_is_not_reported_failed_and_is_applied_once_the_file_is_free(self):
         disk = BusyDisk("materials/A002.mat")
         held = guard.Guard(self.dir, disk=disk, now=self.clock)
         change = held.change("u1")
@@ -324,7 +324,7 @@ class AChangeThatWaitsOnAFileTest(_Library):
         self.assertFalse(os.path.exists(self.at("materials", "A002.mat")))
         self.assertFalse(os.path.exists(self.at(guard.JOURNAL)))
 
-    def test_a_single_file_change_that_is_refused_fails_and_changes_nothing(self):
+    def test_a_single_file_change_on_a_busy_file_raises_and_changes_nothing(self):
         disk = BusyDisk("materials/A002.mat")
         held = guard.Guard(self.dir, disk=disk, now=self.clock)
         before = state(self.dir)
@@ -399,7 +399,7 @@ class NoTicketNoWriteTest(_Library):
         self.assertEqual(guard.FRESH, reading.verdict)
         self.assertTrue(reading.writable)
 
-    def test_a_verdict_is_judged_again_at_the_next_read(self):
+    def test_a_verdict_is_recomputed_at_the_next_read(self):
         good = open(self.at(MATERIALS), "rb").read()
         put(self.dir, MATERIALS, b"not json")
         self.assertEqual(guard.CORRUPT, self.guard.read(MATERIALS).verdict)
@@ -418,9 +418,9 @@ class NoTicketNoWriteTest(_Library):
             change.put_file(MATERIALS, b"{}")
 
 
-class AChangeMeetsTheFileAsItIsTest(_Library):
+class ACommitRaisesMovedOnAFileChangedSinceTheReadTest(_Library):
 
-    def test_a_file_changed_since_the_read_refuses_the_write(self):
+    def test_a_file_changed_since_the_read_makes_the_commit_raise_moved(self):
         reading = self.guard.read(MATERIALS)
         theirs = put(self.dir, MATERIALS, assets(9, "theirs"))
         change = self.guard.change("u1")
@@ -429,7 +429,7 @@ class AChangeMeetsTheFileAsItIsTest(_Library):
             change.commit()
         self.assertEqual(guard.encode(assets(9, "theirs")), open(theirs, "rb").read())
 
-    def test_a_database_that_appeared_refuses_a_fresh_ticket(self):
+    def test_a_database_that_appeared_makes_a_fresh_ticket_raise_moved(self):
         reading = self.guard.read(NODES)
         put(self.dir, NODES, assets(2, "theirs"))
         change = self.guard.change("u1")
@@ -468,7 +468,7 @@ class AChangeMeetsTheFileAsItIsTest(_Library):
             change.commit()
         self.assertFalse(os.path.exists(self.at(NODES)))
 
-    def test_a_path_out_of_the_library_is_refused_and_nothing_is_written(self):
+    def test_a_path_out_of_the_library_raises_and_nothing_is_written(self):
         before = state(self.dir)
         change = self.guard.change("u1")
         change.put_file("materials/ok.mat", b"fine")
@@ -482,7 +482,7 @@ class AChangeMeetsTheFileAsItIsTest(_Library):
 class BackupsTest(_Library):
     """A backup holds the old bytes, spaced in time, never a duplicate, pruned by age."""
 
-    def stamps(self) -> list:
+    def backup_times(self) -> list:
         return [when.strftime("%m-%d %H:%M") for _name, when in self.guard.backups(MATERIALS)]
 
     def test_the_first_replace_backs_up_exactly_the_old_bytes(self):
@@ -646,7 +646,7 @@ class TakenFileTest(_Library):
 
 class HealthTest(_Library):
 
-    def test_every_database_is_judged_in_one_report(self):
+    def test_health_gives_every_database_a_verdict_in_one_report(self):
         put(self.dir, "code.json", b"{")
         put(self.dir, "colors.json", dict(assets(1), format=branding.LIBRARY_FORMAT + 3))
         found = {reading.name: reading.verdict for reading in self.guard.health()}

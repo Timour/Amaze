@@ -49,7 +49,7 @@ class GuardCase(unittest.TestCase):
             [], gen.complaints(path),
             "redaction did not clean %r" % payload)
 
-    def assertInnocent(self, payload, account="builduser", host="BuildBox"):
+    def assertClean(self, payload, account="builduser", host="BuildBox"):
         """Left alone, and reported clean."""
         self.pin(account, host)
         path = self.write(payload)
@@ -109,9 +109,9 @@ class TheGuardCatchesWhatEarlierVersionsPassed(GuardCase):
                     "%s is cleared without a dated measurement" % name)
 
 
-class TheGuardDoesNotCryWolf(GuardCase):
+class TheGuardPassesCleanFiles(GuardCase):
 
-    def test_innocent_bytes_are_left_alone(self):
+    def test_clean_bytes_are_left_alone(self):
         """A short account inside a word, a redacted stamp, and placeholder home paths."""
         for payload, account, host in (
                 (b"timeshift optimize timeline chan time\n", "tim", "buildbox"),
@@ -119,12 +119,12 @@ class TheGuardDoesNotCryWolf(GuardCase):
                 (b"/Users/someone /Users/someone-else /home/projects\n",
                  "builduser", "BuildBox")):
             with self.subTest(payload=payload):
-                self.assertInnocent(payload, account=account, host=host)
+                self.assertClean(payload, account=account, host=host)
 
 
 class TheStandInKeepsTheLengthAndChangesTheValue(unittest.TestCase):
 
-    def test_the_length_never_moves_and_a_stand_in_is_stable(self):
+    def test_the_length_is_unchanged_and_a_stand_in_maps_to_itself(self):
         """Same length, or Houdini rejects the file; a stand-in maps to itself. ▸r/author-stamp"""
         for size in range(1, 41):
             with self.subTest(size=size):
@@ -137,10 +137,10 @@ class TheStandInKeepsTheLengthAndChangesTheValue(unittest.TestCase):
                 self.assertEqual(replacement, gen.stand_in(replacement))
 
 
-class SuiteDebrisHasOneMaker(unittest.TestCase):
+class SuiteDirectoriesHaveOneMaker(unittest.TestCase):
     """Every suite directory is made by one function, in the system temp folder."""
 
-    def test_every_support_scratch_comes_from_the_one_maker(self):
+    def test_every_support_scratch_comes_from_scratch_dir(self):
         """Every test_support directory comes from `scratch_dir`; a second bare `mkdtemp` is a leak."""
         import inspect
         body = inspect.getsource(test_support)

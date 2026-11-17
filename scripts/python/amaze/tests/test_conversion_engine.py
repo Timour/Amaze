@@ -109,10 +109,10 @@ class TheEngineRoutesThroughMaterialX(unittest.TestCase):
         self.assertFalse(engine.has_route("Mantra", "Karma"))
         self.assertIn("no conversion", engine.why_not("Mantra", "Karma"))
 
-    def test_the_same_renderer_is_refused(self):
+    def test_the_same_renderer_returns_a_reason_from_why_not(self):
         self.assertEqual("the material is already MaterialX", engine.why_not("Karma", "MaterialX"))
 
-    def test_a_missing_plugin_refuses_at_either_end(self):
+    def test_why_not_names_a_missing_plugin_at_either_end(self):
         with plugins_loaded("Octane"):
             self.assertIn("Redshift isn't loaded", engine.why_not("Karma", "Redshift"))
             self.assertIn("Redshift isn't loaded", engine.why_not("Redshift", "Octane"))
@@ -169,7 +169,7 @@ class RedshiftLoadsOnlyWithBothItsContainers(unittest.TestCase):
                 mock.patch.object(hou, "nodeType", lambda cat, name: cat.nodeType(name)):
             return engine.why_not("Karma", "Redshift")
 
-    def test_one_container_without_the_other_refuses_before_building(self):
+    def test_one_container_without_the_other_returns_a_reason(self):
         for present in (self.BOTH[:1], self.BOTH[1:], ()):
             with self.subTest(present=present):
                 self.assertIn("Redshift isn't loaded", self._why_not(present))
@@ -178,7 +178,7 @@ class RedshiftLoadsOnlyWithBothItsContainers(unittest.TestCase):
         self.assertEqual("", self._why_not(self.BOTH))
 
 
-class MaterialsConvertRefusesFirst(unittest.TestCase):
+class MaterialsConvertReturnsTheReasonFirst(unittest.TestCase):
     """`actions.materials.convert` returns the reason before it rebuilds anything."""
 
     @classmethod
@@ -210,10 +210,10 @@ class MaterialsConvertRefusesFirst(unittest.TestCase):
         self.assertEqual(before, len(self.model.assets), "a refused conversion added a row")
         return report.skipped
 
-    def test_a_material_already_the_target_is_refused(self):
+    def test_a_material_already_the_target_returns_a_reason(self):
         self.assertEqual(["the material is already MaterialX"], self._convert("Karma"))
 
-    def test_a_missing_plugin_is_said(self):
+    def test_a_missing_plugin_is_the_reason(self):
         with plugins_loaded():
             self.assertEqual(["Octane isn't loaded in this Houdini, so the conversion can't run"],
                              self._convert("Octane"))
@@ -241,7 +241,7 @@ class AMaterialXMaterialBecomesOctanes(unittest.TestCase):
         self.assertTrue(self.made.wired)
         self.assertEqual("Brick_Wall", builder.name())
 
-    def test_the_network_crosses_as_it_was(self):
+    def test_the_network_is_converted_unchanged(self):
         shader = self.made.shader
         for got, want in zip(shader.parmTuple("base_color").eval(), BASE):
             self.assertAlmostEqual(want, got, places=5)
@@ -255,14 +255,14 @@ class AMaterialXMaterialBecomesOctanes(unittest.TestCase):
         self.assertEqual("roughness", fed.name() if fed else None)
         self.assertNotIn("mtlxdot", _types(self.made.builder))
 
-    def test_a_karma_only_node_is_left_out_and_said(self):
+    def test_a_karma_only_node_is_left_out_and_listed_as_skipped(self):
         self.assertNotIn("kma_rampconst", _types(self.made.builder))
         self.assertTrue(any('"karma_ramp"' in line for line in self.made.report.skipped),
                         self.made.report.skipped)
 
-    def test_nothing_octanes_filter_refuses_is_left(self):
-        refused = [t for t in _types(self.made.builder) if not octane_api.admitted(t)]
-        self.assertEqual([], refused)
+    def test_every_node_left_is_admitted_by_octanes_filter(self):
+        not_admitted = [t for t in _types(self.made.builder) if not octane_api.admitted(t)]
+        self.assertEqual([], not_admitted)
 
     def test_the_source_is_untouched(self):
         self.assertEqual(self.before, _types(self.source))
@@ -286,9 +286,9 @@ class AMeasuredMetalBecomesAMetalnessSurface(unittest.TestCase):
 
 
 @unittest.skipUnless(OCTANE, "the Octane plugin is not loaded")
-class WhatOctaneIgnoresIsSaidOnlyWhenUsed(unittest.TestCase):
+class WhatOctaneIgnoresIsReportedOnlyWhenUsed(unittest.TestCase):
 
-    def _report(self, dress):
+    def _report(self, set_inputs):
         parent = hou.node("/obj").createNode("matnet")
         self.addCleanup(parent.destroy)
         builder = nodes.make_karma_builder(parent, "probe")
@@ -296,13 +296,13 @@ class WhatOctaneIgnoresIsSaidOnlyWhenUsed(unittest.TestCase):
         image = builder.createNode("mtlximage")
         shader.setNamedInput("base_color", image, 0)
         nodes.wire_builder_output(builder, shader)
-        dress(shader, image)
+        set_inputs(shader, image)
         return engine.convert(builder, "Karma", "Octane", parent, "probe").report.skipped
 
-    def test_inputs_at_their_defaults_say_nothing(self):
+    def test_inputs_at_their_defaults_report_nothing(self):
         self.assertEqual([], self._report(lambda shader, image: None))
 
-    def test_a_mix_of_two_surfaces_is_said(self):
+    def test_a_mix_of_two_surfaces_is_reported(self):
         parent = hou.node("/obj").createNode("matnet")
         self.addCleanup(parent.destroy)
         builder = nodes.make_karma_builder(parent, "mixed")
@@ -314,17 +314,17 @@ class WhatOctaneIgnoresIsSaidOnlyWhenUsed(unittest.TestCase):
         self.assertTrue(any("mixes two surfaces" in line for line in skipped), skipped)
 
     def test_a_used_input_is_named(self):
-        def dress(shader, image):
+        def set_inputs(shader, image):
             image.parm("filtertype").set("closest")
             shader.parm("coat_affect_color").set(0.5)
-        skipped = self._report(dress)
+        skipped = self._report(set_inputs)
         self.assertEqual(2, len(skipped), skipped)
         self.assertTrue(any("filtertype" in line for line in skipped), skipped)
         self.assertTrue(any("coat_affect_color" in line for line in skipped), skipped)
 
 
 @unittest.skipUnless(OCTANE, "the Octane plugin is not loaded")
-class TheOctaneTwinLivesInTheLibrary(unittest.TestCase):
+class TheOctaneTwinIsSavedInTheLibrary(unittest.TestCase):
     """Convert to Octane adds Octane's builder as a second asset, which imports into a scene."""
 
     @classmethod
@@ -368,7 +368,7 @@ class TheOctaneTwinLivesInTheLibrary(unittest.TestCase):
         self.assertTrue(ok, reason)
         return created[0]
 
-    def test_the_twin_sits_beside_the_source(self):
+    def test_the_twin_is_added_beside_the_source(self):
         source = self.model.assets[self.row]
         self.assertEqual("Karma", source.renderer, "the source was changed")
         self.assertEqual("Octane", self.twin.renderer)
@@ -400,7 +400,7 @@ class TheOctaneTwinLivesInTheLibrary(unittest.TestCase):
 
 
 @unittest.skipUnless(OCTANE, "the Octane plugin is not loaded")
-class AnOnlineImportCanLandAsOctane(unittest.TestCase):
+class AnOnlineImportCanBeBuiltAsOctane(unittest.TestCase):
 
     def test_the_materialx_build_is_replaced_by_its_octane_twin(self):
         scratch = hou.node("/obj").createNode("matnet")
@@ -415,10 +415,10 @@ class AnOnlineImportCanLandAsOctane(unittest.TestCase):
 
 
 @unittest.skipUnless(OCTANE and REDSHIFT, "Redshift and Octane are not both loaded")
-class ARedshiftMaterialReachesOctane(unittest.TestCase):
+class ARedshiftMaterialConvertsToOctane(unittest.TestCase):
     """Redshift to MaterialX to Octane: one report, the MaterialX network deleted."""
 
-    def test_the_base_colour_crosses_both_steps(self):
+    def test_the_base_colour_is_kept_through_both_steps(self):
         parent = hou.node("/obj").createNode("matnet")
         self.addCleanup(parent.destroy)
         source = parent.createNode("redshift_vopnet")
@@ -448,7 +448,7 @@ def _octane_net(parent, shader_type="octane::NT_MAT_STANDARD_SURFACE", name="oct
     return net, shader
 
 
-def _feeding(node, name):
+def _input_node(node, name):
     """What feeds `node`'s input `name`, or None."""
     index = node.inputIndex(name)
     return node.input(index) if index >= 0 else None
@@ -488,7 +488,7 @@ class AnOctaneMaterialBecomesMaterialX(unittest.TestCase):
         self.assertIsNotNone(made.builder, made.report.summary_lines())
         return made
 
-    def test_a_standard_surface_crosses_by_name(self):
+    def test_a_standard_surface_converts_by_input_name(self):
         net, shader = _octane_net(self.parent)
         shader.parmTuple("baseColor").set(BASE)
         shader.parm("roughness").set(0.37)
@@ -508,7 +508,7 @@ class AnOctaneMaterialBecomesMaterialX(unittest.TestCase):
         image.parm("A_FILENAME").set(ALBEDO)
         image.parm("colorSpace").set("NAMED_COLOR_SPACE_LINEAR_SRGB")
         shader.setNamedInput("baseColor", image, 0)
-        fed = _feeding(self._convert(net).shader, "base_color")
+        fed = _input_node(self._convert(net).shader, "base_color")
         self.assertEqual("mtlximage", fed.type().name())
         self.assertEqual(ALBEDO, fed.parm("file").unexpandedString())
         self.assertEqual("lin_rec709", fed.parm("filecolorspace").evalAsString())
@@ -518,14 +518,14 @@ class AnOctaneMaterialBecomesMaterialX(unittest.TestCase):
         image = net.createNode("octane::NT_TEX_IMAGE")
         image.parm("A_FILENAME").set(ALBEDO)
         shader.setNamedInput("normal", image, 0)
-        normalmap = _feeding(self._convert(net).shader, "normal")
+        normalmap = _input_node(self._convert(net).shader, "normal")
         self.assertTrue(normalmap.type().name().startswith("mtlxnormalmap"))
-        read = _feeding(normalmap, "in")
+        read = _input_node(normalmap, "in")
         self.assertEqual("vector3", read.parm("signature").evalAsString())
         self.assertEqual("automatic", read.parm("filecolorspace").evalAsString(),
                          "the signature decides; nothing forces Raw on a data map")
 
-    def test_a_2d_transform_turns_and_scales_about_the_centre(self):
+    def test_a_2d_transform_rotates_and_scales_about_the_centre(self):
         net, shader = _octane_net(self.parent)
         image = net.createNode("octane::NT_TEX_IMAGE")
         transform = net.createNode("octane::NT_TRANSFORM_2D")
@@ -533,7 +533,7 @@ class AnOctaneMaterialBecomesMaterialX(unittest.TestCase):
         transform.parmTuple("translation").set((0.1, 0.05))
         image.setNamedInput("transform", transform, 0)
         shader.setNamedInput("baseColor", image, 0)
-        place = _feeding(_feeding(self._convert(net).shader, "base_color"), "texcoord")
+        place = _input_node(_input_node(self._convert(net).shader, "base_color"), "texcoord")
         self.assertEqual("mtlxplace2d", place.type().name())
         self.assertEqual((0.5, 0.5), tuple(place.parmTuple("pivot").eval()))
         self.assertEqual("1", place.parm("operationorder").evalAsString())
@@ -552,8 +552,8 @@ class AnOctaneMaterialBecomesMaterialX(unittest.TestCase):
         mix = net.createNode("octane::NT_TEX_MIX")
         mix.setNamedInput("texture1", self._colour(net, (0.9, 0.1, 0.1)), 0)
         shader.setNamedInput("baseColor", mix, 0)
-        converted = _feeding(self._convert(net).shader, "base_color")
-        self.assertEqual((0.9, 0.1, 0.1), self._constant(_feeding(converted, "bg")))
+        converted = _input_node(self._convert(net).shader, "base_color")
+        self.assertEqual((0.9, 0.1, 0.1), self._constant(_input_node(converted, "bg")))
 
     def test_a_mix_material_shows_material1_at_one(self):
         net, mix = _octane_net(self.parent, "octane::NT_MAT_MIX")
@@ -564,7 +564,7 @@ class AnOctaneMaterialBecomesMaterialX(unittest.TestCase):
             mix.setNamedInput(slot, part, 0)
         made = self._convert(net)
         self.assertEqual("mtlxmix", made.shader.type().name())
-        foreground = _feeding(made.shader, "fg").parmTuple("base_color").eval()
+        foreground = _input_node(made.shader, "fg").parmTuple("base_color").eval()
         for got, want in zip(foreground, BASE):
             self.assertAlmostEqual(want, got, places=5)
         self.assertAlmostEqual(0.3, made.shader.parm("mix").eval(), places=5)
@@ -575,10 +575,10 @@ class AnOctaneMaterialBecomesMaterialX(unittest.TestCase):
         subtract.setNamedInput("texture1", self._colour(net, (0.9, 0.9, 0.9)), 0)
         subtract.setNamedInput("texture2", self._colour(net, (0.2, 0.2, 0.2)), 0)
         shader.setNamedInput("baseColor", subtract, 0)
-        converted = _feeding(self._convert(net).shader, "base_color")
+        converted = _input_node(self._convert(net).shader, "base_color")
         self.assertEqual(((0.9, 0.9, 0.9), (0.2, 0.2, 0.2)),
-                         (self._constant(_feeding(converted, "in1")),
-                          self._constant(_feeding(converted, "in2"))))
+                         (self._constant(_input_node(converted, "in1")),
+                          self._constant(_input_node(converted, "in2"))))
 
     def test_displacement_is_height_from_its_mid_level(self):
         net, shader = _octane_net(self.parent)
@@ -591,27 +591,27 @@ class AnOctaneMaterialBecomesMaterialX(unittest.TestCase):
         terminal = materialx.terminal_feed(made.builder, "displacement")
         self.assertEqual("mtlxdisplacement", terminal.type().name())
         self.assertAlmostEqual(0.2, terminal.parm("scale").eval(), places=5)
-        self.assertEqual("mtlxsubtract", _feeding(terminal, "displacement").type().name())
+        self.assertEqual("mtlxsubtract", _input_node(terminal, "displacement").type().name())
 
-    def test_a_refused_material_says_why(self):
+    def test_an_unsupported_material_is_skipped_with_its_reason(self):
         net, _toon = _octane_net(self.parent, "octane::NT_MAT_TOON")
         made = engine.convert(net, "Octane", "Karma", self.parent, "Toon")
         self.assertIsNone(made.shader)
         self.assertTrue(any("Toon" in line for line in made.report.skipped),
                         made.report.skipped)
 
-    def test_an_unmapped_texture_is_said_and_the_value_kept(self):
+    def test_an_unmapped_texture_is_reported_and_the_value_kept(self):
         net, shader = _octane_net(self.parent)
         shader.parmTuple("baseColor").set(BASE)
         shader.setNamedInput("baseColor", net.createNode("octane::NT_TEX_TRIPLANAR"), 0)
         made = self._convert(net)
-        self.assertIsNone(_feeding(made.shader, "base_color"))
+        self.assertIsNone(_input_node(made.shader, "base_color"))
         for got, want in zip(made.shader.parmTuple("base_color").eval(), BASE):
             self.assertAlmostEqual(want, got, places=5)
         self.assertTrue(any("triplanar" in line for line in made.report.skipped),
                         made.report.skipped)
 
-    def test_materialx_inside_octanes_builder_crosses_as_it_is(self):
+    def test_materialx_inside_octanes_builder_is_kept_unchanged(self):
         builder = nodes.make_karma_builder(self.parent, "mixed")
         surface = builder.createNode("mtlxstandard_surface", "kept")
         surface.parmTuple("base_color").set(BASE)
@@ -654,7 +654,7 @@ class AnOctaneTwinIsMaterialXInTheLibrary(unittest.TestCase):
 KEYED = "/maps/keyed_albedo.png"
 
 
-class AKeyframedTexturePathCrossesEvaluated(unittest.TestCase):
+class AKeyframedTexturePathIsConvertedEvaluated(unittest.TestCase):
     """A texture path from a reference or expression has no raw text: the evaluated path is used."""
 
     def setUp(self):
@@ -668,7 +668,7 @@ class AKeyframedTexturePathCrossesEvaluated(unittest.TestCase):
             ('"/maps/" + "keyed_albedo.png"', hou.exprLanguage.Python),
         )
 
-    def _crosses(self, make_source, source, target, image_type, file_parm):
+    def _assert_converted(self, make_source, source, target, image_type, file_parm):
         for expression, language in self.keyframed:
             with self.subTest(language=str(language)):
                 parent = hou.node("/obj").createNode("matnet")    # a network per case, so names do not clash
@@ -691,7 +691,7 @@ class AKeyframedTexturePathCrossesEvaluated(unittest.TestCase):
             shader.setNamedInput("base_color", image, 0)
             nodes.wire_builder_output(builder, shader)
             return builder, image.parm("file")
-        self._crosses(make_source, "Karma", "Redshift", "redshift::TextureSampler", "tex0")
+        self._assert_converted(make_source, "Karma", "Redshift", "redshift::TextureSampler", "tex0")
 
     @unittest.skipUnless(REDSHIFT, "the Redshift plugin is not loaded")
     def test_redshift_to_karma(self):
@@ -706,7 +706,7 @@ class AKeyframedTexturePathCrossesEvaluated(unittest.TestCase):
             next(c for c in net.children() if c.type().name() == "redshift_material"
                  ).setNamedInput("Surface", shader, 0)
             return net, sampler.parm("tex0")
-        self._crosses(make_source, "Redshift", "Karma", "mtlximage", "file")
+        self._assert_converted(make_source, "Redshift", "Karma", "mtlximage", "file")
 
     @unittest.skipUnless(OCTANE, "the Octane plugin is not loaded")
     def test_octane_to_karma(self):
@@ -715,10 +715,10 @@ class AKeyframedTexturePathCrossesEvaluated(unittest.TestCase):
             image = net.createNode("octane::NT_TEX_IMAGE")
             shader.setNamedInput("baseColor", image, 0)
             return net, image.parm("A_FILENAME")
-        self._crosses(make_source, "Octane", "Karma", "mtlximage", "file")
+        self._assert_converted(make_source, "Octane", "Karma", "mtlximage", "file")
 
 
-class AnOnlineImportWhoseListWasNotSavedSaysSo(unittest.TestCase):
+class AnOnlineImportWhoseDatabaseWriteFailsReturnsAReason(unittest.TestCase):
     """An online import whose database write fails adds nothing, and its reason names the material."""
 
     def setUp(self):
@@ -748,7 +748,7 @@ class AnOnlineImportWhoseListWasNotSavedSaysSo(unittest.TestCase):
             save=lambda *a, **k: material_actions.add_asset(model, *a, **k))
         return record, ok, reason
 
-    def test_a_refused_list_lands_nothing_and_names_the_material(self):
+    def test_a_failed_database_write_adds_nothing_and_names_the_material(self):
         held = test_support.asset_ids(self.model)
         with test_support.full_disk_for(os.path.join(self.prefs.dir, self.model.DB_FILENAME)):
             record, ok, reason = self._import("unlisted")
@@ -757,7 +757,7 @@ class AnOnlineImportWhoseListWasNotSavedSaysSo(unittest.TestCase):
         self.assertEqual([], test_support.arrived(self.model, held),
                          "an import whose row was not written shows as a tile")
 
-    def test_a_listed_import_answers_no_reason(self):
+    def test_a_listed_import_returns_no_reason(self):
         _record, ok, reason = self._import("listed")
         self.assertEqual((True, ""), (ok, reason))
 

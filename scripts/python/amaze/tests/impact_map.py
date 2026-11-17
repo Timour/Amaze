@@ -96,7 +96,7 @@ class Code:
         tree = ast.parse(source)
         self.mentions = _identifiers([tree])
         self.defs, self.def_uses = {}, {}
-        self._hollow(tree, "")
+        self._hash_defs(tree, "")
         self.names, self.imports, self.level_uses = {}, {}, {}
         self.spans = []    # (first line, last line, what it binds) of each module-level statement
         effects = []
@@ -130,21 +130,21 @@ class Code:
                     self.names[name] = digest(self.names.get(name, "") + text)
         self.effects = digest("\n".join(effects))
 
-    def _hollow(self, node, prefix) -> None:
+    def _hash_defs(self, node, prefix) -> None:
         """Hash each def under `node` without its docstring or inner defs' bodies, innermost first."""
         for child in ast.iter_child_nodes(node):
             if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 name = prefix + child.name
-                self._hollow(child, name + ".<locals>.")
+                self._hash_defs(child, name + ".<locals>.")
                 child.body = _undocumented(child.body)
                 self.def_uses.setdefault(name, set()).update(_identifiers(child.body))
                 self.defs[name] = digest(self.defs.get(name, "") + _canon(child))
                 child.body = []
             elif isinstance(child, ast.ClassDef):
-                self._hollow(child, prefix + child.name + ".")
+                self._hash_defs(child, prefix + child.name + ".")
                 child.body = _undocumented(child.body)
             else:
-                self._hollow(child, prefix)
+                self._hash_defs(child, prefix)
 
     def shape(self) -> dict:
         return {"defs": self.defs, "names": self.names, "imports": self.imports,
@@ -246,7 +246,7 @@ class Recorder:
         self.tests.append(test_id)
         self.enter(test_id)
 
-    def _anchor(self, key) -> None:
+    def _note_loading_statement(self, key) -> None:
         """While loading: note the module-level statement running, by its innermost import."""
         frame = sys._getframe(2)
         while frame is not None:
@@ -265,7 +265,7 @@ class Recorder:
         self.ran.setdefault(self.current, {}).setdefault(rel, set()).add(name)
         if self.current != LOADING or not name:
             return sys.monitoring.DISABLE
-        self._anchor((rel, name))
+        self._note_loading_statement((rel, name))
         return None    # keep the event on while loading: each call may come from another statement
 
     def _audit(self, event, args) -> None:
@@ -279,7 +279,7 @@ class Recorder:
             into = self.opened if event == "open" else self.listed
             into.setdefault(self.current, set()).add(rel)
             if event == "open" and self.current == LOADING:
-                self._anchor(("", rel))
+                self._note_loading_statement(("", rel))
 
     def start(self, audit=True) -> bool:
         """False on a Python without sys.monitoring (before 3.12), or with the tool id taken."""

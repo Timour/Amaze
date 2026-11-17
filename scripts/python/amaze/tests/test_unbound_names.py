@@ -179,7 +179,7 @@ def _function_scoped_misses(tree, package) -> list:
 class AFunctionImportsWhatItReads(unittest.TestCase):
     """A sibling imported only inside functions is imported by every function that reads it."""
 
-    def test_the_check_names_a_function_that_forgot_the_import(self):
+    def test_the_check_names_a_function_missing_the_import(self):
         source = ("def a():\n    from amaze.helpers import helpers\n    return helpers.x\n\n"
                   "def b():\n    return helpers.y\n\n"
                   "def c():\n    from amaze.helpers import helpers\n"

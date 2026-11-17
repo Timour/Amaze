@@ -121,7 +121,7 @@ class AKarmaMaterialBecomesARedshiftOne(unittest.TestCase):
         self.assertIsNotNone(surface)
         self.assertEqual(self.shader.path(), surface.path())
 
-    def test_the_numbers_cross_over(self):
+    def test_the_numeric_values_are_copied(self):
         s = self.shader
         self.assertEqual(SPEC["base_color"], tuple(round(v, 3) for v in s.parmTuple("base_color").eval()))
         self.assertAlmostEqual(SPEC["specular_roughness"], s.parm("refl_roughness").eval(), places=5)
@@ -158,7 +158,7 @@ class AKarmaMaterialBecomesARedshiftOne(unittest.TestCase):
 
 @unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                      "the Redshift plugin is not loaded")
-class WhatHasNoRedshiftShapeIsReportedNotInvented(unittest.TestCase):
+class WhatHasNoRedshiftEquivalentIsReportedNotInvented(unittest.TestCase):
 
     def test_an_unknown_upstream_node_is_named_in_the_report(self):
         from amaze.render import redshift_converter
@@ -183,7 +183,7 @@ class WhatHasNoRedshiftShapeIsReportedNotInvented(unittest.TestCase):
 
 @unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                      "the Redshift plugin is not loaded")
-class AConstantOnAWireLandsAsAValue(unittest.TestCase):
+class AWiredConstantBecomesAParmValue(unittest.TestCase):
     """Wired mtlxconstant nodes become values; Redshift math nodes default to zero. ▸r/redshift-nodes"""
 
     TINT = (0.5, 0.25, 1.0)
@@ -243,7 +243,7 @@ class AConstantOnAWireLandsAsAValue(unittest.TestCase):
         self.assertEqual(1, len(found), type_name)
         return found[0]
 
-    def test_every_wired_constant_lands_as_a_value(self):
+    def test_every_wired_constant_becomes_a_parm_value(self):
         with self.subTest("a colour constant, on the multiply it fed"):
             mul = self._child("redshift::RSMathMulVector")
             self.assertEqual(self.TINT, tuple(mul.parmTuple("input2").eval()))
@@ -285,7 +285,7 @@ class MaterialsConvertMakesANewRedshiftEntry(unittest.TestCase):
     def row(self):
         return self.model.find_asset_row_by_id(self.source_id)    # rows are re-sorted; the id stays the same
 
-    def test_a_twin_whose_list_was_refused_lands_nothing(self):
+    def test_a_converted_copy_whose_database_write_fails_adds_no_tile(self):
         held = test_support.asset_ids(self.model)
         with test_support.full_disk_for(os.path.join(self.prefs.dir, self.model.DB_FILENAME)):
             ok, report = material_actions.convert(
@@ -294,7 +294,7 @@ class MaterialsConvertMakesANewRedshiftEntry(unittest.TestCase):
         self.assertEqual([], test_support.arrived(self.model, held),
                          "a converted copy whose row was not written shows as a tile")
 
-    def test_a_redshift_twin_is_added_beside_the_karma_source(self):
+    def test_a_redshift_copy_is_added_beside_the_karma_source(self):
         before = len(self.model.assets)
         held = test_support.asset_ids(self.model)
         ok, report = material_actions.convert(self.model, self.model.index(self.row, 0), "Redshift")
@@ -323,7 +323,7 @@ class MaterialsConvertMakesANewRedshiftEntry(unittest.TestCase):
         self.assertEqual(sorted([ALBEDO, NORMAL, ROUGH]), files,
                          "the saved Redshift network does not reference the source's own files")
 
-    def test_a_non_karma_row_is_refused_with_a_reason(self):
+    def test_a_non_karma_row_is_skipped_with_a_reason(self):
         self.model.assets[self.row].renderer = "Redshift"
         ok, report = material_actions.convert(self.model, self.model.index(self.row, 0), "Redshift")
         self.assertFalse(ok)
@@ -356,7 +356,7 @@ class ATangentSpaceBumpKeepsItsStrength(unittest.TestCase):
         report = self.converter.ConversionReport("bump")
         return self.converter.convert_bump_map(bump, self.dest, report)
 
-    def test_a_tangent_space_strength_crosses_and_a_height_field_scale_stays(self):
+    def test_a_tangent_space_strength_is_copied_and_a_height_field_scale_is_kept(self):
         for input_type, scale, kept in (
                 ("1", 0.5, 0.5),        # the plugin's own token for Tangent-Space Normal
                 ("0", 0.001, 1.0)):     # a height-field scale would flatten the normal map
@@ -464,7 +464,7 @@ class ALegacyRedshiftMaterialGoesIntoSolaris(unittest.TestCase):
         self.addCleanup(after[0].destroy)
         return after[0]
 
-    def test_it_lands_in_a_lop_library_as_the_usd_container(self):
+    def test_it_is_imported_into_a_lop_library_as_the_usd_container(self):
         handler = nodes.NodeHandler(self.prefs)
         self.assertEqual("rs_usd_material_builder",
                          material_files.get_saved_node_type(
@@ -526,7 +526,7 @@ class ALegacyRedshiftMaterialGoesIntoSolaris(unittest.TestCase):
 
 @unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                      "the Redshift plugin is not loaded")
-class AFirstEditionTwinGoesIntoSolaris(unittest.TestCase):
+class AVopnetWithOnlyAUsdTerminalImportsIntoSolaris(unittest.TestCase):
     """A `redshift_vopnet` with only a USD terminal imports with one terminal feeding the suboutput."""
 
     def setUp(self):
@@ -586,7 +586,7 @@ class AFirstEditionTwinGoesIntoSolaris(unittest.TestCase):
 class AnOpenPBRKarmaMaterialConvertsByItsOwnNames(unittest.TestCase):
     """An mtlxopen_pbr_surface converts by its own input names to the RS OpenPBR material."""
 
-    def test_values_and_a_texture_cross(self):
+    def test_values_and_a_texture_are_copied(self):
         from amaze.render import redshift_converter
         parent = hou.node("/mat") or hou.node("/").createNode("mat")
 
@@ -619,10 +619,10 @@ class AnOpenPBRKarmaMaterialConvertsByItsOwnNames(unittest.TestCase):
 
 @unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                      "the Redshift plugin is not loaded")
-class AWireThroughADotSurvivesTheSolarisRebuild(unittest.TestCase):
+class AWireThroughADotIsKeptThroughTheSolarisRebuild(unittest.TestCase):
     """moveNodesTo moves nodes only, so dots are bypassed before the rebuild. ▸r/node-items"""
 
-    def test_the_dot_routed_input_arrives_wired(self):
+    def test_the_dot_routed_input_is_still_wired(self):
         from amaze.render import redshift_converter
         parent = hou.node("/obj").createNode("matnet")
         self.addCleanup(parent.destroy)
@@ -724,7 +724,7 @@ class _ValuesSource:
 
 @unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                      "the Redshift plugin is not loaded")
-class AnOnlineMaterialCanLandAsRedshift(unittest.TestCase):
+class AnOnlineMaterialCanBeConvertedToRedshift(unittest.TestCase):
     """An online record builds as Karma, converts, and the library adds the Redshift entry."""
 
     @classmethod
@@ -771,7 +771,7 @@ class AnOnlineMaterialCanLandAsRedshift(unittest.TestCase):
         self.assertEqual((0.8, 0.2, 0.1),
                          tuple(round(v, 3) for v in shaders[0].parmTuple("base_color").eval()))
 
-    def test_a_measured_metal_lands_as_a_redshift_metal(self):
+    def test_a_measured_metal_becomes_a_redshift_metal(self):
         """A complex-IOR metal becomes metalness 1, base colour its F0 reflectance. ▸r/redshift-nodes"""
         from amaze.core import matx_import, matx_sources
         gold = matx_sources.MatxRecord(
@@ -820,7 +820,7 @@ class AnOnlineMaterialCanLandAsRedshift(unittest.TestCase):
         self.assertNotIn("uid", row, "`uid` is the pre-connector id spelling, which a package import strips")
 
 
-class TheMirrorReadsTheForwardConvertersFacts(unittest.TestCase):
+class TheReverseConverterUsesTheForwardConvertersTables(unittest.TestCase):
     """One signature reader and one colour table, shared with the forward converter."""
 
     def test_the_openpbr_colour_inputs_are_the_standard_ones_by_openpbr_name(self):

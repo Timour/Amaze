@@ -140,7 +140,7 @@ class TheCommandAndItsEnvironment(unittest.TestCase):
         octane = self._job("Octane").command()
         self.assertEqual("1", octane[octane.index("--restart-delegate") + 1])
 
-    def test_the_bar_climbs_over_the_batch_not_per_frame(self):
+    def test_the_progress_bar_counts_over_the_batch_not_per_frame(self):
         """husk counts each frame from 0 to 100; three frames must not fill the bar three times."""
         job = self._job("Karma", 3)
         seen = []
@@ -157,7 +157,7 @@ class TheCommandAndItsEnvironment(unittest.TestCase):
         self.assertEqual("/ab/p.py", husk_job._script_arg("/ab/p.py"))
 
 
-class ARenderIsJudgedByItsFrames(unittest.TestCase):
+class ARenderSucceedsOrFailsByItsFramesDone(unittest.TestCase):
     """22.0.482's husk exits 139 after its last frame ▸r/husk-startup; a fake husk does the same."""
 
     def _run(self, reported):
@@ -226,7 +226,7 @@ class AFrameWithNoPictureIsRecorded(unittest.TestCase):
 class QuittingLeavesNoJobFolder(unittest.TestCase):
     """At Houdini's exit the running husk is stopped and every job's folder is removed."""
 
-    def _sleeper(self, jobs):
+    def _sleeping_job(self, jobs):
         folder = test_support.scratch_dir("amaze_husk_quit_")
         self.addCleanup(shutil.rmtree, folder, True)
         job = husk_job.HuskJob({"usd": "", "prims": [], "ball": "", "renderer": "Karma"},
@@ -240,7 +240,7 @@ class QuittingLeavesNoJobFolder(unittest.TestCase):
 
     def test_stop_now_discards_the_running_and_the_waiting(self):
         jobs = husk_job.Jobs()
-        running, waiting = self._sleeper(jobs), self._sleeper(jobs)
+        running, waiting = self._sleeping_job(jobs), self._sleeping_job(jobs)
         self.addCleanup(lambda: running._proc and running._proc.kill())
         self.addCleanup(lambda: running._timer and running._timer.stop())
         self.assertIs(running, jobs._running, "premise: the first job is not the running one")
@@ -342,7 +342,7 @@ class OneHuskRendersEachMaterial(unittest.TestCase):
 class AHuskThatWillNotStopIsKilled(unittest.TestCase):
     """A Redshift husk stuck in a texture conversion ignored SIGTERM. ▸r/redshift-thumbnail-paths"""
 
-    def _deaf_job(self):
+    def _job_that_ignores_sigterm(self):
         folder = test_support.scratch_dir("amaze_husk_deaf_")
         self.addCleanup(shutil.rmtree, folder, True)
         job = husk_job.HuskJob({"usd": "", "prims": [], "ball": "", "renderer": "Redshift"},
@@ -357,7 +357,7 @@ class AHuskThatWillNotStopIsKilled(unittest.TestCase):
         return job
 
     def test_cancel_kills_after_the_grace(self):
-        job = self._deaf_job()
+        job = self._job_that_ignores_sigterm()
         with mock.patch.object(husk_job, "KILL_AFTER", 1.0):
             threading.Timer(1.0, job.cancel).start()
             started = time.monotonic()
@@ -366,8 +366,8 @@ class AHuskThatWillNotStopIsKilled(unittest.TestCase):
         self.assertIsNotNone(job._proc.poll(), "the husk still runs after cancel")
         self.assertLess(time.monotonic() - started, 15.0, "the kill took 15 s or more")
 
-    def test_a_quiet_husk_is_stalled_and_killed(self):
-        job = self._deaf_job()
+    def test_a_husk_with_no_output_is_stalled_and_killed(self):
+        job = self._job_that_ignores_sigterm()
         with mock.patch.object(husk_job, "STALL_SECONDS", 2), \
                 mock.patch.object(husk_job, "KILL_AFTER", 1.0), \
                 test_support.captured_log() as log:

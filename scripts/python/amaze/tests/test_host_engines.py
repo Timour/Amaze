@@ -58,12 +58,12 @@ def _modules(exclude):
             yield os.path.relpath(path, _PKG), path
 
 
-class TestHostEngineOwnership(unittest.TestCase):
+class TestOnlyHostModulesCheckVersionOrPlatform(unittest.TestCase):
 
-    def _offenders(self, owner, needles):
+    def _offenders(self, allowed_module, needles):
         found = []
         checked = 0
-        for rel, path in _modules({owner}):
+        for rel, path in _modules({allowed_module}):
             checked += 1
             code = _code_only(path)
             for line_no, line in enumerate(code.splitlines(), 1):
@@ -96,7 +96,7 @@ class TestHostEngineOwnership(unittest.TestCase):
             "platform tests outside hostos.py:\n  %s"
             % "\n  ".join(offenders))
 
-    def test_the_scan_survives_the_owner_being_excluded(self):
+    def test_the_scan_finds_hostver_when_it_is_not_excluded(self):
         """Control: without the exclusion the scan must find hostver.py, or a pass proves nothing."""
         hits = self._offenders("no_such_file.py", ("applicationVersion()[",))
         self.assertTrue(
@@ -105,7 +105,7 @@ class TestHostEngineOwnership(unittest.TestCase):
             "so a green result above means nothing. Found: %s" % hits)
 
 
-class TestHostVerAnswers(unittest.TestCase):
+class TestHostVerCapabilities(unittest.TestCase):
     """hostver returns capability answers (bools), not version numbers."""
 
     def test_every_capability_is_a_bool(self):
@@ -113,7 +113,7 @@ class TestHostVerAnswers(unittest.TestCase):
         self.assertIsInstance(hostver.obj_pick_wants_device_pixels(2.0), bool)
         self.assertIsInstance(hostver.has_new_cops(), bool)
 
-    def test_a_broken_hou_does_not_take_the_app_down(self):
+    def test_a_raising_hou_returns_an_empty_tuple(self):
         """houdini_version() fills every capability Env; if hou raises, it returns (), no crash."""
         import hou
         from amaze.helpers import hostver
@@ -156,7 +156,7 @@ class TestOpinionComposition(unittest.TestCase):
         self.assertEqual("documented",
                          cap.resolve(self._env(macos=False, windows=True)))
 
-    def test_the_strongest_applying_opinion_wins(self):
+    def test_the_strongest_applying_opinion_is_used(self):
         hv = self._hv()
         always = lambda env: True                        # noqa: E731
         cap = hv.Capability(
@@ -208,7 +208,7 @@ class TestOpinionComposition(unittest.TestCase):
         report = cap.explain(self._env())
         self.assertIn("raised", report["overrides"][0]["failed_conditions"])
 
-    def test_every_opinion_and_base_carries_real_evidence(self):
+    def test_every_opinion_and_base_has_real_evidence(self):
         """Every base and opinion carries evidence; a version branch without it is a guess."""
         hv = self._hv()
         caps = [(n, getattr(hv, n)) for n in dir(hv)
@@ -230,7 +230,7 @@ class TestOpinionComposition(unittest.TestCase):
                     "not an opinion" % name)
 
 
-class AFailedWriteSaysWhichFailure(unittest.TestCase):
+class AFailedWriteNamesItsCause(unittest.TestCase):
     """`hostos.why_failed` names a cause only for a measured errno, never a guess. ▸r/failed-write"""
 
     def _cause(self, number):
@@ -289,7 +289,7 @@ class AFailedWriteSaysWhichFailure(unittest.TestCase):
 
 
 @unittest.skipUnless(sys.platform == "win32", "Windows refuses a replace onto these; POSIX does not")
-class AWindowsReplaceRefusalNamesTheFile(unittest.TestCase):
+class AWindowsReplaceErrorNamesTheFile(unittest.TestCase):
     """Both raise winerror 5, which by itself means a read-only folder. ▸r/windows-files"""
 
     def setUp(self):
@@ -299,7 +299,7 @@ class AWindowsReplaceRefusalNamesTheFile(unittest.TestCase):
         with open(self.path, "w", encoding="utf-8") as handle:
             handle.write("{}")
 
-    def _refusal(self):
+    def _replace_error(self):
         from amaze.helpers import hostos
         staged = os.path.join(self.folder, "notes.writing")
         with open(staged, "w", encoding="utf-8") as handle:
@@ -313,7 +313,7 @@ class AWindowsReplaceRefusalNamesTheFile(unittest.TestCase):
         from amaze.helpers import hostos
         os.chmod(self.path, stat.S_IREAD)
         self.addCleanup(os.chmod, self.path, stat.S_IREAD | stat.S_IWRITE)
-        cause, sentence = self._refusal()
+        cause, sentence = self._replace_error()
         self.assertEqual(hostos.FAILED_READ_ONLY, cause)
         self.assertIn("the file is read-only", sentence)
         self.assertNotIn("folder", sentence)
@@ -330,7 +330,7 @@ class AWindowsReplaceRefusalNamesTheFile(unittest.TestCase):
         held = kernel32.CreateFileW(self.path, 0x80000000, 0, None, 3, 0x80, None)
         self.assertNotEqual(wintypes.HANDLE(-1).value, held, "premise: CreateFileW opened the file")
         self.addCleanup(kernel32.CloseHandle, held)
-        cause, sentence = self._refusal()
+        cause, sentence = self._replace_error()
         self.assertEqual(hostos.FAILED_IN_USE, cause)
         self.assertIn("another program", sentence)
 

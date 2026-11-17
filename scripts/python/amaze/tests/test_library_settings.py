@@ -33,7 +33,7 @@ class _Library(unittest.TestCase):
 
 class TheLibraryVersionTest(_Library):
 
-    def test_a_new_library_is_born_at_this_version_and_reads_as_2_0(self):
+    def test_a_new_library_is_created_at_this_version_and_reads_as_2_0(self):
         self.assertTrue(prefs_mod.create_library(self.dir))
         self.assertEqual(library_policy.LIBRARY_VERSION, library_settings.library_version(self.dir))
         self.assertEqual("2.0", library_settings.version_label(
@@ -76,7 +76,7 @@ class TheLibraryVersionTest(_Library):
         self.assertFalse(library_actions.update(self.prefs))
         self.assertEqual(before, self.master())
 
-    def test_an_older_library_is_no_library_to_the_version_read(self):
+    def test_an_older_library_reads_as_version_0(self):
         with open(os.path.join(self.dir, "policy.json"), "w", encoding="utf-8") as handle:
             json.dump({"library_version": 3}, handle)
         with open(os.path.join(self.dir, "library.json"), "w", encoding="utf-8") as handle:
@@ -89,7 +89,7 @@ class TheLibraryVersionTest(_Library):
 
 class ThePolicyTest(_Library):
 
-    def test_overwrite_is_allowed_until_the_library_says_otherwise(self):
+    def test_overwrite_is_allowed_until_the_library_policy_forbids_it(self):
         self.assertTrue(library_settings.allow_overwrite(self.prefs))
         self.assertTrue(library_settings.set_allow_overwrite(self.prefs, False))
         self.assertFalse(library_settings.allow_overwrite(self.prefs))
@@ -98,7 +98,7 @@ class ThePolicyTest(_Library):
             key: value for key, value in self.master()["policy"]["allow_overwrite"].items()
             if not key.startswith("_")})
 
-    def test_a_policy_that_does_not_read_answers_no(self):
+    def test_an_unreadable_policy_returns_false(self):
         with open(os.path.join(self.dir, library_files.MASTER), "w", encoding="utf-8") as handle:
             handle.write("{ ruined")
         self.assertFalse(library_settings.allow_overwrite(self.prefs))

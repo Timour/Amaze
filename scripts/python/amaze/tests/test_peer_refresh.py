@@ -60,7 +60,7 @@ class AUserMadeElsewhereShowsUpWithoutARestart(_Case):
             "a user created on another machine is still not listed")
 
 
-class ThePreferencesDialogSeesTheCurrentPeople(unittest.TestCase):
+class ThePreferencesDialogListsTheCurrentUsers(unittest.TestCase):
     """Opening Preferences reads the library again, so the picker is current."""
 
     def setUp(self):

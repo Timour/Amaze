@@ -208,7 +208,7 @@ class AFullConversionTest(_OldLibrary):
         write(os.path.join(nodes_versions, "2.mat"), "node version two\n")
         write(os.path.join(nodes_versions, "2.interface"), INTERFACE)
 
-    def test_every_shape_lands_in_format_4(self):
+    def test_every_shape_is_converted_to_format_4(self):
         self.lay_out()
         fixture = {name: data for name, data in listing(self.materials).items()
                    if name.startswith("1398")}
@@ -351,7 +351,7 @@ class PicturesTest(_OldLibrary):
 class AReadBackMismatchSetsTheAssetAsideTest(_OldLibrary):
     """A new file that does not read back as built: its asset is set aside, the rest converts."""
 
-    def test_the_asset_s_old_files_stay_byte_identical_and_its_row_goes(self):
+    def test_the_asset_s_old_files_stay_byte_identical_and_its_row_is_removed(self):
         self.database("library.json", ["GOOD1", "BAD1"], BAD1="Broken Brick")
         self.old_asset("GOOD1")
         bad = self.old_asset("BAD1") + self.old_pictures("BAD1")
@@ -422,7 +422,7 @@ class AReadBackMismatchSetsTheAssetAsideTest(_OldLibrary):
 
 class AnUnknownFileInMatStaysTest(_OldLibrary):
 
-    def test_it_survives_with_its_folder(self):
+    def test_it_is_kept_with_its_folder(self):
         self.database("library.json", ["MAT1"])
         self.old_asset("MAT1")
         notes = write(os.path.join(self.old, "notes.txt"), "mine\n")
@@ -432,7 +432,7 @@ class AnUnknownFileInMatStaysTest(_OldLibrary):
         self.assertEqual(b"mine\n", read_bytes(notes))
         self.assertEqual(library_policy.LIBRARY_VERSION, library_version(self.dir))
 
-    def test_the_backups_earlier_updates_left_go_and_the_folder_with_them(self):
+    def test_the_backups_earlier_updates_left_are_deleted_with_their_folder(self):
         self.database("library.json", ["MAT1"])
         self.old_asset("MAT1")
         write(os.path.join(self.old, "MAT1.mat.pre-adopt"), "before the texture update\n")
@@ -556,7 +556,7 @@ class WhatTheConversionReplacesIsKeptTest(_OldLibrary):
         stored = json.loads(read_bytes(self.at(MATERIALS)))
         self.assertEqual("a comment", stored["comments"]["KEEP1"]["items"][0]["text"])
 
-    def test_a_database_write_that_fails_stops_the_run_and_says_why(self):
+    def test_a_database_write_that_fails_stops_the_run_and_records_why(self):
         self.lay_out()
         with mock.patch.object(library_conversion, "_write_databases",
                                side_effect=OSError(28, "No space left on device")):
@@ -615,7 +615,7 @@ class WhatTheConversionReplacesIsKeptTest(_OldLibrary):
         write(os.path.join(folder, "img", "logo.png"), b"a picture")
         self.assertFalse(library_conversion.needs_conversion(folder))
 
-    def test_a_library_from_before_users_gives_its_favorites_to_the_named_user(self):
+    def test_a_library_from_before_users_moves_its_favorites_to_the_named_user(self):
         self.lay_out()
         write(self.at("favourites.json"), {"favourites": {"KEEP1": True}})
         uid = "c" * 32
@@ -776,7 +776,7 @@ class TheBoxesTest(_OldLibrary):
         self.assertEqual(before, listing(self.dir),
                          "a save wrote into a library that is not converted yet")
 
-    def test_the_assets_set_aside_are_named_and_move_to_trash_takes_them(self):
+    def test_the_assets_set_aside_are_named_and_move_to_trash_moves_them(self):
         self.database("library.json", ["GOOD1", "BAD1"], BAD1="Broken Brick")
         self.old_asset("GOOD1")
         bad = self.old_asset("BAD1")
@@ -880,7 +880,7 @@ class AClassicMaterialIsRebuiltTest(_OldLibrary):
         write(os.path.join(self.old, "versions", "OLD1", "versions.json"),
               {"active": 1, "versions": [{"n": 1, "name": "V1", "file": "1"}]})
 
-    def test_with_its_renderer_loaded_it_is_rebuilt_and_its_classic_versions_go(self):
+    def test_with_its_renderer_loaded_it_is_rebuilt_and_its_classic_versions_removed(self):
         classic = _Classic(self)
         outcome, _asked = self.convert(classic=classic)
         self.assertEqual((library_conversion.DONE, []), (outcome.status, outcome.set_aside))
@@ -899,7 +899,7 @@ class AClassicMaterialIsRebuiltTest(_OldLibrary):
         self.assertEqual(([1], [(1, "Redshift")]), (asked, classic.asked))
         self.assertEqual(before, listing(self.dir))
 
-    def test_move_to_trash_takes_them_out_and_converts_the_rest(self):
+    def test_move_to_trash_removes_them_and_converts_the_rest(self):
         classic = _Classic(self, loaded=False, trash=True)
         outcome, _asked = self.convert(classic=classic)
         self.assertEqual((library_conversion.DONE, []), (outcome.status, outcome.set_aside))
@@ -1115,7 +1115,7 @@ class AMetadataEditMakesNoVersionTest(_Library):
         versions.keep_base(self.prefs, self.ASSET)
         self.assertEqual(2, versions.version_count(self.prefs, self.ASSET))
 
-    def test_switching_back_keeps_the_metadata_and_takes_the_builder(self):
+    def test_switching_back_keeps_the_metadata_and_restores_the_builder(self):
         path = asset_record.path_for(self.prefs, self.ASSET, MATERIALS)
         self.metadata(self.ASSET)
         versions.create_version(self.prefs, self.ASSET)
@@ -1145,7 +1145,7 @@ class TheRebuildReadsTheNewFileTest(_Library):
         self.assertNotIn("REB3", names, "the rebuild read a format 3 stamp beside the files")
 
 
-class AnyIdTheWriterTakesIsReadBackTest(_Library):
+class AnyIdTheWriterAcceptsIsReadBackTest(_Library):
     """`-1` and ids with `.`, `_` or `-` get an `<id>.json`; the rebuild and the checks see it."""
 
     def test_the_sentinel_row_is_written_and_rebuilt(self):
@@ -1266,7 +1266,7 @@ class PicturesLiveInTheirSectionTest(_Library):
         for relative in ("files/%s.png" % capture, "materials/comments/" + shown):
             self.assertNotEqual(library_files.UNKNOWN, library_files.classify(relative)[0], relative)
 
-    def test_a_new_comment_picture_lands_in_its_section(self):
+    def test_a_new_comment_picture_is_written_to_its_section(self):
         from amaze.core import captures, notes
         source = write(os.path.join(test_support.scratch_dir("amaze_pic_"), "p.png"), b"png")
         self.addCleanup(shutil.rmtree, os.path.dirname(source), True)
@@ -1305,7 +1305,7 @@ class OldFilesBesideANewOneAreLeftoversTest(_Library):
                              findings["unaccounted"].values() for name in names))
 
 
-class EveryOldStoreArrivesTest(unittest.TestCase):
+class EveryOldStoreIsConvertedTest(unittest.TestCase):
     """Each old root file is converted into the right section of the right 2.0 database."""
 
     USER = "a" * 32    # the user converting
@@ -1315,11 +1315,11 @@ class EveryOldStoreArrivesTest(unittest.TestCase):
         self.dir = test_support.scratch_dir("amaze_old_stores_")
         self.addCleanup(shutil.rmtree, self.dir, True)
 
-    def lay(self, name: str, data) -> None:
+    def write_root_file(self, name: str, data) -> None:
         write(os.path.join(self.dir, name), data)
 
     def section(self, rows: list, name="library.json", **document) -> None:
-        self.lay(name, dict({"format": 3, "categories": [], "assets": rows}, **document))
+        self.write_root_file(name, dict({"format": 3, "categories": [], "assets": rows}, **document))
 
     def built(self, **kwargs) -> dict:
         return library_conversion.build_databases(self.dir, user=self.USER, **kwargs)
@@ -1327,7 +1327,7 @@ class EveryOldStoreArrivesTest(unittest.TestCase):
     def test_comments_of_assets_and_of_files(self):
         self.section([{"id": "A1", "name": "One"}])
         item = {"t": "text", "text": "on the asset", "id": "c1", "author": self.PEER}
-        self.lay("notes.json", {"notes": {
+        self.write_root_file("notes.json", {"notes": {
             "material:A1": {"items": [item]},
             "file:/x/a.exr": {"items": [{"t": "todo", "label": "on the file", "done": True,
                                          "id": "c2", "author": self.PEER}]}}})
@@ -1338,7 +1338,7 @@ class EveryOldStoreArrivesTest(unittest.TestCase):
 
     def test_the_first_comment_shape_reads_as_items(self):
         self.section([{"id": "A1"}])
-        self.lay("notes.json", {"notes": {"material:A1": {
+        self.write_root_file("notes.json", {"notes": {"material:A1": {
             "text": "old words", "todos": [{"label": "old item", "done": True}]}}})
         items = self.built()[MATERIALS]["comments"]["A1"]["items"]
         self.assertEqual([("text", "old words"), ("todo", "old item")],
@@ -1347,7 +1347,7 @@ class EveryOldStoreArrivesTest(unittest.TestCase):
 
     def test_a_comment_item_with_no_author_and_no_id_is_kept_with_an_id(self):
         self.section([{"id": "A1"}])
-        self.lay("notes.json", {"notes": {"material:A1": {"items": [
+        self.write_root_file("notes.json", {"notes": {"material:A1": {"items": [
             {"t": "text", "text": "anonymous"}, {"t": "text", "text": "also"}]}}})
         items = self.built()[MATERIALS]["comments"]["A1"]["items"]
         self.assertEqual(["anonymous", "also"], [one["text"] for one in items])
@@ -1357,7 +1357,7 @@ class EveryOldStoreArrivesTest(unittest.TestCase):
     def test_icons_of_assets_and_of_files(self):
         self.section([{"id": "A1"}, {"id": "A2"}])
         spec = {"name": "circle", "bg": "#e0523a", "ink": "dark"}
-        self.lay("icons.json", {"icons": {"A1": spec, "/x/a.exr": dict(spec, name="map"),
+        self.write_root_file("icons.json", {"icons": {"A1": spec, "/x/a.exr": dict(spec, name="map"),
                                           "A2": {"face": "capture"}, "GONE": spec}})
         built = self.built()
         self.assertEqual({"A1": spec}, built[MATERIALS]["icons"])
@@ -1366,7 +1366,7 @@ class EveryOldStoreArrivesTest(unittest.TestCase):
 
     def test_stars_per_user_of_assets_and_of_files(self):
         self.section([{"id": "A1"}, {"id": "A2"}])
-        self.lay("favourites.json", {"favourites": {
+        self.write_root_file("favourites.json", {"favourites": {
             self.PEER + "|A1": True, self.PEER + "|/x/a.exr": True, "A2": True}})
         built = self.built()
         self.assertEqual({self.PEER: {"A1": True}, self.USER: {"A2": True}},
@@ -1384,12 +1384,12 @@ class EveryOldStoreArrivesTest(unittest.TestCase):
         self.assertEqual([], library_conversion.machine_stars(types.SimpleNamespace(data={})))
 
     def test_locations_and_their_paths(self):
-        self.lay("location_paths.json", {"location_paths": {
+        self.write_root_file("location_paths.json", {"location_paths": {
             "L1": {"path": "/proj/tex"}, "L2": {"path": "/proj/tex/"}, "L3": {"path": "/lib"}}})
-        self.lay("locations.json", {"locations": {
+        self.write_root_file("locations.json", {"locations": {
             self.PEER + "|/proj/tex": {"registered": True, "label": "Textures"},
             "loc:L3": {"registered": True}}})
-        self.lay("notes.json", {"notes": {"file:/proj/tex/a.exr": {"items": [
+        self.write_root_file("notes.json", {"notes": {"file:/proj/tex/a.exr": {"items": [
             {"t": "text", "text": "under it"}]}, "file:loc:L2/b.exr": {"items": [
                 {"t": "text", "text": "rival id"}]}}})
         files = self.built()[library_files.FILES]
@@ -1415,23 +1415,23 @@ class EveryOldStoreArrivesTest(unittest.TestCase):
                     record["kinds"] = ["image"]
                 elif show_all is not None:
                     record["show_all"] = show_all
-                self.lay("locations.json", {"locations": {"loc:L3": record}})
+                self.write_root_file("locations.json", {"locations": {"loc:L3": record}})
                 built = self.built(show_unknown=show_unknown)[library_files.FILES]
                 self.assertEqual(kinds, built["locations"][self.USER]["loc:L3"]["kinds"])
 
     def test_users(self):
-        self.lay("users.json", {"users": {self.PEER: {"name": "  First User "},
+        self.write_root_file("users.json", {"users": {self.PEER: {"name": "  First User "},
                                           "c" * 32: {"name": "  "}}})
         self.assertEqual({self.PEER: {"name": "First User"}},
                          self.built()[library_files.MASTER]["users"])
 
     def test_shared_settings(self):
-        self.lay("prefs.json", {"prefs": {"rendersize": {"value": 512}, "odd": {"x": 1}}})
+        self.write_root_file("prefs.json", {"prefs": {"rendersize": {"value": 512}, "odd": {"x": 1}}})
         self.assertEqual({"rendersize": {"value": 512}},
                          self.built()[library_files.MASTER]["settings"])
 
     def test_the_policy(self):
-        self.lay(library_conversion.OLD_POLICY, {"library_version": 3, "allow_overwrite": True})
+        self.write_root_file(library_conversion.OLD_POLICY, {"library_version": 3, "allow_overwrite": True})
         policy = self.built()[library_files.MASTER]["policy"]
         self.assertEqual({"value": True}, policy["allow_overwrite"])
         self.assertEqual({"version": library_policy.LIBRARY_VERSION}, policy["library"])
@@ -1442,7 +1442,7 @@ class EveryOldStoreArrivesTest(unittest.TestCase):
                 for one in library_conversion.OLD_MARKS:
                     if os.path.exists(os.path.join(self.dir, one)):
                         os.remove(os.path.join(self.dir, one))
-                self.lay(marker, "seeded\n")
+                self.write_root_file(marker, "seeded\n")
                 marks = self.built()[library_files.MASTER]["marks"]
                 self.assertEqual({library_conversion.OLD_MARKS[marker]: {"offered": True}}, marks)
 
@@ -1464,7 +1464,7 @@ class EveryOldStoreArrivesTest(unittest.TestCase):
                       {"id": "A2", "about": "Credit 2"}])
         mine = {"t": "todo", "label": "check the roughness", "done": False, "id": "m1",
                 "author": self.PEER}
-        self.lay("notes.json", {"notes": {"material:A1": {"items": [mine]},
+        self.write_root_file("notes.json", {"notes": {"material:A1": {"items": [mine]},
                                           "material:A2": {"items": [
                                               {"t": "text", "text": "Credit 2"}]}}})
         built = self.built()[MATERIALS]

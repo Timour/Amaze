@@ -100,7 +100,7 @@ class _PanelCase(unittest.TestCase):
 class EveryAssetSidebarFollowsItsFilter(unittest.TestCase):
     """A category never shows a count that differs from what its grid shows."""
 
-    def test_every_push_reaches_all_four_sidebars_through_one_route(self):
+    def test_every_filter_change_reaches_all_four_sidebars_through_apply_filter(self):
         """By AST: a text search matches `apply_filter`'s own docstring."""
         from amaze.panel import panel as panel_mod
         self.assertEqual(
@@ -377,7 +377,7 @@ class StepSizeKeepsTheSliderOnItsMarks(unittest.TestCase):
             QtCore.Qt.MouseButton.NoButton, QtCore.Qt.KeyboardModifier.NoModifier,
             QtCore.Qt.ScrollPhase.NoScrollPhase, False))
 
-    def test_a_click_between_marks_lands_on_the_nearest(self):
+    def test_a_click_between_marks_snaps_to_the_nearest(self):
         slider = self._slider()
         slider._apply_mouse_value(slider._x_for_value(200))
         self.assertEqual(192, slider.value(), "a click at 200 did not snap to 192")
@@ -447,7 +447,7 @@ class ASelfPaintedWidgetDimsWhenDisabled(unittest.TestCase):
             "in LIST mode it looks enabled, ignores every click because Qt "
             "withholds mouse events, and looks broken")
 
-    def test_a_disabled_toggle_switch_neither_shines_nor_beckons(self):
+    def test_a_disabled_toggle_switch_paints_greyed_and_has_no_pointing_hand(self):
         """The Customize dialog greys its Light Icon switch, so it does not look enabled."""
         switch = ui_helpers.ToggleSwitch("Light Icon")
         switch.resize(switch.sizeHint())
@@ -503,7 +503,7 @@ class ASelfPaintedWidgetDimsWhenDisabled(unittest.TestCase):
             "soft-upscaled look RENDER_SCALE exists to prevent")
 
 
-class NodeAndCodeDoNotBorrowTheVersionColumn(unittest.TestCase):
+class NodeAndCodeHaveNoVersionColumn(unittest.TestCase):
 
     def test_they_get_a_delegate_without_the_version_roles(self):
         """A column exists if the section's declared delegate has its role."""
@@ -533,7 +533,7 @@ class TheOnlineGridIsFittedLikeTheOthers(unittest.TestCase):
     def setUpClass(cls):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
-    def test_a_column_is_its_DEFAULT_whenever_the_rows_land(self):
+    def test_a_column_is_its_default_width_whenever_the_rows_load(self):
         """`COLUMN_DEFAULT_WIDTH` before and after a reset; nothing measures."""
         panel = self.panel
         panel.section_tabs.setChecked("material")
@@ -572,7 +572,7 @@ class TheOnlineGridIsFittedLikeTheOthers(unittest.TestCase):
             "the Name column is not at its documented default")
 
 
-class EveryColumnIsCoveredByTheTablesHangingOffIt(unittest.TestCase):
+class EveryColumnIsInEveryColumnTable(unittest.TestCase):
     """A column missing from a table does not raise, it is only partly configured."""
 
     def test_every_column_has_a_width_a_roles_entry_and_real_ticks(self):
@@ -611,7 +611,7 @@ class EveryColumnIsCoveredByTheTablesHangingOffIt(unittest.TestCase):
             "unconditionally: %s" % sorted(missing))
 
 
-class OneProgressBarOwnerPerThingShown(unittest.TestCase):
+class OneProgressBarPerThingShown(unittest.TestCase):
 
     def test_the_folder_bar_is_hidden_in_the_online_world(self):
         """`current_section` still names the local section in the online world."""
@@ -668,7 +668,7 @@ class LocateFolderKeepsEveryPerLocationSetting(unittest.TestCase):
             "a per-location fact is missing from the one list that "
             "defines a location's record")
 
-    def test_a_relocate_carries_them(self):
+    def test_a_relocate_keeps_them(self):
         prefs = _location_prefs(self, {"/old/": "Bokeh"}, {"/old/": "#ff8000"}, ["/old/"])
         locations.set_field(prefs, "/old/", "kinds", ["hip", "image"])
         locations.set_field(prefs, "/old/", "pathname", True)
@@ -686,7 +686,7 @@ class LocateFolderKeepsEveryPerLocationSetting(unittest.TestCase):
             locations.record(prefs, "/new/"),
             "a per-location fact was lost by Locate Folder")
 
-    def test_a_relocate_carries_the_comments_and_the_tile_icons_too(self):
+    def test_a_relocate_keeps_the_comments_and_the_tile_icons_too(self):
         """Comments and icons key on the path, so a relocate must carry them."""
         prefs = _location_prefs(self, {"/old/": "Plates"}, {}, [])
         key = locations.file_ident(prefs, "/old/shot.exr")
@@ -718,7 +718,7 @@ class LocateFolderKeepsEveryPerLocationSetting(unittest.TestCase):
             "an asset key that merely LOOKS like a path was rewritten "
             "by a folder move")
 
-    def test_removing_a_location_takes_all_four_and_spares_a_sibling(self):
+    def test_removing_a_location_removes_all_four_and_keeps_a_sibling(self):
         """A removal takes every field, or re-adding the folder inherits them."""
         prefs = _location_prefs(self, {"/a/tex/": "Bokeh", "/a/textures/": "two"},
                                 {"/a/tex/": "#ff8000"}, ["/a/tex/"])
@@ -780,7 +780,7 @@ class ThereIsOneFontTable(unittest.TestCase):
                 mock.patch.object(theme_mod, "screen_ratio", lambda widget=None: 2.0):
             self.assertEqual(2.0, theme_mod._read_ui_scale())
 
-    def test_a_role_derives_and_never_decides(self):
+    def test_a_role_scales_the_given_font_and_an_unknown_role_raises(self):
         from amaze.helpers import theme as theme_mod
         base = QtGui.QFont()
         base.setPointSizeF(20.0)          # above the minimum, so it is kept
@@ -844,7 +844,7 @@ class EveryActivateEstablishesADefaultRow(unittest.TestCase):
             "the shared default row no longer goes through the panel's helper")
 
 
-class AnOnlineBatchSurvivesOneBadRecord(unittest.TestCase):
+class AnOnlineBatchContinuesPastOneBadRecord(unittest.TestCase):
 
     def test_both_import_loops_guard_each_record(self):
         """`import_record` has only try/finally, so a raise aborts the loop."""
@@ -875,10 +875,10 @@ class TheCommentGlyphsAreRasterisedOnce(unittest.TestCase):
             "unchecked to-do would share one pixmap")
 
 
-class TheColourBandFollowsTheOwningLocation(unittest.TestCase):
+class TheColourBandFollowsTheEnclosingLocation(unittest.TestCase):
     """The owning location resolves by prefix, once per folder, cached."""
 
-    def test_a_subfolder_row_wears_the_locations_colour(self):
+    def test_a_subfolder_row_shows_the_locations_colour(self):
         from unittest import mock
 
         from amaze.core import locations
@@ -923,7 +923,7 @@ class TheColourBandFollowsTheOwningLocation(unittest.TestCase):
 class AnUnconfiguredPanelStillOpensPreferences(unittest.TestCase):
     """Preferences is the only way to configure a library, so it must open."""
 
-    def test_show_prefs_survives_no_library(self):
+    def test_show_prefs_opens_with_no_library(self):
         self.addCleanup(test_support.reset_database_singletons)
         panel = test_support.fixture_unconfigured_panel(self)
         self.assertIsNone(
@@ -954,7 +954,7 @@ class TheOnlineWorldNeedsALibrary(unittest.TestCase):
         self.assertFalse(self.panel.btn_online.isChecked(),
                          "the Online chip shows as on with no online view loaded")
 
-    def test_enter_online_mode_and_every_route_through_it_refuse(self):
+    def test_enter_online_mode_and_every_caller_of_it_stay_local(self):
         self.panel.enter_online_mode()
         self._assert_still_local()
         self.panel.open_online_source("PhysicallyBased")
@@ -995,7 +995,7 @@ class EveryGridProxyIsSetUpOneWay(_PanelCase):
         self.assertTrue(self.panel.btn_online.isEnabled(),    # setup turns the Online chip on
                         "a panel with a library opened with Online off")
 
-    def test_file_still_drops_an_unstarred_row_once_the_loop_turns(self):
+    def test_file_still_filters_out_an_unstarred_row_after_the_event_loop_runs(self):
         """With Qt's dynamic mode off, the base class's pass is what re-filters File."""
         panel = self.panel
         panel.section_tabs.setChecked("file")
@@ -1014,7 +1014,7 @@ class EveryGridProxyIsSetUpOneWay(_PanelCase):
         self.assertEqual(0, proxy.rowCount(), "the unstarred file stayed")
 
 
-class LeavingOnlineLandsOnAShownSection(unittest.TestCase):
+class LeavingOnlineSelectsAShownSection(unittest.TestCase):
     """Online entered from Node, Node hidden in Preferences, then Online left."""
 
     def setUp(self):
@@ -1031,7 +1031,7 @@ class LeavingOnlineLandsOnAShownSection(unittest.TestCase):
         self.panel._prefs_dialog_closed()
         QtWidgets.QApplication.processEvents()
 
-    def test_the_grid_shows_the_section_of_the_tab_it_lands_on(self):
+    def test_the_grid_shows_the_section_of_the_selected_tab(self):
         panel = self.panel
         panel.section_tabs.setChecked("cop")
         QtWidgets.QApplication.processEvents()
@@ -1087,7 +1087,7 @@ class ClosingPreferencesRescansTheFileFolderOnce(unittest.TestCase):
         self.assertEqual(1, scans, "the new library's location was scanned %d times" % scans)
 
 
-class TheGridCannotBeSqueezedOutOfExistence(unittest.TestCase):
+class OnlyTheWindowHasAMinimumWidth(unittest.TestCase):
     """Only the window has a minimum width; a minimum on a pane would add to it."""
 
     def setUp(self):
@@ -1102,7 +1102,7 @@ class TheGridCannotBeSqueezedOutOfExistence(unittest.TestCase):
         found = self.panel.findChildren(QtWidgets.QSplitter)
         return found[0] if found else None
 
-    def test_the_window_carries_the_only_width_floor(self):
+    def test_the_window_holds_the_only_minimum_width(self):
         """ONE number, on the window; a pane's own minimum moves the window as Comments opens."""
         from amaze.helpers import theme
         from amaze.panel import panel as panel_mod
@@ -1118,7 +1118,7 @@ class TheGridCannotBeSqueezedOutOfExistence(unittest.TestCase):
                          "so the window stops honouring its 500")
 
 
-class ABlockCommentSurvivesTheLineBreak(unittest.TestCase):
+class ABlockCommentIsTrackedAcrossLines(unittest.TestCase):
     """A `/* */` spanning lines must not leave later lines highlighted. ▸p/vex-block-comments"""
 
     def _painted(self, lines):
@@ -1202,7 +1202,7 @@ class TheHighlighterReadsEachLineOnce(unittest.TestCase):
         return "".join(chars)
 
     def test_the_colours_are_the_ones_painted_before(self):
-        rows = ABlockCommentSurvivesTheLineBreak._painted(
+        rows = ABlockCommentIsTrackedAcrossLines._painted(
             self, [line for line, _letters, _state in self.PAINTED])
         for (line, letters, state), (_text, runs, got_state) in zip(
                 self.PAINTED, rows):
@@ -1211,7 +1211,7 @@ class TheHighlighterReadsEachLineOnce(unittest.TestCase):
                 self.assertEqual(state, got_state)
 
 
-class TheCodeLooksLikeHoudinis(unittest.TestCase):
+class TheCodeEditorUsesHoudinisFontAndColours(unittest.TestCase):
     """The code editor takes Houdini's Fixed face and its syntax colours. ▸r/houdini-code-look"""
 
     def _houdini_file(self, *parts):
@@ -1235,7 +1235,7 @@ class TheCodeLooksLikeHoudinis(unittest.TestCase):
                 self.assertIsNotNone(drawn, "Houdini names no %s" % name)
                 self.assertEqual(drawn.group(1).lower(), fallback)
 
-    def test_the_live_scheme_wins_and_a_missing_name_falls_back(self):
+    def test_the_live_scheme_is_used_and_a_missing_name_falls_back(self):
         live = types.SimpleNamespace(getColor=lambda name: QtGui.QColor("#123456"))
         with mock.patch.object(hou, "qt", live, create=True):
             self.assertEqual("#123456", theme.houdini_color("ParmSyntaxStringColor", "#000000").name())
@@ -1295,7 +1295,7 @@ class TheHighlighterBuildsOneFormatPerColour(unittest.TestCase):
             recorder.highlightBlock(line)
         return handed
 
-    def test_each_colour_is_one_shared_format_carrying_only_its_colour(self):
+    def test_each_colour_is_one_shared_format_holding_only_its_colour(self):
         handed = self._handed()
         colours = {fmt.foreground().color().rgba() for fmt in handed}
         self.assertEqual(
@@ -1329,10 +1329,10 @@ class AStaleVersionsBadgeOpensNothing(unittest.TestCase):
         self.assertEqual([], opened, "a stale badge opened another material's versions")
 
 
-class PanelVisibleIsStampedAfterTheFirstPaint(unittest.TestCase):
+class PanelVisibleIsTimedAfterTheFirstPaint(unittest.TestCase):
     """`construct_to_painted_ms` is read as including the first paint of the grid."""
 
-    def test_the_stamp_follows_the_first_tiles(self):
+    def test_the_timestamp_follows_the_first_tiles(self):
         from amaze.core import debug
         from amaze.panel import delegates
         panel = test_support.fixture_panel(self)

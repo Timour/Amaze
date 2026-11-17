@@ -97,10 +97,10 @@ class TestRoundTrip(unittest.TestCase):
         handler = nodes.NodeHandler(self.prefs)
         builder = self.staging.createNode("subnet", "pair_builder")
 
-        def refuse(path):
+        def raise_disk_full(path):
             raise hou.OperationFailed("disk full")
 
-        for why, writer in (("the write raises", refuse),
+        for why, writer in (("the write raises", raise_disk_full),
                             ("the writer returns with no file", lambda path: None)):
             with self.subTest(why):
                 asset_record.write_section(record, asset_record.BUILDER, old)
@@ -250,7 +250,7 @@ class TestRoundTrip(unittest.TestCase):
         return [c.name() for c in stage.children()
                 if c.type().name() == "materiallibrary"]
 
-    def test_a_lop_import_lands_in_the_library_it_is_handed_or_nowhere(self):
+    def test_a_lop_import_is_created_in_the_library_it_is_given_or_nowhere(self):
         """Outside a Material Library an import makes nothing; inside one, a bad load keeps it."""
         from amaze import messages
         stage = hou.node("/obj").createNode("lopnet", "lop_landing_probe")
@@ -286,7 +286,7 @@ class TestRoundTrip(unittest.TestCase):
         return next(a for a in self.model.assets
                     if renderers.is_karma(a.renderer))
 
-    def _assert_refused_plainly(self, handler, stage):
+    def _assert_import_returns_the_reason(self, handler, stage):
         """The staging failure returns the message naming the material, and never raises."""
         from amaze import messages
         asset = self._karma_asset()
@@ -301,24 +301,24 @@ class TestRoundTrip(unittest.TestCase):
             messages.MATERIAL_FAILED_TO_IMPORT % asset.name, reason)
         self.assertEqual([], created)
 
-    def test_a_companion_that_raises_leaves_the_library_it_was_handed(self):
+    def test_a_companion_that_raises_keeps_the_library_it_was_given(self):
         stage = hou.node("/obj").createNode("lopnet", "companion_raise_probe")
         self.addCleanup(stage.destroy)
         theirs = stage.createNode("materiallibrary", "theirs")
         handler = nodes.NodeHandler(self.prefs)
 
-        def refusing(mat, beside):
+        def raise_operation_failed(mat, beside):
             raise hou.OperationFailed("companion refused")
 
-        handler.restore_cop_companion = refusing
-        self._assert_refused_plainly(handler, theirs)
+        handler.restore_cop_companion = raise_operation_failed
+        self._assert_import_returns_the_reason(handler, theirs)
         self.assertEqual(["theirs"], self._libraries(stage),
                          "the import removed the library it was given when "
                          "the COP companion raised")
         self.assertIsNone(handler._context_override,
                           "the import kept the context it was given")
 
-    def test_a_staging_failure_takes_back_the_companion_restored(self):
+    def test_a_staging_failure_removes_the_restored_companion(self):
         """The companion is restored before the staging network exists; a failure removes both."""
         stage = hou.node("/obj").createNode("lopnet", "staging_raise_probe")
         self.addCleanup(stage.destroy)
@@ -331,7 +331,7 @@ class TestRoundTrip(unittest.TestCase):
         handler.restore_cop_companion = lambda mat, beside: real_node(
             "/obj").createNode("copnet", "staging_probe_cops")
 
-        class RefusesStaging:
+        class RaisesOnStaging:
             def __init__(self, node):
                 self._node = node
 
@@ -345,10 +345,10 @@ class TestRoundTrip(unittest.TestCase):
 
         def node(path):
             found = real_node(path)
-            return RefusesStaging(found) if path == "/obj" else found
+            return RaisesOnStaging(found) if path == "/obj" else found
 
         with mock.patch.object(hou, "node", node):
-            self._assert_refused_plainly(handler, library)
+            self._assert_import_returns_the_reason(handler, library)
         self.assertIsNone(real_node("/obj/staging_probe_cops"),
                           "the import left the COP companion it restored")
         self.assertEqual(["theirs"], self._libraries(stage))
@@ -367,7 +367,7 @@ class TestRoundTrip(unittest.TestCase):
         self.assertEqual("1", created[0].userData("amaze_whole_probe"),
                          "the builder was saved as its contents, so its own data was not saved")
 
-    def test_saved_material_survives_disk_and_reimports(self):  # -- the round-trip --
+    def test_saved_material_is_written_to_disk_and_reimports(self):  # -- the round-trip --
         rows_before = self.model.rowCount()
         builder = _build_material(self.staging, "roundtrip_mat")
         held = test_support.asset_ids(self.model)
@@ -441,7 +441,7 @@ class TestRoundTrip(unittest.TestCase):
                          "chmod cannot make a directory unwritable on "
                          "Windows - the failure this test injects does "
                          "not happen there")
-    def test_failed_save_leaves_no_phantom_row(self):
+    def test_failed_save_leaves_no_extra_row(self):
         """A save whose file write fails registers no row; skipped on Windows (no chmod) ▸r/platform-files"""
         rows_before = self.model.rowCount()
         index_path = os.path.join(self.prefs.dir, MATERIALS)
@@ -553,7 +553,7 @@ class ARedshiftImportReadsItsInterfaceOnce(unittest.TestCase):
 class TestUnsafeAssetIds(unittest.TestCase):
     """An id from a database becomes a filename: the shape check and the containment are tested."""
 
-    def test_the_real_shapes_are_accepted_and_traversal_is_refused(self):
+    def test_is_safe_asset_id_accepts_the_real_shapes_and_rejects_traversal(self):
         """Tests the check: "32 hex only" would reject the fixture's legacy timestamp ids and "-1"."""
         for good in ("00755b7004824333af08d921462fa3ae",
                      "139888336268658010", "-1", "a", "A_b-c.d"):
@@ -562,7 +562,7 @@ class TestUnsafeAssetIds(unittest.TestCase):
                     "a/b", "a\\b", "", "x" * 65, "a b", "a\x00b"):
             self.assertFalse(material.is_safe_asset_id(bad), repr(bad))
 
-    def test_contained_join_refuses_an_escape_and_a_symlink_out(self):
+    def test_contained_join_raises_on_an_escape_and_a_symlink_out(self):
         """The symlink the shape check cannot see: a clean id, and a link placed in the asset folder."""
         base = tempfile.mkdtemp(prefix="amaze_contain_")
         self.addCleanup(shutil.rmtree, base, True)
@@ -621,7 +621,7 @@ class TestUnsafeAssetIds(unittest.TestCase):
             os.path.normpath(material.payload_path(_P, "old", ".mat", MATERIALS)),
             "a path fell back to format 3's shared folder")
 
-    def test_an_import_with_a_traversal_id_is_refused(self):
+    def test_an_import_with_a_traversal_id_creates_nothing(self):
         """End to end: a traversal id is refused by name, nothing is created, the file is never opened."""
         prefs_obj = test_support.fixture_prefs(self)
         test_support.reset_database_singletons()
@@ -807,7 +807,7 @@ class TestInterfaceIsNeverExecuted(unittest.TestCase):
             0.9, restored.evalAsRamp().lookup(1.0), 5,
             "the ramp came back at its default value")
 
-    def test_a_value_the_sidecar_cannot_serialise_costs_only_that_parm(self):
+    def test_a_value_the_sidecar_cannot_serialise_loses_only_that_parm(self):
         """A value the sidecar cannot serialise loses only that parm, never the asset ▸p/asset-write-unit"""
         staging = hou.node("/obj").createNode("matnet")
         self.addCleanup(staging.destroy)
@@ -822,12 +822,12 @@ class TestInterfaceIsNeverExecuted(unittest.TestCase):
 
         real_eval = hou.Parm.eval
 
-        def poisoned(self):
+        def unserialisable_eval(self):
             if self.name() == "amaze_keeps":
                 return object()          # nothing json can serialise
             return real_eval(self)
 
-        with patch.object(hou.Parm, "eval", poisoned):
+        with patch.object(hou.Parm, "eval", unserialisable_eval):
             captured = nodes.capture_builder(builder)      # must not raise
         self.assertNotIn(
             "amaze_keeps", captured["values"],
@@ -873,7 +873,7 @@ class UpdateExistingIsGuardedAgainstTheOtherSessionTest(unittest.TestCase):
         os.utime(path, ns=(stat.st_atime_ns,
                            stat.st_mtime_ns + 5_000_000_000))
 
-    def test_a_changed_mat_refuses_the_update(self):
+    def test_a_changed_mat_raises_update_refused(self):
         row = next(r for r in range(self.model.rowCount())
                    if str(self.model.assets[r].renderer))
         mat = self.model.assets[row]
@@ -913,7 +913,7 @@ class UpdateExistingIsGuardedAgainstTheOtherSessionTest(unittest.TestCase):
                         "the baseline was not refreshed")
 
 
-class AStaleCompanionGoesWhateverTheExtension(unittest.TestCase):
+class AStaleCompanionIsRemovedWhateverTheExtension(unittest.TestCase):
 
     def test_an_update_with_no_cop_net_removes_the_companion(self):
         """The companion's name follows the extension preference, as every other asset file does."""
@@ -938,7 +938,7 @@ class AStaleCompanionGoesWhateverTheExtension(unittest.TestCase):
                          "the stale companion was left next to the asset")
 
 
-class AnUpdateWhoseListWriteIsRefused(unittest.TestCase):
+class AnUpdateWhoseListWriteFails(unittest.TestCase):
     """The files are new, the record stays in memory, and the save's own alert is the only dialog."""
 
     def setUp(self):
@@ -957,7 +957,7 @@ class AnUpdateWhoseListWriteIsRefused(unittest.TestCase):
     def _index(self):
         return os.path.join(self.prefs.dir, self.model.DB_FILENAME)
 
-    def test_the_answer_says_so_and_the_next_save_writes_the_record(self):
+    def test_the_return_value_reports_it_and_the_next_save_writes_the_record(self):
         row = next(r for r in range(self.model.rowCount())
                    if renderers.is_karma(self.model.assets[r].renderer))
         mat = self.model.assets[row]
@@ -987,7 +987,7 @@ class AnUpdateWhoseListWriteIsRefused(unittest.TestCase):
                          "the next save that works did not write the update's record")
 
 
-class AnAddWhoseListWriteIsRefused(unittest.TestCase):
+class AnAddWhoseListWriteFails(unittest.TestCase):
     """A material whose list write fails: no tile, no files, returns False, at most one alert."""
 
     def setUp(self):
@@ -999,7 +999,7 @@ class AnAddWhoseListWriteIsRefused(unittest.TestCase):
         self.staging = hou.node("/obj").createNode("matnet")
         self.addCleanup(self.staging.destroy)
 
-    def test_nothing_lands_and_the_answer_says_so(self):
+    def test_nothing_is_added_and_it_returns_false(self):
         node = _build_material(self.staging, "refused_add_probe")
         held = test_support.asset_ids(self.model)
         index = os.path.join(self.prefs.dir, self.model.DB_FILENAME)
@@ -1078,7 +1078,7 @@ class StructureSignatureTest(unittest.TestCase):
                          "a raising loader left the staging network in /obj")
 
 
-class AnUnreadablePayloadRefusesWithoutAScreenTest(unittest.TestCase):
+class AnUnreadablePayloadFailsWithoutADialogTest(unittest.TestCase):
     """An unreadable payload fails with a reason, never a dialog with no UI ▸r/status-bar"""
 
     def setUp(self):
@@ -1086,7 +1086,7 @@ class AnUnreadablePayloadRefusesWithoutAScreenTest(unittest.TestCase):
         self.staging = hou.node("/obj").createNode("matnet")
         self.addCleanup(self.staging.destroy)
 
-    def test_a_missing_payload_comes_back_as_a_reason_not_an_OSError(self):
+    def test_a_missing_payload_returns_a_reason_not_an_OSError(self):
         """The contract the callers are written against: a reason string, never a raise."""
         missing = os.path.join(self.prefs.dir, "no-such-asset.mat")
         self.assertFalse(os.path.exists(missing))
@@ -1106,7 +1106,7 @@ class AnUnreadablePayloadRefusesWithoutAScreenTest(unittest.TestCase):
             "the reason does not name the file, so the reader gets only "
             "Houdini's own message: %r" % problem)
 
-    def test_both_imports_refuse_through_hou_error_with_no_ui_present(self):
+    def test_both_imports_raise_hou_error_with_no_ui_present(self):
         """Headless, a missing payload is a hou.Error with a reason, never a dialog's AttributeError."""
         self.assertFalse(hasattr(hou, "ui"),
                          "this test needs a headless hou to test anything")
@@ -1119,7 +1119,7 @@ class AnUnreadablePayloadRefusesWithoutAScreenTest(unittest.TestCase):
                     getattr(handler, method)(mat)
                 self.assertIn("could not be read", str(caught.exception))
 
-    def _an_oserror_reaches_no_screen(self, method: str):
+    def _assert_oserror_opens_no_dialog(self, method: str):
         """Raise the OSError the callers catch: their handler must not open a dialog."""
         handler = nodes.NodeHandler(self.prefs)
         handler._builder_node = self.staging
@@ -1141,11 +1141,11 @@ class AnUnreadablePayloadRefusesWithoutAScreenTest(unittest.TestCase):
         self.fail("%s caught a real read failure and reported nothing"
                   % method)
 
-    def test_a_read_failure_never_becomes_a_crash_on_either_import(self):
+    def test_a_read_failure_opens_no_dialog_on_either_import(self):
         """▸r/status-bar - hou.ui does not exist headless."""
         for method in ("load_items_file", "load_items_file_mtlx"):
             with self.subTest(method):
-                self._an_oserror_reaches_no_screen(method)
+                self._assert_oserror_opens_no_dialog(method)
 
 
 class AFreshHandlerNamesNoBuilder(unittest.TestCase):
@@ -1171,7 +1171,7 @@ class ASavedAssetRebuildsInsideAScratchNetwork(unittest.TestCase):
             self.scratch = hou.node("/obj").createNode("matnet")
         self.addCleanup(self.scratch.destroy)
 
-    def test_a_karma_asset_lands_in_the_scratch_and_an_unknown_one_is_refused(self):
+    def test_a_karma_asset_is_built_in_the_scratch_and_an_unknown_one_raises(self):
         obj_before = set(hou.node("/obj").children())
         builder = nodes.NodeHandler(self.prefs).rebuild_saved(self.karma, self.scratch)
         self.assertEqual(self.scratch.path(), builder.parent().path())
@@ -1183,7 +1183,7 @@ class ASavedAssetRebuildsInsideAScratchNetwork(unittest.TestCase):
         self.assertIn("unrecognised renderer", str(caught.exception))
 
 
-class AnImportLandsInTheNetworkTheArtistHasOpen(unittest.TestCase):
+class AnImportIsCreatedInTheNetworkTheArtistHasOpen(unittest.TestCase):
     """An auto import goes where the editor is: a Material Network open is the destination."""
 
     def setUp(self):
@@ -1236,7 +1236,7 @@ class AnImportLandsInTheNetworkTheArtistHasOpen(unittest.TestCase):
         self.assertEqual("matnet", hou.node(landed).type().name())
         self.assertFalse(theirs)
 
-    def test_a_karma_import_lands_inside_the_open_matnet(self):
+    def test_a_karma_import_is_created_inside_the_open_matnet(self):
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
         model = library_mod.MaterialLibrary(preferences=self.prefs)
@@ -1326,7 +1326,7 @@ class TheBuilderTypeIsReadFromTheRecordFirst(unittest.TestCase):
             with self.subTest(unusable):
                 self.assertEqual("subnet", self._converted_type(unusable))
 
-    def test_the_converter_disbelieves_a_sidecar_older_than_its_interface(self):
+    def test_the_converter_ignores_a_sidecar_older_than_its_interface(self):
         """An Amaze that wrote no sidecar re-saved the asset: the newer .interface is used."""
         sidecar = json.dumps({"type": renderers.REDSHIFT.usd_builder, "dialog_script": ""})
         self.assertEqual("subnet", self._converted_type(sidecar, stale=True))
@@ -1352,12 +1352,12 @@ class ALooseKarmaLoadKeepsItsArrangement(unittest.TestCase):
         test_support.pin_env(self, "OCIO", "/dev/null")
         self.prefs = test_support.fixture_prefs(self)
         self.prefs.render_on_import = 0
-        self.home = hou.node("/mat").createNode("subnet", "loose_layout_home")
-        self.addCleanup(self.home.destroy)
+        self.network = hou.node("/mat").createNode("subnet", "loose_layout_home")
+        self.addCleanup(self.network.destroy)
 
-    def test_the_saved_nodes_stay_put_and_the_plumbing_lands_beside_them(self):
-        image = self.home.createNode("mtlximage", "layout_image")
-        surface = self.home.createNode("mtlxstandard_surface", "layout_surface")
+    def test_the_saved_nodes_keep_their_positions_and_new_nodes_go_beside_them(self):
+        image = self.network.createNode("mtlximage", "layout_image")
+        surface = self.network.createNode("mtlxstandard_surface", "layout_surface")
         surface.setInput(surface.inputIndex("base_color"), image)
         image.setPosition(hou.Vector2(10.0, 10.0))
         surface.setPosition(hou.Vector2(13.0, 8.0))
@@ -1367,7 +1367,7 @@ class ALooseKarmaLoadKeepsItsArrangement(unittest.TestCase):
         asset = material.Material(name="looselayout", renderer=renderers.KARMA.key,
                                   mat_id="looselayout")
         ok, reason, created = nodes.NodeHandler(self.prefs).import_asset_to_scene(
-            asset, context_node=self.home)
+            asset, context_node=self.network)
         self.assertTrue(ok, reason)
         builder, = created
         self.addCleanup(builder.destroy)

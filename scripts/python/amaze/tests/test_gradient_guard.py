@@ -43,7 +43,7 @@ def _colors_document(document: dict) -> dict:
             "comments": {}, "icons": {}, "favorites": {}}
 
 
-def _lay(path: str, document: dict) -> None:
+def _write_colors_json(path: str, document: dict) -> None:
     """colors.json at `path`, written from the payload as another session would leave it."""
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(_colors_document(document), fh, indent=1)
@@ -88,7 +88,7 @@ class GradientStaleWriteTest(unittest.TestCase):
             preferences=_fixture_prefs(self, self.dir))
 
     def _write(self, data):
-        _lay(self.path, data)
+        _write_colors_json(self.path, data)
 
     def _names(self):
         return [row["name"] for row in _rows_on_disk(self.path)]
@@ -102,7 +102,7 @@ class GradientStaleWriteTest(unittest.TestCase):
                                 {"name": "theirs2", "colors": [],
                                  "id": "theirsuid2"}]})
 
-    def test_the_other_sessions_gradients_survive_our_save(self):
+    def test_the_other_sessions_gradients_are_kept_by_our_save(self):
         """The database does a three-way merge, like every other one: both sides' rows are kept."""
         self._touch_from_another_session()
         self.lib.add_user_gradient("mine", "", {"values": [], "keys": []})
@@ -146,7 +146,7 @@ class GradientStaleWriteTest(unittest.TestCase):
             "is not a delete through the connector, so it has to be "
             "passed to forget()")
 
-    def test_a_saved_palette_lands_on_top_with_its_maps_in_step(self):
+    def test_a_saved_palette_is_row_0_with_its_thumbnail_keys_in_step(self):
         """The newest palette is row 0, and every row's thumbnail key maps to its own row."""
         self.lib.add_user_gradient("mine", "", {"values": [], "keys": []})
         rows = range(self.lib.rowCount())
@@ -168,7 +168,7 @@ class GradientTagsReachTheRowTest(unittest.TestCase):
         self.dir = tempfile.mkdtemp(prefix="amaze_grad_tags_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         self.path = os.path.join(self.dir, COLORS)
-        _lay(self.path, {"categories": ["Warm"], "assets": []})
+        _write_colors_json(self.path, {"categories": ["Warm"], "assets": []})
         self.lib = gradient_library.GradientLibrary(
             preferences=_fixture_prefs(self, self.dir))
 
@@ -220,7 +220,7 @@ class GradientAbsenceAndShapeTest(unittest.TestCase):
         return gradient_library.GradientLibrary(
             preferences=_fixture_prefs(self, self.dir))
 
-    def test_a_wrong_shaped_file_does_not_take_the_panel_down(self):
+    def test_a_wrong_shaped_file_loads_empty_and_is_never_written(self):
         """Valid JSON of the wrong shape is a parse failure: empty, marked failed, never written."""
         for shape in ({"assets": "this is not a table"},
                       ["not", "an", "object"]):
@@ -238,7 +238,7 @@ class GradientAbsenceAndShapeTest(unittest.TestCase):
                 with open(self.path, encoding="utf-8") as fh:
                     self.assertEqual(shape, json.load(fh), "the wrong-shaped file was written over")
 
-    def test_the_sidebar_survives_the_same_file(self):
+    def test_the_sidebar_does_not_raise_on_the_same_file(self):
         """The sidebar reads the same file right after the library and must not raise either."""
         with open(self.path, "w", encoding="utf-8") as fh:
             json.dump(["not", "an", "object"], fh)
@@ -248,7 +248,7 @@ class GradientAbsenceAndShapeTest(unittest.TestCase):
         self.assertEqual(1, sidebar.rowCount(),
                          "the unreadable document should hold only `_All`")
 
-    def test_the_seed_marker_is_withheld_when_the_save_did_not_land(self):
+    def test_the_seed_marker_is_not_written_when_the_save_fails(self):
         """The seed mark is written only if the seed's save succeeds, else seeding never reruns."""
         from amaze.core import library_settings
         prefs_ = _fixture_prefs(self, self.dir)
@@ -262,7 +262,7 @@ class GradientAbsenceAndShapeTest(unittest.TestCase):
             "the seed wrote its permanent marker for a failed save")
 
 
-class GradientRowRideTest(unittest.TestCase):
+class GradientRowSaveTest(unittest.TestCase):
     """A palette is stored as a Material: `colors` and `ramp` are kept verbatim, nothing added."""
 
     def setUp(self):
@@ -270,7 +270,7 @@ class GradientRowRideTest(unittest.TestCase):
         self.dir = tempfile.mkdtemp(prefix="amaze_grad_ride_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         self.path = os.path.join(self.dir, COLORS)
-        _lay(self.path, {"categories": ["Warm"],
+        _write_colors_json(self.path, {"categories": ["Warm"],
                          "assets": [{"name": "ours", "id": "oursuid",
                                      "categories": ["Warm"],
                                      "colors": [{"name": "red",
@@ -287,7 +287,7 @@ class GradientRowRideTest(unittest.TestCase):
                 return row
         self.fail("no row named %r on disk" % name)
 
-    def test_a_loaded_row_rides_a_save_untouched_and_a_new_one_is_born_dated(self):
+    def test_a_loaded_row_is_saved_unchanged_and_a_new_one_is_dated_now(self):
         """Colours and ramp verbatim, no invented date on a loaded row; a new row is dated now."""
         self.assertEqual(
             "", self.lib.assets[0].date,
@@ -312,7 +312,7 @@ class GradientTileIconTest(unittest.TestCase):
         self.dir = tempfile.mkdtemp(prefix="amaze_gicon_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         self.path = os.path.join(self.dir, COLORS)
-        _lay(self.path, {"categories": ["Warm"], "assets": [
+        _write_colors_json(self.path, {"categories": ["Warm"], "assets": [
             {"name": "ours", "categories": ["Warm"], "id": "oursicon",
              "colors": [{"name": "red", "hex": "#ff0000"},
                         {"name": "blue", "hex": "#0000ff"}]}]})
@@ -331,7 +331,7 @@ class GradientTileIconTest(unittest.TestCase):
         self.assertEqual(painted, self.lib.data(index, QtCore.Qt.ItemDataRole.DecorationRole))
         self.assertNotEqual(drop, painted)
 
-    def test_the_icon_survives_a_reload(self):
+    def test_the_icon_is_kept_after_a_reload(self):
         """It must reach the store on disk; a spec kept in memory looks identical until a reopen."""
         self.assertEqual({}, self.lib.tile_icon(self.row))
         self.assertTrue(self.lib.set_tile_icon(
@@ -374,7 +374,7 @@ class GradientCategoryColorTest(unittest.TestCase):
         self.dir = tempfile.mkdtemp(prefix="amaze_gcol_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         self.path = os.path.join(self.dir, COLORS)
-        _lay(self.path, {"categories": ["Warm"], "assets": [
+        _write_colors_json(self.path, {"categories": ["Warm"], "assets": [
             {"name": "ours", "categories": ["Warm"], "id": "ourscolor",
              "colors": [{"name": "red", "hex": "#ff0000"}]}]})
         self.prefs = _fixture_prefs(self, self.dir)
@@ -388,7 +388,7 @@ class GradientCategoryColorTest(unittest.TestCase):
         return gradient_library.GradientCategories(
             preferences=_fixture_prefs(self, self.dir))
 
-    def test_a_colour_is_stored_and_survives_a_reload(self):
+    def test_a_colour_is_stored_and_kept_after_a_reload(self):
         self.assertEqual("", self.sidebar.color_of("Warm"))
         self.sidebar.set_color("Warm", "#4af2a1")
         self.assertEqual("#4af2a1", self._reload_sidebar().color_of("Warm"))
@@ -398,7 +398,7 @@ class GradientCategoryColorTest(unittest.TestCase):
         self.sidebar.set_color("Warm", "#4af2a1")
         self.assertEqual("#4af2a1", self.lib.category_color(self.row))
 
-    def test_a_rename_carries_the_colour(self):
+    def test_a_rename_moves_the_colour(self):
         """A rename moves the colour; keyed by name, an old colour returns if the name is reused."""
         self.sidebar.set_color("Warm", "#4af2a1")
         self.lib.rename_category("Warm", "Hot")
@@ -408,7 +408,7 @@ class GradientCategoryColorTest(unittest.TestCase):
         self.assertEqual("#4af2a1", again.color_of("Hot"))
         self.assertEqual("", again.color_of("Warm"))
 
-    def test_removing_a_category_takes_its_colour(self):
+    def test_removing_a_category_removes_its_colour(self):
         self.sidebar.set_color("Warm", "#4af2a1")
         self.lib.remove_category("Warm")
         self.sidebar.remove_category("Warm")
@@ -426,7 +426,7 @@ class APaletteCategoryWithACommaStaysWholeTest(unittest.TestCase):
         self.addCleanup(test_support.reset_database_singletons)
         self.dir = tempfile.mkdtemp(prefix="amaze_gcomma_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
-        _lay(os.path.join(self.dir, COLORS),
+        _write_colors_json(os.path.join(self.dir, COLORS),
              {"categories": ["Warm", self.NAME],
               "assets": [{"name": "ours", "categories": ["Warm"], "id": "ourscomma",
                           "colors": [{"name": "red", "hex": "#ff0000"}]}]})
@@ -474,7 +474,7 @@ class GradientSeedNoteTest(unittest.TestCase):
             gradient_library.GradientCategories(preferences=self.prefs))
         return lib
 
-    def test_the_text_lands_on_the_page_and_never_on_the_entry(self):
+    def test_the_text_is_written_to_the_page_and_never_to_the_entry(self):
         lib = self._seeded()
         from amaze.core import notes
         pages = [row for row in range(lib.rowCount())
@@ -499,7 +499,7 @@ class GradientFirstOpenWriteCountTest(unittest.TestCase):
         self.dir = tempfile.mkdtemp(prefix="amaze_writestorm_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         self.path = os.path.join(self.dir, COLORS)
-        _lay(self.path, {"categories": [],
+        _write_colors_json(self.path, {"categories": [],
                          "assets": [{"name": "g%d" % i, "colors": [],
                                      "id": "fixtureuid%02d" % i}
                                     for i in range(12)]})
@@ -522,7 +522,7 @@ class GradientFirstOpenWriteCountTest(unittest.TestCase):
         self.addCleanup(patcher.stop)
         return seen
 
-    def test_the_whole_curated_seed_costs_one_notes_write(self):
+    def test_the_whole_curated_seed_makes_one_notes_write(self):
         """39 pages, one write: a per-note write would make a backup each time."""
         from unittest import mock
         from amaze.core import notes
@@ -561,7 +561,7 @@ class GradientFirstOpenWriteCountTest(unittest.TestCase):
                          "%d of %d curated notes were written to their page"
                          % (pages, _curated_note_count()))
 
-    def test_stamped_rows_cost_no_identity_write(self):
+    def test_rows_with_ids_make_no_identity_write(self):
         """Rows with ids cost no write; counted, as an id cannot show whether it was backfilled."""
         seen = self._counted_writes()
         gradient_library.GradientLibrary(preferences=self.prefs)
@@ -580,7 +580,7 @@ class GradientTileNameTest(unittest.TestCase):
         self.dir = tempfile.mkdtemp(prefix="amaze_gradname_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         self.path = os.path.join(self.dir, COLORS)
-        _lay(self.path, {"categories": [],
+        _write_colors_json(self.path, {"categories": [],
                          "assets": [{"name": "klee", "colors": [], "id": "kleeid"}]})
         self.prefs = _fixture_prefs(self, self.dir)
 
@@ -645,7 +645,7 @@ class TwoRampsWithOneSetOfColoursDoNotShareATile(unittest.TestCase):
                     "ramp": {"bases": ["Linear", "Linear"],
                              "keys": keys,
                              "values": [[1, 0, 0], [0, 0, 1]]}}
-        _lay(os.path.join(self.dir, COLORS),
+        _write_colors_json(os.path.join(self.dir, COLORS),
              {"categories": [], "assets": [_row("a", keys_a), _row("b", keys_b)]})
         return gradient_library.GradientLibrary(
             preferences=_fixture_prefs(self, self.dir))
@@ -662,14 +662,14 @@ class TwoRampsWithOneSetOfColoursDoNotShareATile(unittest.TestCase):
                     "are at the same positions")
 
 
-class TheColorsProxyIsTheFamilys(unittest.TestCase):
+class TheColorsProxyIsTheFamilyProxy(unittest.TestCase):
     """The family proxy plus Colors' own palette-size filter and a search reaching colour names."""
 
     def setUp(self):
         test_support.reset_database_singletons()
         self.dir = tempfile.mkdtemp(prefix="amaze_grad_proxy_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
-        _lay(os.path.join(self.dir, COLORS), {"categories": ["Warm"], "assets": [
+        _write_colors_json(os.path.join(self.dir, COLORS), {"categories": ["Warm"], "assets": [
             {"id": "a", "name": "Sunrise", "categories": ["Warm"],
              "colors": [{"name": "crimson", "hex": "#dc143c"},
                         {"name": "gold", "hex": "#ffd700"}]},
@@ -712,7 +712,7 @@ class TheColorsProxyIsTheFamilys(unittest.TestCase):
         self.assertEqual(["Marine", "Sunrise"], self._shown())
 
 
-class AColourStarSurvivesAReloadTest(unittest.TestCase):
+class AColourStarIsKeptAfterAReloadTest(unittest.TestCase):
     """Colors stars are in colors.json's stars section, per user; the row's own field is unused."""
 
     USER = "8a7b6c5d4e3f20110213f4e5d6c7b8a9"    # uuid4().hex format, as in _fixture_prefs
@@ -730,7 +730,7 @@ class AColourStarSurvivesAReloadTest(unittest.TestCase):
             preferences=_fixture_prefs(self, self.dir, user=user))
 
     def _one_warm_palette(self):
-        _lay(self.path, {"categories": ["Warm"],
+        _write_colors_json(self.path, {"categories": ["Warm"],
                          "assets": [{"name": "warm", "id": "warmid",
                                      "categories": ["Warm"], "colors": []}]})
 
@@ -741,7 +741,7 @@ class AColourStarSurvivesAReloadTest(unittest.TestCase):
         with open(self.path, encoding="utf-8") as fh:
             return json.load(fh).get("favorites", {})
 
-    def test_a_star_lands_in_the_store_and_survives_a_reload(self):
+    def test_a_star_is_written_to_the_store_and_kept_after_a_reload(self):
         self._one_warm_palette()
         lib = self._library()
         lib.toggle_fav(_row_named(self, lib, "warm"))
@@ -770,7 +770,7 @@ class AColourStarSurvivesAReloadTest(unittest.TestCase):
 
     def test_a_star_field_on_a_row_is_not_a_star(self):
         """Only the stars section is read; a favorite field left on a row is no one's star."""
-        _lay(self.path, {"categories": ["Warm"],
+        _write_colors_json(self.path, {"categories": ["Warm"],
                          "assets": [{"name": "warm", "id": "warmid",
                                      "categories": ["Warm"], "colors": [],
                                      "favorite": True}]})
@@ -795,7 +795,7 @@ class AColourStarSurvivesAReloadTest(unittest.TestCase):
         self.assertEqual({}, self._disk_stars(), "a star with no user was still written to colors.json")
 
 
-class ColorsHonourARefusedSave(unittest.TestCase):
+class ColorsUndoAFailedSave(unittest.TestCase):
     """A failed write is undone in full: the row restored, the delete undone, the user alerted."""
 
     def setUp(self):
@@ -803,7 +803,7 @@ class ColorsHonourARefusedSave(unittest.TestCase):
         self.dir = tempfile.mkdtemp(prefix="amaze_grad_refuse_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         self.path = os.path.join(self.dir, COLORS)
-        _lay(self.path, {"categories": ["Warm"], "assets": [
+        _write_colors_json(self.path, {"categories": ["Warm"], "assets": [
             {"name": "keep", "id": "keepuid", "colors": []},
             {"name": "doomed", "id": "doomeduid", "colors": []}]})
         self.lib = gradient_library.GradientLibrary(
@@ -819,7 +819,7 @@ class ColorsHonourARefusedSave(unittest.TestCase):
     def _on_disk_names(self, path=None):
         return [r.get("name") for r in _rows_on_disk(path or self.path) if isinstance(r, dict)]
 
-    def _stamp_of(self, asset_id):
+    def _picture_of(self, asset_id):
         """The palette's one file, its captured picture in `colors/`; the row owns it."""
         path = self.lib.asset_files(asset_id).get("thumbnail")
         self.assertTrue(path, "premise: the palette owns its picture")
@@ -838,7 +838,7 @@ class ColorsHonourARefusedSave(unittest.TestCase):
         library_db.flush()
         return held, key
 
-    def _belongs(self, held, key: str) -> tuple:
+    def _annotations_present(self, held, key: str) -> tuple:
         return (held.get("comments", key) is not None, held.get("icons", key) is not None,
                 bool(held.mine("favorites").get(key)))
 
@@ -847,27 +847,27 @@ class ColorsHonourARefusedSave(unittest.TestCase):
         held, key = self._annotated(row)
         self.assertEqual(1, self.lib.remove_rows([row]))
         library_db.flush()
-        self.assertEqual((False, False, False), self._belongs(held, key))
+        self.assertEqual((False, False, False), self._annotations_present(held, key))
         with open(self.path, encoding="utf-8") as handle:
             stored = json.load(handle)
         self.assertNotIn(key, stored["comments"])
         self.assertNotIn(key, stored["icons"])
 
-    def test_a_refused_delete_keeps_the_comment_the_icon_and_the_favorite(self):
+    def test_a_failed_delete_keeps_the_comment_the_icon_and_the_favorite(self):
         row = self._row_named("doomed")
         held, key = self._annotated(row)
         with test_support.full_disk_for(self.path):
             self.lib.remove_rows([row])
             library_db.flush()
-        self.assertEqual((True, True, True), self._belongs(held, key))
+        self.assertEqual((True, True, True), self._annotations_present(held, key))
         self.lib.add_user_gradient("later", "", {"values": [], "keys": []})
         with open(self.path, encoding="utf-8") as handle:
             stored = json.load(handle)
         self.assertIn(key, stored["comments"], "a later save dropped what the failed delete took")
 
-    def test_a_refused_delete_puts_the_palette_back(self):
+    def test_a_failed_delete_restores_the_palette(self):
         """Its stamp file stays too, and no later save may commit the delete that failed."""
-        stamp = self._stamp_of("doomeduid")
+        picture = self._picture_of("doomeduid")
         row = self._row_named("doomed")
         self.assertGreaterEqual(row, 0, "premise: the fixture loaded")
         with test_support.full_disk_for(self.path):
@@ -880,14 +880,14 @@ class ColorsHonourARefusedSave(unittest.TestCase):
             self._row_named("doomed"), 0,
             "the palette left the grid while colors.json still "
             "listed it - the delete looked done and was not")
-        self.assertTrue(os.path.exists(stamp),
+        self.assertTrue(os.path.exists(picture),
                         "a failed delete removed the stamp anyway")
         self.lib.add_user_gradient("later", "", {"values": [], "keys": []})    # anything at all that writes the file afterwards
         self.assertIn(
             "doomed", self._on_disk_names(),
             "the failed delete was committed by an unrelated save")
 
-    def test_a_refused_add_leaves_no_palette_on_screen_or_in_the_next_save(self):
+    def test_an_add_to_an_unreadable_database_leaves_no_palette_on_screen_or_on_disk(self):
         """An unreadable database accepts no palette: none on screen, none written later."""
         with open(self.path, "w", encoding="utf-8") as fh:
             fh.write("{damaged")
@@ -904,7 +904,7 @@ class ColorsHonourARefusedSave(unittest.TestCase):
         with open(self.path, encoding="utf-8") as fh:
             self.assertEqual("{damaged", fh.read(), "the rejected palette was written")
 
-    def test_an_add_the_disk_refused_is_said_and_lands_at_the_next_save(self):
+    def test_an_add_on_a_full_disk_alerts_and_is_written_at_the_next_save(self):
         """A full disk: an alert, the palette kept in memory, and the next save writes it."""
         from unittest import mock
         from amaze.core import debug
@@ -921,21 +921,21 @@ class ColorsHonourARefusedSave(unittest.TestCase):
         self.assertIn("held", self._on_disk_names(),
                       "the palette that failed to write was lost instead of saved")
 
-    def test_a_delete_removes_the_palette_and_its_stamp(self):
+    def test_a_delete_removes_the_palette_and_its_picture(self):
         """Repair rebuilds rows from unlisted stamps, so deleting a palette deletes its stamp."""
-        stamp = self._stamp_of("doomeduid")
+        picture = self._picture_of("doomeduid")
         self.lib.remove_rows([self._row_named("doomed")])
         self.assertEqual(-1, self._row_named("doomed"))
         self.assertNotIn("doomed", self._on_disk_names())
-        self.assertFalse(os.path.exists(stamp),
+        self.assertFalse(os.path.exists(picture),
                          "the deleted palette's stamp stayed in the asset folder")
 
-    def test_a_refused_delete_is_not_put_into_another_library(self):
+    def test_a_failed_delete_is_not_restored_into_another_library(self):
         """Another pane has another library open; restoring the row must not write into it."""
         other = tempfile.mkdtemp(prefix="amaze_grad_other_")
         self.addCleanup(shutil.rmtree, other, ignore_errors=True)
         other_path = os.path.join(other, COLORS)
-        _lay(other_path, {"categories": [],
+        _write_colors_json(other_path, {"categories": [],
                           "assets": [{"name": "theirs", "id": "theirsuid", "colors": []}]})
         theirs = gradient_library.GradientLibrary(preferences=_fixture_prefs(self, other))
 
@@ -955,7 +955,7 @@ class ColorsHonourARefusedSave(unittest.TestCase):
         self.assertIn("theirs2", self._on_disk_names(other_path), "premise: the other library saves")
 
 
-class ColorsHandOverWhatTheMergeAdopted(unittest.TestCase):
+class ColorsModelGetsWhatTheMergeAdopted(unittest.TestCase):
     """A row the merge adopted reaches the model: take_adopted() runs after every save."""
 
     def setUp(self):
@@ -963,7 +963,7 @@ class ColorsHandOverWhatTheMergeAdopted(unittest.TestCase):
         self.dir = tempfile.mkdtemp(prefix="amaze_grad_adopt_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         self.path = os.path.join(self.dir, COLORS)
-        _lay(self.path, {"categories": ["Warm"],
+        _write_colors_json(self.path, {"categories": ["Warm"],
                          "assets": [{"name": "ours", "id": "oursuid", "colors": []}]})
         from amaze.core import model_registry
         self.addCleanup(test_support.reset_database_singletons)
@@ -990,7 +990,7 @@ class ColorsHandOverWhatTheMergeAdopted(unittest.TestCase):
             "the list without it")
 
 
-class ColorsHandOverWhatTheMergeAdoptedIntoCATEGORIES(unittest.TestCase):
+class ColorsKeepTheCategoriesTheMergeAdopted(unittest.TestCase):
     """Another session's category and its colour must be kept by the save AFTER the merge."""
 
     def setUp(self):
@@ -1016,7 +1016,7 @@ class ColorsHandOverWhatTheMergeAdoptedIntoCATEGORIES(unittest.TestCase):
         with open(self.path, encoding="utf-8") as fh:
             return json.load(fh)
 
-    def test_a_peers_category_survives_the_SECOND_edit_too(self):
+    def test_a_peers_category_is_kept_by_the_second_edit_too(self):
         self._peer_adds_a_category()
         # Edit one merges; edit two is the one that used to erase it.
         self.lib.add_user_gradient("mine", "", {"values": [], "keys": []})
@@ -1043,7 +1043,7 @@ class TheColorsSidebarIsTheSharedModel(unittest.TestCase):
         test_support.reset_database_singletons()
         self.dir = tempfile.mkdtemp(prefix="amaze_grad_side_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
-        _lay(os.path.join(self.dir, COLORS), {
+        _write_colors_json(os.path.join(self.dir, COLORS), {
             "categories": ["Warm", "Cool"],
             "assets": [{"id": "a", "name": "one", "categories": ["Warm"], "colors": []},
                        {"id": "b", "name": "two", "categories": ["Warm"], "colors": []}]})
@@ -1052,7 +1052,7 @@ class TheColorsSidebarIsTheSharedModel(unittest.TestCase):
         return gradient_library.GradientCategories(
             preferences=_fixture_prefs(self, self.dir))
 
-    def test_the_All_row_is_pinned_first_and_a_row_answers_its_stored_name(self):
+    def test_the_All_row_is_pinned_first_and_a_row_returns_its_stored_name(self):
         sidebar = self._sidebar()
         self.assertEqual(
             "_All",
@@ -1111,12 +1111,12 @@ class ColorsNumbersItsRolesLikeTheAssetFamily(unittest.TestCase):
                 "tests first" % (name, seen.get(number), number))
             seen[number] = name
 
-    def test_the_category_role_answers_a_LIST(self):
+    def test_the_category_role_returns_a_list(self):
         """257 is matched with `for elem in data`, so a bare string would match per CHARACTER."""
         directory = tempfile.mkdtemp(prefix="amaze_grad_roles_")
         self.addCleanup(shutil.rmtree, directory, ignore_errors=True)
         test_support.reset_database_singletons()
-        _lay(os.path.join(directory, COLORS), {"categories": ["Warm"], "assets": [
+        _write_colors_json(os.path.join(directory, COLORS), {"categories": ["Warm"], "assets": [
             {"id": "aaa", "name": "Test", "categories": ["Warm"],
              "colors": [{"name": "red", "hex": "#ff0000"}]}]})
         lib = gradient_library.GradientLibrary(
@@ -1188,7 +1188,7 @@ class TheAllMarkerIsNotChurnedOnEverySave(unittest.TestCase):
         self.dir = tempfile.mkdtemp(prefix="amaze_grad_all_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         self.path = os.path.join(self.dir, COLORS)
-        _lay(self.path, {"categories": ["Warm"],
+        _write_colors_json(self.path, {"categories": ["Warm"],
                          "assets": [{"name": "ours", "id": "oursid", "colors": []}]})
         self.lib = gradient_library.GradientLibrary(
             preferences=_fixture_prefs(self, self.dir))
@@ -1231,7 +1231,7 @@ class TheGradientEntryIsResolvedOnce(unittest.TestCase):
                                for n in ast.walk(scope)))
         self.assertEqual([], found, "a GradientSection method resolves its own entry, not via _entry_at")
 
-    def test_an_index_the_proxy_has_dropped_answers_no_entry(self):
+    def test_an_index_the_proxy_has_dropped_returns_no_entry(self):
         """`_entry_at` checks for every method: an unmappable index gives no entry, not row -1's."""
         section = sections.GradientSection.__new__(sections.GradientSection)
         self.assertIsNone(sections.GradientSection._entry_at(section, None))

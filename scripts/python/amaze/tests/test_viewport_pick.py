@@ -154,7 +154,7 @@ class TestViewportResolutionStillWorks(unittest.TestCase):
             "", dragengine._pick(_Viewer(vp), "obj", 10, 10, 2.0, 279),
             "a miss does not return an empty string")
 
-    def test_a_raising_viewport_says_why_instead_of_going_quiet(self):
+    def test_a_raising_viewport_logs_the_exception_not_a_plain_miss(self):
         """A miss and a raised exception must not produce the same log line."""
         _Version(self, 21)
 
@@ -175,7 +175,7 @@ class TestViewportResolutionStillWorks(unittest.TestCase):
             % [m for m, _ in records])
 
 
-class TheCursorIsReadOnlyForARecord(unittest.TestCase):
+class TheCursorIsReadOnlyForThePickRecord(unittest.TestCase):
     """`_cursor_state` feeds only the pick record, so a pick with the debug log off never reads it."""
 
     class _Seen(_Viewer):

@@ -130,38 +130,38 @@ DRAWN_EXEMPT = (    # (does this node need no pin, why): every other drawn node 
     (lambda f, n: n[0] == "CodeEditor",
      "the editor is what D11's resize grows; its drawn height is its floor"),
     (lambda f, n: n[0] in ("CodeEditor ▸ line numbers", "CodeEditor ▸ current line"),
-     "PAINTED by the editor from drawn_code_dialog: held by TheCodeDialogStandsOnItsFrame"),
+     "PAINTED by the editor from drawn_code_dialog: held by TheCodeDialogMatchesItsDesignFrame"),
     (lambda f, n: n[0] in ("header band ▸ tab", "icon ▸ add ▸ icon_version_add.svg",
                            "icon ▸ close ▸ icon_tab_close.svg"),
      "D11's version tabs, their × and the +, PAINTED by the rule drawn_code_dialog reads: "
-     "held by TheCodeDialogStandsOnItsFrame"),
+     "held by TheCodeDialogMatchesItsDesignFrame"),
     (lambda f, n: (f,) + n[:3] in LOOSE_LABELS,
      "drawn at its own text width beside its control; the widget takes "
      "the host font's and yields before the row overflows"),
     (lambda f, n: f.startswith("T"),
      "a tile is PAINTED, not built from widgets: the delegate reads its "
-     "spacing through drawn_tile, held by TheTileStandsOnItsFrame"),
+     "spacing through drawn_tile, held by TheTileMatchesItsDesignFrame"),
     (lambda f, n: f.startswith("L"),
      "the list is painted by Houdini's style and our cell delegates: the "
-     "panel reads it through drawn_list, held by TheListStandsOnItsFrame"),
+     "panel reads it through drawn_list, held by TheListMatchesItsDesignFrame"),
     (lambda f, n: f.startswith("B"),
      "the toolbar is a layout of gaps and self-painted controls: the panel "
-     "reads it through drawn_toolbar, held by TheToolbarStandsOnItsFrame"),
+     "reads it through drawn_toolbar, held by TheToolbarMatchesFrameB01"),
     (lambda f, n: f.startswith("S"),
      "the tab strip is PAINTED, not built from widgets: it reads its sizes "
-     "through drawn_tabs, held by TheTabStripStandsOnItsFrame"),
+     "through drawn_tabs, held by TheTabStripMatchesItsDesignFrame"),
     (lambda f, n: f.startswith("G"),
      "the sidebar's rows are drawn by Houdini's style: the panel reads its "
-     "sizes through drawn_sidebar, held by TheSidebarStandsOnItsFrame"),
+     "sizes through drawn_sidebar, held by TheSidebarMatchesItsDesignFrame"),
     (lambda f, n: f.startswith("N"),
      "the comments pane is a document and a painted margin: it reads its "
-     "sizes through drawn_comments, held by TheCommentsPaneStandsOnItsFrame"),
+     "sizes through drawn_comments, held by TheCommentsPaneMatchesItsDesignFrame"),
     (lambda f, n: f in ("D15", "D01") and n[0].startswith("QListWidget ▸ item"),
      "a row is PAINTED by the list's delegate: it reads its sizes through "
-     "drawn_list_rows, held by TheManageWindowStandsOnItsFrame and test_versions_dialog"),
+     "drawn_list_rows, held by TheManageWindowMatchesItsDesignFrame and test_versions_dialog"),
     (lambda f, n: f in ("P03a", "P03b") and n[0].startswith("Line "),
      "a line PAINTED along the sub-tab page's top or right edge, wherever "
-     "the style puts the page: held by TheShowHidePageWearsItsLines"),
+     "the style puts the page: held by TheShowHidePageHasItsLines"),
 )
 
 
@@ -262,7 +262,7 @@ class TheDocumentPairsEveryDrawnButton(unittest.TestCase):
             "kind, so nothing can be pinned from them:\n  "
             + "\n  ".join(missing))
 
-    def test_an_unknown_frame_answers_empty(self):
+    def test_an_unknown_frame_returns_empty(self):
         self.assertEqual({}, amazetheme.drawn_boxes("D99"))
 
 
@@ -356,7 +356,7 @@ class TheToggleIsTheDrawnPill(unittest.TestCase):
             "clips the last glyph")
 
 
-class ThePinRefusesRatherThanCrashes(unittest.TestCase):
+class AnUndrawnLabelLeavesTheWidgetUnsizedAndIsLogged(unittest.TestCase):
     """A drawn label renamed in Figma leaves one widget unsized; it never breaks the dialog."""
 
     def test_a_label_the_document_does_not_draw_pins_nothing(self):
@@ -400,7 +400,7 @@ class PreferencesIsBuiltFromTheDocument(unittest.TestCase):
             "the label column plus its gap no longer reaches the field "
             "column, so one of the three is wrong")
 
-    def test_every_pinned_widget_lands_on_its_drawn_x(self):
+    def test_every_pinned_widget_is_at_its_drawn_x(self):
         """Every pinned widget is at its drawn x; y is Qt's own, shifted by Houdini's tab bar."""
         dialog = self._dialog()
         dialog.setFont(_houdini_ui_font())    # a row's x depends on its label's width, so measure the font the artist sees
@@ -446,7 +446,7 @@ class PreferencesIsBuiltFromTheDocument(unittest.TestCase):
                         "%s %r is not the box the document draws"
                         % (frame_key, label))
 
-    def test_both_deletes_wear_their_own_box(self):
+    def test_both_deletes_have_their_own_box(self):
         """P01 draws `Delete` twice: the user's is the first box, the cache's the second."""
         dialog = self._dialog()
         user, cache = amazetheme.drawn_repeats("P01", "QPushButton", "Delete")
@@ -629,7 +629,7 @@ class EveryDrawnNodeIsBoundOrNamed(unittest.TestCase):
             "from them - pin each one, or put it on DRAWN_EXEMPT with the "
             "reason it needs no pin:\n  " + "\n  ".join(loose))
 
-    def test_the_walk_really_sees_the_pins(self):
+    def test_the_walk_finds_the_pins(self):
         """A build that pinned nothing would pass by exempting everything ▸p/vacuous-register"""
         self.assertGreaterEqual(
             len(self.pins), 50,
@@ -645,7 +645,7 @@ class EveryDrawnNodeIsBoundOrNamed(unittest.TestCase):
             "built no widget sized from the document")
 
 
-class TheCodeDialogStandsOnItsFrame(unittest.TestCase):
+class TheCodeDialogMatchesItsDesignFrame(unittest.TestCase):
     """D11 opens at its drawn size, every part where the frame draws it. ▸p/one-design-document"""
 
     def setUp(self):
@@ -668,7 +668,7 @@ class TheCodeDialogStandsOnItsFrame(unittest.TestCase):
         self.assertEqual(tuple(theme.ui_px(v) for v in amazetheme.DIALOG_LAYOUT["D11"]["frame"]),
                          (self.dialog.width(), self.dialog.height()))
 
-    def test_every_part_sits_on_its_drawn_box(self):
+    def test_every_part_is_at_its_drawn_box(self):
         d = self.dialog
         for name, widgets in (
                 ("CodeEditor", (d._editor,)),
@@ -729,7 +729,7 @@ class TheCodeDialogStandsOnItsFrame(unittest.TestCase):
                          shot.pixel(back.left() + 4, back.top() + 1),
                          "a tab behind the front one is not the band's own colour")
 
-    def test_the_window_behind_the_form_is_the_drawn_ground(self):
+    def test_the_window_behind_the_form_is_the_drawn_background(self):
         shot = self.dialog.grab().toImage()
         ratio = shot.devicePixelRatio()
         name = self._drawn("QLineEdit")[0]    # beside it, on the Name label's bare left end
@@ -738,7 +738,7 @@ class TheCodeDialogStandsOnItsFrame(unittest.TestCase):
                          QtGui.QColor(shot.pixel(int(x * ratio), int(y * ratio))).name(),
                          "the window behind the form is not the drawn ground")
 
-    def test_the_current_line_sits_on_its_letters(self):
+    def test_the_current_line_band_is_centred_on_its_letters(self):
         """Centred between cap top and descender, in Houdini's code face, as drawn."""
         from amaze.dialogs import code_dialog
         face = os.path.join(os.environ.get("HFS", ""), "houdini", "fonts",
@@ -754,23 +754,23 @@ class TheCodeDialogStandsOnItsFrame(unittest.TestCase):
         editor.setTextCursor(QtGui.QTextCursor(editor.document().findBlockByNumber(1)))
         QtWidgets.QApplication.processEvents()
         shot = editor.viewport().grab().toImage()
-        ground, probe = shot.pixel(shot.width() - 3, shot.height() - 3), shot.width() - 30
+        background, probe = shot.pixel(shot.width() - 3, shot.height() - 3), shot.width() - 30
 
-        def rows(number, inked):
+        def rows(number, has_text):
             block = editor.document().findBlockByNumber(number)
             top = int(editor.blockBoundingGeometry(block).translated(editor.contentOffset()).top())
             high = int(editor.blockBoundingRect(block).height())
-            return top, [y - top for y in range(top, top + high) if inked(y)]
+            return top, [y - top for y in range(top, top + high) if has_text(y)]
 
-        _top, descender = rows(0, lambda y: any(shot.pixel(x, y) != ground for x in range(2, 40)))
-        top, letters = rows(1, lambda y: any(shot.pixel(x, y) not in (ground, shot.pixel(probe, y))
+        _top, descender = rows(0, lambda y: any(shot.pixel(x, y) != background for x in range(2, 40)))
+        top, letters = rows(1, lambda y: any(shot.pixel(x, y) not in (background, shot.pixel(probe, y))
                                              for x in range(2, 40)))
-        band = [y - top for y in range(shot.height()) if shot.pixel(probe, y) != ground]
+        band = [y - top for y in range(shot.height()) if shot.pixel(probe, y) != background]
         self.assertLessEqual(abs((band[0] + band[-1] + 1) - (letters[0] + descender[-1] + 1)) / 2.0,
                              1.0, "the band is not centred on the letters: band %s, cap %d, descender %d"
                              % ((band[0], band[-1]), letters[0], descender[-1]))
 
-    def test_versions_off_takes_the_plus_away_and_off_looks_off(self):
+    def test_versions_off_hides_the_plus_and_a_disabled_plus_paints_differently(self):
         from amaze.dialogs import code_dialog
         off = code_dialog.CodeDialog(["Metal"], name="helper", saved=True, versions_on=False)
         fresh = code_dialog.CodeDialog(["Metal"], name="", saved=False)
@@ -879,7 +879,7 @@ class MovingADrawnNodeMovesTheWidget(unittest.TestCase):
                 "node, so the label depends on a number that changes")
 
 
-class TheShowHidePageWearsItsLines(unittest.TestCase):
+class TheShowHidePageHasItsLines(unittest.TestCase):
     """P03a and P03b draw a line along the sub-tab page's top and down its right edge."""
 
     def test_the_drawn_lines_frame_the_drawn_page(self):
@@ -906,15 +906,15 @@ class TheShowHidePageWearsItsLines(unittest.TestCase):
         stack = lines.parentWidget().findChild(QtWidgets.QStackedWidget)
         self.assertEqual(stack.geometry(), lines.geometry(), "the lines do not lie over the page")
         picture = lines.grab().toImage()
-        ink = QtGui.QColor(amazetheme.PREFS_PAGE_LINE_COLOR).rgb()
+        line_color = QtGui.QColor(amazetheme.PREFS_PAGE_LINE_COLOR).rgb()
         right, bottom = picture.width() - 1, picture.height() - 1
         for x, y in ((0, 0), (right // 2, 0), (right, 0), (right, bottom // 2), (right, bottom)):
-            self.assertEqual(ink, picture.pixel(x, y), "no line at %d,%d" % (x, y))
-        self.assertNotEqual(ink, picture.pixel(right // 2, bottom // 2),
+            self.assertEqual(line_color, picture.pixel(x, y), "no line at %d,%d" % (x, y))
+        self.assertNotEqual(line_color, picture.pixel(right // 2, bottom // 2),
                             "the page is filled, not lined")
 
 
-class TheFormFamilyStandsOnItsFrame(unittest.TestCase):
+class TheFormFamilyMatchesItsFrame(unittest.TestCase):
     """D09 and D13 take every margin and gap from their frames. ▸r/form-from-frame"""
 
     def _built(self):
@@ -933,7 +933,7 @@ class TheFormFamilyStandsOnItsFrame(unittest.TestCase):
         corner = widget.mapTo(dialog, widget.rect().topLeft())
         return (corner.x(), corner.y(), widget.width(), widget.height())
 
-    def test_fields_buttons_and_window_land_where_drawn(self):
+    def test_fields_buttons_and_window_are_where_drawn(self):
         for key, dialog in self._built():
             with self.subTest(frame=key):
                 self.addCleanup(dialog.deleteLater)
@@ -960,7 +960,7 @@ class TheFormFamilyStandsOnItsFrame(unittest.TestCase):
                                  self._box(ok, dialog))
 
 
-class TheSaveFamilyWearsTheDrawnButtons(unittest.TestCase):
+class TheSaveFamilyHasTheDrawnButtons(unittest.TestCase):
     """D09 and D13 draw OK and Cancel flush right at the field edge. ▸p/save-dialog-rows"""
 
     def _dialogs(self):
@@ -1014,7 +1014,7 @@ class TheSaveFamilyWearsTheDrawnButtons(unittest.TestCase):
                     "%s: the pair starts at the row's left edge, so it "
                     "is not flush right" % label)
 
-    def test_a_style_that_lays_Cancel_first_is_put_right(self):
+    def test_a_style_that_lays_Cancel_first_is_reordered_ok_first(self):
         """OK-first systems skip the reorder code; a reversed box tests it ▸p/vacuous-register"""
         from amaze.dialogs import base_dialog
         dialog = base_dialog.NameDialog()

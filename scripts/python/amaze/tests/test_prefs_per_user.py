@@ -78,7 +78,7 @@ class TwoUsersKeepTheirOwnViewState(PerUserCase):
                          "switch")
         self.assertEqual(96, users[UID_B].get("thumbsize"))
 
-    def test_a_switch_resets_what_their_block_does_not_carry(self):
+    def test_a_switch_resets_what_their_block_does_not_contain(self):
         """A key the incoming block lacks must not inherit the previous user's value."""
         self.write_settings({
             "library_user": UID_A,
@@ -164,7 +164,7 @@ class OneLayoutIsReadAndWritten(PerUserCase):
                 self.assertEqual("grid", p.view_mode)
 
 
-class PerUserSettingsHaveOneHome(PerUserCase):
+class PerUserSettingsAreOnlyInAUsersBlock(PerUserCase):
 
     def test_nobody_picked_reads_and_writes_no_per_user_setting(self):
         """Per-user settings are only in a user's block: none is read or written outside one."""
@@ -213,7 +213,7 @@ class ASwitchToAnUnknownUserKeepsTheCurrentState(PerUserCase):
         self.assertEqual(256, users.get(UID_A, {}).get("thumbsize"))
 
 
-class ABlocksUnknownKeysSurviveTheRebuild(PerUserCase):
+class ABlocksUnknownKeysAreKeptThroughTheRebuild(PerUserCase):
 
     def test_a_newer_builds_block_key_is_kept(self):
         self.write_settings({
@@ -302,7 +302,7 @@ class ASaveAsksTheDiskOnlyAboutPathsItCouldReHome(PerUserCase):
                                   list(p.last_known_favourites),
                                   dict(p.last_known_records)))
 
-    def test_a_changed_copy_lands_without_asking_the_share(self):
+    def test_a_changed_copy_is_saved_without_asking_the_share(self):
         self.write_settings(self._settings())
         p = self.prefs()
         p.load()
@@ -398,7 +398,7 @@ class DeletingAUserDropsTheirBlock(PerUserCase):
                          "a second pane wrote the deleted user's block back")
         self.assertIn(keep, held)
 
-    def test_a_user_put_back_and_picked_again_is_saved_again(self):
+    def test_a_user_restored_and_picked_again_is_saved_again(self):
         """A restored `DataBase.json` can bring a deleted uid back; picking it keeps their view state."""
         from amaze.core import library_db, users
         p, keep, gone = self._two_users_with_blocks()
@@ -495,7 +495,7 @@ class EachBlockKnowsItsLibrary(PerUserCase):
                          "a user this library no longer lists kept a block")
         self.assertIn(keep, held)
 
-    def test_a_block_from_before_the_field_is_claimed_and_never_pruned(self):
+    def test_a_block_from_before_the_field_gets_the_library_and_is_never_pruned(self):
         p, keep = self._library()
 
         def older(blocks):
@@ -610,7 +610,7 @@ class EachBlockKnowsItsLibrary(PerUserCase):
                          "a stale Houdini wrote a deleted user's block back")
         self.assertIn(keep, self._blocks(p))
 
-    def test_a_merged_block_the_rules_spare_is_kept(self):
+    def test_a_merged_block_the_rules_do_not_prune_is_kept(self):
         """Merged in from disk: another library's block and one without the field both stay."""
         p, keep = self._library()
         p.save()

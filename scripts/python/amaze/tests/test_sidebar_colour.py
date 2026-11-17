@@ -20,7 +20,7 @@ from amaze.panel import sections  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
 
-class EveryContextSaysWhatAColourIs(unittest.TestCase):
+class EveryContextNamesItsColourPicker(unittest.TestCase):
 
     def test_each_one_names_its_own_picker(self):
         """A location is not a category, and the picker's title is the only text that shows it."""
@@ -30,7 +30,7 @@ class EveryContextSaysWhatAColourIs(unittest.TestCase):
                              getattr(sections, name).colour_title)
 
 
-class TheColourReachesBOTHPlacesItIsPainted(unittest.TestCase):
+class TheColourIsAppliedInBOTHPlacesItIsPainted(unittest.TestCase):
     """A sidebar colour paints the row and every tile in it; setting it must repaint both."""
 
     @classmethod
@@ -50,26 +50,26 @@ class TheColourReachesBOTHPlacesItIsPainted(unittest.TestCase):
         row = getattr(model, "_offset", lambda: 1)()    # File puts a scene row first
         return panel.active_section(), model, model.index(row, 0)
 
-    def test_the_sidebar_is_TOLD_so_the_row_actually_repaints(self):
+    def test_the_model_EMITS_a_change_signal_so_the_row_repaints(self):
         """These models read the store live, so only a change signal proves the row repaints."""
         for key in ("material", "gradient", "file"):
             with self.subTest(section=key):
                 context, model, index = self._sidebar_row(key)
                 name = context.sidebar_key(index)
                 self.addCleanup(context.set_sidebar_colour, name, "")
-                told = []
+                seen = []
                 for signal in (model.dataChanged, model.modelReset,
                                model.layoutChanged):
-                    def heard(*_args, s=signal, told=told):    # defaults bind this signal and list now
-                        told.append(s)
-                    signal.connect(heard)
-                    self.addCleanup(signal.disconnect, heard)
+                    def record(*_args, s=signal, seen=seen):    # defaults bind this signal and list now
+                        seen.append(s)
+                    signal.connect(record)
+                    self.addCleanup(signal.disconnect, record)
 
                 context.set_sidebar_colour(name, "#4af2a1")
                 QtWidgets.QApplication.processEvents()
 
                 self.assertTrue(
-                    told,
+                    seen,
                     "no change signal reached the %s sidebar, so "
                     "the colour appears only after something else "
                     "happens to refresh it" % key)

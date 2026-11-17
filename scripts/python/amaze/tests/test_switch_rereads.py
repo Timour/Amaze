@@ -86,14 +86,14 @@ class ASwitchReadsTheSettingsOnce(unittest.TestCase):
             self.panel.switch_all_models()
         return len(reads)
 
-    def _landed(self, folder) -> str:
+    def _real_path(self, folder) -> str:
         return os.path.realpath(str(folder).rstrip("/"))
 
     def test_one_switch_reads_the_settings_once(self):
         other = test_support.fresh_library(self)
         self.assertEqual(1, self._switch_reads(other),
                          "each model re-read settings.json for itself")
-        self.assertEqual(self._landed(other), self._landed(self.panel.prefs.dir),
+        self.assertEqual(self._real_path(other), self._real_path(self.panel.prefs.dir),
                          "the switch did not open the new library")
         self.assertTrue(test_support.serves(library_files.MATERIALS, self.panel.prefs.dir),
                         "the models were not re-pointed at the new library")
@@ -107,9 +107,9 @@ class ASwitchReadsTheSettingsOnce(unittest.TestCase):
         self._switch_reads(other)
         for model in self.panel.library_models():
             with self.subTest(model=type(model).__name__):
-                self.assertEqual(self._landed(other), self._landed(model.preferences.dir),
+                self.assertEqual(self._real_path(other), self._real_path(model.preferences.dir),
                                  "a shared model kept the library from another panel's Prefs")
-                self.assertEqual(self._landed(other), self._landed(self.panel.prefs.dir),
+                self.assertEqual(self._real_path(other), self._real_path(self.panel.prefs.dir),
                                  "the panel that switched still points to the old library")
 
 
@@ -166,7 +166,7 @@ class TheRegisteredFoldersFollowTheLibrary(unittest.TestCase):
 class AfterASwitchFileShowsTheNewLibrarysLocation(unittest.TestCase):
     """A switch while File shows re-picks the location; the grid kept the old one until a click."""
 
-    def test_the_grid_and_the_sidebar_land_on_the_new_library(self):
+    def test_the_grid_and_the_sidebar_show_the_new_library(self):
         panel = test_support.fixture_panel(self)
         panel.section_tabs.setChecked("file")
         QtWidgets.QApplication.processEvents()
@@ -207,7 +207,7 @@ class AfterASwitchAnAssetGridFollowsItsSidebar(unittest.TestCase):
         panel.switch_all_models()
         QtWidgets.QApplication.processEvents()
 
-    def test_the_grid_and_the_sidebar_stand_on_one_category(self):
+    def test_the_grid_and_the_sidebar_select_one_category(self):
         panel = test_support.fixture_panel(self)
         for key in ("material", "cop", "code", "gradient"):
             with self.subTest(section=key):
@@ -301,7 +301,7 @@ class AnUnreadableNodeFileDoesNotStopTheSwitch(unittest.TestCase):
             "the Node sidebar shows categories from a file it could not read")
         self.assertEqual(0, self.panel.cop_model.rowCount())
 
-    def test_a_node_save_is_refused_for_the_file_it_could_not_read(self):
+    def test_a_node_save_returns_false_for_the_file_it_could_not_read(self):
         with test_support.captured_log() as log:
             self.panel.switch_all_models()    # the function that reads the settings; a model reads none
             self.assertFalse(self.panel.cop_model.save(),
@@ -354,7 +354,7 @@ class OneLibraryChangeIsOneSwitch(unittest.TestCase):
                          "a switch left no line in the debug log to count it by")
 
 
-class EveryWayOntoALibraryTakesOneOrder(unittest.TestCase):
+class EveryWayOntoALibraryRunsTheStepsInOneOrder(unittest.TestCase):
     """Every way onto a library takes one order: refusal, prepare, models, publish, update, seed."""
 
     ORDER = ["refusal", "prepare", "models", "publish", "update", "seed"]
@@ -461,7 +461,7 @@ class AnUnreadableListIsAskedAboutBeforeTheSwitch(unittest.TestCase):
         self.assertEqual(before, self.panel._models_dir, "Cancel left the open library")
         self.assertEqual(files, sorted(os.listdir(self.broken)), "Cancel wrote into the folder")
 
-    def test_a_list_that_has_not_arrived_is_refused_before_anything_is_saved(self):
+    def test_a_folder_without_its_database_shows_folder_not_empty_and_saves_nothing(self):
         held = test_support.seeded_library(self)
         os.remove(os.path.join(held, library_files.MASTER))    # materials/ stays: it held a library
         saves = []

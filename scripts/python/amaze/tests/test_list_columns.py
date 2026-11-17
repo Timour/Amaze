@@ -102,7 +102,7 @@ class TickIsDrawnNotTyped(unittest.TestCase):
 class SliderFollowsTheViewMode(unittest.TestCase):
     """Grid sizes run 64-512 and snap near 128; list rows are fixed, so the slider is disabled."""
 
-    def test_the_magnet_pulls_a_near_miss_onto_128(self):
+    def test_the_slider_snaps_only_a_near_value_onto_128(self):
         """A snap that catches every value breaks the slider: 200 is a size someone chose."""
         self.assertEqual(
             128, ui_helpers.ClickSlider.DEFAULT_VALUE,
@@ -141,7 +141,7 @@ class TheRealPanelInListMode(unittest.TestCase):
 
     HOUSE_FONT = "SideFX Source Sans Pro"
 
-    def _wear_the_host_font(self, table):
+    def _set_the_host_font(self, table):
         """Set Houdini's font on `table`, PIXEL-sized through `ui_px` ▸p/headless-host-font"""
         if self.HOUSE_FONT not in QtGui.QFontDatabase.families():
             self.skipTest("%s is not installed, so the panel's real font "
@@ -166,7 +166,7 @@ class TheRealPanelInListMode(unittest.TestCase):
              self.panel.click_slider.maximum()),
             "a grid tile smaller than 64px is not a tile you can read")
 
-    def test_the_slider_is_dead_in_list_mode(self):
+    def test_the_slider_is_disabled_in_list_mode(self):
         """A list row is one text line with nothing to scale, so the slider is disabled there."""
         self._mode("grid")
         self.assertTrue(self.panel.click_slider.isEnabled(),
@@ -249,7 +249,7 @@ class TheRealPanelInListMode(unittest.TestCase):
         self.panel.sync_list_columns()
         QtWidgets.QApplication.processEvents()
         table = self.panel.thumbtable
-        self._wear_the_host_font(table)
+        self._set_the_host_font(table)
         proxy = table.model()
         self.assertTrue(proxy.rowCount(), "no rows to measure")
         checked = 0
@@ -390,15 +390,15 @@ class CategoriesIsAButtonNotAMenuItem(unittest.TestCase):
             "the chip and the action disagree about the sidebar")
 
 
-class EveryChipUsesTheOneEngine(unittest.TestCase):
+class EveryChipUsesTheOnePainter(unittest.TestCase):
     """All chips use one painter: as designed at rest, lighter on hover unless colour marks it on."""
 
-    LIT = None
+    ON_COLOR = None
 
     @classmethod
     def setUpClass(cls):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))  # the isolated panel, never the live settings
-        cls.LIT = QtGui.QColor(
+        cls.ON_COLOR =QtGui.QColor(
             ui_helpers.IconMenuButton.HOVER_BODY).name()
 
     @classmethod
@@ -422,13 +422,13 @@ class EveryChipUsesTheOneEngine(unittest.TestCase):
                 continue
             for state in ((True, False),) + states:
                 self.assertNotIn(
-                    self.LIT, self._colours(button._pms[state]),
+                    self.ON_COLOR, self._colours(button._pms[state]),
                     "%s turns white in state %s - no chip does that, and "
                     "lightening a colour chip erases the colour that says "
                     "it is on" % (name, state))
 
 
-class TheOnlineWorld(unittest.TestCase):
+class OnlineMode(unittest.TestCase):
     """Online mode: its tabs are the online sources in order; the amber button shows it is on."""
 
     @classmethod
@@ -443,7 +443,7 @@ class TheOnlineWorld(unittest.TestCase):
         if self.panel._is_online():
             self.panel.leave_online_mode()
 
-    def test_the_strip_becomes_the_sources(self):
+    def test_the_section_tabs_become_the_online_sources(self):
         from amaze.core import matx_sources
         self.panel.enter_online_mode()
         self.addCleanup(self.panel.leave_online_mode)
@@ -467,7 +467,7 @@ class TheOnlineWorld(unittest.TestCase):
             names[1], self.panel.online_source,
             "clicking an online tab did not change the source")
 
-    def test_leaving_puts_you_back_where_you_came_from(self):
+    def test_leaving_returns_to_the_previous_section(self):
         """Leaving online mode returns to the section that was current before entering it."""
         panel = self.panel
         panel.section_tabs.setChecked("gradient")
@@ -537,7 +537,7 @@ class TheOnlineWorld(unittest.TestCase):
             "the online SELECTION model - which is what turns a click "
             "into the wrong asset")
 
-    def test_the_button_is_the_signal_and_it_is_amber(self):
+    def test_the_online_button_shows_online_mode_in_amber(self):
         from amaze.helpers import theme
         panel = self.panel
         amber = QtGui.QColor(theme.color_hex("star")).name()
@@ -551,7 +551,7 @@ class TheOnlineWorld(unittest.TestCase):
             "the online button is not amber when on - the colour IS "
             "the signal that the panel is in online mode")
 
-    def test_a_disabled_chip_is_half_there(self):
+    def test_a_disabled_chip_is_drawn_at_half_opacity(self):
         """The star is disabled online, and a self-painted chip gets no disabled dimming from Qt."""
         self.assertEqual(
             0.5, ui_helpers.ChipToggleButton.DISABLED_OPACITY)
@@ -575,7 +575,7 @@ class TheOnlineWorld(unittest.TestCase):
         self.assertTrue(panel.btn_notes.isEnabled(),
                         "Comments was not enabled again")
 
-    def test_the_View_menu_is_down_to_the_one_shot_actions(self):
+    def test_the_View_menu_holds_only_the_one_shot_actions(self):
         """The View menu holds only the one-shot actions: a gallery in, packages in and out."""
         menu = self.panel.ui.findChild(QtWidgets.QMenu, "menuView")
         self.assertIsNotNone(menu)
@@ -599,8 +599,8 @@ class TheOnlineWorld(unittest.TestCase):
 class TheCategoryColumnPaintsITSOwnColour(unittest.TestCase):
     """Only Category uses its own colour, as under grid tiles; other columns use the text colour."""
 
-    CATEGORY_INK = "#ff8800"  # no other part of the row uses it, and light enough to stay recognisable after the legibility pass
-    DARK_INK = "#2a2a2a"  # dark enough that writing it on the row would be unreadable - measured 1.03:1 against #333333
+    CATEGORY_TEXT_COLOR = "#ff8800"  # no other part of the row uses it, and light enough to stay recognisable after the legibility pass
+    DARK_TEXT_COLOR = "#2a2a2a"  # dark enough that writing it on the row would be unreadable - measured 1.03:1 against #333333
 
     def setUp(self):
         self.view = QtWidgets.QTableView()
@@ -611,7 +611,7 @@ class TheCategoryColumnPaintsITSOwnColour(unittest.TestCase):
         self.tiles = delegates.AssetItemDelegate(SUBTITLE_ROLE)
         self.delegate = delegates.CategoryCellDelegate(self.tiles)
 
-    def _ink(self, colour, selected=False):  # the text colour the delegate picks for the cell
+    def _text_color(self, colour, selected=False):  # the text colour the delegate picks for the cell
         model = QtGui.QStandardItemModel()
         item = QtGui.QStandardItem("Metal")
         if colour is not None:
@@ -631,34 +631,34 @@ class TheCategoryColumnPaintsITSOwnColour(unittest.TestCase):
         return option.palette.color(QtGui.QPalette.ColorRole.Text)
 
     @staticmethod
-    def _hueish(colour):
+    def _is_orange(colour):
         """Which channel dominates: tells orange from grey without pinning the exact legibility output."""
         r, g, b = colour.red(), colour.green(), colour.blue()
         return r > g > b and (r - b) > 40
 
-    def test_an_uncoloured_category_uses_the_shared_ink(self):
+    def test_an_uncoloured_category_uses_the_shared_text_color(self):
         plain = self.view.palette().color(QtGui.QPalette.ColorRole.Text)
         self.assertEqual(
-            plain.name(), self._ink(None).name(),
+            plain.name(), self._text_color(None).name(),
             "an uncoloured category got a text colour of its own")
 
     def test_a_DARK_category_is_lightened_to_be_readable(self):
         """A dark category colour is lightened as the pen on a dark row; #333333 measured 1.03:1."""
         base = self.view.palette().color(QtGui.QPalette.ColorRole.Base)
-        painted = self._ink(self.DARK_INK)
+        painted = self._text_color(self.DARK_TEXT_COLOR)
         self.assertGreater(
             delegates.AssetItemDelegate.contrast_ratio(painted, base),
             delegates.AssetItemDelegate.contrast_ratio(
-                QtGui.QColor(self.DARK_INK), base),
+                QtGui.QColor(self.DARK_TEXT_COLOR), base),
             "a dark category was written on the dark row unchanged")
 
     def test_a_SELECTED_row_is_LEFT_TO_the_host(self):
         """A selected row is left to the host stylesheet: the delegate paints it like a plain one."""
-        ours = self._ink(self.CATEGORY_INK, selected=True)
+        ours = self._text_color(self.CATEGORY_TEXT_COLOR, selected=True)
         stock = self.delegate
         try:
             self.delegate = QtWidgets.QStyledItemDelegate(self.view)
-            plain = self._ink(self.CATEGORY_INK, selected=True)
+            plain = self._text_color(self.CATEGORY_TEXT_COLOR, selected=True)
         finally:
             self.delegate = stock
         self.assertEqual(
@@ -666,7 +666,7 @@ class TheCategoryColumnPaintsITSOwnColour(unittest.TestCase):
             "the category column overrides a selected row's text colour "
             "- the host stylesheet sets it")
         self.assertTrue(  # the unselected row still gets its colour, or a do-nothing delegate passes
-            self._hueish(self._ink(self.CATEGORY_INK)),
+            self._is_orange(self._text_color(self.CATEGORY_TEXT_COLOR)),
             "an unselected category lost its own colour")
 
 

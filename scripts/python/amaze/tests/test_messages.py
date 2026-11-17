@@ -263,7 +263,7 @@ def _texts(call, boxes, interface) -> list:
     return []
 
 
-def _spelled_messages(tree, where: str = "panel") -> list:
+def _call_site_messages(tree, where: str = "panel") -> list:
     """[(line, words)] for each dialog in `tree` whose text holds a literal of its own module."""
     interface = where.replace("\\", "/").split("/")[0] in INTERFACE
     module = _Module(tree, follow=interface)
@@ -282,10 +282,10 @@ def _spelled_messages(tree, where: str = "panel") -> list:
     return found
 
 
-class NoDialogSpellsItsOwnMessage(unittest.TestCase):
+class NoDialogHasAMessageLiteralAtItsCallSite(unittest.TestCase):
     """A message written at the call site is not in messages.py, so a Figma edit cannot change it."""
 
-    def test_no_message_literal_survives_at_a_call_site(self):
+    def test_no_message_literal_is_left_at_a_call_site(self):
         offenders = []
         for path in _sources():
             where = os.path.relpath(path, _PKG)
@@ -294,7 +294,7 @@ class NoDialogSpellsItsOwnMessage(unittest.TestCase):
                     tree = ast.parse(handle.read(), filename=path)
                 except SyntaxError:
                     continue
-            for line, words in _spelled_messages(tree, where):
+            for line, words in _call_site_messages(tree, where):
                 offenders.append("%s:%d  %r" % (where, line, words[:48]))
         self.assertEqual(
             [], offenders,
@@ -341,12 +341,12 @@ class NoDialogSpellsItsOwnMessage(unittest.TestCase):
         """A scanner matching nothing passes forever."""
         for shape in self.SEEN:
             with self.subTest(shape=shape):
-                self.assertEqual(1, len(_spelled_messages(ast.parse(shape))))
+                self.assertEqual(1, len(_call_site_messages(ast.parse(shape))))
         for shape in self.UNSEEN:
             with self.subTest(shape=shape):
-                self.assertEqual([], _spelled_messages(ast.parse(shape)),
+                self.assertEqual([], _call_site_messages(ast.parse(shape)),
                                  "text not written at the call site was flagged")
-        self.assertEqual([], _spelled_messages(ast.parse(
+        self.assertEqual([], _call_site_messages(ast.parse(
             'debug.note("a sentence long enough")'), "core/x.py"),
             "a core note was read as dialog text")
 
@@ -399,7 +399,7 @@ class ThePlaceholdersAgreeWithTheCallers(unittest.TestCase):
             "raises TypeError in front of the user:\n  "
             + "\n  ".join(offenders))
 
-    def test_an_unformatted_message_carries_no_placeholder(self):
+    def test_an_unformatted_message_has_no_placeholder(self):
         """The other direction: a `%s` left in a message nobody formats prints raw to the user."""
         constants = _constants()
         formatted = set(self._formatted())
@@ -421,7 +421,7 @@ class ThePlaceholdersAgreeWithTheCallers(unittest.TestCase):
             + "\n  ".join(offenders))
 
 
-class EveryMessageBoxSaysWhoAndHowBad(unittest.TestCase):
+class EveryMessageBoxHasATitleAndASeverity(unittest.TestCase):
     """`displayMessage`: a title (else it shows `Houdini`), a severity, and a list in `details`."""
 
     def _calls(self):
@@ -439,7 +439,7 @@ class EveryMessageBoxSaysWhoAndHowBad(unittest.TestCase):
                 if not {"title", "severity"} <= {k.arg for k in call.keywords}]
         self.assertEqual([], bare)
 
-    def test_no_message_carries_a_joined_list_in_its_text(self):
+    def test_no_message_contains_a_joined_list_in_its_text(self):
         """`messages.X % (..., "\\n".join(rows))` is a list in the body: it belongs in details=."""
         def joins(node):
             return any(isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
@@ -459,7 +459,7 @@ class AListUnderShowDetailsEndsItsSentence(unittest.TestCase):
                 self.assertTrue(getattr(messages, name).endswith("."), getattr(messages, name))
 
 
-class CheckLibrarySaysWhereFilesGo(unittest.TestCase):
+class CheckLibraryNamesWhereFilesGo(unittest.TestCase):
     """Check Library moves a file into the holding folder; it does not delete it."""
 
     def test_every_move_names_how_long_the_holding_folder_keeps_them(self):
@@ -474,7 +474,7 @@ class CheckLibrarySaysWhereFilesGo(unittest.TestCase):
                 self.assertIn("library's trash", getattr(messages, name),
                               "it places the trash somewhere other than the library's own folder")
 
-    def _said(self):
+    def _user_sentences(self):
         """Every sentence a user reads by name: the messages, the tooltips, each shelf tool's help."""
         import xml.etree.ElementTree as ET
         from amaze import tooltips
@@ -488,10 +488,10 @@ class CheckLibrarySaysWhereFilesGo(unittest.TestCase):
             yield "shelf ▸ " + tool.get("label", ""), tool.findtext("helpText") or ""
 
     def test_no_sentence_names_a_tool_that_is_gone(self):
-        said = dict(self._said())
-        self.assertTrue(any(name.startswith("shelf ▸ ") and text for name, text in said.items()),
+        sentences = dict(self._user_sentences())
+        self.assertTrue(any(name.startswith("shelf ▸ ") and text for name, text in sentences.items()),
                         "premise: the shelf's help texts are read")
-        for name, text in said.items():
+        for name, text in sentences.items():
             for gone in ("Clean Library", "Clean Up", "Repair tool", "run Repair",
                          "Repair Library", "Open Preferences to find",
                          "Library ▸ Check Library"):    # a menu the panel has never shown
@@ -500,7 +500,7 @@ class CheckLibrarySaysWhereFilesGo(unittest.TestCase):
     def test_a_quoted_place_ends_before_the_next_word(self):
         """`Preferences ▸ Library` run into the word after it reads as one word on screen."""
         glued = re.compile(r"▸ (?:Library|Render|Show/Hide|Look|Add-On|About)[A-Za-z]")
-        for name, text in self._said():
+        for name, text in self._user_sentences():
             self.assertIsNone(glued.search(text), "%s runs a tab's name into the next word" % name)
 
     def test_the_panel_declares_no_menu_it_never_shows(self):

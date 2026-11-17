@@ -85,7 +85,7 @@ class TheUserIsPickedByTheRule(unittest.TestCase):
         self.assertEqual("Format: v2.0", self.dialog._lbl_library_format.text())
 
 
-class WhatApplyingDoesIsSaidFirst(unittest.TestCase):
+class WhatApplyingDoesIsShownBeforeApply(unittest.TestCase):
     """The Format line and the line beside Apply, per library version and when unreachable."""
 
     def setUp(self):
@@ -128,10 +128,10 @@ class WhatApplyingDoesIsSaidFirst(unittest.TestCase):
         self.assertFalse(self.dialog._btn_apply_library.isEnabled())
 
 
-class WhatActsOnALibraryWaitsForIt(unittest.TestCase):
+class LibraryButtonsAreDisabledUntilApply(unittest.TestCase):
     """With another library picked, the buttons that act on a library are disabled until Apply."""
 
-    def test_the_library_buttons_rest_on_a_picked_library(self):
+    def test_the_library_buttons_are_disabled_for_a_picked_library(self):
         prefs = test_support.fixture_prefs(self)
         prefs.library_user = users.create(prefs, "Plum")
         dialog = _dialog(self, prefs)
@@ -161,7 +161,7 @@ class TheDatabasesRowShowsOneCheck(unittest.TestCase):
                 [count.text() for count in dialog._check_counts],
                 dialog._lbl_check_info.toolTip(), dialog._btn_check.text())
 
-    def dead_favorite(self):
+    def favorite_of_a_missing_file(self):
         star = os.path.join(self.folder, "shot.exr")
         with open(star, "wb") as handle:
             handle.write(b"x")
@@ -174,14 +174,14 @@ class TheDatabasesRowShowsOneCheck(unittest.TestCase):
         self.assertEqual("", self.dialog._btn_check.styleSheet())
 
     def test_nothing_is_checked_until_the_button_is_pressed(self):
-        self.dead_favorite()
+        self.favorite_of_a_missing_file()
         self.assert_unchecked()
         self.assertEqual(["Errors", "Files", "Ref"],
                          [label.text() for label in self.dialog._check_heads])
         self.assertEqual("Databases", self.dialog._lbl_databases.text())
 
     def test_a_check_fills_the_lights_and_turns_the_button_into_a_red_repair(self):
-        self.dead_favorite()
+        self.favorite_of_a_missing_file()
         self.dialog._btn_check.click()
         fills, counts, info, button = self.row()
         self.assertEqual(amazetheme.P01_LIGHT_CLEAN, fills[0])
@@ -202,7 +202,7 @@ class TheDatabasesRowShowsOneCheck(unittest.TestCase):
         self.assertEqual(amazetheme.P01_REPAIR_FILL, middle, "the Repair button is not drawn red")
 
     def test_repair_opens_the_dialog_and_checks_again_after_the_fix(self):
-        star = self.dead_favorite()
+        star = self.favorite_of_a_missing_file()
         self.dialog._btn_check.click()
         asked = []
 
@@ -232,7 +232,7 @@ class TheDatabasesRowShowsOneCheck(unittest.TestCase):
             self.assertEqual("Check", self.dialog._btn_check.text())
             self.assertEqual("", self.dialog._btn_check.styleSheet())
 
-    def test_a_part_that_cannot_be_judged_is_amber_with_a_dash(self):
+    def test_a_part_that_cannot_be_checked_is_amber_with_a_dash(self):
         from amaze.core import guard
         with mock.patch.object(guard.Guard, "_waiting", lambda self: True):
             self.dialog._btn_check.click()
@@ -242,7 +242,7 @@ class TheDatabasesRowShowsOneCheck(unittest.TestCase):
         self.assertEqual("Check", button)
 
     def test_picking_another_library_empties_the_row(self):
-        self.dead_favorite()
+        self.favorite_of_a_missing_file()
         self.dialog._btn_check.click()
         other, _made = _library_with(self, "Plum")
         self.dialog.pick_library(other)
@@ -275,7 +275,7 @@ class AddPutsAFolderInTheList(unittest.TestCase):
         self.assertEqual([], self.said)
         self.assertNotIn(folder, self.prefs.libraries, "Add listed it before Apply")
 
-    def test_a_full_list_asks_for_room_in_manage_first(self):
+    def test_a_full_list_shows_library_list_full_and_opens_no_chooser(self):
         for number in range(prefs_mod.LIBRARY_LIST_LIMIT):
             self.prefs.note_library_opened(_empty_folder(self) + "L%d/" % number)
         self._adding(_empty_folder(self))

@@ -19,7 +19,7 @@ from amaze.helpers import theme, ui_helpers  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401
 
 
-class TheTabStripStandsOnItsFrame(unittest.TestCase):
+class TheTabStripMatchesItsDesignFrame(unittest.TestCase):
     """Every tab, the tray and the strip are placed where S01 draws them, in any font."""
 
     def setUp(self):
@@ -58,7 +58,7 @@ class TheTabStripStandsOnItsFrame(unittest.TestCase):
         self.assertEqual((height, height),
                          (self.bar.minimumHeight(), self.bar.maximumHeight()))
 
-    def test_every_tab_lands_where_it_is_drawn(self):
+    def test_every_tab_is_where_it_is_drawn(self):
         rects = [rect for _segment, rect in self.bar._chip_rects()]
         self.assertEqual(len(self.chips), len(rects))
         self.assertEqual(self.px(self.chips[0][1]), rects[0].x(), "the first tab is not at its drawn x")
@@ -84,11 +84,11 @@ class TheTabStripStandsOnItsFrame(unittest.TestCase):
                          "the tray does not end one inset past the last tab")
 
 
-class OneRingTest(unittest.TestCase):
+class DrawRingMatchesTheHandWrittenRingsTest(unittest.TestCase):
     """`draw_ring` draws what each of the three hand-written chip rings drew, at any width."""
 
     RECT = QtCore.QRectF(3, 4, 30, 20)
-    INK = QtGui.QColor("#43506d")
+    RING_COLOR = QtGui.QColor("#43506d")
     FILL = QtGui.QColor("#2d4075")
     WIDTHS = (1, 1.0, 1.25, 1.5, 2)
 
@@ -100,10 +100,10 @@ class OneRingTest(unittest.TestCase):
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
         return image, painter
 
-    def _ours(self, width, radius, fill):
+    def _drawn_by_draw_ring(self, width, radius, fill):
         image, painter = self._canvas()
         try:
-            ui_helpers.draw_ring(painter, self.RECT, self.INK, width, radius, fill)
+            ui_helpers.draw_ring(painter, self.RECT, self.RING_COLOR, width, radius, fill)
         finally:
             painter.end()
         return image
@@ -114,12 +114,12 @@ class OneRingTest(unittest.TestCase):
                 with self.subTest(radius=radius, width=width):
                     want, painter = self._canvas()
                     half = width / 2.0
-                    painter.setPen(QtGui.QPen(self.INK, width))
+                    painter.setPen(QtGui.QPen(self.RING_COLOR, width))
                     painter.setBrush(fill)
                     painter.drawRoundedRect(
                         self.RECT.adjusted(half, half, -half, -half), radius, radius)
                     painter.end()
-                    self.assertEqual(want, self._ours(width, radius, fill))
+                    self.assertEqual(want, self._drawn_by_draw_ring(width, radius, fill))
 
 
 class BothChipRingsAreOneWholePixelWidth(unittest.TestCase):

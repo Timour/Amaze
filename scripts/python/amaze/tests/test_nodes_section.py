@@ -78,7 +78,7 @@ class NodesSectionTest(unittest.TestCase):
         self.assertEqual("Sop", cop_nodes.context_of(items[0], items))
 
 
-    def test_the_import_seam_returns_what_it_created(self):
+    def test_import_asset_to_scene_returns_the_created_nodes(self):
         """(ok, reason, created): what every drop-position feature uses; no caller diffs children."""
         from amaze.helpers import helpers
 
@@ -102,7 +102,7 @@ class NodesSectionTest(unittest.TestCase):
                                msg="the group centroid is not at the drop point")
         self.assertAlmostEqual(anchor.y(), sum(ys) / len(ys))
 
-    def test_notes_boxes_and_dots_travel_with_the_nodes(self):
+    def test_notes_boxes_and_dots_move_with_the_nodes(self):
         """A load at the drop point moves EVERY item it added, as Houdini's paste does."""
         from amaze.helpers import helpers
 
@@ -179,7 +179,7 @@ class NodesSectionTest(unittest.TestCase):
         self.assertTrue(ok, reason)
         self.assertEqual(saved, self._offsets([n for n in created if isinstance(n, hou.Node)]))
 
-    def test_a_load_with_no_drop_point_lands_clear_of_the_nodes_there(self):
+    def test_a_load_with_no_drop_point_is_placed_clear_of_existing_nodes(self):
         """A menu import is placed beside existing nodes, arrangement kept, overlapping none."""
         saved = self._saved_arrangement("clear_sop")
         dest = hou.node("/obj").createNode("geo", "clear_dest")
@@ -197,7 +197,7 @@ class NodesSectionTest(unittest.TestCase):
         self.assertEqual([], [(a.name(), b.name()) for a in made for b in there
                               if _overlap(a, b)], "the loaded nodes overlap the nodes already there")
 
-    def test_an_unsafe_id_is_refused_with_a_sentence(self):
+    def test_an_unsafe_id_returns_false_with_an_error_message(self):
         """An id that cannot be a filename gets a message, not a traceback ▸p/nodes-section."""
         geo = _sop_network("unsafe_src")
         self.assertEqual("SOP", node_actions.add_asset(
@@ -247,7 +247,7 @@ class NodesSectionTest(unittest.TestCase):
         self.assertEqual(["the_box"], [n.name() for n in dest.children()])
 
 
-    def test_it_still_refuses_where_nothing_can_hold_them(self):
+    def test_sops_into_a_matnet_return_false_and_create_nothing(self):
         """The broader placement rules must still refuse: a matnet cannot hold SOPs at any depth."""
         geo = _sop_network("refuse_src")
         node_actions.add_asset(self.model, geo, "", "", False, name="SOPwhole")
@@ -272,7 +272,7 @@ class NodesSectionTest(unittest.TestCase):
             self.model, self.model.index(row, 0), context_node=dest)
         return ok, reason, [c for c in dest.children() if c not in before]
 
-    def test_a_network_asset_lands_at_object_level_in_its_container(self):
+    def test_a_network_asset_is_built_at_object_level_in_its_container(self):
         """Every context that has a container type in /obj gets that container built there."""
         sources = {
             "SOPnet": _sop_network("obj_sop"),
@@ -307,7 +307,7 @@ class NodesSectionTest(unittest.TestCase):
         self.assertTrue(ok, reason)
         self.assertEqual({"objA", "objB"}, {n.name() for n in made})
 
-    def test_object_nodes_are_refused_inside_a_sop_network(self):
+    def test_object_nodes_into_a_sop_network_return_false_and_create_nothing(self):
         """Every context has a `subnet`, but a SOP subnet cannot hold object-level nodes."""
         first = hou.node("/obj").createNode("geo", "trapA")
         second = hou.node("/obj").createNode("geo", "trapB")
@@ -362,7 +362,7 @@ class NodesSectionTest(unittest.TestCase):
                 "%s + %s asset -> %r, expected %r"
                 % (dest_name, context, got, want))
 
-    def test_a_sop_network_lands_in_a_sop_create_in_solaris(self):
+    def test_a_sop_network_is_loaded_into_a_sop_create_in_solaris(self):
         geo = _sop_network("solaris_src")
         node_actions.add_asset(self.model, geo, "", "", False, name="ForStage")
         geo.destroy()
@@ -395,7 +395,7 @@ class NodesSectionTest(unittest.TestCase):
                   if p.GetTypeName() == "Mesh"]
         self.assertTrue(meshes, "the stage carries no geometry")
 
-    def test_an_unflagged_network_still_reaches_the_stage(self):
+    def test_an_unflagged_network_still_puts_a_mesh_on_the_stage(self):
         """The flag fallback is invisible until a save whose nodes had none, and then the stage is empty."""
         geo = hou.node("/obj").createNode("geo", "unflagged_src")
         box = geo.createNode("box", "the_box")
@@ -523,7 +523,7 @@ class NodesSectionTest(unittest.TestCase):
         self.assertFalse(cop_nodes.is_container(matnet))
 
 
-class TheRenderDecisionHasOneHome(unittest.TestCase):
+class TheRenderDecisionIsMadeInOneMethod(unittest.TestCase):
     """One method decides Cop-or-Sop; a source scan fails if another place decides it again."""
 
     def test_the_create_verbs_are_called_only_inside_thumbs(self):
@@ -560,7 +560,7 @@ class TheRenderDecisionHasOneHome(unittest.TestCase):
                 context, "asset1", thumb_node)
         return outcome, sop, cop
 
-    def test_both_spellings_of_each_context_reach_one_verb(self):
+    def test_both_spellings_of_each_context_map_to_one_verb(self):
         """Save reads a category name, Update Render a renderer tag, empty when old: one normalisation."""
         for context, thumb_node, sop_args, cop_args in (
                 ("Sop", "", ("asset1",), None),
@@ -582,7 +582,7 @@ class TheRenderDecisionHasOneHome(unittest.TestCase):
                         outcome, "a Lop network has no thumbnail render")
 
 
-class TheWireSpliceReadsThePlacementFunnel(unittest.TestCase):
+class TheWireSpliceReadsPlacedNodes(unittest.TestCase):
     """The wire splice reads `helpers.placed_nodes`, never a child diff ▸p/nodes-section."""
 
     def setUp(self):
@@ -591,7 +591,7 @@ class TheWireSpliceReadsThePlacementFunnel(unittest.TestCase):
         from amaze.helpers import helpers
         helpers.forget_placed()
 
-    def test_both_placements_leave_their_nodes_in_the_funnel(self):
+    def test_both_placements_record_their_nodes_in_placed_nodes(self):
         from amaze.helpers import helpers
         made = self.net.createNode("box")
         helpers.forget_placed()
@@ -634,7 +634,7 @@ class TheWireSpliceReadsThePlacementFunnel(unittest.TestCase):
                         "the existing connection was left in place, "
                         "so the insert would double-wire the chain")
 
-    def test_nothing_landed_means_nothing_is_spliced(self):
+    def test_an_empty_import_splices_nothing(self):
         from amaze.core import dragengine
         from amaze.helpers import helpers
         a = self.net.createNode("box")
@@ -647,7 +647,7 @@ class TheWireSpliceReadsThePlacementFunnel(unittest.TestCase):
         self.assertEqual(a, b.inputs()[0], "the chain's input changed")
 
 
-class AutoPlacementLeavesTheSceneAlone(unittest.TestCase):
+class AutoPlacementMovesNoExistingNode(unittest.TestCase):
     """A drop must rearrange nothing, so placement goes through ONE helper carrying the no-move flags."""
 
     def setUp(self):
@@ -758,7 +758,7 @@ class WhatCountsAsAFailure(unittest.TestCase):
         hou.hda.uninstallFile(otl)
         return mat
 
-    def _pin_ocio(self, value: str):
+    def _set_ocio(self, value: str):
         """Set `$OCIO` for one test and put the session's own back after it."""
         previous = hou.getenv("OCIO")
         if previous is None:
@@ -767,10 +767,10 @@ class WhatCountsAsAFailure(unittest.TestCase):
             self.addCleanup(hou.putenv, "OCIO", previous)
         hou.putenv("OCIO", value)
 
-    def _collect_node(self, home: str):
-        return hou.node("/obj").createNode("matnet", home).createNode("collect")
+    def _collect_node(self, matnet_name: str):
+        return hou.node("/obj").createNode("matnet", matnet_name).createNode("collect")
 
-    def test_a_network_that_only_warned_is_not_thrown_away(self):
+    def test_a_network_that_only_warned_is_kept(self):
         """`loadItemsFromFile` raises `hou.LoadWarning` on a successful load; the network is kept."""
         mat = self._asset_that_warns_on_load("warned_direct")
         dest = hou.node("/obj").createNode("geo", "warn_dest")
@@ -853,7 +853,7 @@ class WhatCountsAsAFailure(unittest.TestCase):
                 handler._renderer = "Karma"
                 collect = self._collect_node(
                     "ocio_set" if ocio else "ocio_empty")
-                self._pin_ocio(ocio)
+                self._set_ocio(ocio)
 
                 with mock.patch.object(handler, "_save_copy",
                                        return_value=True) as saver:
@@ -867,7 +867,7 @@ class WhatCountsAsAFailure(unittest.TestCase):
                     saver.call_args_list)
 
 
-class ANodeAssetThatLoadsNothingIsRefused(unittest.TestCase):
+class ANodeAssetThatLoadsNothingFailsToImport(unittest.TestCase):
     """An empty Node asset, or one that loads no node, is refused with its reason. ▸r/node-items"""
 
     def setUp(self):
@@ -909,7 +909,7 @@ class ANodeAssetThatLoadsNothingIsRefused(unittest.TestCase):
             mat, context_node=dest)
         return ok, reason, created, self._everything() - before
 
-    def test_an_empty_file_is_refused_with_the_strict_loads_sentence(self):
+    def test_an_empty_file_fails_with_the_is_empty_message(self):
         for where in ("direct", "boxed"):
             with self.subTest(where=where):
                 mat, payload = self._asset("empty_" + where, b"")
@@ -919,7 +919,7 @@ class ANodeAssetThatLoadsNothingIsRefused(unittest.TestCase):
                               % payload, reason)
                 self.assertEqual(([], set()), (created, left), "the refusal left nodes behind")
 
-    def test_a_file_that_loads_no_node_is_refused(self):
+    def test_a_file_that_loads_no_node_fails_and_leaves_nothing(self):
         content = self._no_node()
         for where in ("direct", "boxed"):
             with self.subTest(where=where):
@@ -948,7 +948,7 @@ class ASavedBuilderTypeThisSessionLacks(unittest.TestCase):
         self.handler._import_path = self.home
         self.mat = material.Material(name="missing_type", renderer="Redshift")
 
-    def test_the_renderer_container_arrives_without_its_stock_children(self):
+    def test_the_renderer_container_is_created_without_its_stock_children(self):
         """A stock terminal and shader are first, so the converter read them, not the saved ones."""
         self.handler.load_interface_other(self.mat, "subnet", self.MISSING)
 
@@ -958,7 +958,7 @@ class ASavedBuilderTypeThisSessionLacks(unittest.TestCase):
             [], [child.type().name() for child in builder.children()],
             "the fallback container kept the stock children its type creates")
 
-    def test_with_no_renderer_container_either_it_refuses_and_leaves_nothing(self):
+    def test_with_no_renderer_container_either_it_raises_and_leaves_nothing(self):
         """No plugin and no saved type: `createNode`'s own refusal, and no node left behind."""
         with self.assertRaises(hou.OperationFailed):
             self.handler.load_interface_other(self.mat, self.MISSING, "")
@@ -994,16 +994,16 @@ class UpdateRenderOnANodeTile(unittest.TestCase):
         self.assertEqual([mock.call("SOP", str(asset.mat_id), mock.ANY)],
                          rendered.call_args_list)
 
-    def test_a_context_with_no_picture_says_so(self):
+    def test_a_context_with_no_picture_logs_a_note(self):
         lop = hou.node("/obj").createNode("lopnet", "preview_lop")
         lop.createNode("sphere")
         _asset, index = self._saved_tile(lop, "preview_lop")
         with mock.patch.object(thumbs.ThumbNailRenderer, "render_network_thumbnail",
                                return_value=None), \
-                mock.patch.object(node_actions.debug, "note") as said:
+                mock.patch.object(node_actions.debug, "note") as debug_note:
             self.panel.sections["cop"].update_preview([index])
-        self.assertEqual(1, said.call_count)
-        self.assertIn("no picture to render", said.call_args.args[0])
+        self.assertEqual(1, debug_note.call_count)
+        self.assertIn("no picture to render", debug_note.call_args.args[0])
 
 
 class ASelectionImportsAsOneStep(unittest.TestCase):
@@ -1018,9 +1018,9 @@ class ASelectionImportsAsOneStep(unittest.TestCase):
         import types
         self.panel = test_support.fixture_panel(self)
         self.panel.prefs.render_on_import = 0
-        self.said = []
+        self.displayed = []
         ui = types.SimpleNamespace(
-            displayMessage=lambda text, *a, **k: self.said.append(
+            displayMessage=lambda text, *a, **k: self.displayed.append(
                 (text, k["details"]) if k.get("details") else text) or 0,    # a list is passed in `details`
             paneTabs=lambda *a, **k: ())    # no network editor: the import goes to /obj
         patcher = mock.patch.object(hou, "ui", ui, create=True)
@@ -1064,7 +1064,7 @@ class ASelectionImportsAsOneStep(unittest.TestCase):
         self.assertTrue([node for node in hou.node("/obj").allSubChildren()
                          if node.name() == "the_box"], "the good tile was not imported")
         _ok, reason, _created = node_actions.import_asset_to_scene(self.panel.cop_model, bad)
-        self.assertEqual([(messages.NODE_ASSETS_IMPORT_FAILURES, reason)], self.said)
+        self.assertEqual([(messages.NODE_ASSETS_IMPORT_FAILURES, reason)], self.displayed)
 
     def test_material_tiles(self):
         from amaze import messages
@@ -1081,7 +1081,7 @@ class ASelectionImportsAsOneStep(unittest.TestCase):
         self.assertEqual(("Amaze Import Materials",), hou.undos.undoLabels())
         self.assertIsNotNone(hou.node("/mat/one_step_good"), "the good tile was not imported")
         _ok, reason, _created = material_actions.import_asset_to_scene(model, bad, "mat")
-        self.assertEqual([(messages.MATERIALS_IMPORT_FAILURES, reason)], self.said)
+        self.assertEqual([(messages.MATERIALS_IMPORT_FAILURES, reason)], self.displayed)
 
 
 if __name__ == "__main__":

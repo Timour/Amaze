@@ -239,7 +239,7 @@ class RawPathTest(unittest.TestCase):
 class ResolveParmsTest(unittest.TestCase):
     """resolve_parms() on import to the scene: $AMAZELIB paths written as Write Paths As sets."""
 
-    def test_write_paths_as_spells_a_placed_texture(self):
+    def test_write_paths_as_sets_the_form_of_a_placed_texture(self):
         """Under the chosen variable when the library is inside it, as the File section writes."""
         from amaze.core import texstore
         from amaze.helpers import helpers
@@ -327,7 +327,7 @@ class SaveFromNodeTest(unittest.TestCase):
                       "path")
         self.assertNotIn(source.encode(), payload)
 
-    def test_copy_to_scene_writes_textures_as_write_paths_as_says(self):
+    def test_copy_to_scene_writes_textures_in_the_write_paths_as_form(self):
         """A placed material's library textures resolve, written under `$JOB` when that is chosen."""
         from amaze.core import texstore
         from amaze.render import nodes as nodes_mod

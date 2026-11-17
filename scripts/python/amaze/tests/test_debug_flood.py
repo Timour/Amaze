@@ -167,7 +167,7 @@ class TwoThreadsCountEveryOccurrence(_LogCase):
 class TestPerPassBudget(_LogCase):
     """Per-item records share one flood key, so a pass needs its own allowance."""
 
-    def test_identical_per_item_records_go_dark_without_a_budget(self):
+    def test_identical_per_item_records_are_suppressed_without_a_budget(self):
         for i in range(273):
             debug.event("file", "geo thumbnail", i=i)
         written = [r for r in self._records() if r.get("msg") == "geo thumbnail"]
@@ -202,10 +202,10 @@ class TestPerPassBudget(_LogCase):
             "pass would silence an unrelated one")
 
 
-class TestOneRecordCarriesTheWholeList(_LogCase):
+class TestOneRecordHoldsTheWholeList(_LogCase):
     """Cleanup and quarantine log every moved file; a sample would not let one be restored."""
 
-    def test_one_record_survives_where_per_item_records_would_not(self):
+    def test_one_record_holds_all_23_moved_files(self):
         moved = [["mat/%d.mat" % i, "quarantine/%d.mat" % i]
                  for i in range(23)]
         debug.event("cleanup", "files quarantined",
@@ -219,14 +219,14 @@ class TestOneRecordCarriesTheWholeList(_LogCase):
             "because this is the only trace of where a file went")
 
 
-class EverySaveLeavesItsRecord(_LogCase):
+class EveryFailedSaveWritesARecord(_LogCase):
     """A failed database save writes one record per call, however many fail in a row."""
 
     def _saves(self):
         return [r for r in self._records()
                 if r.get("cat") == "database" and r.get("msg") == "save failed"]
 
-    def test_six_saves_in_a_row_each_leave_a_record(self):
+    def test_six_failed_saves_in_a_row_each_write_a_record(self):
         import types
         from amaze.core import library_db, library_files
         library = tempfile.mkdtemp(prefix="amaze_flood_saves_")
@@ -249,7 +249,7 @@ class EverySaveLeavesItsRecord(_LogCase):
 class TestLogIsolation(unittest.TestCase):
     """The suite raises on purpose and the crash tier is always on, so the redirect must be real."""
 
-    def test_the_log_is_not_the_users(self):
+    def test_the_suite_log_is_outside_the_users_log_folder(self):
         self.assertFalse(
             os.path.realpath(debug.log_path()).startswith(
                 os.path.realpath(hostos.real_log_root())),
@@ -433,7 +433,7 @@ class TheBlankSlate(unittest.TestCase):
             "records in the new file carry an EMPTY session id, so "
             "log-check.py shows the file as having zero sessions")
 
-    def test_the_whole_slate_is_blanked(self):
+    def test_redirect_resets_every_field_blank_slate_resets(self):
         """Field list read from `_blank_slate`, so a field added there is checked at once."""
         always, _ = _slate_fields()
         self._dirty()
@@ -442,7 +442,7 @@ class TheBlankSlate(unittest.TestCase):
         self.assertEqual(
             [], left, "%s was not reset by the switch to a new file" % ", ".join(left))
 
-    def test_an_alert_survives_a_move_and_dies_on_a_clear(self):
+    def test_a_dismissed_alert_is_kept_by_redirect_and_reset_by_clear_log(self):
         """A dismissed dialog is a fact about the USER's session, not about logging."""
         debug.configure(True, os.path.join(self.tmp, "alerts.jsonl"))
         debug._alerted.add("thumbnail-failed")
@@ -457,7 +457,7 @@ class TheBlankSlate(unittest.TestCase):
                          "Clear Log kept the alert history")
 
 
-class TestExcepthookSurvivesReload(unittest.TestCase):
+class TestExcepthookWorksAfterReload(unittest.TestCase):
     """The excepthook works after a panel REOPEN and never calls itself. ▸r/module-reload"""
 
     def setUp(self):
@@ -472,7 +472,7 @@ class TestExcepthookSurvivesReload(unittest.TestCase):
         importlib.reload(debug)
         debug._install_excepthook()
 
-    def test_the_flood_counters_survive_a_reopen_together(self):
+    def test_the_three_crash_counters_are_kept_together_through_a_reopen(self):
         """All three or none: a count reset against a kept `recorded` logs a negative suppressed count."""
         self.addCleanup(debug._crash_counts.clear)
         self.addCleanup(debug._crash_recorded.clear)
@@ -514,7 +514,7 @@ class TestExcepthookSurvivesReload(unittest.TestCase):
             1, len(forwarded),
             "the exception never reached Houdini's own excepthook")
 
-    def test_reopening_does_not_re_arm_the_installer(self):
+    def test_a_reload_keeps_the_excepthook_installed_flag(self):
         debug._install_excepthook()
         importlib.reload(debug)
         self.assertTrue(

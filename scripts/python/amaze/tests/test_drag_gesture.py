@@ -284,7 +284,7 @@ class TestGestureRelease(unittest.TestCase):
     def test_a_LOCKED_asset_is_reported_not_crashed(self):
         """A locked asset raises `hou.PermissionError`: a message on the status bar, no crash, no dialog."""
         h = self._armed()
-        said = []
+        shown = []
 
         def _locked(idx):
             raise hou.PermissionError(
@@ -293,18 +293,18 @@ class TestGestureRelease(unittest.TestCase):
         h.section.drop_material_at_release = _locked
         stub = type("_UI", (), {"setStatusMessage":
                                 staticmethod(
-                                    lambda *a, **k: said.append(a[0]))})()
+                                    lambda *a, **k: shown.append(a[0]))})()
         with mock.patch.object(hou, "ui", stub, create=True):
             h.release()                  # must NOT raise
 
         self.assertFalse(h.view._dragging,
                          "a refused drop left the gesture active")
-        self.assertTrue(said, "no message was shown - the "
+        self.assertTrue(shown, "no message was shown - the "
                               "user sees a drop that did nothing")
         self.assertIn(
-            "locked asset", said[0],
+            "locked asset", shown[0],
             "the message does not say WHY the drop failed: %r"
-            % said[0])
+            % shown[0])
 
         h = self._armed()    # headless: no hou.ui, so an AttributeError would be the crash again
         h.section.drop_material_at_release = _locked
@@ -345,7 +345,7 @@ class TestGestureRelease(unittest.TestCase):
         self.assertEqual(h.panel.calls, [])
 
 
-class AGestureOutlivesNoRowItWasPressedOn(unittest.TestCase):
+class AGestureActsOnTheRowItWasPressedOn(unittest.TestCase):
     """The grid can change mid-drag: the release acts on the row pressed, or ends as a miss."""
 
     def _armed_on(self, row):
@@ -554,45 +554,45 @@ class TheBehaviourTableCells(unittest.TestCase):
             global_pos = QtCore.QPoint(2000, 2000)
         elif aim.get("inside"):
             global_pos = QtCore.QPoint(50, 50)
-        said = []
+        shown = []
         with mock.patch.object(debug, "refuse",
-                               lambda reason, **_data: said.append(reason)):
+                               lambda reason, **_data: shown.append(reason)):
             h.release(global_pos=global_pos)
-        return h, said
+        return h, shown
 
     def test_every_cell_of_the_matrix(self):
         for name, section, kind, aim, expected in self.CELLS:
             with self.subTest(cell=name):
-                h, _said = self._released(section, kind, aim)
+                h, _shown = self._released(section, kind, aim)
                 self.assertEqual(expected, h.panel.calls, name)
                 self.assertFalse(h.view._dragging,
                                  "the gesture stayed active after: " + name)
 
-    def test_every_miss_says_so_in_the_status_line(self):
+    def test_every_miss_is_shown_on_the_status_line(self):
         """The red cross shows a drop failed; the status line says it was canceled."""
         for name, section, kind, aim, expected in self.CELLS:
             with self.subTest(cell=name):
-                _h, said = self._released(section, kind, aim)
-                self.assertEqual([] if expected else [messages.DROP_CANCELED], said, name)
+                _h, shown = self._released(section, kind, aim)
+                self.assertEqual([] if expected else [messages.DROP_CANCELED], shown, name)
 
 
-class TheResolversSayTheyMissed(unittest.TestCase):
+class TheResolversReportTheirMisses(unittest.TestCase):
     """Material and node-asset releases find their own target, so they report their own misses."""
 
     @classmethod
     def setUpClass(cls):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
-    def _said(self, call, target=None):
+    def _refuse_reasons(self, call, target=None):
         from amaze.core import dragengine
         from amaze.panel import drop_placement
-        said = []
-        with mock.patch.object(debug, "refuse", lambda reason, **_data: said.append(reason)), \
+        shown = []
+        with mock.patch.object(debug, "refuse", lambda reason, **_data: shown.append(reason)), \
                 mock.patch.object(dragengine, "viewport_release_target", return_value=target), \
                 mock.patch.object(drop_placement.DropPlacement, "context_under_cursor",
                                   return_value=None):
             self.assertFalse(call(), "a release over nothing succeeded")
-        return said
+        return shown
 
     def test_a_material_released_over_nothing(self):
         panel = self.panel
@@ -601,7 +601,7 @@ class TheResolversSayTheyMissed(unittest.TestCase):
             with self.subTest(target=target):
                 self.assertEqual(
                     [messages.DROP_CANCELED],
-                    self._said(lambda: panel.sections["material"].drop_material_at_release(
+                    self._refuse_reasons(lambda: panel.sections["material"].drop_material_at_release(
                         index), target))
 
     def test_a_node_asset_released_over_nothing(self):
@@ -610,7 +610,7 @@ class TheResolversSayTheyMissed(unittest.TestCase):
         rows.appendRow(QtGui.QStandardItem("node asset"))
         index = rows.index(0, 0)
         self.assertEqual([messages.DROP_CANCELED],
-                         self._said(lambda: panel.sections["cop"].drop_cop_at_release(index)))
+                         self._refuse_reasons(lambda: panel.sections["cop"].drop_cop_at_release(index)))
 
 
 class TheParameterPaneHandOff(unittest.TestCase):
@@ -790,7 +790,7 @@ class TheGestureRunsOnBOTHViews(unittest.TestCase):
                          "the table paints Qt's own grid lines over a "
                          "row that draws its own dividers")
 
-    def test_the_debug_helper_survives_a_view_with_no_gridSize(self):
+    def test_the_debug_helper_does_not_raise_on_a_view_with_no_gridSize(self):
         """A table has no grid size, and this debug helper runs in the scroll path under Debug Mode."""
         view = dragdrop_widgets.DragDropTableView()
         self.addCleanup(view.deleteLater)
@@ -804,7 +804,7 @@ class TheGestureRunsOnBOTHViews(unittest.TestCase):
             None, view.verticalScrollBar(), 0, 0)
 
 
-class TheEnginesHousekeepingSurvivesOneFailure(unittest.TestCase):
+class TheEnginesCleanupContinuesPastOneFailure(unittest.TestCase):
     """Release cleanup goes past a node that raises; a failing snap is logged once per gesture."""
 
     def test_the_obj_outline_follows_the_preference(self):
@@ -907,7 +907,7 @@ def _box(x0, y0, x1, y1):
     return hou.BoundingRect(x0, y0, x1, y1)
 
 
-class TheSnapAsksOnlyTheRectsThatCanMoveIt(unittest.TestCase):
+class TheSnapGetsOnlyTheRectsThatCanMoveIt(unittest.TestCase):
     """The visible rects are fetched once per view, and the snap sees only those within a radius."""
 
     OUTLINE = (0.0, 0.0, 1.0, 0.25)
@@ -964,7 +964,7 @@ class TheSnapAsksOnlyTheRectsThatCanMoveIt(unittest.TestCase):
         self._move(other)
         self.assertEqual(1, other.fetches, "another editor got the first one's rects")
 
-    def test_a_cleared_outline_and_a_new_gesture_drop_them(self):
+    def test_a_cleared_outline_and_a_new_gesture_clear_them(self):
         editor = _SnapEditor(self._layout())
         self._move(editor)
         self.engine.ghost_clear()
@@ -981,7 +981,7 @@ class TheSnapAsksOnlyTheRectsThatCanMoveIt(unittest.TestCase):
                          "a rect at exactly the radius cannot snap, one inside can, "
                          "and the order is the editor's: ties resolve by it")
 
-    def test_the_hosts_own_snap_answers_the_same_over_the_kept_rects(self):
+    def test_the_hosts_own_snap_returns_the_same_over_the_kept_rects(self):
         snapper, settings = self._host_snap()
         geo = hou.node("/obj").createNode("geo")
         self.addCleanup(geo.destroy)
@@ -998,8 +998,8 @@ class TheSnapAsksOnlyTheRectsThatCanMoveIt(unittest.TestCase):
                             step=rng.choice((0.5, 1.0, 0.3)))
             near = self.engine._snap_candidates(
                 self.engine._snap_entries(pairs), outline, radius)
-            whole = self._answer(snapper.snap(None, None, outline, pairs))
-            self.assertEqual(whole, self._answer(snapper.snap(None, None, outline, near)),
+            whole = self._snap_values(snapper.snap(None, None, outline, pairs))
+            self.assertEqual(whole, self._snap_values(snapper.snap(None, None, outline, near)),
                              "case %d: the kept rects snapped elsewhere" % case)
             dropped += len(near) < len(pairs)
             snapped += whole[0]
@@ -1045,7 +1045,7 @@ class TheSnapAsksOnlyTheRectsThatCanMoveIt(unittest.TestCase):
         return pairs, _box(cx - hw, cy - hh, cx + hw, cy + hh), radius
 
     @staticmethod
-    def _answer(result):
+    def _snap_values(result):
         """Everything a host SnapResult decided, as plain floats."""
         def flat(vec):
             return None if vec is None else (vec.x(), vec.y())

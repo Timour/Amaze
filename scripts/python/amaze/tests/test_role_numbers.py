@@ -50,10 +50,10 @@ FAMILY_MODULES = (
 )
 
 
-class TheRolesLiveOnTheClass(unittest.TestCase):
+class TheRolesAreDeclaredOnTheClass(unittest.TestCase):
     """Roles are declared on the class, so no instance attribute hides a subclass's role."""
 
-    def test_the_engine_declares_every_family_role_on_the_class(self):
+    def test_material_library_declares_every_family_role_on_the_class(self):
         for name, number in FAMILY_ROLES.items():
             value = getattr(library.MaterialLibrary, name, None)
             self.assertIsNotNone(

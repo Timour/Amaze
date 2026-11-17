@@ -29,7 +29,7 @@ class ASnippetRunsInThisHoudini(unittest.TestCase):
             if node.name().startswith("snippet_probe"):
                 node.destroy()
 
-    def test_a_snippet_runs_and_answers_nothing(self):
+    def test_a_snippet_runs_and_run_python_returns_an_empty_string(self):
         problem = code_actions.run_python(
             "probe", "hou.node('/obj').createNode('null', 'snippet_probe')")
         self.assertEqual("", problem)
@@ -46,7 +46,7 @@ class ASnippetRunsInThisHoudini(unittest.TestCase):
         self.assertIsNone(hou.node("/obj/snippet_probe1"))
         self.assertIsNone(hou.node("/obj/snippet_probe2"))
 
-    def test_an_error_answers_its_last_line(self):
+    def test_an_error_returns_its_last_line(self):
         for code, answer in (("1 / 0", "ZeroDivisionError: division by zero"),
                              ("x = (\n", "line ")):
             with self.subTest(code=code):
@@ -55,7 +55,7 @@ class ASnippetRunsInThisHoudini(unittest.TestCase):
                 self.assertNotIn("\n", problem, "more than the last line came back")
 
 
-class ASnippetOntoANodeIsSetOrRefused(unittest.TestCase):
+class ApplyToNodeSetsTheSnippetOrReturnsWhyNot(unittest.TestCase):
     """`apply_to_node` sets the snippet, or returns why not. ▸r/hou-errors"""
 
     def setUp(self):
@@ -64,20 +64,20 @@ class ASnippetOntoANodeIsSetOrRefused(unittest.TestCase):
         self.wrangle = geo.createNode("attribwrangle")
         self.model = types.SimpleNamespace(assets=[types.SimpleNamespace(code="@Cd = 0.5;")])
 
-    def test_the_snippet_lands_on_the_code_parm(self):
+    def test_the_snippet_is_set_on_the_code_parm(self):
         self.assertEqual((True, ""), code_actions.apply_to_node(self.model, 0, self.wrangle))
         self.assertEqual("@Cd = 0.5;", self.wrangle.parm("snippet").eval())
 
-    def test_a_parm_houdini_will_not_write_is_refused_with_a_sentence(self):
+    def test_a_parm_houdini_will_not_write_returns_false_and_a_reason(self):
         """`Parm.set` raises PermissionError on a parm it will not write (hou/Parm.txt)."""
         real = hou.Parm.set
 
-        def refusing(parm, *args, **kwargs):
+        def raises_permission_error(parm, *args, **kwargs):
             if parm.name() == "snippet":
                 raise hou.PermissionError("the asset is locked")
             return real(parm, *args, **kwargs)
 
-        with mock.patch.object(hou.Parm, "set", refusing):
+        with mock.patch.object(hou.Parm, "set", raises_permission_error):
             try:
                 ok, reason = code_actions.apply_to_node(self.model, 0, self.wrangle)
             except hou.Error as exc:
@@ -168,12 +168,12 @@ class TheCodeTextIsHalfStrength(unittest.TestCase):
                              % (brightest, vex_syntax.DEFAULT.red()))
 
 
-class TheRunButtonAnswersThePointer(unittest.TestCase):
+class TheRunButtonPixmapFollowsHoverAndPress(unittest.TestCase):
     """Rest, hover and pressed each request their own pixmap."""
 
-    def _asked(self, hovered=False, pressed=False):
+    def _requested_pixmaps(self, hovered=False, pressed=False):
         role = QtCore.Qt.ItemDataRole.UserRole + 77
-        asked = []
+        requested = []
 
         class _RoleModel(QtCore.QAbstractListModel):
             def rowCount(self, parent=QtCore.QModelIndex()):
@@ -185,7 +185,7 @@ class TheRunButtonAnswersThePointer(unittest.TestCase):
         cls = delegates.AssetItemDelegate
         original = cls.__dict__["_badge_pixmap"]
         cls._badge_pixmap = staticmethod(
-            lambda name, side, dpr=1.0, opacity=None: asked.append(name) or QtGui.QPixmap())
+            lambda name, side, dpr=1.0, opacity=None: requested.append(name) or QtGui.QPixmap())
         self.addCleanup(setattr, cls, "_badge_pixmap", original)
         delegate = test_support.tile_delegate({"execute": role})
         model = _RoleModel()
@@ -198,12 +198,12 @@ class TheRunButtonAnswersThePointer(unittest.TestCase):
             delegate._paint_badges(painter, index, 0, 0, 130, 1.0)
         finally:
             painter.end()
-        return asked
+        return requested
 
     def test_each_state_has_its_art(self):
-        self.assertEqual(["badge_execute"], self._asked())
-        self.assertEqual(["badge_execute_hover"], self._asked(hovered=True))
-        self.assertEqual(["badge_execute_press"], self._asked(pressed=True))
+        self.assertEqual(["badge_execute"], self._requested_pixmaps())
+        self.assertEqual(["badge_execute_hover"], self._requested_pixmaps(hovered=True))
+        self.assertEqual(["badge_execute_press"], self._requested_pixmaps(pressed=True))
 
 
 class ThePanelWiresTheCodeButtons(unittest.TestCase):
@@ -233,7 +233,7 @@ class ThePanelWiresTheCodeButtons(unittest.TestCase):
         with mock.patch.object(self.panel, "current_section", "code"):
             self.panel.code_delegate._badge_clicks[badge](index)
 
-    def test_a_failing_run_is_said_with_the_snippets_name(self):
+    def test_a_failing_run_calls_debug_refuse_with_the_snippets_name(self):
         index, row = self._proxy_index("1 / 0")
         name = self.panel.code_model.assets[row].name
         with mock.patch("amaze.core.debug.refuse") as refuse:
@@ -242,19 +242,19 @@ class ThePanelWiresTheCodeButtons(unittest.TestCase):
         self.assertIn(name, refuse.call_args[0][0])
         self.assertIn("ZeroDivisionError", refuse.call_args[0][0])
 
-    def test_generic_shows_the_brick_and_preview_the_code(self):
+    def test_generic_shows_the_generic_image_and_preview_the_painted_code(self):
         from amaze.core import tile_icons
         _index, row = self._proxy_index("print(1)")
         model = self.panel.code_model
         self.addCleanup(model.set_tile_icon, row, {})
-        brick = tile_icons.generic_image(code_library.CodeLibrary.TILE_FACE)
+        generic = tile_icons.generic_image(code_library.CodeLibrary.TILE_FACE)
 
         def shown():
             return model.data(model.index(row, 0), QtCore.Qt.ItemDataRole.DecorationRole)
 
-        self.assertNotEqual(brick, shown(), "a code tile's default is not its painted code")
+        self.assertNotEqual(generic, shown(), "a code tile's default is not its painted code")
         model.set_tile_icon(row, {"face": "generic"})
-        self.assertEqual(brick, shown())
+        self.assertEqual(generic, shown())
 
 
 if __name__ == "__main__":

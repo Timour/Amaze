@@ -83,13 +83,13 @@ class AtomicWriteTest(unittest.TestCase):
             "the file holds rows from BOTH writers - this is the "
             "parseable corruption the fixed .tmp name produced")
 
-    def test_the_answer_is_the_fingerprint_of_the_bytes_on_disk(self):
-        answer = hostos.write_json_atomic(
+    def test_the_return_value_is_the_fingerprint_of_the_bytes_on_disk(self):
+        returned = hostos.write_json_atomic(
             self.path, {"rows": ["a", "é"], "n": 2}, indent=1, sort_keys=True)
-        self.assertEqual(hostos.fingerprint_of(self.path), answer,
+        self.assertEqual(hostos.fingerprint_of(self.path), returned,
                          "the returned fingerprint is not of the bytes on disk")
 
-    def test_no_scratch_file_survives_a_success(self):
+    def test_no_scratch_file_remains_after_a_success(self):
         hostos.write_json_atomic(self.path, {"ok": True})
         self.assertEqual([], self._leftovers(),
                          "a scratch file was left in the library")
@@ -105,7 +105,7 @@ class AtomicWriteTest(unittest.TestCase):
             self.assertEqual({"good": 1}, json.load(fh),
                              "a failed write replaced a good file")
 
-    def test_the_scratch_lives_beside_the_destination(self):
+    def test_the_scratch_is_created_beside_the_destination(self):
         """`os.rename` cannot cross drives, so the scratch sits beside the destination. ▸r/atomic-writes"""
         seen = []
         real_replace = hostos.replace_file
@@ -123,18 +123,18 @@ class AtomicWriteTest(unittest.TestCase):
         def writable(path):
             return bool(os.stat(path).st_mode & stat.S_IWUSR)
 
-        def refusing_replace(src, dst):
+        def failing_replace(src, dst):
             if os.path.exists(dst) and not writable(dst):
                 raise PermissionError(13, "Access is denied", dst)
             return real_replace(src, dst)
 
-        def refusing_remove(path):
+        def failing_remove(path):
             if not writable(path):
                 raise PermissionError(13, "Access is denied", path)
             return real_remove(path)
 
-        for name, fake in (("replace", refusing_replace),
-                           ("remove", refusing_remove)):
+        for name, fake in (("replace", failing_replace),
+                           ("remove", failing_remove)):
             patcher = mock.patch.object(os, name, fake)
             patcher.start()
             self.addCleanup(patcher.stop)
@@ -432,7 +432,7 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
                 "preserve_unreadable printed to the user for %r - two "
                 "paragraphs about one event" % content)
 
-    def test_save_asset_pair_survives_houdini_s_own_writer(self):
+    def test_save_asset_pair_lets_houdinis_writer_overwrite_the_scratch(self):
         """Houdini's own writer must overwrite the 0-byte file `unique_scratch` pre-creates."""
         import hou
         from amaze.render import nodes
@@ -456,7 +456,7 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
         self.assertEqual([], self._leftovers(),
                          "the real writer left a scratch behind")
 
-    def test_save_asset_pair_scratches_live_beside_their_destinations(self):
+    def test_save_asset_pair_scratches_are_created_beside_their_destinations(self):
         """`os.rename` cannot cross drives, and this pair can live on another volume than the temp dir."""
         directories = []
         real_replace = hostos.replace_file
@@ -607,7 +607,7 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
                 "repair changes modes other than the one it is meant to fix")
 
 
-class PrefsSurvivesADamagedOrUnwritableFileTest(unittest.TestCase):
+class PrefsDoesNotRaiseOnADamagedOrUnwritableFileTest(unittest.TestCase):
     """`settings.json` is read at panel build and written in ordinary use, so neither may raise."""
 
     def setUp(self):
@@ -624,7 +624,7 @@ class PrefsSurvivesADamagedOrUnwritableFileTest(unittest.TestCase):
         with open(self.path, "w", encoding="utf-8") as fh:
             fh.write(payload)
 
-    def test_a_top_level_list_does_not_kill_the_panel(self):
+    def test_a_top_level_list_does_not_raise(self):
         """A non-object top level has no `.get()`; raising here fails the panel build, silently."""
         for payload in ('["not", "an", "object"]', '"just a string"'):
             with self.subTest(payload=payload):
@@ -729,7 +729,7 @@ class TwoPanesEditSettingsWithoutClobberTest(unittest.TestCase):
                 "the merge result is stored in %s, which a fresh Prefs "
                 "does not have" % attr)
 
-    def test_a_scalar_takes_the_saving_pane(self):
+    def test_a_scalar_keeps_the_last_saving_panes_value(self):
         """Scalar keys are not merged: the value from the pane that saved last is kept."""
         pane_a = self._prefs()
         pane_a.library_user = "u-one"
@@ -814,7 +814,7 @@ class TheUserIsAUidWithANameTest(unittest.TestCase):
         from amaze.tests import test_support
         return test_support.fixture_prefs(self)
 
-    def test_creating_a_user_answers_a_uid_not_the_name(self):
+    def test_creating_a_user_returns_a_uid_not_the_name(self):
         """The tag is a UID; a name already in the library is not taken twice, in any letters."""
         from amaze.core import users
         p = self._prefs()
@@ -837,7 +837,7 @@ class TheUserIsAUidWithANameTest(unittest.TestCase):
         self.assertEqual("Sage", users.name_for(p, sage))
         self.assertTrue(users.rename(p, plum, "PLUM"), "a user could not change the case of its own name")
 
-    def test_preferences_says_a_name_is_taken_and_makes_nobody(self):
+    def test_preferences_shows_user_name_taken_and_creates_no_user(self):
         import types
         import hou
         from amaze import messages
@@ -847,7 +847,7 @@ class TheUserIsAUidWithANameTest(unittest.TestCase):
         users.create(p, "Plum")
         dialog = prefs_dialog.PrefsDialog(p, panel=None)
         self.addCleanup(dialog.deleteLater)
-        said = []
+        shown = []
 
         class Named:
             canceled = False
@@ -859,11 +859,11 @@ class TheUserIsAUidWithANameTest(unittest.TestCase):
             def exec(self):
                 pass
 
-        ui = types.SimpleNamespace(displayMessage=lambda text, **_k: said.append(text))
+        ui = types.SimpleNamespace(displayMessage=lambda text, **_k: shown.append(text))
         with mock.patch.object(base_dialog, "NameDialog", Named), \
                 mock.patch.object(hou, "ui", ui, create=True):
             dialog._ask_create_library_user()
-        self.assertEqual([messages.USER_NAME_TAKEN % "plum"], said)
+        self.assertEqual([messages.USER_NAME_TAKEN % "plum"], shown)
         self.assertEqual(1, len(users.all_users(p)), "a second Plum was made")
 
     def test_renaming_keeps_the_uid(self):
@@ -889,7 +889,7 @@ class TheUserIsAUidWithANameTest(unittest.TestCase):
         self.assertEqual(uid, p.library_user,
                          "the machine-local pointer must hold the UID")
 
-    def test_a_name_left_in_the_pointer_is_nobody(self):
+    def test_a_name_left_in_the_pointer_matches_no_user(self):
         """A NAME in the pointer, as the first builds wrote it, matches no user, and none is created."""
         from amaze.core import users
         p = self._prefs()
@@ -897,7 +897,7 @@ class TheUserIsAUidWithANameTest(unittest.TestCase):
         self.assertIsNone(users.current(p))
         self.assertEqual({}, users.all_users(p))
 
-    def test_nobody_asks_or_resolves_and_none_makes_a_user(self):
+    def test_no_first_run_state_creates_a_user(self):
         """No users, users and no match, a match: the three states, and not one of them makes a user."""
         from amaze.core import users
         p = self._prefs()
@@ -942,7 +942,7 @@ A_USER = "a1b2c3d4e5f60718293a4b5c6d7e8f90"  # the shape `users.create` makes: o
 B_USER = "90f8e7d6c5b4a3928170f6e5d4c3b2a1"
 
 
-class SandboxRefusesAWriteOutsideTempTest(unittest.TestCase):
+class SandboxRaisesOnAWriteOutsideTempTest(unittest.TestCase):
     """The JSON writer raises when a run may write only in temp. ▸p/hand-run-script-is-unguarded"""
 
     def setUp(self):
@@ -958,7 +958,7 @@ class SandboxRefusesAWriteOutsideTempTest(unittest.TestCase):
     def arm(self):
         os.environ[hostos.SANDBOX_VAR] = "1"
 
-    def test_a_write_outside_temp_is_refused_loudly(self):
+    def test_a_write_outside_temp_raises_write_outside_sandbox(self):
         self.arm()
         outside = os.path.join(os.path.expanduser("~"), "amaze_sandbox_probe.json")
         self.assertFalse(os.path.exists(outside), "the fixture path exists")
@@ -969,7 +969,7 @@ class SandboxRefusesAWriteOutsideTempTest(unittest.TestCase):
             "the refusal did not happen before the write - the file is "
             "on disk, which is the whole thing this prevents")
 
-    def test_a_write_inside_temp_still_lands(self):
+    def test_a_write_inside_temp_still_succeeds(self):
         self.arm()
         inside = os.path.join(self.tmp, "fine.json")
         hostos.write_json_atomic(inside, {"a": 1})
@@ -987,7 +987,7 @@ class SandboxRefusesAWriteOutsideTempTest(unittest.TestCase):
         hostos.check_sandbox("/anywhere/at/all.json")
 
 
-class SandboxRefusesEveryPrimitiveTest(unittest.TestCase):
+class SandboxRaisesInEveryWritePrimitiveTest(unittest.TestCase):
     """Every shared write primitive refuses a path outside the temp dir, not only the JSON one."""
 
     def setUp(self):
@@ -1007,7 +1007,7 @@ class SandboxRefusesEveryPrimitiveTest(unittest.TestCase):
                 os.environ.__setitem__, hostos.SANDBOX_VAR, original)
         os.environ[hostos.SANDBOX_VAR] = "1"
 
-    def _refused(self, call, *args):
+    def _assert_raises_outside_sandbox(self, call, *args):
         before = sorted(os.listdir(self.outside))
         with self.assertRaises(hostos.WriteOutsideSandbox):
             call(*args)
@@ -1015,7 +1015,7 @@ class SandboxRefusesEveryPrimitiveTest(unittest.TestCase):
                          "%s wrote outside the temp dir before refusing"
                          % call.__name__)
 
-    def _planted(self, name, text):
+    def _write_outside(self, name, text):
         path = os.path.join(self.outside, name)
         with open(path, "w", encoding="utf-8") as handle:
             handle.write(text)
@@ -1027,25 +1027,25 @@ class SandboxRefusesEveryPrimitiveTest(unittest.TestCase):
             handle.write("{}")
         return path
 
-    def test_a_scratch_beside_an_outside_path_is_refused(self):
+    def test_a_scratch_beside_an_outside_path_raises(self):
         target = os.path.join(self.outside, "a.json")
-        self._refused(hostos.unique_scratch, target)
+        self._assert_raises_outside_sandbox(hostos.unique_scratch, target)
 
         def through_the_context(path):
             with hostos.scratch_beside(path):
                 pass
-        self._refused(through_the_context, target)
+        self._assert_raises_outside_sandbox(through_the_context, target)
 
-    def test_a_promote_or_replace_onto_an_outside_path_is_refused(self):
+    def test_a_promote_or_replace_onto_an_outside_path_raises(self):
         target = os.path.join(self.outside, "a.json")
-        self._refused(hostos.replace_with_scratch, self._inside_file(), target)
-        self._refused(hostos.replace_file, self._inside_file(), target)
+        self._assert_raises_outside_sandbox(hostos.replace_with_scratch, self._inside_file(), target)
+        self._assert_raises_outside_sandbox(hostos.replace_file, self._inside_file(), target)
 
-    def test_the_unreadable_copy_is_refused(self):
-        broken = self._planted("bad.json", "{ truncated")
-        self._refused(hostos.preserve_unreadable, broken)
+    def test_the_unreadable_copy_outside_raises(self):
+        broken = self._write_outside("bad.json", "{ truncated")
+        self._assert_raises_outside_sandbox(hostos.preserve_unreadable, broken)
 
-    def test_a_trash_move_outside_is_refused(self):
+    def test_a_trash_move_outside_raises(self):
         from amaze.core import guard
         library = os.path.join(self.outside, "library")
         os.makedirs(os.path.join(library, "materials"))
@@ -1058,10 +1058,10 @@ class SandboxRefusesEveryPrimitiveTest(unittest.TestCase):
             change.commit()
         self.assertTrue(os.path.exists(leftover), "the refused move still moved the file")
 
-    def test_a_cache_folder_made_outside_is_refused(self):
+    def test_a_cache_folder_made_outside_raises(self):
         self.addCleanup(hostos.set_cache_override, hostos._cache_override)
         hostos.set_cache_override(os.path.join(self.outside, "cache"))
-        self._refused(hostos.cache_root)
+        self._assert_raises_outside_sandbox(hostos.cache_root)
 
 
 class SandboxKeepsThePerUserFoldersInTempTest(unittest.TestCase):
@@ -1093,7 +1093,7 @@ class SandboxKeepsThePerUserFoldersInTempTest(unittest.TestCase):
             os.path.realpath(hostos.config_root()),
             "the settings folder is still the user's own")
 
-    def test_the_redirect_survives_a_reload_of_hostos(self):
+    def test_the_redirect_is_kept_after_a_reload_of_hostos(self):
         import importlib
         os.environ[hostos.SANDBOX_VAR] = "1"
         before = hostos.config_root()
@@ -1145,7 +1145,7 @@ class OnePathHasOneSpelling(unittest.TestCase):
             [], disagree,
             "one folder is spelled two ways in two files: %s" % disagree)
 
-    def test_the_old_walking_spelling_is_still_read(self):
+    def test_the_old_parent_relative_spelling_is_still_read(self):
         """Nothing migrates, so the `$AMAZE/..` form this stops writing must keep resolving."""
         from amaze.prefs import persistence
         cases, hostos = self._cases()
@@ -1197,21 +1197,21 @@ class ImportingTheHarnessArmsTheSandboxTest(unittest.TestCase):
                     if line.startswith(("ARMED=", "SETTINGS=")))
 
     def test_a_module_run_without_the_runner_is_armed(self):
-        said = self._bare_run()
+        printed = self._bare_run()
         self.assertEqual(
-            "True", said.get("ARMED"),
+            "True", printed.get("ARMED"),
             "a test module started without start_test.sh has no sandbox, so "
             "it can write the user's real settings folder")
         self.assertNotEqual(
             os.path.realpath(hostos.real_config_root()),
-            os.path.realpath(said.get("SETTINGS", "")),
+            os.path.realpath(printed.get("SETTINGS", "")),
             "the bare run's settings folder is the user's own")
 
 
 class TheSandboxStaysArmedForTheSuiteTest(unittest.TestCase):
     """`AMAZE_SANDBOX` stays set for the whole process; named to sort after the sandbox classes."""
 
-    def test_the_armed_state_survived_the_sandbox_tests(self):
+    def test_the_armed_state_is_still_set_after_the_sandbox_tests(self):
         self.assertTrue(
             hostos.sandboxed(),
             "a sandbox test turned the sandbox off and never back on "

@@ -21,7 +21,7 @@ class _Case(unittest.TestCase):
 
 class ItTakesAndReleases(_Case):
 
-    def test_a_second_caller_is_refused_while_the_first_holds_it(self):
+    def test_a_second_caller_gets_false_while_the_first_holds_it(self):
         with hostos.file_lock(self.path) as first:
             self.assertTrue(first)
             with hostos.file_lock(self.path) as second:
@@ -31,7 +31,7 @@ class ItTakesAndReleases(_Case):
                     "excludes nothing")
 
 
-class ItNeverCostsAWrite(_Case):
+class ItNeverPreventsAWrite(_Case):
 
     def test_an_unlockable_file_yields_false_rather_than_raising(self):
         """A network share may not support locking at all; the write must still happen."""

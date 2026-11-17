@@ -58,7 +58,7 @@ class ThereIsONEColumnOrder(unittest.TestCase):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
 
-class AGridModelAnswersPerCOLUMN(unittest.TestCase):
+class AGridModelReturnsDataPerCOLUMN(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
@@ -87,7 +87,7 @@ class AGridModelAnswersPerCOLUMN(unittest.TestCase):
                                 "%s cannot address column 3" % key)
                 self.assertEqual(3, index.column())
 
-    def test_COLUMN_ZERO_answers_exactly_what_it_used_to(self):
+    def test_COLUMN_ZERO_returns_exactly_what_it_used_to(self):
         """Grid mode reads column 0 and nothing else, so it must return exactly the old data."""
         display = QtCore.Qt.ItemDataRole.DisplayRole
         for key, model in self._models():
@@ -115,7 +115,7 @@ class AGridModelAnswersPerCOLUMN(unittest.TestCase):
                         QtCore.Qt.ItemDataRole.DisplayRole),
                     "%s's Name column does not show the row's name" % key)
 
-    def test_a_column_the_model_cannot_fill_answers_NOTHING(self):
+    def test_a_column_the_model_cannot_fill_returns_NOTHING(self):
         """Color has no Tags and File has no Version: the column is absent from its map."""
         gradient = self.panel.gradient_model
         tags = grid_columns.KEYS.index("tags")
@@ -145,7 +145,7 @@ class AGridModelAnswersPerCOLUMN(unittest.TestCase):
                 "the Category column passed a %s straight to the view"
                 % type(value).__name__)
 
-    def test_a_non_display_role_stays_column_ZEROs_business(self):
+    def test_a_non_display_role_returns_data_on_column_ZERO_only(self):
         """Decoration and the rest return data on column 0 only, or all ten show the thumbnail."""
         model = self.panel.material_model
         if not model.rowCount():
@@ -167,7 +167,7 @@ class AGridModelAnswersPerCOLUMN(unittest.TestCase):
                             QtCore.Qt.ItemDataRole.DisplayRole) or None)
 
 
-class ACellSAYSWhatItIs(unittest.TestCase):
+class ACellLooksAsItsRolesSet(unittest.TestCase):
     """How a cell looks, checked by model roles and Qt metrics rather than by painting."""
 
     @classmethod
@@ -218,7 +218,7 @@ class ACellSAYSWhatItIs(unittest.TestCase):
         categories.set_color(name, colour)
         return row
 
-    def test_a_row_whose_category_has_NO_colour_asks_for_none(self):
+    def test_a_row_whose_category_has_NO_colour_returns_none(self):
         """No colour is not black: an invalid QColor for `ForegroundRole` still paints the text."""
         model = self.panel.material_model
         column = self._column("category")
@@ -357,7 +357,7 @@ class ATickColumnIsAsWideAsTheTICK(unittest.TestCase):
             % ", ".join(sorted(missing)))
 
 
-class TheSortArrowIsPAIDFORByTheColumnThatHasIt(unittest.TestCase):
+class OnlyTheSortedColumnReservesRoomForTheArrow(unittest.TestCase):
     """A stock `QHeaderView` reserves sort-arrow room in every section; ours only in the sorted one."""
 
     @classmethod
@@ -371,10 +371,10 @@ class TheSortArrowIsPAIDFORByTheColumnThatHasIt(unittest.TestCase):
         return [c for c in range(len(grid_columns.KEYS))
                 if not self.panel.thumbtable.isColumnHidden(c)]
 
-    def test_the_table_uses_the_header_that_knows_this(self):
+    def test_the_table_uses_grid_header_view(self):
         self.assertIsInstance(self.header, ui_helpers.GridHeaderView)
 
-    def test_a_column_with_no_arrow_pays_nothing_for_one(self):
+    def test_a_column_with_no_arrow_reserves_no_room_for_one(self):
         """An unsorted section measures exactly what it would with the indicator off."""
         header = self.header
         self.assertTrue(header.isSortIndicatorShown(),
@@ -411,7 +411,7 @@ class TheSortArrowIsPAIDFORByTheColumnThatHasIt(unittest.TestCase):
             "the column being sorted by has no room for its arrow")
 
 
-class EveryCellHasAIREitherSide(unittest.TestCase):
+class EveryCellHasPADDINGEitherSide(unittest.TestCase):
     """Cell text starts at L01's inset, drawn by the delegate: no stylesheet, no style object."""
 
     @classmethod
@@ -427,7 +427,7 @@ class EveryCellHasAIREitherSide(unittest.TestCase):
         self.addCleanup(panel.apply_view_mode)
         self.addCleanup(setattr, panel.prefs, "view_mode", "grid")
 
-    def test_the_table_wears_NO_style_object_and_NO_stylesheet(self):
+    def test_the_table_has_NO_style_object_and_NO_stylesheet(self):
         """An unowned QProxyStyle bus-errored on teardown; a stylesheet takes over item drawing."""
         self.assertNotIsInstance(
             self.panel.thumbtable.style(), QtWidgets.QProxyStyle,
@@ -445,7 +445,7 @@ class EveryCellHasAIREitherSide(unittest.TestCase):
                 QtGui.QPalette.ColorRole.Highlight).name(),
             "the table's selection is not the grid's own colour")
 
-class GridModeCannotSeeAnyOfIt(unittest.TestCase):
+class GridModeShowsOnlyColumnZero(unittest.TestCase):
     """The property the whole table-model migration depends on."""
 
     @classmethod
@@ -657,7 +657,7 @@ class TheTableViewIsWiredToTheSameEVERYTHING(unittest.TestCase):
         self.assertTrue(panel.thumblist.isVisible())
 
 
-    def test_the_table_does_NOT_wear_the_tile_delegate(self):
+    def test_the_table_does_NOT_use_the_tile_delegate(self):
         """That delegate paints a whole tile per index, and a table row is ten indexes."""
         panel = self.panel
         self.assertIsNot(panel.thumbtable.itemDelegate(),
@@ -694,7 +694,7 @@ class TheTableViewIsWiredToTheSameEVERYTHING(unittest.TestCase):
             "the row is taller than a line of text needs")
         self.assertGreaterEqual(height, metrics.height())
 
-    def test_the_table_wears_the_panels_own_colours(self):
+    def test_the_table_uses_the_panels_own_colours(self):
         """A QTableView uses the platform palette - white rows and black text against a dark panel."""
         panel = self.panel
         panel.show()
@@ -765,7 +765,7 @@ class TheHeaderSORTS(unittest.TestCase):
         self.assertEqual(up, list(reversed(down)),
                          "the second click did not reverse the order")
 
-    def test_a_chosen_column_survives_a_FILTER_change(self):
+    def test_a_chosen_column_is_kept_after_a_FILTER_change(self):
         """A filter keystroke must not reset the user's chosen column to Name."""
         panel = self.panel
         column = grid_columns.KEYS.index("category")
@@ -783,7 +783,7 @@ class TheHeaderSORTS(unittest.TestCase):
             "the sort arrow moved off the sorted column")
 
 
-class TheSelectionSpeaksInROWS(unittest.TestCase):
+class TheSelectionIsInROWS(unittest.TestCase):
     """List mode selects whole rows; every consumer sees one index per row, at column 0."""
 
     @classmethod
@@ -862,7 +862,7 @@ class TheSelectionSpeaksInROWS(unittest.TestCase):
             "Renamed By Seam", model.assets[row].name,
             "the rename wrote nothing")
 
-    def test_a_dragged_column_width_survives_a_tab_switch(self):
+    def test_a_dragged_column_width_is_kept_after_a_tab_switch(self):
         """Widths are set once per view; later syncs change visibility only."""
         panel = self.panel
         header = panel.thumbtable.horizontalHeader()
@@ -976,7 +976,7 @@ class AColumnIsShownONLYIfTheModelCanFillIt(unittest.TestCase):
         self.assertEqual(key, self.panel.current_section,
                          "the panel did not switch to %s" % key)
 
-    def test_a_shown_column_is_one_the_model_answers(self):
+    def test_a_shown_column_is_one_the_model_fills(self):
         for section, model_attr in (("file", "file_files_model"),
                                     ("material", "material_model"),
                                     ("gradient", "gradient_model")):
@@ -1046,7 +1046,7 @@ class TheCellDelegatesDoNotACCUMULATE(unittest.TestCase):
             "while the table still points at it")
 
 
-class TheHeaderTakesTheClick(unittest.TestCase):
+class TheHeaderSectionsAreClickable(unittest.TestCase):
     """A replacement QHeaderView is not made clickable by `setSortingEnabled(True)` (Qt 6.8.3)."""
 
     @classmethod
@@ -1056,7 +1056,7 @@ class TheHeaderTakesTheClick(unittest.TestCase):
     def setUp(self):
         self.header = self.panel.thumbtable.horizontalHeader()
 
-    def test_the_sections_answer_the_pointer(self):
+    def test_the_sections_are_clickable(self):
         self.assertTrue(
             self.header.sectionsClickable(),
             "the header shows a sort arrow but no section takes a "
@@ -1080,7 +1080,7 @@ class TheHeaderTakesTheClick(unittest.TestCase):
             "the arrow flipped and the rows did not")
 
 
-class TheListStandsOnItsFrame(unittest.TestCase):
+class TheListMatchesItsDesignFrame(unittest.TestCase):
     """The list's header, widths and tick boxes match where L01 draws them. ▸r/list-from-frame"""
 
     @classmethod
@@ -1104,7 +1104,7 @@ class TheListStandsOnItsFrame(unittest.TestCase):
     def _by_key(self, kind):
         return amazetheme.drawn_by_owner("L01", kind)
 
-    def test_the_frame_is_one_table_the_code_can_follow(self):
+    def test_the_frame_columns_are_in_table_order_edge_to_edge(self):
         """Columns in the table's order, edge to edge; one heading inset; one tick inset."""
         self.assertEqual([k for k in grid_columns.KEYS if k != "thumb"],
                          list(self.column))
@@ -1140,13 +1140,13 @@ class TheListStandsOnItsFrame(unittest.TestCase):
         return image
 
     @staticmethod
-    def _ink_left(image):
-        ground = image.pixelColor(1, 1)
+    def _leftmost_text_x(image):
+        background = image.pixelColor(1, 1)
         for x in range(image.width()):
             for y in range(image.height()):
                 c = image.pixelColor(x, y)
-                if (abs(c.red() - ground.red()) + abs(c.green() - ground.green())
-                        + abs(c.blue() - ground.blue())) > 90:
+                if (abs(c.red() - background.red()) + abs(c.green() - background.green())
+                        + abs(c.blue() - background.blue())) > 90:
                     return x
         return None
 
@@ -1167,8 +1167,8 @@ class TheListStandsOnItsFrame(unittest.TestCase):
         shift = delegate.text_shift(self.table)
         cell = amazetheme.drawn_node("L01", "cell", "name")
         self.assertEqual(self.px(cell[1] - self.column["name"][1]), margin + shift)
-        self.assertEqual(shift, self._ink_left(self._render(delegate, index))
-                         - self._ink_left(self._render(plain, index)),
+        self.assertEqual(shift, self._leftmost_text_x(self._render(delegate, index))
+                         - self._leftmost_text_x(self._render(plain, index)),
                          "the text is not drawn where the shift puts it")
 
     def test_the_selection_band_still_covers_the_whole_cell(self):

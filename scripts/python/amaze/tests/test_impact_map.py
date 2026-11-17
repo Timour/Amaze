@@ -68,12 +68,12 @@ IT = "test_b.BTest.test_it"
 
 class TheShapeHashesCodeNotText(unittest.TestCase):
 
-    def test_comments_and_docstrings_move_no_hash(self):
+    def test_comments_and_docstrings_change_no_hash(self):
         edited = ONE.replace('"""One."""', '"""One, reworded."""').replace(
             "# a comment", "# another comment\n\n")
         self.assertEqual(impact_map.Code(ONE).shape(), impact_map.Code(edited).shape())
 
-    def test_each_edit_moves_only_its_own_hash(self):
+    def test_each_edit_changes_only_its_own_hash(self):
         before = impact_map.Code(ONE + "\n\ndef outer():\n    def inner():\n        return 1\n"
                                        "    return inner\n").shape()
         for why, old, new, part, key in (
@@ -207,7 +207,7 @@ class AChangePicksTheTestsThatRanIt(unittest.TestCase):
                 self.write(path, "changed\n")
                 self.assertEqual(picked, picks())
 
-    def test_only_the_whole_suite_answers_what_the_map_cannot(self):
+    def test_a_change_the_map_cannot_place_selects_the_whole_suite(self):
         self.recorder.ran[impact_map.LOADING] = {CODE + "two.py": {"plain"}}
         for why, path, old, new in (
                 ("a def that runs on import", CODE + "two.py", "return 0", "return 1"),

@@ -36,10 +36,10 @@ class CategoryColorTest(unittest.TestCase):
     def _an_asset(self, cat: str) -> int:
         lop = hou.node("/obj").createNode("lopnet", "cc_src")
         lop.createNode("sphere")
-        held = test_support.asset_ids(self.model)
+        before = test_support.asset_ids(self.model)
         node_actions.add_asset(self.model, lop, cat, "", False, name="Coloured")
         lop.destroy()
-        saved, = test_support.arrived(self.model, held)
+        saved, = test_support.arrived(self.model, before)
         return self.model.find_asset_row_by_id(saved.mat_id)
 
     def test_an_uncoloured_or_uncategorised_tile_has_no_colour(self):
@@ -60,13 +60,13 @@ class CategoryColorTest(unittest.TestCase):
         self.assertEqual("#4af2a1", self.cats.data(
             self.cats.index(row, 0), category.SIDEBAR_COLOR_ROLE))
 
-    def test_a_rename_carries_the_colour_across(self):
+    def test_a_rename_keeps_the_colour_under_the_new_name(self):
         self.cats.set_color("Metal", "#4af2a1")
         self.cats.rename_category("Metal", "Metals")
         self.assertEqual("#4af2a1", self.cats.color_of("Metals"))
         self.assertEqual("", self.cats.color_of("Metal"))
 
-    def test_a_removed_category_takes_its_colour_with_it(self):
+    def test_removing_a_category_removes_its_colour(self):
         """Otherwise the stored colour is applied to the next category created with the same name."""
         self.cats.set_color("Metal", "#4af2a1")
         self.cats.remove_category("Metal")
@@ -80,7 +80,7 @@ class CategoryColorTest(unittest.TestCase):
         self.assertEqual("", self.cats.color_of("Metal"))
         self.assertEqual("", self.model.category_color(self.row))
 
-    def test_it_survives_a_reload_from_disk(self):
+    def test_the_colour_is_kept_after_a_reload_from_disk(self):
         self.cats.set_color("Metal", "#e28248")
         test_support.reset_database_singletons()
         fresh = cop_library.CopCategories(preferences=self.prefs)

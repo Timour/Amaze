@@ -303,7 +303,7 @@ class SimReadyRemembersTest(unittest.TestCase):
 class SplitArchiveTest(unittest.TestCase):
     """`.z01` + `.zip` read as one zip, a member across the split included. ▸r/simready-release"""
 
-    def test_every_member_reads_back_whole_wherever_the_split_lands(self):
+    def test_every_member_reads_back_whole_wherever_the_split_falls(self):
         """At a boundary: 3.12+ zipfile checks entry ends against offsets taken before aiming."""
         from amaze.core import matx_sources
         blob = _archive("Stone", ["Volga_Blue", "Ardesia_Grigia_Polished"])
@@ -320,7 +320,7 @@ class SplitArchiveTest(unittest.TestCase):
                                          matx_sources.read_member(bundle, remote, name),
                                          "%s read back changed after the split" % name)
 
-    def test_a_directory_outside_the_last_part_is_refused(self):
+    def test_a_directory_outside_the_last_part_raises_badzipfile(self):
         from amaze.core import matx_sources
         _blob, (first, last) = _stone_parts()
         record = last.rfind(b"PK\x05\x06")
@@ -354,7 +354,7 @@ class SimReadyFetchTest(unittest.TestCase):
         return sorted(os.path.relpath(os.path.join(root, f), dest).replace(os.sep, "/")
                       for root, _dirs, files in os.walk(dest) for f in files)
 
-    def test_the_package_lands_as_released_and_progress_runs_forward(self):
+    def test_the_package_is_written_as_released_and_progress_only_increases(self):
         _record, dest, got, seen, _release_ = self._fetch("Stone/Volga_Blue")
         self.assertEqual(
             ["Materials/Stone/Volga_Blue.mtlx", "Materials/Stone/Volga_Blue.usda",
@@ -394,7 +394,7 @@ class SimReadyFetchTest(unittest.TestCase):
         self.assertEqual(["textures/Skin_Dark_normal.jpg"], unresolved,
                          "the import's repair is what reports a texture never fetched")
 
-    def test_a_texture_path_out_of_the_package_is_refused(self):
+    def test_a_texture_path_out_of_the_package_is_skipped_and_logged_once(self):
         from amaze.core import matx_sources
         text = _read("Materials", "Skin", "Skin_Dark.usda").decode("utf-8")
         hostile = text.replace("textures/Skin_Dark_normal.jpg", "../../../../escape.jpg")
@@ -419,10 +419,10 @@ class SimReadyFetchTest(unittest.TestCase):
                 source.fetch(record, "original", os.path.join(dest, "pkg"))
             except Exception as exc:                         # noqa: BLE001
                 self.fail("a hostile path must skip that texture, not fail the import: %r" % exc)
-        landing = os.path.join(os.path.dirname(dest), "escape.jpg")    # where ../../ from pkg points
-        self.assertFalse(os.path.exists(landing), "a texture was written out of the package")
-        said = [r for r in log.records("online") if "outside the library" in r.get("msg", "")]
-        self.assertEqual(1, len(said), "the rejected path was not logged exactly once")
+        escaped = os.path.join(os.path.dirname(dest), "escape.jpg")    # where ../../ from pkg points
+        self.assertFalse(os.path.exists(escaped), "a texture was written out of the package")
+        logged = [r for r in log.records("online") if "outside the library" in r.get("msg", "")]
+        self.assertEqual(1, len(logged), "the rejected path was not logged exactly once")
 
 
 class NestedDocumentRepairTest(unittest.TestCase):
@@ -513,7 +513,7 @@ class MaterialSpecTest(unittest.TestCase):
         self.assertEqual("convert_specular_color", doc.getNode(
             "open_pbr_surface").getInput("specular_color").getNodeName())
 
-    def test_a_flipped_normal_map_flips_only_its_green_and_an_srgb_map_says_so(self):
+    def test_a_flipped_normal_map_flips_only_its_green_and_an_srgb_map_is_marked_srgb(self):
         spec = self._spec("Stone", "Volga_Blue")
         self.assertEqual((False, True, False), spec["normals"]["geometry_normal"]["flip"])
         doc = self._document(spec)
@@ -527,7 +527,7 @@ class MaterialSpecTest(unittest.TestCase):
                          .getInput("file").getAttribute("colorspace"),
                          "a data map has no colour space; its signature decides")
 
-    def test_a_coat_normal_map_lands_on_the_coat(self):
+    def test_a_coat_normal_map_is_wired_to_the_coat(self):
         normals = self._spec("Stone", "Volga_Blue_Deep_Pollished")["normals"]
         self.assertIn("geometry_coat_normal", normals)
         self.assertTrue(normals["geometry_coat_normal"]["flip"][1])
@@ -837,7 +837,7 @@ class ListingProgressTest(unittest.TestCase):
         worker.run()
         self.assertEqual([(0, 2, 4), (1, 2, 4), (2, 2, 4)], steps)
 
-    def test_the_bar_shows_the_current_listing_unless_pictures_hold_it(self):
+    def test_the_bar_shows_the_current_listing_unless_previews_are_loading(self):
         from amaze.core import matx_library
         model = matx_library.MatxOnlineLibrary()
         self.addCleanup(model.shutdown)
@@ -899,7 +899,7 @@ class HostedPreviewTileTest(unittest.TestCase):
         self.assertEqual(1, len(jobs), "the tile was drawn from its numbers")
         self.assertTrue(callable(jobs[0][1]), "a hosted picture went to a URL download")
 
-    def test_a_hosted_picture_outranks_the_sources_own(self):
+    def test_a_hosted_picture_is_preferred_over_the_sources_own(self):
         model, record = self._model_and_record(7)
         record.source, record.preview_url = "PolyHaven", "https://cdn.example/brick_4.png"
         jobs = self._jobs(model, record)
@@ -1025,18 +1025,18 @@ class AListingPrunesThePreviewCache(unittest.TestCase):
             with open(path, "wb") as handle:
                 handle.write(b"picture")
 
-    def _land(self, errors):
+    def _apply_catalogue(self, errors):
         with mock.patch.object(self.model, "_apply_filter"), \
                 mock.patch.object(self.model, "_save_cache"):
             self.model._on_catalogue([self.record], errors, self.model._generation)
         return {name for name, path in self.files.items() if os.path.exists(path)}
 
     def test_a_whole_listing_removes_what_no_record_names(self):
-        self.assertEqual({"hosted", "own", "in flight"}, self._land([]),
+        self.assertEqual({"hosted", "own", "in flight"}, self._apply_catalogue([]),
                          "the cache kept a picture no record names, or lost one a record does")
 
     def test_a_partial_listing_removes_nothing(self):
-        self.assertEqual(set(self.files), self._land(["PolyHaven: URLError: offline"]),
+        self.assertEqual(set(self.files), self._apply_catalogue(["PolyHaven: URLError: offline"]),
                          "a listing missing a source pruned the cache")
 
 
@@ -1065,10 +1065,10 @@ class TheOnlineQuitStopsEveryWorkerAtOnce(unittest.TestCase):
         threads, ended = list(model._preview_workers), []
         for thread in threads:
             thread.finished.connect(lambda: ended.append(True))
-        self.addCleanup(self._let_go, threads, ended, release)
+        self.addCleanup(self._release_blocked_workers, threads, ended, release)
         return threads
 
-    def _let_go(self, threads, ended, release):
+    def _release_blocked_workers(self, threads, ended, release):
         """Release blocked reads, then take each worker off `_unstoppable` once it finishes."""
         from amaze.core import workers
         release()
@@ -1078,11 +1078,11 @@ class TheOnlineQuitStopsEveryWorkerAtOnce(unittest.TestCase):
             if thread in workers._unstoppable:
                 workers._unstoppable.remove(thread)
 
-    def test_sixteen_downloads_held_by_a_silent_server_cost_one_window(self):
+    def test_sixteen_downloads_blocked_by_an_unresponsive_server_stop_within_one_wait(self):
         from amaze.core import matx_sources, workers
         model, peers, lock = self._model(16), [], threading.Lock()
 
-        def silent():
+        def read_from_unresponsive_server():
             QtCore.QThread.setTerminationEnabled(False)    # cancelled inside recv, a thread leaves a dead Python state
             mine, theirs = socket.socketpair()
             with lock:
@@ -1093,7 +1093,7 @@ class TheOnlineQuitStopsEveryWorkerAtOnce(unittest.TestCase):
             finally:
                 mine.close()
 
-        threads = self._painted(model, 16, silent, lambda: len(peers) == 16,
+        threads = self._painted(model, 16, read_from_unresponsive_server, lambda: len(peers) == 16,
                                 release=lambda: [peer.close() for peer in peers])
         self.assertEqual(16, len(threads), "premise: not one worker per download")
         started = time.monotonic()
@@ -1123,7 +1123,7 @@ class TheOnlineQuitStopsEveryWorkerAtOnce(unittest.TestCase):
                          "a download had to be put in _unstoppable")
         self.assertLess(elapsed, 1.0, "the quit waited %.1fs on downloads between pictures" % elapsed)
 
-    def test_a_listing_stops_between_sources_and_lands_nothing(self):
+    def test_a_listing_stops_between_sources_and_saves_nothing(self):
         from amaze.core import matx_sources
         model, listed, saved = self._model(1), [], []
 
@@ -1168,7 +1168,7 @@ class RedshiftTiledImageTest(unittest.TestCase):
                     if c.type().name() == "redshift::TextureSampler"]
         return shader, samplers, report
 
-    def test_tiling_and_offset_ride_the_sampler(self):
+    def test_tiling_and_offset_are_set_on_the_sampler(self):
         def produce(builder):
             shader = builder.createNode("mtlxopen_pbr_surface")
             image = builder.createNode("mtlxtiledimage")

@@ -44,9 +44,9 @@ def _literal_hexes(path):
     return found
 
 
-class NoSecondHomeForAColour(unittest.TestCase):
+class ColoursAreDefinedOnlyInAmazetheme(unittest.TestCase):
 
-    def test_the_chrome_files_carry_no_literal_hex(self):
+    def test_the_chrome_files_contain_no_literal_hex(self):
         offenders = []
         for relative in DRAWS_CHROME:
             path = os.path.join(_ROOT, relative)
@@ -64,7 +64,7 @@ class NoSecondHomeForAColour(unittest.TestCase):
             "in amazetheme.py - one file, so a Figma change is one "
             "edit:\n  " + "\n  ".join(offenders))
 
-    def test_the_document_can_see_a_hex_at_all(self):
+    def test_the_hex_scan_finds_a_hex_in_amazetheme(self):
         """A scan that matches nothing always passes."""
         with open(os.path.join(_ROOT, "amazetheme.py"),
                   encoding="utf-8") as handle:
@@ -237,7 +237,7 @@ class TheNamedFrameSizesAreTheDrawnFrames(unittest.TestCase):
 
 class TheDrawnWordsComeFromTheDocument(unittest.TestCase):
 
-    def test_every_blank_reads_its_words_from_it(self):
+    def test_the_empty_state_texts_are_the_ones_in_amazetheme(self):
         self.assertIs(amazetheme.EMPTY_SHARED, empty_state.SHARED,
                       "the shared empty-state texts have a second copy "
                       "in empty_state.py")

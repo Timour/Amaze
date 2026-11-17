@@ -326,7 +326,7 @@ class FixtureFidelityTest(GateFixture):
 
 class SyncInstallGateTest(GateFixture):
 
-    def test_an_uncommitted_file_is_refused_before_anything_ships(self):
+    def test_an_uncommitted_file_stops_the_sync_before_anything_is_copied(self):
         """Only committed code is installed, untracked included: the mirror copies `scripts/`."""
         _write(os.path.join(self.repo, "scripts", "python", "amaze",
                             "stray.py"), "# this was never committed\n")
@@ -344,7 +344,7 @@ class SyncInstallGateTest(GateFixture):
         self.assertEqual([], self.suite_calls(),
                          "the suite ran despite the refusal")
 
-    def test_a_scratch_pointing_at_the_real_install_is_refused(self):
+    def test_a_scratch_pointing_at_the_real_install_stops_the_sync(self):
         """A typo must not point the sabotage test at the real install this script protects."""
         _write(os.path.join(self.repo, "scripts", "python", "amaze",
                             "stray.py"), "# sabotaged\n")
@@ -354,7 +354,7 @@ class SyncInstallGateTest(GateFixture):
         self.assertEqual(result.returncode, 1, self.both(result))
         self.assertIn("REAL install", self.both(result))
 
-    def test_a_missing_install_is_refused_before_anything_is_copied(self):
+    def test_a_missing_install_stops_the_sync_before_anything_is_copied(self):
         """A missing `$AMAZE` folder stops at the check; empty is never run: it means the real install."""
         missing = os.path.join(self.tmp, "not_an_install")
         result = self.sync("green", AMAZE=missing)
@@ -366,14 +366,14 @@ class SyncInstallGateTest(GateFixture):
 
 class PrePushGateTest(GateFixture):
 
-    def test_the_process_gate_runs_first_and_its_refusal_stops_the_push(self):
-        refusing = os.path.join(self.tmp, "refusing-hooks")
-        os.makedirs(refusing)
-        _write(os.path.join(refusing, "pre-push-gate"),
+    def test_the_process_gate_runs_first_and_its_failure_stops_the_push(self):
+        failing_hooks = os.path.join(self.tmp, "refusing-hooks")
+        os.makedirs(failing_hooks)
+        _write(os.path.join(failing_hooks, "pre-push-gate"),
                '#!/bin/sh\necho "process gate says no" >&2\nexit 1\n',
                executable=True)
         self._commit(os.path.join("scripts", "python", "amaze", "widget.py"))
-        result = self.push("green", AMAZE_PRIVATE_HOOKS=refusing)
+        result = self.push("green", AMAZE_PRIVATE_HOOKS=failing_hooks)
         self.assertNotEqual(result.returncode, 0, self.both(result))
         self.assertIn("process gate says no", self.both(result))
         self.assertEqual([], self.suite_calls(),
@@ -389,7 +389,7 @@ class PrePushGateTest(GateFixture):
         self.assertEqual([], self.suite_calls(),
                          "a missing gate must refuse, not pass silently")
 
-    def test_red_suite_refuses_and_names_the_failures(self):
+    def test_red_suite_stops_the_push_and_names_the_failures(self):
         self._commit(os.path.join("scripts", "python", "amaze", "widget.py"))
         result = self.push("red")
         self.assertEqual(result.returncode, 1, self.both(result))
@@ -398,7 +398,7 @@ class PrePushGateTest(GateFixture):
         self.assertNotIn(PUSH_END, result.stdout)
         self.assertReachedEnd(result, PUSH_RED_END)
 
-    def test_the_escape_hatch_needs_the_sha_being_pushed(self):
+    def test_amaze_skip_tests_needs_the_sha_being_pushed(self):
         """Not a boolean - a boolean gets exported once in a shell profile and disables the gate forever."""
         self._commit(os.path.join("scripts", "python", "amaze", "widget.py"))
         head = self._git("rev-parse", "HEAD")
@@ -427,7 +427,7 @@ class TargetedRunTest(unittest.TestCase):
                 "argument check has regressed and this call was "
                 "starting the whole suite recursively" % (args,))
 
-    def test_a_name_that_is_not_a_module_is_refused(self):
+    def test_a_name_that_is_not_a_module_exits_with_2(self):
         for args in (("test_no_such_module_here",),
                      ("--isolated", "test_no_such_module_here")):    # a check reading only $1 misses it
             with self.subTest(args=args):
@@ -435,7 +435,7 @@ class TargetedRunTest(unittest.TestCase):
                 self.assertEqual(2, result.returncode, result.stderr)
                 self.assertIn("no such test module", result.stderr)
 
-    def test_the_refusal_costs_no_interpreter_start(self):
+    def test_the_argument_check_runs_before_the_houdini_lookup(self):
         """The argument check sits above the Houdini lookup, so a typo costs no Houdini start."""
         with open(self._script(), encoding="utf-8") as handle:
             source = handle.read()
@@ -718,10 +718,10 @@ class TheSuiteRunsOnTheProductionBuild(unittest.TestCase):
         self.assertEqual("/opt/hfs22.0.100",
                          self._pick("/opt/hfs21.0.300", "/opt/hfs22.0.100", "/opt/hfs22.0"))
 
-    def test_no_install_answers_nothing(self):
+    def test_no_install_returns_nothing(self):
         self.assertEqual("", self._pick())
 
-    def test_no_runner_still_asks_for_the_newest(self):
+    def test_no_runner_still_requests_the_newest(self):
         """Only the resolver picks the build; a caller asking for the newest would bypass it."""
         callers = [os.path.join("tools", name) for name in os.listdir(os.path.join(REPO, "tools"))
                    if name.endswith(".sh")]
@@ -731,10 +731,10 @@ class TheSuiteRunsOnTheProductionBuild(unittest.TestCase):
                 self.assertNotIn("amaze_newest_houdini", handle.read(), relative)
 
 
-class EveryToolSpeaksTheResolver(unittest.TestCase):
+class EveryToolSourcesHoudiniEnv(unittest.TestCase):
     """Every `tools/*.sh` using hython sources houdini-env.sh; two known-bad commands are banned."""
 
-    def test_no_tool_carries_the_recorded_traps(self):
+    def test_no_tool_contains_the_banned_commands(self):
         tools = os.path.join(REPO, "tools")
         checked = 0
         for name in sorted(os.listdir(tools)):

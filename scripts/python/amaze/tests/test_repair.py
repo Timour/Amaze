@@ -60,7 +60,7 @@ def _words(items) -> list:
              item.get("src")) for item in items or [] if isinstance(item, dict)]
 
 
-class _Census:
+class _LibraryInventory:
     """What a library holds, read in its own format: rows, comments, stars, icons, users."""
 
     def __init__(self, directory: str, old: bool) -> None:
@@ -131,20 +131,20 @@ class _Census:
                          (master.get("settings") or {}).items()}
 
 
-class _ConversionRehearsal:
+class _ConversionOnACopy:
     """The 2.0 conversion run on a private copy of the real library, then checked."""
 
-    def rehearse(self, directory: str, label: str):
+    def convert_and_check(self, directory: str, label: str):
         """Convert `directory`, check every row and setting is kept, print a summary."""
         if not library_conversion.needs_conversion(directory):
             self.skipTest("the real library is already 2.0: nothing to rehearse a conversion on")
-        before = _Census(directory, old=True)
+        before = _LibraryInventory(directory, old=True)
         started = time.perf_counter()
         outcome = library_conversion.convert(directory, confirm=lambda: True)
         took = time.perf_counter() - started
         self.assertEqual(library_conversion.DONE, outcome.status,
                          "the conversion did not run: %s" % outcome.why)
-        after = _Census(directory, old=False)
+        after = _LibraryInventory(directory, old=False)
         aside = {}
         for one in outcome.set_aside:
             if one.row is not None:
@@ -201,7 +201,7 @@ class _ConversionRehearsal:
         return outcome
 
 
-class TheRealLibraryRehearsalTest(_ConversionRehearsal, unittest.TestCase):
+class TheRealLibraryConvertedOnACopyTest(_ConversionOnACopy, unittest.TestCase):
     """The databases and old root files copied in full; each folder's top level as placeholders."""
 
     def setUp(self):
@@ -237,9 +237,9 @@ class TheRealLibraryRehearsalTest(_ConversionRehearsal, unittest.TestCase):
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
 
-    def test_the_conversion_rehearsed_on_the_copy(self):
+    def test_the_conversion_on_the_copy_keeps_everything(self):
         """Every row, comment, star, icon, location, user and shared setting comes through."""
-        self.rehearse(self.dir, "databases whole, files as stand-ins")
+        self.convert_and_check(self.dir, "databases whole, files as stand-ins")
 
     def test_the_converted_copy_is_coherent_and_nothing_moves(self):
         """The passing case: Check Library finds no unlisted file and moves nothing."""
@@ -256,7 +256,7 @@ class TheRealLibraryRehearsalTest(_ConversionRehearsal, unittest.TestCase):
         self.assertEqual([], repair.move_aside(findings, "unlisted", guard_session=False)["moved"])
 
 
-class TheRealLibrarysWholeShapeTest(_ConversionRehearsal, unittest.TestCase):
+class TheRealLibrarysEveryFolderTest(_ConversionOnACopy, unittest.TestCase):
     """Every folder of the real library: databases and records in full, the rest placeholders."""
 
     def setUp(self):
@@ -286,9 +286,9 @@ class TheRealLibrarysWholeShapeTest(_ConversionRehearsal, unittest.TestCase):
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
 
-    def test_the_conversion_rehearsed_on_the_whole_shape(self):
+    def test_the_conversion_on_every_folder_keeps_everything(self):
         """Every folder and version folder, the databases and root files in full."""
-        self.rehearse(self.dir, "whole shape")
+        self.convert_and_check(self.dir, "whole shape")
 
     def test_unlisted_files_leftovers_and_unknowns_are_told_apart(self):
         outcome = library_conversion.convert(self.dir, confirm=lambda: True)

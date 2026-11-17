@@ -57,7 +57,7 @@ class _Case(unittest.TestCase):
 class PreEditHoldsTheRightFilesTest(_Case):
     """The pre-edit hold is keyed by `versions.SOURCE_KINDS`, never by filename suffix."""
 
-    def test_the_material_wins_over_its_companions(self):
+    def test_the_hold_takes_only_the_source_kinds_of_the_material(self):
         from amaze.core import library as library_mod
 
         assets_dir = material.section_folder(self.prefs.dir, MATERIALS)
@@ -123,19 +123,19 @@ class APreEditHoldLeavesNoFolderBehind(_Case):
         self.assertEqual(({}, []), self._holding("NO_SUCH_ASSET"),
                          "an empty hold left its temp folder behind")
 
-    def test_a_failed_copy_takes_the_folder_with_it(self):
-        def refused(source, target):
+    def test_a_failed_copy_removes_the_hold_folder(self):
+        def failing_copy(source, target):
             raise OSError("disk full")
 
-        answer, left = self._holding(self.mat_id, refused)
+        answer, left = self._holding(self.mat_id, failing_copy)
         self.assertEqual((OSError, []), (type(answer), left),
                          "a failed copy left its temp folder behind, or did not raise OSError")
 
 
-class SwitchRollsBackOnALedgerRefusal(_Case):
+class SwitchRollsBackWhenTheLedgerWriteFails(_Case):
     """Ledger and base files are written as one change: a failed ledger write changes nothing."""
 
-    def test_the_base_returns_when_the_ledger_will_not_write(self):
+    def test_the_base_is_restored_when_the_ledger_write_fails(self):
         versions.create_version(self.prefs, self.mat_id)          # V1
         self._rewrite_base(b"EDITED-STATE")
         versions.create_version(self.prefs, self.mat_id)          # V2
@@ -151,7 +151,7 @@ class SwitchRollsBackOnALedgerRefusal(_Case):
             "the ledger changed although its write failed")
 
 
-class ASwitchPutsTheWholeVersionOnTheBase(_Case):
+class ASwitchCopiesTheWholeVersionToTheBase(_Case):
     """A version saved without a builder or a render removes the other version's from the base."""
 
     def setUp(self):
@@ -175,7 +175,7 @@ class ASwitchPutsTheWholeVersionOnTheBase(_Case):
         return os.path.exists(os.path.join(versions.versions_dir(self.prefs, self.mat_id),
                                            versions.file_stem(self.mat_id, number) + ".png"))
 
-    def test_a_kind_the_version_lacks_leaves_the_base(self):
+    def test_a_kind_the_version_lacks_is_removed_from_the_base(self):
         self.assertTrue(versions.switch_active(self.prefs, self.mat_id, 1))
         self.assertEqual({"builder": False, ".png": False}, self._in_base(),
                          "version 2's builder or picture is still in the base beside version 1")
@@ -186,7 +186,7 @@ class ASwitchPutsTheWholeVersionOnTheBase(_Case):
         self.assertEqual([1, 2], [int(r["n"]) for r in versions.list_versions(
             self.prefs, self.mat_id)], "a switch back and forth created a version")
 
-    def test_a_kind_that_will_not_leave_is_finished_once_it_can(self):
+    def test_a_kind_that_cannot_be_removed_yet_is_removed_by_recover(self):
         from unittest import mock
         from amaze.core import guard, library_db
         real = guard.Disk.remove
@@ -230,7 +230,7 @@ class AVersionHoldsTheBuilderAndNeverTheMetadata(_Case):
         asset_record.write_section(self.base_record, asset_record.METADATA,
                                    {"id": self.mat_id, "name": name})
 
-    def test_an_archive_holds_no_metadata_and_a_metadata_edit_mints_nothing(self):
+    def test_an_archive_holds_no_metadata_and_a_metadata_edit_creates_no_version(self):
         self._set_metadata("Before")
         self._set_base_builder("v1")
         self.assertEqual(1, versions.create_version(self.prefs, self.mat_id))
@@ -298,7 +298,7 @@ class TheArchiveIsEachVersionsDurableThumbnail(_Case):
         folder = versions.versions_dir(self.prefs, self.mat_id)
         return self.base_png, folder
 
-    def test_a_fresh_render_lands_in_the_active_slot_only(self):
+    def test_a_fresh_render_is_written_to_the_active_slot_only(self):
         base, folder = self._png_paths()
         with open(base, "wb") as fh:
             fh.write(b"V1-RENDER")
@@ -427,7 +427,7 @@ class StoreTest(_Case):
             self.assertEqual(self._base_bytes(), fh.read(),
                              "the archive is not a copy of the base")
 
-    def test_names_default_and_rename_sticks(self):
+    def test_names_default_and_a_rename_is_kept(self):
         versions.create_version(self.prefs, self.mat_id)
         listed = versions.list_versions(self.prefs, self.mat_id)
         self.assertEqual("Version 1", listed[0]["name"],
@@ -438,7 +438,7 @@ class StoreTest(_Case):
         self.assertEqual("Hero look", versions.list_versions(
             self.prefs, self.mat_id)[0]["name"])
 
-    def test_switch_puts_the_archives_bytes_on_the_base(self):
+    def test_switch_copies_the_archives_bytes_to_the_base(self):
         original = self._base_bytes()
         versions.create_version(self.prefs, self.mat_id)     # V1 = original
         self._rewrite_base(b"EDITED-STATE")
@@ -452,7 +452,7 @@ class StoreTest(_Case):
         self.assertTrue(versions.switch_active(self.prefs, self.mat_id, 2))
         self.assertEqual(b"EDITED-STATE", self._base_bytes())
 
-    def test_a_missing_version_is_refused(self):
+    def test_switching_to_a_missing_version_returns_false(self):
         versions.create_version(self.prefs, self.mat_id)
         before = self._base_bytes()
         self.assertFalse(versions.switch_active(self.prefs, self.mat_id, 9))
@@ -494,7 +494,7 @@ class StoreTest(_Case):
 class VersionFilesAreNamedByIdAndNumberTest(_Case):
     """A version's files are `<id>_<n>.*`; the ledger names no file, and names only its rows."""
 
-    def test_the_files_carry_the_id_and_the_number(self):
+    def test_the_file_names_contain_the_id_and_the_number(self):
         from amaze.core import users
         self.prefs.library_user = users.create(self.prefs, "Crimson")
         versions.create_version(self.prefs, self.mat_id)
@@ -725,7 +725,7 @@ class DeletingAUser(unittest.TestCase):
                           "a user was picked silently - the ASK "
                           "state is for the picker to resolve")
 
-    def test_the_last_deletion_leaves_nobody_and_a_stale_pointer_makes_nobody(self):
+    def test_the_last_deletion_leaves_no_user_and_a_stale_pointer_creates_none(self):
         from amaze.core import users
         only = users.create(self.prefs, "Anna")
         self._become(only)

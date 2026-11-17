@@ -145,7 +145,7 @@ class AColourConstantKeepsItsColour(unittest.TestCase):
         self.assertEqual("mtlxconstant", found.type().name())
         return found
 
-    def test_each_tuple_constant_carries_its_value(self):
+    def test_each_tuple_constant_keeps_its_value(self):
         for name, signature, value, why in (
                 ("Tint", "color3", (1.0, 0.5, 0.25),
                  "the tint reads black, so everything multiplied by it "
@@ -268,7 +268,7 @@ class BothOnlineDestinationsRunOneSequence(unittest.TestCase):
         self.assertIsNotNone(builder, reason)
         self.addCleanup(builder.destroy)
 
-    def test_the_credit_lands_as_the_comment_of_the_new_asset(self):
+    def test_the_credit_is_written_as_the_comment_of_the_new_asset(self):
         """The credit is the asset comment, written once, and never a field on the row."""
         from amaze.core import library as library_mod, library_db, matx_import, notes
         model = library_mod.MaterialLibrary(preferences=self.prefs)
@@ -294,7 +294,7 @@ class BothOnlineDestinationsRunOneSequence(unittest.TestCase):
         self._into_library()
         self.assertEqual((), hou.undos.undoLabels())
 
-    def test_one_undo_takes_an_import_to_scene_back_whole(self):
+    def test_one_undo_removes_a_whole_import_to_scene(self):
         """The panel wraps the build in one undo group: Ctrl+Z and redo each act as one step."""
         from amaze.core import matx_import
         destination = hou.node("/mat")

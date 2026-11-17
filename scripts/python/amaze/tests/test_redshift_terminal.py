@@ -104,7 +104,7 @@ class NoTerminalInputIsLookedUpByHand(unittest.TestCase):
 
 @unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                      "the Redshift plugin is not installed")
-class TheSpellingTableIsWhatThePluginSays(unittest.TestCase):
+class TheSpellingTableMatchesThePlugin(unittest.TestCase):
     """The table was measured, so it is checked against the plugin on any host with Redshift."""
 
     def _terminal(self, parent, builder_type, terminal_type):
@@ -145,7 +145,7 @@ class TheSpellingTableIsWhatThePluginSays(unittest.TestCase):
         self.assertEqual("Input 1", terminal.inputLabels()[0])
 
 
-class AContainerWithNoTerminalAnswersNone(unittest.TestCase):
+class AContainerWithNoTerminalReturnsNone(unittest.TestCase):
     """The shared lookups on a container with no Redshift node in it; needs no plugin."""
 
     def test_neither_lookup_finds_anything(self):
@@ -198,7 +198,7 @@ class OneLookupFindsTheTerminalAndTheShader(unittest.TestCase):
         terminal.setNamedInput("Surface", sampler, 0)
         self.assertEqual(sampler, material_converter.find_redshift_shader(builder))
 
-    def test_no_wired_shader_is_said_in_the_conversion_report(self):
+    def test_no_wired_shader_is_noted_in_the_conversion_report(self):
         builder, terminal = self._stock()
         terminal.setInput(0, None)
         report = ConversionReport("unwired")

@@ -28,7 +28,7 @@ _VOLATILE = {
 }
 
 
-def _answers(p) -> dict:
+def _property_values(p) -> dict:
     """Every public property's value, by name."""
     out = {}
     for name in dir(type(p)):
@@ -56,10 +56,10 @@ class PrefsCase(unittest.TestCase):
         p.load()
         return p, folder
 
-    def test_a_property_answers_the_same_after_a_round_trip(self):
+    def test_a_property_returns_the_same_after_a_round_trip(self):
         """Save, load the same file back, and every property returns the same value."""
         p, folder = self._fresh()
-        before = _answers(p)
+        before = _property_values(p)
         self.assertTrue(before, "no properties were read at all")
 
         p.save()
@@ -67,7 +67,7 @@ class PrefsCase(unittest.TestCase):
         again.path = folder
         again.load()
 
-        after = _answers(again)
+        after = _property_values(again)
         differing = {k: (before[k], after[k])
                      for k in before if before[k] != after.get(k)}
         self.assertEqual(
@@ -77,7 +77,7 @@ class PrefsCase(unittest.TestCase):
     def test_every_property_is_readable(self):
         """A property that raises when read is broken, whatever value it would have returned."""
         p, _folder = self._fresh()
-        raised = {k: v for k, v in _answers(p).items()
+        raised = {k: v for k, v in _property_values(p).items()
                   if isinstance(v, str) and v.startswith("RAISED ")}
         self.assertEqual({}, raised, "a property raised when read")
 

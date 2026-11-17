@@ -140,7 +140,7 @@ class _HighlightCase:
         with mock.patch.object(QtWidgets.QMenu, "exec_", pick):
             self.panel.catlist_rc_menu()
 
-    def _held(self, to):
+    def _move_with_button_held(self, to):
         viewport = self.view.viewport()
         QtWidgets.QApplication.sendEvent(viewport, QtGui.QMouseEvent(
             QtCore.QEvent.Type.MouseMove, QtCore.QPointF(to),
@@ -150,7 +150,7 @@ class _HighlightCase:
         """A left press on one row, held across to another and released there."""
         to = self.at(end)
         QtTest.QTest.mousePress(self.view.viewport(), LEFT, NOMOD, self.at(start))
-        self._held(to)
+        self._move_with_button_held(to)
         QtTest.QTest.mouseRelease(self.view.viewport(), LEFT, NOMOD, to)
 
     def reorder(self, grabbed, over, release_at=None, escape=False, turn=False):
@@ -158,7 +158,7 @@ class _HighlightCase:
         to = self.at(over)
         QtTest.QTest.mousePress(self.view.viewport(), LEFT, NOMOD, self.at(grabbed))
         self.panel.sidebar_reorder._hold_fired()
-        self._held(to)
+        self._move_with_button_held(to)
         if turn:
             _pump()
         if escape:
@@ -182,10 +182,10 @@ class _AssetSidebarPaths(_HighlightCase):
         self.panel.refresh_sidebar_categories()
         _pump()
 
-    def stand(self, key="Kept"):
+    def select_row(self, key="Kept"):
         self.click(self.row(key))
 
-    def _answer(self, name):
+    def _category_name_entered(self, name):
         return mock.patch.object(self.panel, "ask_category_name", lambda *_a, **_k: name)
 
     def _peer_adds(self, name):
@@ -203,71 +203,71 @@ class _AssetSidebarPaths(_HighlightCase):
     def test_every_path_leaves_the_highlight_on_the_grids_row(self):
         panel, section = self.panel, self.panel.active_section()
         self.check("activate", grid="")
-        self.check("a click", self.stand, grid="Kept")
+        self.check("a click", self.select_row, grid="Kept")
 
         def right_press_then(*labels):
             def gesture():
-                self.stand()
+                self.select_row()
                 self.menu(self.row("Other"), *labels)
             return gesture
 
         self.check("a right press, the menu dismissed", right_press_then(), grid="Kept")
-        with self._answer("Added"):
+        with self._category_name_entered("Added"):
             self.check("a right press, Add", right_press_then("Add"), grid="Kept")
         self.check("a right press, Label", right_press_then("Label", "Red"), grid="Kept")
         self.check("a right press, Sort by name", right_press_then("Sort by name"), grid="Kept")
-        with self._answer("Renamed"):
+        with self._category_name_entered("Renamed"):
             self.check("a right press, Rename another", right_press_then("Rename"), grid="Kept")
 
         def delete_another():
-            self.stand()
+            self.select_row()
             self.menu(self.row("Renamed"), "Delete")
         self.check("a right press, Delete another", delete_another, grid="Kept")
 
         def drag_select():
-            self.stand()
+            self.select_row()
             self.drag_select(self.row("Kept"), self.row("Added"))
         self.check("a press dragged onto another row", drag_select, grid="Added")
 
         def reorder_off_the_row():
-            self.stand()
+            self.select_row()
             self.reorder(self.row("Added"), self.row(""))
         self.check("a reorder released over All", reorder_off_the_row, grid="Added")
 
-        def reorder_taken_back():
-            self.stand()
+        def reorder_cancelled_with_esc():
+            self.select_row()
             self.reorder(self.row("Added"), self.row("Kept"), escape=True)
-        self.check("a reorder taken back with Esc", reorder_taken_back, grid="Kept")
+        self.check("a reorder taken back with Esc", reorder_cancelled_with_esc, grid="Kept")
 
         if self.FILTERS_HIDE:
             def filter_hides():
-                self.stand()
+                self.select_row()
                 section.apply_filter("no such kind")
             self.check("the Filter hides the row", filter_hides, grid="")
             self.check("the Filter shows it again", lambda: section.apply_filter(None), grid="")
 
         def star():
-            self.stand()
+            self.select_row()
             panel.cb_favsonly.setChecked(True)
         self.check("the Favourites star", star, grid="Kept")
         panel.cb_favsonly.setChecked(False)
 
         def clean_up():
-            self.stand()
+            self.select_row()
             panel.prefs.add_file_favorite(os.path.join(panel.prefs.file_folders[0], "gone.exr"))
             with mock.patch.object(hou, "ui", _check_ui("Fix Safe"), create=True):
                 test_support.repair_from_preferences(self, panel)
         self.check("Check Library", clean_up, grid="")    # a re-read selects the first row, as Reload does
 
         def tab_and_back():
-            self.stand()
+            self.select_row()
             panel.section_tabs.setChecked("file")
             _pump()
             panel.section_tabs.setChecked(self.KEY)
         self.check("a tab switch and back", tab_and_back, grid="Kept")
 
         def online_and_back():
-            self.stand()
+            self.select_row()
             panel.enter_online_mode()
             _pump()
             panel.leave_online_mode()
@@ -279,20 +279,20 @@ class _AssetSidebarPaths(_HighlightCase):
         categories = self.panel.active_section().stack().categories
 
         def peer_merge():
-            self.stand()
+            self.select_row()
             self._peer_adds("Peer")
         self.check("a peer merge through the registry", peer_merge, grid="Kept")
         second = test_support.reopened_panel(self)
         theirs = second.sections[self.KEY]
 
         def second_panel_sorts():
-            self.stand()
+            self.select_row()
             categories.check_add_category("Aardvark")    # last in the list: the sort has a row to move
             theirs.menu_sort_categories([], None)
         self.check("a second panel's Sort by name", second_panel_sorts, grid="Kept")
 
         def second_panel_deletes_it():
-            self.stand()
+            self.select_row()
             row = second._sidebar_row_stored(getattr(second, theirs.sidebar_attr), "Kept")
             self.assertIsNotNone(row, "premise: the second panel has no Kept row")
             theirs.menu_remove_category([row], row)
@@ -301,21 +301,21 @@ class _AssetSidebarPaths(_HighlightCase):
     def test_a_reorder_held_across_a_turn_follows_the_grabbed_row(self):
         """Row moves during a press-and-hold reorder do not reselect the sidebar row mid-drag."""
         def held_across_a_turn():
-            self.stand()
+            self.select_row()
             self.reorder(self.row("Other"), self.row("Kept"), turn=True)
         self.check("a reorder held across an event-loop turn", held_across_a_turn, grid="Other")
 
-    def test_a_burst_of_resets_stands_again_once(self):
+    def test_a_burst_of_resets_reselects_the_row_once(self):
         """However many resets arrive in one event-loop turn, `reselect_sidebar_row` runs once."""
         section = self.panel.active_section()
         categories = section.stack().categories
-        self.stand()
-        order, stood = categories.order_snapshot(), []
-        with mock.patch.object(section, "reselect_sidebar_row", lambda: stood.append(1)):
+        self.select_row()
+        order, calls = categories.order_snapshot(), []
+        with mock.patch.object(section, "reselect_sidebar_row", lambda: calls.append(1)):
             categories.restore_order(order[:1] + order[:0:-1])    # one reset
             categories.restore_order(order)    # and a second, in the same turn
             _pump()
-        self.assertEqual([1], stood, "two resets in one turn ran reselect_sidebar_row %d times" % len(stood))
+        self.assertEqual([1], calls, "two resets in one turn ran reselect_sidebar_row %d times" % len(calls))
 
 
 class MaterialSidebarTest(_AssetSidebarPaths, unittest.TestCase):
@@ -371,11 +371,11 @@ class FileSidebarTest(_HighlightCase, unittest.TestCase):
         self.view.expand(self.folders.index_of(location))
         _pump()
 
-    def stand(self, key=None):
+    def select_row(self, key=None):
         self.click(self.row(self.loc if key is None else key))
 
     def _move_one_file_into(self, folder):
-        self.stand()
+        self.select_row()
         proxy = self.panel.thumblist.model()
         selection = self.panel.thumblist.selectionModel()
         selection.select(proxy.index(0, 0), QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
@@ -397,18 +397,18 @@ class FileSidebarTest(_HighlightCase, unittest.TestCase):
     def test_every_path_leaves_the_highlight_on_the_grids_row(self):
         panel, loc, nested, second = self.panel, self.loc, self.nested, self.second
         self.check("activate on the remembered location", grid=loc)
-        self.check("a click on a location", self.stand, grid=loc)
-        self.check("a click on a subfolder", lambda: self.stand(nested), grid=nested)
+        self.check("a click on a location", self.select_row, grid=loc)
+        self.check("a click on a subfolder", lambda: self.select_row(nested), grid=nested)
 
         def dismissed_over_a_subfolder():
-            self.stand(nested)
+            self.select_row(nested)
             self.menu(self.row(second))
         self.check("on a subfolder, a right press elsewhere dismissed",
                    dismissed_over_a_subfolder, grid=nested)
 
         def right_press_then(*labels):
             def gesture():
-                self.stand()
+                self.select_row()
                 self.menu(self.row(second), *labels)
             return gesture
 
@@ -427,28 +427,28 @@ class FileSidebarTest(_HighlightCase, unittest.TestCase):
         self.check("a file move landing", lambda: self._move_one_file_into(nested), grid=loc)
 
         def undo_from_the_sidebar():
-            self.stand()
+            self.select_row()
             self.menu(self.row(""), "Undo Move")
             self.assertTrue(test_support.pump_until(lambda: not file_moves.mover.busy()), "never moved back")
         self.check("a right press, Undo Move", undo_from_the_sidebar, grid=loc)
 
         def drag_select():
-            self.stand()
+            self.select_row()
             self.drag_select(self.row(loc), self.row(second))
         self.check("a press dragged onto another row", drag_select, grid=second)
 
         def reorder_off_the_row():
-            self.stand()
+            self.select_row()
             self.reorder(self.row(second), self.row(""))
         self.check("a reorder released over All", reorder_off_the_row, grid=second)
 
-        def reorder_taken_back():
-            self.stand()
+        def reorder_cancelled_with_esc():
+            self.select_row()
             self.reorder(self.row(second), self.row(loc), escape=True)
-        self.check("a reorder taken back with Esc", reorder_taken_back, grid=loc)
+        self.check("a reorder taken back with Esc", reorder_cancelled_with_esc, grid=loc)
 
         def star():
-            self.stand()
+            self.select_row()
             panel.cb_favsonly.setChecked(True)
         self.check("the Favourites star", star, grid=loc)
         panel.cb_favsonly.setChecked(False)
@@ -469,14 +469,14 @@ class FileSidebarTest(_HighlightCase, unittest.TestCase):
                    unfolding_then_a_dismissed_menu, grid=later)
 
         def tab_and_back():
-            self.stand(nested)
+            self.select_row(nested)
             panel.section_tabs.setChecked("material")
             _pump()
             panel.section_tabs.setChecked("file")
         self.check("a tab switch and back", tab_and_back, grid=nested)
 
         def remove_another():
-            self.stand()
+            self.select_row()
             self.menu(self.row(added), "Remove")
         self.check("a right press, Remove another location", remove_another, grid=loc)
         self.check("a library switch", self.switch_library)
@@ -489,7 +489,7 @@ class FileSidebarTest(_HighlightCase, unittest.TestCase):
         gone = self.add(made)
 
         def clean_up():
-            self.stand(gone)
+            self.select_row(gone)
             shutil.rmtree(gone)
             with mock.patch.object(hou, "ui", _check_ui("Fix Safe"), create=True):
                 test_support.repair_from_preferences(self, panel)
@@ -500,7 +500,7 @@ class FileSidebarTest(_HighlightCase, unittest.TestCase):
         shutil.rmtree(missing)
 
         def locate_cancelled():
-            self.stand("")
+            self.select_row("")
             with mock.patch.object(hou, "ui", _ui(), create=True):
                 panel.locate_unreadable_folder()
         self.check("the blank's Locate, cancelled", locate_cancelled, grid="")
@@ -508,7 +508,7 @@ class FileSidebarTest(_HighlightCase, unittest.TestCase):
     def test_a_browsed_subfolder_removed_on_disk(self):
         """Its row is removed at the next read:the highlight and the grid move to its location."""
         def removed_then_read():
-            self.stand(self.nested)
+            self.select_row(self.nested)
             shutil.rmtree(self.nested)
             self.folders.refresh_counts()
             self.folders.data(self.folders.index_of(self.loc), COUNT)
@@ -528,7 +528,7 @@ class OnlineSidebarTest(_HighlightCase, unittest.TestCase):
         self.online = self.panel.matx_online_model
         self.addCleanup(setattr, self.online, "_all", self.online._all)
 
-    def land(self, *categories):
+    def fetch_catalogue(self, *categories):
         """A catalogue fetch with one record per category; the shared disk cache is unchanged."""
         online = self.online
         records = [matx_sources.MatxRecord(source=online._source_filter, uid="probe-%s" % name,
@@ -540,10 +540,10 @@ class OnlineSidebarTest(_HighlightCase, unittest.TestCase):
     def test_every_path_leaves_the_highlight_on_the_grids_row(self):
         panel = self.panel
         self.check("entering Online", panel.enter_online_mode, grid="")
-        self.check("a catalogue landing", lambda: self.land("Metal", "Wood"), grid="")
+        self.check("a catalogue landing", lambda: self.fetch_catalogue("Metal", "Wood"), grid="")
         self.check("a click on a category", lambda: self.click(self.row("Metal")), grid="Metal")
         self.check("a catalogue landing that keeps it",
-                   lambda: self.land("Brick", "Metal", "Wood"), grid="Metal")
+                   lambda: self.fetch_catalogue("Brick", "Metal", "Wood"), grid="Metal")
         self.check("a right press, no menu", lambda: self.menu(self.row("Wood")), grid="Metal")
 
         def drag_select():
@@ -557,10 +557,10 @@ class OnlineSidebarTest(_HighlightCase, unittest.TestCase):
             panel.filter_thumb_view()
         self.check("the search box", search, grid="Metal")
 
-        def landing_drops_it():
+        def fetch_without_it():
             self.click(self.row("Wood"))
-            self.land("Brick", "Metal")
-        self.check("a catalogue landing that drops it", landing_drops_it, grid="")
+            self.fetch_catalogue("Brick", "Metal")
+        self.check("a catalogue landing that drops it", fetch_without_it, grid="")
 
         def leave_and_return():
             panel.leave_online_mode()

@@ -61,9 +61,9 @@ MODULE_LAYER = {    # one row per module in core/, helpers/ and the top level
 HOUDINI = {"hou", "husd", "toolutils", "loputils", "voptoolutils", "nodegraphutils",
            "hdefereval", "stateutils", "viewerstate", "soptoolutils", "objecttoolutils"}
 HOUDINI_LIBS = {"pxr", "MaterialX"}    # Houdini's Python libraries, no session needed
-TALK = {"displayMessage", "displayConfirmation", "displayCustomConfirmation", "readInput",
-        "readMultiInput", "selectFile", "selectFromList", "selectFromTree", "selectColor",
-        "selectNode", "selectMultipleNodes", "setStatusMessage"}
+UI_CALLS = {"displayMessage", "displayConfirmation", "displayCustomConfirmation", "readInput",
+            "readMultiInput", "selectFile", "selectFromList", "selectFromTree", "selectColor",
+            "selectNode", "selectMultipleNodes", "setStatusMessage"}
 
 
 def module_files():
@@ -129,7 +129,7 @@ def breaks(modules=None):
                         base + "." + alias.name for alias in node.names
                         if base == "PySide6"]
             elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
-                    and node.func.attr in TALK and layer != "interface":
+                    and node.func.attr in UI_CALLS and layer != "interface":
                 talks[node.func.attr] = talks.get(node.func.attr, 0) + 1
             for dotted in imported:
                 top = dotted.split(".")[0]

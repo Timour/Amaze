@@ -59,7 +59,7 @@ class LiveCurrentIndexTest(unittest.TestCase):
             "the helper returns the clicked cell, and every role "
             "read through it returns None")
 
-    def test_an_index_from_a_previous_model_is_refused(self):
+    def test_an_index_from_a_previous_model_returns_none(self):
         """An index made by the PREVIOUS model returns None."""
         view, _proxy, _source = _proxied_view(["All", "Metal"])
         view.setCurrentIndex(view.model().index(1, 0))
@@ -74,7 +74,7 @@ class LiveCurrentIndexTest(unittest.TestCase):
             "an index belonging to a model the view no longer shows was "
             "accepted")
 
-    def test_no_view_model_or_selection_is_refused(self):
+    def test_no_view_model_or_selection_returns_none(self):
         unselected, _proxy, _source = _proxied_view(["All", "Metal"])
         for case, view in (("no view - cat_list before setup()", None),
                            ("no model", QtWidgets.QListView()),

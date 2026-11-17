@@ -71,7 +71,7 @@ def uniform(image):
 OVERSIZED = (9000, 9000)  # 324MB decoded - big enough that the decode passes Qt's default 256MB limit
 
 
-def qt_refuses(target, declared=OVERSIZED, only_first=False):
+def oversized_for_qt(target, declared=OVERSIZED, only_first=False):
     """Make the Qt read refuse one file as oversized; `only_first` hits the first non-target file."""
     real = conversion._read_qt
     state = {"chosen": None}
@@ -138,13 +138,13 @@ class _StubProcess:
         self.deleted = True
 
 
-class TheGraveyardBoundsTheStall(unittest.TestCase):
+class AbandoningAChildLimitsTheWait(unittest.TestCase):
     """A child outliving SIGKILL costs half a second, not thirty: it waits in `_ABANDONED`."""
 
     def tearDown(self):
         conversion._ABANDONED.clear()
 
-    def test_a_child_that_dies_in_time_is_simply_reaped(self):
+    def test_a_child_that_exits_in_time_is_simply_reaped(self):
         for child, killed in ((_StubProcess(reaps=True), True),
                               (_StubProcess(running=False), False)):
             with self.subTest(killed=killed):
@@ -165,16 +165,16 @@ class TheGraveyardBoundsTheStall(unittest.TestCase):
         self.assertNotIn(child, conversion._ABANDONED)
         self.assertTrue(child.deleted)
 
-    def test_a_child_dying_during_the_handover_is_still_collected(self):
+    def test_a_child_exiting_during_the_handover_is_still_collected(self):
         child = _StubProcess(reaps=False)
         original_wait = child.waitForFinished  # exits before the post-connect check: `finished` was emitted and is not emitted again
 
-        def wait_then_die(ms):
+        def wait_then_exit(ms):
             result = original_wait(ms)
             child._running = False
             return result
 
-        child.waitForFinished = wait_then_die
+        child.waitForFinished = wait_then_exit
         self.assertFalse(conversion._reap_or_abandon(child))
         self.assertNotIn(child, conversion._ABANDONED)
         self.assertTrue(child.deleted)
@@ -225,19 +225,19 @@ def _sigkill_deferred():
                              lambda self, msecs=30000: False)
 
 
-def _parked_since(before) -> list:
+def _abandoned_since(before) -> list:
     return [process for process in conversion._ABANDONED if process not in before]
 
 
-def _collect(parked, seconds=5.0) -> list:
-    """Process events until `parked` leave `_ABANDONED`; returns those left, removed unawaited."""
+def _collect(children, seconds=5.0) -> list:
+    """Process events until `children` leave `_ABANDONED`; returns those left, removed unawaited."""
     import time
     deadline = time.monotonic() + seconds
-    while (any(p in conversion._ABANDONED for p in parked)
+    while (any(p in conversion._ABANDONED for p in children)
            and time.monotonic() < deadline):
         _app.processEvents()
         time.sleep(0.01)
-    left = [p for p in parked if p in conversion._ABANDONED]
+    left = [p for p in children if p in conversion._ABANDONED]
     for process in left:    # its exit was not detected; once marked, its destructor does not wait 30 s
         process.mark_reaped_elsewhere()
         conversion._ABANDONED.remove(process)
@@ -245,10 +245,10 @@ def _collect(parked, seconds=5.0) -> list:
 
 
 @unittest.skipUnless(os.name == "posix", "the stand-in children are /bin/sleep and /bin/sh")
-class AChildParkedByAWorkerIsStillCollected(unittest.TestCase):
+class AChildAbandonedByAWorkerIsStillCollected(unittest.TestCase):
     """A worker has no event loop after run(), so the main loop reaps its last abandoned child."""
 
-    def test_a_child_parked_from_a_worker_thread_is_reaped_on_the_main_loop(self):
+    def test_a_child_abandoned_from_a_worker_thread_is_reaped_on_the_main_loop(self):
         before = list(conversion._ABANDONED)
 
         class Worker(QtCore.QThread):
@@ -259,9 +259,9 @@ class AChildParkedByAWorkerIsStillCollected(unittest.TestCase):
             worker = Worker()
             worker.start()
             self.assertTrue(worker.wait(10000), "the worker thread did not finish within 10 s")
-        parked = _parked_since(before)
-        self.assertEqual(1, len(parked), "premise: the killed child was not added to `_ABANDONED`")
-        self.assertEqual([], _collect(parked),
+        abandoned = _abandoned_since(before)
+        self.assertEqual(1, len(abandoned), "premise: the killed child was not added to `_ABANDONED`")
+        self.assertEqual([], _collect(abandoned),
                          "a child abandoned by a finished worker stays in `_ABANDONED`")
 
 
@@ -277,7 +277,7 @@ class AStuckChildEndsItsFilesChain(unittest.TestCase):
             handle.write(b"not a picture Qt can read")
         self.started = []
         before = list(conversion._ABANDONED)
-        self.addCleanup(lambda: _collect(_parked_since(before)))
+        self.addCleanup(lambda: _collect(_abandoned_since(before)))
 
     def _stuck(self, source, out_path, ctx):
         self.started.append("stuck")
@@ -307,7 +307,7 @@ class AStuckChildEndsItsFilesChain(unittest.TestCase):
                          "a converter that hung on a readable file kept the next one from running")
         self.assertNotEqual(conversion.REASON_STALLED, result.reason)
 
-    def test_the_timeout_and_graveyard_records_name_the_file(self):
+    def test_the_timeout_and_abandoned_records_name_the_file(self):
         adapters = (("stuck", self._stuck),)
         with test_support.captured_log() as log, _sigkill_deferred():
             with mock.patch.object(conversion, "_FORMAT_ADAPTERS", adapters):
@@ -407,7 +407,7 @@ class SipsGetsOnlyTheFormatsItReads(unittest.TestCase):
         return seen
 
     @unittest.skipUnless(hostos.is_macos(), "sips is macOS-only")
-    def test_a_measured_header_reaches_sips_first(self):
+    def test_a_measured_header_is_passed_to_sips_first(self):
         seen = self._programs(self._file("broken.png", b"\x89PNG\r\n\x1a\n"))
         self.assertTrue(seen, "premise: no converter ran")
         self.assertEqual("sips", seen[0], "sips was not the first converter: %s" % seen)
@@ -491,7 +491,7 @@ class AHoudiniTextureGetsHoudinisConverters(unittest.TestCase):
         rat = self._rat()
         QtGui.QImageReader.setAllocationLimit(1)    # 1MB: 1024x512 decodes to 2.1MB, so FIT
         seen = []
-        with qt_refuses(rat, declared=(1024, 512)):
+        with oversized_for_qt(rat, declared=(1024, 512)):
             result = self._convert(rat, seen)
         self.assertTrue(result, "an oversized .rat got no thumbnail: %s" % (result.attempts,))
         self.assertNotIn("sips", seen, "sips was started on a .rat")
@@ -499,7 +499,7 @@ class AHoudiniTextureGetsHoudinisConverters(unittest.TestCase):
         self.assertEqual((256, 128), (result.image.width(), result.image.height()))
 
     @unittest.skipUnless(hostos.is_macos(), "sips is macOS-only")
-    def test_a_tx_sips_refuses_reaches_iconvert(self):
+    def test_a_tx_sips_fails_on_is_passed_to_iconvert(self):
         seen = []
         result = self._convert(self._tx(), seen, pillow=False,
                                sips_answer=(False, "exit 13: Error 13"))
@@ -508,7 +508,7 @@ class AHoudiniTextureGetsHoudinisConverters(unittest.TestCase):
         self.assertEqual("iconvert", result.via)
 
     @unittest.skipUnless(hostos.is_macos(), "sips is macOS-only")
-    def test_a_tx_whose_sips_hangs_on_a_readable_file_reaches_iconvert(self):
+    def test_a_tx_whose_sips_hangs_on_a_readable_file_is_passed_to_iconvert(self):
         seen = []
         result = self._convert(self._tx(), seen, pillow=False,
                                sips_answer=(False, conversion.ABANDONED))
@@ -547,7 +547,7 @@ class ConversionCase(unittest.TestCase):
         return conversion.convert_image(path, size, **kw)
 
 
-class TheDecodeFitSplit(ConversionCase):
+class TheFormatAndFitRoutes(ConversionCase):
 
     def test_a_radiance_hdr_keeps_its_picture(self):
         """A Radiance .hdr keeps its picture, kept so by both the FORMAT/FIT split and `_uniform`."""
@@ -599,7 +599,7 @@ class TheDecodeFitSplit(ConversionCase):
             seen.append((os.path.basename(program), list(args)))
             return real(program, args, **kw)
 
-        with qt_refuses(png):
+        with oversized_for_qt(png):
             with mock.patch.object(conversion, "_run_process", spy):
                 result = self.convert(png)
 
@@ -625,12 +625,12 @@ class TheDecodeFitSplit(ConversionCase):
                          "every huge decodable file wait out its "
                          "timeout first")
 
-    def test_a_foreign_format_that_is_ALSO_oversized_gets_both_halves(self):
+    def test_a_foreign_format_that_is_ALSO_oversized_goes_through_both_routes(self):
         """A FORMAT temp too big for Qt is measured by the same rule and passed to the FIT route."""
         if not hostos.is_macos():
             self.skipTest("sips is macOS-only")
         hdr = write_radiance_hdr(self.path("big_sky.hdr"), 1024, 512)  # decodes to 2.1MB, past the 1MB limit below
-        with qt_refuses(hdr, only_first=True):  # Qt reads no Radiance; only the converted temp is faked as oversized
+        with oversized_for_qt(hdr, only_first=True):  # Qt reads no Radiance; only the converted temp is faked as oversized
             result = self.convert(hdr)
         self.assertTrue(
             result, "an oversized foreign format got nothing: %s"
@@ -658,7 +658,7 @@ def _adapter_writing_a_picture():
     return produce
 
 
-class TheEngineVerifiesItsOwnOutput(ConversionCase):
+class TheConversionVerifiesItsOwnOutput(ConversionCase):
 
     def setUp(self):
         super().setUp()
@@ -666,7 +666,7 @@ class TheEngineVerifiesItsOwnOutput(ConversionCase):
         with open(self.foreign, "wb") as fh:
             fh.write(b"not an image Qt knows")
 
-    def test_a_converter_that_returns_a_blank_is_not_believed(self):
+    def test_a_converter_that_writes_a_blank_picture_is_rejected(self):
         """The uniform check: exit 0 with a blank picture does not end the search."""
         with mock.patch.object(conversion, "_FORMAT_ADAPTERS", (
                 ("liar", _adapter_writing("#000000")),
@@ -700,7 +700,7 @@ class TheEngineVerifiesItsOwnOutput(ConversionCase):
             "returned without recording that it is one flat colour, so "
             "the log cannot tell this from a normal conversion")
 
-    def test_a_flat_image_Qt_ITSELF_read_is_not_second_guessed(self):
+    def test_a_flat_image_Qt_ITSELF_read_is_accepted(self):
         """Only converter output is checked: a flat image Qt read itself is accepted as it is."""
         flat = write_png(self.path("flat.png"), 300, 300, flat="#101010")
         calls = []
@@ -716,7 +716,7 @@ class TheEngineVerifiesItsOwnOutput(ConversionCase):
         self.assertEqual([], calls, "a converter was run for a flat image "
                                     "Qt had already read: %s" % calls)
 
-    def test_an_unreadable_output_is_refused_and_the_order_continues(self):
+    def test_an_unreadable_output_is_rejected_and_the_next_converter_runs(self):
         def writes_rubbish(source, out_path, ctx):
             with open(out_path, "wb") as fh:
                 fh.write(b"\x89PNG\r\n\x1a\n" + b"\x00" * 20)
@@ -735,9 +735,9 @@ class TheEngineVerifiesItsOwnOutput(ConversionCase):
                 self.assertIn("unreadable", dict(result.attempts)["broken"])
 
 
-class ItAnswersWithAReasonNeverABareNone(ConversionCase):
+class ItReturnsAReasonNeverABareNone(ConversionCase):
 
-    def test_a_cancelled_conversion_says_cancelled(self):
+    def test_a_cancelled_conversion_returns_reason_cancelled(self):
         """Browsing away is not a failure: it decides whether the key is retried or marked missing."""
         foreign = self.path("thing.xyz")
         with open(foreign, "wb") as fh:
@@ -746,7 +746,7 @@ class ItAnswersWithAReasonNeverABareNone(ConversionCase):
         self.assertFalse(result)
         self.assertEqual(conversion.REASON_CANCELLED, result.reason)
 
-    def test_a_damaged_file_says_unreadable(self):
+    def test_a_damaged_file_returns_reason_unreadable(self):
         broken = self.path("truncated.png")
         with open(broken, "wb") as fh:
             fh.write(b"\x89PNG\r\n\x1a\n" + b"\x00" * 40)
@@ -754,10 +754,10 @@ class ItAnswersWithAReasonNeverABareNone(ConversionCase):
         self.assertFalse(result)
         self.assertEqual(conversion.REASON_UNREADABLE, result.reason)
 
-    def test_an_image_past_the_ceiling_says_too_large(self):
+    def test_an_image_past_the_ceiling_returns_reason_too_large(self):
         png = write_png(self.path("enormous.png"), 1200, 1200)
         called = []
-        with qt_refuses(png):
+        with oversized_for_qt(png):
             with mock.patch.object(conversion, "MAX_RESCUE_MEGABYTES", 1):
                 with mock.patch.object(
                         conversion, "_run_process",
@@ -776,7 +776,7 @@ class ItAnswersWithAReasonNeverABareNone(ConversionCase):
             conversion.MAX_RESCUE_MEGABYTES, 268,
             "the shipped ceiling is below an 8K displacement map")
         png = write_png(self.path("ordinary.png"), 1200, 1200)
-        with qt_refuses(png):
+        with oversized_for_qt(png):
             result = self.convert(png)
         self.assertTrue(result, "an ordinary oversized image was declined "
                                 "- `MAX_RESCUE_MEGABYTES` is set too low")
@@ -808,7 +808,7 @@ class AnEXRIsMeasuredFromItsOwnHeader(ConversionCase):
         self.assertEqual([], started, "a converter was started on an EXR past the ceiling")
         self.assertEqual(conversion.REASON_TOO_LARGE, result.reason)
 
-    def test_an_ordinary_exr_still_reaches_the_converters(self):
+    def test_an_ordinary_exr_is_still_passed_to_the_converters(self):
         started, result = self._converters_started(4096, 2048)
         self.assertEqual(1, len(started), "an EXR within the ceiling was refused")
         self.assertEqual(conversion.REASON_UNREADABLE, result.reason)
@@ -816,7 +816,7 @@ class AnEXRIsMeasuredFromItsOwnHeader(ConversionCase):
 
 class TheSizeContract(ConversionCase):
 
-    def test_nothing_leaves_the_engine_larger_than_asked_for(self):
+    def test_no_output_is_larger_than_asked_for(self):
         """A FORMAT temp is full-size; `convert_image` alone scales it, for every adapter."""
         with mock.patch.object(conversion, "_FORMAT_ADAPTERS", (
                 ("big", lambda src, out, ctx: (
@@ -846,7 +846,7 @@ class TheSizeContract(ConversionCase):
             "is not being applied where the scaled read cannot")
 
 
-class TheTempFileLifetimeIsTheEngines(ConversionCase):
+class TheConversionRemovesItsTempFiles(ConversionCase):
 
     def test_every_scratch_file_is_removed(self):
         """`convert_image` removes every scratch file, for every converter."""
@@ -881,7 +881,7 @@ class TheTempFileLifetimeIsTheEngines(ConversionCase):
             return True, ""
 
         png = write_png(self.path("big.png"), 1200, 1200)
-        with qt_refuses(None):  # everything refused, temps included: the only way a re-entry is possible
+        with oversized_for_qt(None):  # everything refused, temps included: the only way a re-entry is possible
             with mock.patch.object(conversion, "_FIT_ADAPTERS",
                                    (("looper", counts),)):
                 self.convert(png)
@@ -891,7 +891,7 @@ class TheTempFileLifetimeIsTheEngines(ConversionCase):
             "through it, which is a loop" % len(calls))
 
 
-class TheCancelCallbackReachesEveryConverter(ConversionCase):
+class TheCancelCallbackIsPassedToEveryConverter(ConversionCase):
     """Without the callback, terminate() orphans the child and skips the temp cleanup."""
 
     def test_the_subprocesses_receive_it(self):
@@ -924,7 +924,7 @@ class TheCancelCallbackReachesEveryConverter(ConversionCase):
                         "return the caller's value: %s" % answers)
 
 
-class TwoPillowConversionsLeaveTheBombGuardAlone(ConversionCase):
+class TwoPillowConversionsRestoreThePixelLimit(ConversionCase):
     """Pillow's `MAX_IMAGE_PIXELS` is process-global and up to eight converter threads raise it."""
 
     def _convert_in(self, name, source):
@@ -986,7 +986,7 @@ class OneLogLine(ConversionCase):
         self.assertEqual([], seen, "an ordinary PNG wrote to the log: %s"
                                    % seen)
 
-    def test_a_fallback_says_who_answered_and_why_the_first_did_not(self):
+    def test_a_fallback_logs_which_converter_succeeded_and_why_the_first_failed(self):
         with mock.patch.object(conversion, "_FORMAT_ADAPTERS", (
                 ("liar", _adapter_writing("#000000")),
                 ("honest", _adapter_writing_a_picture()),
@@ -1003,7 +1003,7 @@ class OneLogLine(ConversionCase):
     def test_the_line_names_the_NEED_that_was_measured(self):
         """The line names the measured need, format or size, never one reconstructed afterwards."""
         png = write_png(self.path("big.png"), 1200, 1200)
-        with qt_refuses(png):
+        with oversized_for_qt(png):
             result, seen = self.events(png)
         if not result:
             self.skipTest("no out-of-process resampler on this machine")
@@ -1021,7 +1021,7 @@ class OneLogLine(ConversionCase):
         self.assertEqual(conversion.FORMAT, result.need)
         self.assertEqual(conversion.FORMAT, seen[0][1].get("need"))
 
-    def test_it_says_WHICH_failure_this_was_for_a_damaged_file(self):
+    def test_it_logs_WHICH_failure_this_was_for_a_damaged_file(self):
         """A corrupt file is not a big file: the log says damaged, not too big for Qt."""
         broken = self.path("truncated.png")
         with open(broken, "wb") as fh:
@@ -1034,10 +1034,10 @@ class OneLogLine(ConversionCase):
             "allocation limit", whys,
             "a damaged file was logged as an allocation-limit failure: %s" % whys)
 
-    def test_and_says_the_allocation_limit_when_that_IS_the_cause(self):
+    def test_it_logs_the_allocation_limit_when_that_IS_the_cause(self):
         """The other half: when the limit is the cause, the line says so."""
         png = write_png(self.path("huge.png"), 1200, 1200)
-        with qt_refuses(png):
+        with oversized_for_qt(png):
             with mock.patch.object(conversion, "_FIT_ADAPTERS", ()):
                 _result, seen = self.events(png)
         whys = " ".join(str(k.get("why", "")) for _a, k in seen)
@@ -1045,7 +1045,7 @@ class OneLogLine(ConversionCase):
                       "an oversized file was not reported as oversized: %s"
                       % whys)
 
-    def test_the_trail_stays_one_readable_line(self):
+    def test_the_log_record_stays_one_readable_line(self):
         """A converter's stderr can be four lines of libpng output."""
         def noisy(source, out_path, ctx):
             return False, "libpng error\n" * 60
@@ -1087,7 +1087,7 @@ class TheUniformCheck(ConversionCase):
 class TheWatchdogNeverSignalsOnWindows(unittest.TestCase):
     """`os.kill(pid, 0)` probes liveness on POSIX but terminates on Windows ▸r/os-kill-windows"""
 
-    def test_the_source_gates_the_signal_on_the_platform(self):
+    def test_the_source_checks_the_platform_before_the_signal(self):
         source = inspect.getsource(conversion)
         head = source[:source.index("os.kill(pid, 0)")]
         gate = head.rindex("hostos.is_windows()")

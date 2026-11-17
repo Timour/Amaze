@@ -36,7 +36,7 @@ def _categories(testcase, entries):
 class SortByNameTest(unittest.TestCase):
     """The one-off Sort by name: everything below All is sorted by name and saved; not a mode."""
 
-    def test_the_categories_land_alphabetically_below_All(self):
+    def test_the_categories_are_sorted_alphabetically_below_All(self):
         model = _categories(self, ["_All", "b", "Zed", "a"])
         with mock.patch.object(model, "save") as save:
             model.sort_categories()
@@ -50,7 +50,7 @@ class SortByNameTest(unittest.TestCase):
         self.assertEqual(["_All", "a", "b"], model._categories)
         save.assert_not_called()
 
-    def test_All_keeps_row_zero_even_under_a_name_that_beats_it(self):
+    def test_All_keeps_row_zero_even_under_a_name_that_sorts_before_it(self):
         """The head/rest split: `abc` sorts before `All`, yet All must keep row 0."""
         model = _categories(self, ["_All", "abc", "b"])
         with mock.patch.object(model, "save"):
@@ -72,7 +72,7 @@ class SortByNameTest(unittest.TestCase):
         self.assertEqual(["_All", 3, "b"], model._categories)
 
 
-class TheSortVerbKeepsTheSidebarStandingSomewhere(unittest.TestCase):
+class TheSortActionRestoresTheCurrentSidebarRow(unittest.TestCase):
     """Sort by name resets the model, clearing the selection; the verb restores the current row."""
 
     @classmethod
@@ -85,13 +85,13 @@ class TheSortVerbKeepsTheSidebarStandingSomewhere(unittest.TestCase):
         self.assertIsNotNone(source, "no Categories behind the sidebar")
         return section, source
 
-    def test_the_menu_verb_sorts_through_the_live_model(self):
+    def test_the_menu_action_sorts_through_the_live_model(self):
         section, source = self._section()
         source._categories[:] = ["_All", "b", "a"]
         section.menu_sort_categories((), None)
         self.assertEqual(["_All", "a", "b"], source._categories)
 
-    def test_the_row_you_were_standing_on_stays_under_you(self):
+    def test_the_current_row_stays_current_after_the_sort(self):
         section, source = self._section()
         source.beginResetModel()    # replacing every row needs a reset pair ▸r/model-contracts
         try:
@@ -123,7 +123,7 @@ class TheSortVerbKeepsTheSidebarStandingSomewhere(unittest.TestCase):
             "selected before")
 
 
-class DeletingTheLastOfACategoryStandsTheSidebarOnAll(unittest.TestCase):
+class DeletingTheLastOfACategorySelectsAll(unittest.TestCase):
     """Deleting the last asset of a hidden-when-empty category selects All in the sidebar."""
 
     @classmethod
@@ -131,7 +131,7 @@ class DeletingTheLastOfACategoryStandsTheSidebarOnAll(unittest.TestCase):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
         cls.panel._on_tab_toggled("material", True)
 
-    def test_the_sidebar_stands_on_all_and_the_grid_shows_everything(self):
+    def test_the_sidebar_selects_all_and_the_grid_shows_everything(self):
         panel = self.panel
         section = panel.sections["material"]
         proxy, source = section._sidebar_categories()
@@ -167,7 +167,7 @@ class DeletingTheLastOfACategoryStandsTheSidebarOnAll(unittest.TestCase):
 class MoveCategoryTest(unittest.TestCase):
     """One row-move on the shared model, with All immovable."""
 
-    def test_a_move_down_lands_after_its_target_and_up_lands_on_it(self):
+    def test_a_move_down_goes_after_its_target_and_up_takes_its_place(self):
         for source, target, order in ((1, 3, ["_All", "b", "c", "a"]),
                                       (3, 1, ["_All", "c", "a", "b"])):
             with self.subTest(source=source, target=target):
@@ -190,7 +190,7 @@ class MoveCategoryTest(unittest.TestCase):
         self.assertFalse(model.move_category(2, 0), "a row moved above All")
         self.assertEqual(["_All", "a", "b"], model._categories)
 
-    def test_a_no_op_and_out_of_range_are_refused_silently(self):
+    def test_a_no_op_and_out_of_range_return_false_and_emit_nothing(self):
         model = _categories(self, ["_All", "a", "b"])
         seen = []
         model.rowsAboutToBeMoved.connect(lambda *a: seen.append("about"))
@@ -208,7 +208,7 @@ class MoveCategoryTest(unittest.TestCase):
         self.assertIs(held, model._categories, "the move rebound the list")
         save.assert_not_called()
 
-    def test_the_saved_order_survives_a_reload(self):
+    def test_the_saved_order_is_kept_after_a_reload(self):
         """What a save writes is what the next session shows."""
         model = _categories(self, ["_All", "a", "b", "c"])
         self.assertTrue(model.move_category(1, 3))
@@ -371,10 +371,10 @@ class _RecordingSection:
         self.proxy = proxy
         self.commits = 0
         self.moves = []
-        self.stood = 0
+        self.reselects = 0
 
     def reselect_sidebar_row(self):
-        self.stood += 1
+        self.reselects += 1
 
     def sidebar_movable(self, index):
         return index.isValid() and index.row() > 0
@@ -493,7 +493,7 @@ class HoldGestureTest(unittest.TestCase):
         self.assertFalse(controller.reordering())
         self.assertEqual(1, section.commits)
 
-    def test_nothing_lands_above_all(self):
+    def test_nothing_moves_above_all(self):
         model, _proxy, view, section, controller = self._harness()
         self._press(view, controller, 2)
         controller._hold_fired()
@@ -516,7 +516,8 @@ class HoldGestureTest(unittest.TestCase):
         controller.eventFilter(view, esc)
         self.assertFalse(controller.reordering())
         self.assertEqual(["_All", "a", "b", "c"], model._categories)
-        self.assertEqual(1, section.stood, "`reselect_sidebar_row` was not called to restore the cleared highlight")
+        self.assertEqual(1, section.reselects,
+                         "`reselect_sidebar_row` was not called to restore the cleared highlight")
         self._release(view, controller, self._row_center(view, 3))
         self.assertEqual(0, section.commits)
 
@@ -528,7 +529,7 @@ class HoldGestureTest(unittest.TestCase):
         self._release(view, controller, pos)
         self.assertEqual(0, section.commits)
 
-    def test_a_reset_returns_every_field_to_its_born_state(self):
+    def test_a_reset_returns_every_field_to_its_initial_state(self):
         """The initial state is written ONCE: a field that `_reset` misses fails here."""
         _model, _proxy, view, _section, controller = self._harness()
         born = dict(vars(controller))
@@ -538,7 +539,7 @@ class HoldGestureTest(unittest.TestCase):
         controller._reset()
         self.assertEqual(born, dict(vars(controller)))
 
-    def test_a_reset_lets_the_closed_hand_cursor_go(self):
+    def test_a_reset_unsets_the_closed_hand_cursor(self):
         _model, _proxy, view, _section, controller = self._harness()
         self._press(view, controller, 1)
         controller._hold_fired()
@@ -701,7 +702,7 @@ class FolderOrderTest(unittest.TestCase):
                          [model.index(row, 0).data() for row in (2, 3, 4)])
         self.assertFalse(model.sort_folders(), "an already sorted list was sorted again")
 
-    def test_the_file_menu_verb_sorts_and_saves_once(self):
+    def test_the_file_menu_action_sorts_and_saves_once(self):
         from amaze.core import file_library, locations
         from amaze.panel import sections
         base = self._base()

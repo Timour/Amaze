@@ -128,7 +128,7 @@ class TheOctaneCheckFollowsTheHost(unittest.TestCase):
             self.assertFalse(material_converter._octane_type_available())
 
 
-class WhatOctaneIgnoresIsJudgedByTheReadersDefaultTest(unittest.TestCase):
+class WhatOctaneIgnoresIsComparedWithTheReadersDefaultTest(unittest.TestCase):
     """`report_ignored` names an input only once it is off its default; no plugin needed."""
 
     def test_a_moved_input_is_named_and_a_default_one_is_not(self):
@@ -338,7 +338,7 @@ class TheOctaneThumbnailIsTheMaterialXStage(unittest.TestCase):
         self.addCleanup(test_support.drop_node, self.scaffold["net"])
         self.settings = self.scaffold["render_props"]
 
-    def test_the_stage_carries_octanes_settings(self):
+    def test_the_stage_has_octanes_settings(self):
         settings = self.settings
         with self.subTest("rendered through Octane's own delegate"):
             self.assertTrue(settings.type().name().startswith("otoy::Octane"))

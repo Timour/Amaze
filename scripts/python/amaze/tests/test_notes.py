@@ -127,7 +127,7 @@ class StoreTest(unittest.TestCase):
                            "done": False}], _bare(items))
         self.assertTrue(items[0]["id"], "a kept item has no id")
 
-    def test_an_unreadable_file_latches_writes_off(self):
+    def test_an_unreadable_file_blocks_all_writes(self):
         """An unreadable file blocks all writes; otherwise a save would erase every note."""
         with open(self._path(), "w", encoding="utf-8") as handle:
             handle.write("{corrupt")
@@ -140,7 +140,7 @@ class StoreTest(unittest.TestCase):
             self.assertEqual("{corrupt", handle.read(),
                              "the unreadable file was overwritten")
 
-    def test_another_sessions_keys_are_adopted_not_clobbered(self):
+    def test_another_machines_notes_are_kept_when_this_one_saves(self):
         """Two machines, one library: the other machine's note is kept when this one saves."""
         mine = notes.note_key("material", "1")
         notes.set_note(self.prefs, mine,
@@ -361,7 +361,7 @@ class PanelWidgetTest(unittest.TestCase):
             "a to-do has a background again - the design is "
             "page-coloured with padding only")
 
-    def test_the_designed_colours_ride_the_palettes(self):
+    def test_the_designed_colours_are_set_on_the_widget_palettes(self):
         """Header and page colours are set on the widget palettes, with autofill on."""
         from amaze.panel import notes_panel as module
         header = self.widget.header_widget
@@ -413,7 +413,7 @@ class PanelWidgetTest(unittest.TestCase):
                              "the glyph reaches below its line - the "
                              "padding is double-counted again")
 
-    def test_the_cursor_says_button_over_the_checkbox(self):
+    def test_the_cursor_is_a_pointing_hand_over_the_checkbox(self):
         """Pointing hand over the glyph zone, I-beam over the text."""
         from PySide6 import QtGui as G
         key = self._subject("23")
@@ -448,7 +448,7 @@ class PanelWidgetTest(unittest.TestCase):
                          edit.viewport().cursor().shape(),
                          "the pointer stays a hand over plain text")
 
-    def test_no_block_rides_a_qt_list(self):
+    def test_no_block_is_a_qtextlist_item(self):
         """No block may be a QTextList item - the growing indent bug returns."""
         key = self._subject("18")
         notes.set_note(self.prefs, key, [
@@ -507,7 +507,7 @@ class PanelWidgetTest(unittest.TestCase):
             notes.note_for(self.prefs, first)["items"][0]["text"],
             "switching subjects lost the pending edit")
 
-    def test_clear_subject_shows_the_ghost_page(self):
+    def test_clear_subject_shows_the_same_page_dimmed(self):
         """No selection shows the same page dimmed, never a new layout."""
         self._subject("13")
         self.assertTrue(self.widget.add_button.isEnabled())
@@ -554,14 +554,14 @@ class PanelWidgetTest(unittest.TestCase):
                          "disappear at the gap instead of scrolling under "
                          "the header")
 
-    def test_a_save_announces_its_key(self):
+    def test_a_save_emits_changed_with_its_key(self):
         key = self._subject("14")
-        heard = []
-        self.widget.changed.connect(heard.append)
+        emitted = []
+        self.widget.changed.connect(emitted.append)
         cursor = self.widget.text_edit.textCursor()
         cursor.insertText("hello")
         self.widget.flush()
-        self.assertEqual([key], heard,
+        self.assertEqual([key], emitted,
                          "`changed` was not emitted, so the grid shows no new badge")
 
 
@@ -572,7 +572,7 @@ class ModelRoleTest(unittest.TestCase):
         library_db.release()
         self.addCleanup(library_db.release)
 
-    def test_file_rows_answer_by_path(self):
+    def test_file_rows_report_NotesRole_by_path(self):
         from amaze.core import file_library
         prefs = _Prefs(self)
         prefs.file_folders = []
@@ -600,7 +600,7 @@ class ModelRoleTest(unittest.TestCase):
         self.assertTrue(model.data(index, model.NotesRole),
                         "NotesRole is False for a file with a note")
 
-    def test_asset_rows_answer_by_section_and_id(self):
+    def test_asset_rows_report_NotesRole_by_section_and_id(self):
         from amaze.actions import nodes as node_actions
         from amaze.core import cop_library
         test_support.reset_database_singletons()
@@ -699,7 +699,7 @@ class GradientNotesTest(unittest.TestCase):
                          "notes store - a seed that drops it loses the text "
                          "silently, since the row no longer holds it")
 
-    def test_every_gradient_is_born_with_identity(self):
+    def test_every_gradient_has_a_uid_after_construction(self):
         """After construction every entry has a uid and a reload keeps it."""
         uids = [self.model.tile_key(row)
                 for row in range(self.model.rowCount())]
@@ -716,7 +716,7 @@ class GradientNotesTest(unittest.TestCase):
                          "the uid changed on reload - "
                          "notes would lose their gradient")
 
-    def test_a_saved_gradient_carries_identity_at_birth(self):
+    def test_a_saved_gradient_has_a_uid_when_added(self):
         self.model.add_user_gradient(
             "BirthTest", "", {"values": [[0.1, 0.2, 0.3]],
                               "keys": [0.0], "bases": ["Constant"]})
@@ -743,7 +743,7 @@ class GradientNotesTest(unittest.TestCase):
         self.assertTrue(self.model.data(index, self.model.NotesRole),
                         "NotesRole is False for a gradient with a note")
 
-    def test_an_unstamped_gradient_reads_no_note_without_saving(self):
+    def test_a_gradient_without_a_uid_reads_no_note_without_saving(self):
         """data() runs in painting: no uid gives no note, and no uid is assigned, as that saves."""
         row = self.model.rowCount() - 1
         self.model._assets[row]._mat_id = ""  # no public method leaves this state (creation and load assign a uid); the test pins that
@@ -817,7 +817,7 @@ class PanelWiringTest(unittest.TestCase):
             "keyed on a colour this art does not contain, so it is "
             "doing nothing")
 
-    def test_the_pane_wears_the_category_lists_look(self):
+    def test_the_pane_uses_the_category_lists_style(self):
         """Font and text colour are COPIED from the category list."""
         panel = self.panel
         original = QtGui.QFont(panel.cat_list.font())  # a distinctive size: headless defaults are equal, so comparing them proves nothing
@@ -853,7 +853,7 @@ class PanelWiringTest(unittest.TestCase):
             self.panel.notes_panel.maximumWidth(), theme.ui_px(1000),
             "a maximum width was set - 450 is the LAUNCH width only")
 
-    def test_a_drag_remembers_and_the_pane_asks_for_it_back(self):
+    def test_a_splitter_drag_is_recorded_and_returned_by_sizeHint(self):
         """A splitter drag records the width; sizeHint then returns it."""
         panel = self.panel
         panel.toggle_notes_panel()
@@ -1005,7 +1005,7 @@ class VersionsBadgeHoverTest(unittest.TestCase):
         self._model = model                 # keep it alive
         return model.index(0, 0)
 
-    def test_the_badge_answers_only_inside_itself(self):
+    def test_button_badge_at_is_true_only_inside_the_badge(self):
         delegate = self._delegate()
         index = self._index(3)
         rect = QtCore.QRect(0, 0, 120, 140)
@@ -1022,7 +1022,7 @@ class VersionsBadgeHoverTest(unittest.TestCase):
             delegate.button_badge_at(single, rect, badge.center()),
             "an asset with one version offers a badge to hover")
 
-    def test_hover_swaps_the_art_the_PAINTER_lays_down(self):
+    def test_hover_changes_the_art_the_PAINTER_draws(self):
         """Compare what is PAINTED - the flag test stayed green while the painter kept the base art."""
         delegate = self._delegate()
         index = self._index(3)
@@ -1051,7 +1051,7 @@ class VersionsBadgeHoverTest(unittest.TestCase):
             "versions", QtCore.QModelIndex()))
         self.assertFalse(delegate._is_button_hovered("versions", index))
 
-    def test_the_tooltip_says_what_a_click_does(self):
+    def test_the_tooltip_names_what_a_click_does(self):
         """Each button's tooltip names its action; the favourite's names what a click does now."""
         from amaze import tooltips
         from amaze.helpers import ui_helpers
@@ -1138,7 +1138,7 @@ class StarButtonPaintTest(unittest.TestCase):
                             "favourited and not paint the same star")
 
 
-class AnUndoNeverEatsALoadedNote(unittest.TestCase):
+class AnUndoNeverRemovesALoadedNote(unittest.TestCase):
     """Loading a note is not an edit and stays off the undo stack. ▸r/programmatic-load-is-undoable"""
 
     def setUp(self):
@@ -1213,7 +1213,7 @@ class APictureIsATHIRDItemType(unittest.TestCase):
         self.assertEqual(src, back[1]["src"],
                          "the picture's `src` changed in the round trip")
 
-    def test_the_item_carries_a_fallback_for_builds_without_pictures(self):
+    def test_the_item_holds_a_fallback_for_builds_without_pictures(self):
         """Older builds read unknown types as text, so the item has a text too. ▸p/comment-images"""
         src = self._a_picture_in_the_library("holiday.png")
         self.edit.load_items([{"t": "image", "src": src}])
@@ -1231,7 +1231,7 @@ class APictureIsATHIRDItemType(unittest.TestCase):
         {"t": "image", "src": "img/comments/wall.png", "text": "[image: wall.png]"},
         {"t": "todo", "label": "check the roughness", "done": False}]
 
-    def test_a_picture_not_here_yet_survives_an_edit_elsewhere(self):
+    def test_a_picture_not_here_yet_is_kept_through_an_edit_elsewhere(self):
         """Its file is still syncing: the page saved after an edit keeps the picture's item."""
         self.edit.load_items(self.PAGE_WITH_A_LATE_PICTURE)
         cursor = self.edit.textCursor()
@@ -1244,7 +1244,7 @@ class APictureIsATHIRDItemType(unittest.TestCase):
                          "the picture item changed after the edit")
         self.assertEqual("check the roughness today", back[2]["label"])
 
-    def test_deleting_the_stand_in_deletes_the_picture(self):
+    def test_deleting_the_placeholder_text_deletes_the_picture(self):
         """As for a loaded picture: deleting its block's placeholder text removes the item."""
         self.edit.load_items(self.PAGE_WITH_A_LATE_PICTURE)
         block = self.edit.document().begin().next()
@@ -1472,7 +1472,7 @@ class APictureIsCOPIEDIntoTheLibrary(unittest.TestCase):
         self.assertNotEqual(first, second,
                             "the second picture overwrote the first")
 
-    def test_a_file_that_is_not_there_is_refused_not_guessed(self):
+    def test_adopt_image_returns_empty_for_a_missing_file(self):
         self.assertEqual(
             "", self.notes.adopt_image(self.prefs,
                                        os.path.join(self.outside, "nope.png"), self.KEY))
@@ -1482,13 +1482,13 @@ class APictureIsCOPIEDIntoTheLibrary(unittest.TestCase):
         from amaze.core import guard
         original = self._a_picture_outside_the_library()
 
-        def dying_write(_disk, target, _data):
+        def failing_write(_disk, target, _data):
             os.makedirs(os.path.dirname(target), exist_ok=True)
             with open(target, "wb") as handle:
                 handle.write(b"half")
             raise OSError("the disk filled up")
 
-        with mock.patch.object(guard.Disk, "write", dying_write):
+        with mock.patch.object(guard.Disk, "write", failing_write):
             src = self.notes.adopt_image(self.prefs, original, self.KEY)
 
         self.assertEqual("", src, "a failed copy reported a path anyway")
@@ -1499,7 +1499,7 @@ class APictureIsCOPIEDIntoTheLibrary(unittest.TestCase):
             "a half-copied picture was left where a note could point")
 
 
-class TheCommentsPaneStandsOnItsFrame(unittest.TestCase):
+class TheCommentsPaneMatchesItsDesignFrame(unittest.TestCase):
     """The pane's width, header spacing, note margins and glyphs are what N01 draws."""
 
     def setUp(self):
@@ -1619,7 +1619,7 @@ class TheCommentsPaneStandsOnItsFrame(unittest.TestCase):
             self.assertEqual(self.px(d["doc_margin"]) + self.px(d["glyph_inset"]), x)
             self.assertEqual(self.px(d["glyph"]), side)
 
-    def test_an_open_and_a_done_to_do_wear_their_drawn_colours(self):
+    def test_an_open_and_a_done_to_do_use_their_drawn_colours(self):
         from amaze import amazetheme
         from amaze.panel import notes_panel
         edit = self.pane.text_edit
@@ -1635,7 +1635,7 @@ class TheCommentsPaneStandsOnItsFrame(unittest.TestCase):
                           ("check-circle", amazetheme.COMMENT_DONE_COLOR)],
                          [(c.args[0], c.args[2]) for c in glyph.call_args_list])
 
-    def test_the_plus_is_its_drawn_art_and_dims_to_the_N01B_ink(self):
+    def test_the_plus_is_its_drawn_art_and_dims_to_the_N01B_color(self):
         """Nothing selected: the + shows N01B's ink, by replacing the art's own colour."""
         import amaze
         from amaze import amazetheme
@@ -1652,7 +1652,7 @@ class TheCommentsPaneStandsOnItsFrame(unittest.TestCase):
             [{amazetheme.COMMENT_ADD_COLOR: amazetheme.COMMENT_DIM_ADD_COLOR}], swaps)
 
 
-class TheEmptyPaneStandsOnN01B(unittest.TestCase):
+class TheEmptyPaneMatchesN01B(unittest.TestCase):
     """Nothing selected: N01B's strings and dimmed inks, with nothing moved from N01."""
 
     def setUp(self):
@@ -1661,7 +1661,7 @@ class TheEmptyPaneStandsOnN01B(unittest.TestCase):
         self.addCleanup(self.pane.deleteLater)
         self.pane.resize(450, 210)
 
-    def _live(self):
+    def _select_a_subject(self):
         self.pane.set_subject(sections.CommentSubject(
             notes.note_key("material", "n01b"), "brushed_steel", "USD Karma"))
 
@@ -1684,17 +1684,17 @@ class TheEmptyPaneStandsOnN01B(unittest.TestCase):
         self.assertEqual(amazetheme.drawn_node("N01B", "text", "type")[5],
                          self.pane.type_label.text())
 
-    def test_both_labels_are_at_half_ink_and_full_again_when_live(self):
+    def test_both_labels_are_at_half_alpha_and_full_again_with_a_subject(self):
         from amaze.helpers import theme
         role = QtGui.QPalette.ColorRole.WindowText
         for live in (False, True):
             if live:
-                self._live()
-            for label, ink in ((self.pane.name_label, "text_bright"),
-                               (self.pane.type_label, "text")):
+                self._select_a_subject()
+            for label, color_name in ((self.pane.name_label, "text_bright"),
+                                      (self.pane.type_label, "text")):
                 with self.subTest(label=label.text()):
                     color = label.palette().color(role)
-                    self.assertEqual(theme.color_hex(ink), color.name())
+                    self.assertEqual(theme.color_hex(color_name), color.name())
                     self.assertAlmostEqual(1.0 if live else 0.5, color.alphaF(), delta=0.01)
 
     def _brightest_on_header(self, label):
@@ -1708,21 +1708,21 @@ class TheEmptyPaneStandsOnN01B(unittest.TestCase):
         return max((image.pixelColor(x, y) for x in range(image.width())
                     for y in range(image.height())), key=lambda c: c.lightness())
 
-    def test_the_labels_PAINT_at_half_ink(self):
+    def test_the_labels_PAINT_at_the_dimmed_opacity(self):
         """Measured against the SAME label at full ink, so a font from another test cancels out."""
         from amaze import amazetheme
         from amaze.panel import notes_panel
         bg = QtGui.QColor(amazetheme.COMMENT_HEADER_BG)
         dim = amazetheme.COMMENT_DIM_TEXT_OPACITY
-        for label, ink in ((self.pane.name_label, "text_bright"),
-                           (self.pane.type_label, "text")):
+        for label, color_name in ((self.pane.name_label, "text_bright"),
+                                  (self.pane.type_label, "text")):
             with self.subTest(label=label.text()):
                 shown = self._brightest_on_header(label)
-                notes_panel._set_text_color(label, ink, 1.0)
+                notes_panel._set_text_color(label, color_name, 1.0)
                 full = self._brightest_on_header(label)
                 for part in ("red", "green", "blue"):
-                    ground = getattr(bg, part)()
-                    want = ground + dim * (getattr(full, part)() - ground)
+                    background = getattr(bg, part)()
+                    want = background + dim * (getattr(full, part)() - background)
                     self.assertAlmostEqual(want, getattr(shown, part)(), delta=1.5, msg=part)
 
     def _bubble_on_header(self):
@@ -1731,29 +1731,29 @@ class TheEmptyPaneStandsOnN01B(unittest.TestCase):
         image = self.pane._icon_label.pixmap().toImage()
         x, y = max(((x, y) for x in range(image.width()) for y in range(image.height())),
                    key=lambda p: image.pixelColor(*p).alpha())
-        ground = QtGui.QImage(image.size(), QtGui.QImage.Format.Format_RGB32)
-        ground.setDevicePixelRatio(image.devicePixelRatio())
-        ground.fill(QtGui.QColor(amazetheme.COMMENT_HEADER_BG))
-        painter = QtGui.QPainter(ground)
+        background = QtGui.QImage(image.size(), QtGui.QImage.Format.Format_RGB32)
+        background.setDevicePixelRatio(image.devicePixelRatio())
+        background.fill(QtGui.QColor(amazetheme.COMMENT_HEADER_BG))
+        painter = QtGui.QPainter(background)
         painter.drawImage(0, 0, image)
         painter.end()
-        return image.pixelColor(x, y).alpha(), ground.pixelColor(x, y)
+        return image.pixelColor(x, y).alpha(), background.pixelColor(x, y)
 
-    def test_the_speech_bubble_is_at_a_quarter_and_whole_when_live(self):
+    def test_the_speech_bubble_is_dimmed_and_full_again_with_a_subject(self):
         from amaze import amazetheme
-        ink, bg = (QtGui.QColor(amazetheme.COMMENT_DIM_ICON_COLOR),
+        icon_color, bg = (QtGui.QColor(amazetheme.COMMENT_DIM_ICON_COLOR),
                    QtGui.QColor(amazetheme.COMMENT_HEADER_BG))
         opacity = amazetheme.COMMENT_DIM_ICON_OPACITY
         alpha, shown = self._bubble_on_header()
         self.assertAlmostEqual(opacity * 255, alpha, delta=1)
         for part in ("red", "green", "blue"):
-            want = opacity * getattr(ink, part)() + (1 - opacity) * getattr(bg, part)()
+            want = opacity * getattr(icon_color, part)() + (1 - opacity) * getattr(bg, part)()
             self.assertAlmostEqual(want, getattr(shown, part)(), delta=1.5, msg=part)
-        self._live()
+        self._select_a_subject()
         alpha, shown = self._bubble_on_header()
         self.assertEqual((255, amazetheme.COMMENT_ICON_COLOR), (alpha, shown.name()))
 
-    def test_the_dead_plus_paints_exactly_as_a_live_one_would(self):
+    def test_the_disabled_plus_paints_exactly_as_an_enabled_one_would(self):
         """Disabled, the style fades the triangle and the art; N01B keeps the triangle and dims the art."""
         button = self.pane.add_button
         self.assertFalse(button.isEnabled())

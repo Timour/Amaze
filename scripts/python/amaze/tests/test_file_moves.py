@@ -86,7 +86,7 @@ class _Folders(unittest.TestCase):
         self.plate = os.path.join(self.a, "plate.exr")
         test_support.write_text(self.plate, "plate")
         os.makedirs(self.b)
-        self.landed = os.path.join(self.b, "plate.exr")
+        self.moved_to = os.path.join(self.b, "plate.exr")
 
     def _move(self, **kwargs):
         return file_moves.move(file_moves.targets([self.plate], self.b), **kwargs)
@@ -97,17 +97,17 @@ class _Folders(unittest.TestCase):
 
 class AFileMovesOnOneDriveTest(_Folders):
 
-    def test_the_file_lands_in_the_folder_and_leaves_its_old_place(self):
+    def test_the_file_moves_into_the_folder_and_leaves_its_old_place(self):
         result = self._move()
-        self.assertEqual([(self.plate, self.landed)], result.moved)
+        self.assertEqual([(self.plate, self.moved_to)], result.moved)
         self.assertFalse(os.path.exists(self.plate))
-        self.assertEqual("plate", _read(self.landed))
+        self.assertEqual("plate", _read(self.moved_to))
 
     def test_a_taken_name_is_skipped_and_both_files_are_kept(self):
-        test_support.write_text(self.landed, "other")
+        test_support.write_text(self.moved_to, "other")
         result = self._move()
-        self.assertEqual(([], [(self.plate, self.landed)]), (result.moved, result.skipped))
-        self.assertEqual(("plate", "other"), (_read(self.plate), _read(self.landed)))
+        self.assertEqual(([], [(self.plate, self.moved_to)]), (result.moved, result.skipped))
+        self.assertEqual(("plate", "other"), (_read(self.plate), _read(self.moved_to)))
 
     def test_a_file_already_in_the_folder_is_no_target(self):
         self.assertEqual([], file_moves.targets([self.plate], self.a))
@@ -119,9 +119,9 @@ class AFileMovesOnOneDriveTest(_Folders):
         threading.Timer(0.1, holder.close).start()
         result = self._move()
         holder.close()
-        self.assertEqual([(self.plate, self.landed)], result.moved,
+        self.assertEqual([(self.plate, self.moved_to)], result.moved,
                          "a file open for only 0.1 s failed the move: %s" % (result.failed,))
-        self.assertEqual("plate", _read(self.landed))
+        self.assertEqual("plate", _read(self.moved_to))
 
     @unittest.skipUnless(sys.platform == "win32", "only Windows refuses to rename a file held open")
     def test_a_file_held_for_good_fails_and_stays(self):
@@ -129,31 +129,31 @@ class AFileMovesOnOneDriveTest(_Folders):
             result = self._move()
         self.assertEqual([self.plate], [source for source, _why in result.failed])
         self.assertEqual("plate", _read(self.plate))
-        self.assertFalse(os.path.exists(self.landed))
+        self.assertFalse(os.path.exists(self.moved_to))
 
-    def test_without_hard_links_a_taken_name_is_still_refused(self):
+    def test_without_hard_links_a_taken_name_is_still_skipped(self):
         """A plain rename replaces silently, so the move never uses one. ▸r/no-replace-rename"""
-        test_support.write_text(self.landed, "other")
+        test_support.write_text(self.moved_to, "other")
         with mock.patch.object(os, "link", side_effect=NO_LINKS):
             result = self._move()
-        self.assertEqual([(self.plate, self.landed)], result.skipped)
-        self.assertEqual(("plate", "other"), (_read(self.plate), _read(self.landed)))
+        self.assertEqual([(self.plate, self.moved_to)], result.skipped)
+        self.assertEqual(("plate", "other"), (_read(self.plate), _read(self.moved_to)))
 
     def test_without_hard_links_a_free_name_still_moves(self):
         with mock.patch.object(os, "link", side_effect=NO_LINKS):
             result = self._move()
-        self.assertEqual([(self.plate, self.landed)], result.moved)
+        self.assertEqual([(self.plate, self.moved_to)], result.moved)
         self.assertFalse(os.path.exists(self.plate))
 
     def test_a_name_taken_in_the_last_instant_is_kept(self):
         """Another program writes the name after every check, just before the rename. ▸r/no-replace-rename"""
-        with mock.patch.object(os, "link", side_effect=NO_LINKS), _written_first(self.landed):
+        with mock.patch.object(os, "link", side_effect=NO_LINKS), _written_first(self.moved_to):
             result = self._move()
-        self.assertEqual([(self.plate, self.landed)], result.skipped,
+        self.assertEqual([(self.plate, self.moved_to)], result.skipped,
                          "the move replaced a file written under its name: %s" % (result,))
-        self.assertEqual(("plate", "other"), (_read(self.plate), _read(self.landed)))
+        self.assertEqual(("plate", "other"), (_read(self.plate), _read(self.moved_to)))
 
-    def test_a_rename_refused_across_mounts_still_moves_by_copy(self):
+    def test_a_rename_failing_across_mounts_still_moves_by_copy(self):
         """One st_dev can be two mounts: a bind mount fails the rename with EXDEV. ▸r/cross-volume-move"""
         def across(real):
             def call(source, dest, *args, **kwargs):
@@ -166,10 +166,10 @@ class AFileMovesOnOneDriveTest(_Folders):
                 mock.patch.object(os, "rename", across(os.rename)), \
                 mock.patch.object(hostos, "rename_exclusive", across(hostos.rename_exclusive)):
             result = self._move()
-        self.assertEqual([(self.plate, self.landed)], result.moved,
+        self.assertEqual([(self.plate, self.moved_to)], result.moved,
                          "a rename failing with EXDEV failed the move: %s" % (result.failed,))
         self.assertFalse(os.path.exists(self.plate))
-        self.assertEqual("plate", _read(self.landed))
+        self.assertEqual("plate", _read(self.moved_to))
 
 
 class AFileCopiesAcrossDrivesTest(_Folders):
@@ -181,11 +181,11 @@ class AFileCopiesAcrossDrivesTest(_Folders):
         patcher.start()
         self.addCleanup(patcher.stop)
 
-    def test_the_copy_lands_whole_and_the_original_goes(self):
+    def test_the_copy_is_complete_and_the_original_is_removed(self):
         ticks = []
         result = self._move(tick=ticks.append)
-        self.assertEqual([(self.plate, self.landed)], result.moved)
-        self.assertEqual("plate", _read(self.landed))
+        self.assertEqual([(self.plate, self.moved_to)], result.moved)
+        self.assertEqual("plate", _read(self.moved_to))
         self.assertFalse(os.path.exists(self.plate))
         self.assertEqual(len("plate"), sum(ticks), "progress missed bytes")
         self.assertEqual([], self._parts())
@@ -196,7 +196,7 @@ class AFileCopiesAcrossDrivesTest(_Folders):
             result = self._move()
         self.assertEqual([(self.plate, "No space left on device")], result.failed)
         self.assertEqual("plate", _read(self.plate))
-        self.assertFalse(os.path.exists(self.landed))
+        self.assertFalse(os.path.exists(self.moved_to))
         self.assertEqual([], self._parts())
 
     def test_a_name_taken_while_copying_keeps_both_files(self):
@@ -208,30 +208,30 @@ class AFileCopiesAcrossDrivesTest(_Folders):
 
         with mock.patch.object(file_moves, "place", side_effect=taken):
             result = self._move()
-        self.assertEqual([(self.plate, self.landed)], result.skipped)
-        self.assertEqual(("plate", "other"), (_read(self.plate), _read(self.landed)))
+        self.assertEqual([(self.plate, self.moved_to)], result.skipped)
+        self.assertEqual(("plate", "other"), (_read(self.plate), _read(self.moved_to)))
         self.assertEqual([], self._parts())
 
-    def test_a_name_taken_as_the_copy_lands_keeps_both_files(self):
+    def test_a_name_taken_as_the_copy_finishes_keeps_both_files(self):
         """The copy is renamed into place by `place`, after its own check. ▸r/no-replace-rename"""
-        with mock.patch.object(os, "link", side_effect=NO_LINKS), _written_first(self.landed):
+        with mock.patch.object(os, "link", side_effect=NO_LINKS), _written_first(self.moved_to):
             result = self._move()
-        self.assertEqual([(self.plate, self.landed)], result.skipped,
+        self.assertEqual([(self.plate, self.moved_to)], result.skipped,
                          "the copy replaced a file written under its name: %s" % (result,))
-        self.assertEqual(("plate", "other"), (_read(self.plate), _read(self.landed)))
+        self.assertEqual(("plate", "other"), (_read(self.plate), _read(self.moved_to)))
         self.assertEqual([], self._parts())
 
     def test_a_read_only_original_still_goes(self):
         """POSIX deletes a read-only file from a writable folder; Windows refuses until the flag is off."""
         os.chmod(self.plate, stat.S_IREAD)
         self.addCleanup(_writable, self.plate)
-        self.addCleanup(_writable, self.landed)
+        self.addCleanup(_writable, self.moved_to)
         result = self._move()
-        self.assertEqual([(self.plate, self.landed)], result.moved,
+        self.assertEqual([(self.plate, self.moved_to)], result.moved,
                          "a read-only file was copied and its original kept")
         self.assertFalse(os.path.exists(self.plate))
-        self.assertEqual("plate", _read(self.landed))
-        self.assertFalse(os.stat(self.landed).st_mode & stat.S_IWRITE,
+        self.assertEqual("plate", _read(self.moved_to))
+        self.assertFalse(os.stat(self.moved_to).st_mode & stat.S_IWRITE,
                          "the moved file lost its read-only flag")
 
     @unittest.skipUnless(sys.platform == "win32", "only Windows refuses to delete a file held open")
@@ -242,7 +242,7 @@ class AFileCopiesAcrossDrivesTest(_Folders):
         self.assertEqual([], result.moved)
         self.assertEqual([self.plate], [source for source, _why in result.failed])
         self.assertEqual("plate", _read(self.plate))
-        self.assertFalse(os.path.exists(self.landed), "the open file was copied anyway")
+        self.assertFalse(os.path.exists(self.moved_to), "the open file was copied anyway")
         self.assertEqual([], self._parts())
 
     def test_a_stop_mid_copy_keeps_the_original_and_leaves_no_part(self):
@@ -251,20 +251,20 @@ class AFileCopiesAcrossDrivesTest(_Folders):
             result = self._move(tick=ticks.append, stopped=lambda: bool(ticks))
         self.assertEqual([], result.moved)
         self.assertEqual("plate", _read(self.plate))
-        self.assertFalse(os.path.exists(self.landed))
+        self.assertFalse(os.path.exists(self.moved_to))
         self.assertEqual([], self._parts())
 
     def test_a_part_left_by_an_earlier_copy_blocks_nothing(self):
         """Quitting Houdini mid-copy, or a crash, leaves a part file; the target name is free."""
-        left = "." + os.path.basename(self.landed) + file_moves.PART
+        left = "." + os.path.basename(self.moved_to) + file_moves.PART
         test_support.write_text(os.path.join(self.b, left), "half")
         result = self._move()
-        self.assertEqual([(self.plate, self.landed)], result.moved,
+        self.assertEqual([(self.plate, self.moved_to)], result.moved,
                          "an earlier copy's part file stopped the move: %s" % (result.failed,))
-        self.assertEqual("plate", _read(self.landed))
+        self.assertEqual("plate", _read(self.moved_to))
         self.assertEqual([left], self._parts(), "this copy left a part of its own")
 
-    def test_a_part_that_will_not_go_is_said_in_the_log(self):
+    def test_a_part_file_that_cannot_be_deleted_is_logged(self):
         real_unlink = os.unlink
 
         def held(path, *args, **kwargs):    # Windows failing to delete a read-only part, any OS
@@ -278,37 +278,37 @@ class AFileCopiesAcrossDrivesTest(_Folders):
             result = self._move()
         self.assertEqual([self.plate], [source for source, _why in result.failed],
                          "premise: the copy did not fail")
-        said = [record for record in log.records("move")
-                if str(record.get("data", {}).get("file", "")).endswith(file_moves.PART)]
-        self.assertTrue(said, "a part file the copy could not remove was not logged")
+        logged = [record for record in log.records("move")
+                  if str(record.get("data", {}).get("file", "")).endswith(file_moves.PART)]
+        self.assertTrue(logged, "a part file the copy could not remove was not logged")
 
 
 class TheExclusiveRenameTest(_Folders):
     """`hostos.rename_exclusive`, the one rename a move uses, and its no-replace flag."""
 
-    def test_a_taken_name_is_refused_and_both_files_kept(self):
-        test_support.write_text(self.landed, "other")
-        self.assertFalse(hostos.rename_exclusive(self.plate, self.landed))
-        self.assertEqual(("plate", "other"), (_read(self.plate), _read(self.landed)))
+    def test_a_taken_name_returns_false_and_both_files_are_kept(self):
+        test_support.write_text(self.moved_to, "other")
+        self.assertFalse(hostos.rename_exclusive(self.plate, self.moved_to))
+        self.assertEqual(("plate", "other"), (_read(self.plate), _read(self.moved_to)))
 
     def test_a_free_name_is_renamed(self):
-        self.assertTrue(hostos.rename_exclusive(self.plate, self.landed))
+        self.assertTrue(hostos.rename_exclusive(self.plate, self.moved_to))
         self.assertFalse(os.path.exists(self.plate))
-        self.assertEqual("plate", _read(self.landed))
+        self.assertEqual("plate", _read(self.moved_to))
 
     @unittest.skipIf(sys.platform == "win32", "Windows renames with a call that takes no flag")
-    def test_a_drive_without_the_flag_says_so_and_renames_nothing(self):
+    def test_a_drive_without_the_flag_raises_no_exclusive_rename_and_renames_nothing(self):
         with mock.patch.object(hostos, "_flagged_rename", return_value=errno.ENOTSUP), \
                 self.assertRaises(hostos.NoExclusiveRename):
-            hostos.rename_exclusive(self.plate, self.landed)
+            hostos.rename_exclusive(self.plate, self.moved_to)
         self.assertEqual("plate", _read(self.plate))
-        self.assertFalse(os.path.exists(self.landed))
+        self.assertFalse(os.path.exists(self.moved_to))
 
     @unittest.skipIf(sys.platform == "win32", "Windows renames with a call that takes no flag")
-    def test_any_other_refusal_is_raised_as_itself(self):
+    def test_any_other_os_error_is_raised_as_itself(self):
         with mock.patch.object(hostos, "_flagged_rename", return_value=errno.EXDEV), \
                 self.assertRaises(OSError) as caught:
-            hostos.rename_exclusive(self.plate, self.landed)
+            hostos.rename_exclusive(self.plate, self.moved_to)
         self.assertEqual(errno.EXDEV, caught.exception.errno)
         self.assertNotIsInstance(caught.exception, hostos.NoExclusiveRename)
 
@@ -335,38 +335,38 @@ class ADriveWithNoSafeRenameTest(_Folders):
 
     def test_a_free_name_still_moves(self):
         result = self._move()
-        self.assertEqual([(self.plate, self.landed)], result.moved, result.failed)
+        self.assertEqual([(self.plate, self.moved_to)], result.moved, result.failed)
         self.assertFalse(os.path.exists(self.plate))
-        self.assertEqual("plate", _read(self.landed))
+        self.assertEqual("plate", _read(self.moved_to))
 
-    def test_a_taken_name_is_still_refused(self):
-        test_support.write_text(self.landed, "other")
+    def test_a_taken_name_is_still_skipped(self):
+        test_support.write_text(self.moved_to, "other")
         result = self._move()
-        self.assertEqual([(self.plate, self.landed)], result.skipped)
-        self.assertEqual(("plate", "other"), (_read(self.plate), _read(self.landed)))
+        self.assertEqual([(self.plate, self.moved_to)], result.skipped)
+        self.assertEqual(("plate", "other"), (_read(self.plate), _read(self.moved_to)))
 
     def test_the_claim_holds_the_name_until_the_rename(self):
         """A program creating the name after the empty file exists fails. ▸r/no-replace-rename"""
-        refused = []
+        failed_creates = []
 
         def create(dest):
             try:
                 os.close(os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL))
             except FileExistsError:
-                refused.append(dest)
+                failed_creates.append(dest)
 
         with self._rename_with(create):
             result = self._move()
-        self.assertEqual([self.landed], refused, "the name was free just before the rename")
-        self.assertEqual([(self.plate, self.landed)], result.moved, result.failed)
-        self.assertEqual("plate", _read(self.landed))
+        self.assertEqual([self.moved_to], failed_creates, "the name was free just before the rename")
+        self.assertEqual([(self.plate, self.moved_to)], result.moved, result.failed)
+        self.assertEqual("plate", _read(self.moved_to))
 
     def test_a_failed_rename_takes_its_claim_back(self):
         with mock.patch.object(os, "rename", side_effect=PermissionError(errno.EACCES, "denied")):
             result = self._move()
         self.assertEqual([self.plate], [source for source, _why in result.failed])
         self.assertEqual("plate", _read(self.plate))
-        self.assertFalse(os.path.lexists(self.landed), "the empty file `_claimed` made was left")
+        self.assertFalse(os.path.lexists(self.moved_to), "the empty file `_claimed` made was left")
 
     def test_a_claim_written_into_is_left_alone(self):
         """A program that wrote into the empty file keeps its file when the rename then fails."""
@@ -377,26 +377,26 @@ class ADriveWithNoSafeRenameTest(_Folders):
         with self._rename_with(overwrite):
             result = self._move()
         self.assertEqual([self.plate], [source for source, _why in result.failed])
-        self.assertEqual(("plate", "other"), (_read(self.plate), _read(self.landed)))
+        self.assertEqual(("plate", "other"), (_read(self.plate), _read(self.moved_to)))
 
     def test_a_name_a_share_gave_away_is_skipped(self):
         """A share deletes the empty file to rename, and another machine took the name meanwhile."""
         with mock.patch.object(os, "rename", side_effect=FileExistsError(errno.EEXIST, "taken")):
             result = self._move()
-        self.assertEqual([(self.plate, self.landed)], result.skipped)
+        self.assertEqual([(self.plate, self.moved_to)], result.skipped)
         self.assertEqual("plate", _read(self.plate))
-        self.assertFalse(os.path.lexists(self.landed), "the empty file `_claimed` made was left")
+        self.assertFalse(os.path.lexists(self.moved_to), "the empty file `_claimed` made was left")
 
-    def test_a_copy_from_another_drive_lands_through_the_claim(self):
+    def test_a_copy_from_another_drive_moves_through_the_claim(self):
         with mock.patch.object(file_moves, "same_drive", return_value=False):
             result = self._move()
-        self.assertEqual([(self.plate, self.landed)], result.moved, result.failed)
+        self.assertEqual([(self.plate, self.moved_to)], result.moved, result.failed)
         self.assertFalse(os.path.exists(self.plate))
-        self.assertEqual("plate", _read(self.landed))
+        self.assertEqual("plate", _read(self.moved_to))
         self.assertEqual([], self._parts())
 
 
-def _held(entered, release):
+def _blocking_move(entered, release):
     """A `move` that ignores `stopped` and cannot be terminated, like a copy on a hung share."""
     def move(pairs, tick=None, stopped=lambda: False):
         QtCore.QThread.setTerminationEnabled(False)    # so terminate() cannot end it either
@@ -406,7 +406,7 @@ def _held(entered, release):
     return move
 
 
-def _let_go(worker, release, ended):
+def _release_move(worker, release, ended):
     """Release a blocked move; drop it from `workers._unstoppable` once `finished` arrived."""
     release.set()
     if not test_support.pump_until(lambda: bool(ended), timeout=30):
@@ -415,25 +415,25 @@ def _let_go(worker, release, ended):
         workers._unstoppable.remove(worker)
 
 
-def _started(testcase, engine, landed=lambda result: None):
+def _started(testcase, engine, finished=lambda result: None):
     """Start a blocked move on `engine`, released at cleanup; returns (worker, release event)."""
     entered, release, ended = threading.Event(), threading.Event(), []
-    patcher = mock.patch.object(file_moves, "move", _held(entered, release))
+    patcher = mock.patch.object(file_moves, "move", _blocking_move(entered, release))
     patcher.start()
     testcase.addCleanup(patcher.stop)
     testcase.assertTrue(engine.start([("/nowhere/a.exr", "/nowhere/b/a.exr")], None,
-                                     lambda *tick: None, landed))
+                                     lambda *tick: None, finished))
     worker = engine._worker
     worker.finished.connect(lambda: ended.append(True))
-    testcase.addCleanup(_let_go, worker, release, ended)
+    testcase.addCleanup(_release_move, worker, release, ended)
     testcase.assertTrue(entered.wait(10), "premise: the move never started")
     return worker, release
 
 
-class AMoveThatWillNotStopIsParkedTest(unittest.TestCase):
+class AMoveThatWillNotStopIsKeptInUnstoppableTest(unittest.TestCase):
     """A copy the OS cannot interrupt outlasts the quit's waits; dropped, it aborts as it ends."""
 
-    def test_the_quit_parks_a_move_that_ignores_its_stop(self):
+    def test_the_quit_keeps_a_move_that_ignores_its_stop_in_unstoppable(self):
         engine = file_moves._MoveEngine()
         worker, _release = _started(self, engine)
         started = time.monotonic()
@@ -449,13 +449,13 @@ class AMoveThatWillNotStopIsParkedTest(unittest.TestCase):
 class AReloadLeavesAMoveUnderWayAloneTest(unittest.TestCase):
     """A reload keeps the engine a move runs on, so it finishes; an idle engine is replaced."""
 
-    def test_a_busy_mover_outlives_a_reload_and_an_idle_one_does_not(self):
-        before, landed = file_moves.mover, []
-        _worker, release = _started(self, before, landed.append)
+    def test_a_busy_mover_is_kept_by_a_reload_and_an_idle_one_is_not(self):
+        before, finished = file_moves.mover, []
+        _worker, release = _started(self, before, finished.append)
         importlib.reload(file_moves)
         self.assertIs(before, file_moves.mover, "a reload replaced the engine running a move")
         release.set()
-        self.assertTrue(test_support.pump_until(lambda: bool(landed) and not before.busy()),
+        self.assertTrue(test_support.pump_until(lambda: bool(finished) and not before.busy()),
                         "the running move never finished")
         importlib.reload(file_moves)
         self.assertIsNot(before, file_moves.mover, "a reload kept an idle engine")
@@ -472,7 +472,7 @@ class WhatAmazeKeepsFollowsTheFileTest(unittest.TestCase):
         self.plate = os.path.join(self.a, "plate.exr")
         test_support.write_text(self.plate, "plate")
         os.makedirs(self.b)
-        self.landed = os.path.join(self.b, "plate.exr")
+        self.moved_to = os.path.join(self.b, "plate.exr")
         locations_mod.forget()
         self.addCleanup(locations_mod.forget)
         self.prefs = _Prefs([self.root])    # one location over both folders
@@ -494,7 +494,7 @@ class WhatAmazeKeepsFollowsTheFileTest(unittest.TestCase):
     def _moved(self):
         result = file_moves.move(file_moves.targets([self.plate], self.b))
         file_moves.rekey_moved_files(self.prefs, result.moved)
-        return captures.file_key(self.prefs, self.landed)
+        return captures.file_key(self.prefs, self.moved_to)
 
     def _kept(self, key):
         return (locations_mod.is_favourite(self.prefs, key),
@@ -522,39 +522,39 @@ class WhatAmazeKeepsFollowsTheFileTest(unittest.TestCase):
                                        if key in (old, new)},
                          "the move rewrote another user's star")
 
-    def test_an_entry_left_at_the_new_place_yields_to_the_file_arriving(self):
+    def test_an_entry_left_at_the_new_place_is_replaced_by_the_moved_files_entry(self):
         self._annotate()
-        stale = captures.file_key(self.prefs, self.landed)
+        stale = captures.file_key(self.prefs, self.moved_to)
         notes.set_note(self.prefs, notes.note_key("file", stale),
                        [{"t": "text", "text": "stale"}])
         new = self._moved()
         page = notes.note_for(self.prefs, notes.note_key("file", new))
         self.assertEqual("kept", page["items"][0]["text"])
 
-    def test_a_refused_write_never_trades_the_moved_comment_for_the_stale_one(self):
+    def test_a_failed_write_never_replaces_the_moved_comment_with_the_stale_one(self):
         """One write per store: a failed write moves nothing, never half."""
         _model, _row, old = self._annotate()
-        stale = captures.file_key(self.prefs, self.landed)
+        stale = captures.file_key(self.prefs, self.moved_to)
         notes.set_note(self.prefs, notes.note_key("file", stale),
                        [{"t": "text", "text": "stale"}])
-        real_write, refused = guard.Disk.write, []
+        real_write, failed_writes = guard.Disk.write, []
 
         def held_once(disk, path, data):    # one write failing, as on Windows
-            if os.path.basename(path).startswith(locations_mod.FILES + ".") and not refused:
-                refused.append(path)
+            if os.path.basename(path).startswith(locations_mod.FILES + ".") and not failed_writes:
+                failed_writes.append(path)
                 raise PermissionError(errno.EACCES, "held for a moment", path)
             return real_write(disk, path, data)
 
         with mock.patch.object(guard.Disk, "write", held_once), \
                 mock.patch.object(library_db.debug, "alert"):
             new = self._moved()
-        self.assertTrue(refused, "premise: no write of the comments failed")
+        self.assertTrue(failed_writes, "premise: no write of the comments failed")
         self.assertEqual(stale, new, "premise: the moved file's key is the stale comment's key")
-        said = [(notes.note_for(self.prefs, notes.note_key("file", key)).get("items")
-                 or [{}])[0].get("text") for key in (old, new)]
-        self.assertIn("kept", said,
+        texts = [(notes.note_for(self.prefs, notes.note_key("file", key)).get("items")
+                  or [{}])[0].get("text") for key in (old, new)]
+        self.assertIn("kept", texts,
                       "the moved file's comment is gone and the stale one shows in its "
-                      "place: %s" % said)
+                      "place: %s" % texts)
 
 
 class ThePicturesFollowTheFileTest(unittest.TestCase):
@@ -611,7 +611,7 @@ class ThePicturesFollowTheFileTest(unittest.TestCase):
         self.assertNotIn(texture_library.ThumbnailCache._key(self.plate), held)
         self.assertIn(texture_library.ThumbnailCache._key(os.path.join(self.b, "plate.exr")), held)
 
-    def test_a_picture_left_at_the_new_place_yields_to_the_file_arriving(self):
+    def test_a_picture_left_at_the_new_place_is_replaced_by_the_moved_files_picture(self):
         stale = os.path.join(self.b, "plate.exr")
         test_support.write_text(stale, "an older file of that name")
         self.images.put(stale, _picture("#2040ff"))
@@ -627,13 +627,13 @@ class ThePicturesFollowTheFileTest(unittest.TestCase):
         test_support.write_text(fresh, "fresh")
         self.images.put(fresh, _picture("#80c040"))    # made, and not in the manifest file yet
         self._move([fresh])
-        landed = os.path.join(self.b, "fresh.exr")
-        self.assertIsNotNone(self._on_disk(self.images).valid_path(landed),
+        new_path = os.path.join(self.b, "fresh.exr")
+        self.assertIsNotNone(self._on_disk(self.images).valid_path(new_path),
                              "a thumbnail the grid had not saved was not re-keyed")
 
     def test_the_grids_copy_of_an_old_picture_is_dropped(self):
-        landed = texture_library.ThumbnailCache._key(os.path.join(self.b, "plate.exr"))
-        stale = ("tex", landed, self.images.size)    # the key the grid looks up that row's image by
+        new_key = texture_library.ThumbnailCache._key(os.path.join(self.b, "plate.exr"))
+        stale = ("tex", new_key, self.images.size)    # the key the grid looks up that row's image by
         thumbnails.engine.deposit(stale, _picture("#2040ff"))
         self.addCleanup(thumbnails.engine.discard, stale)
         self._move([self.plate])
@@ -642,8 +642,8 @@ class ThePicturesFollowTheFileTest(unittest.TestCase):
     def test_undo_brings_back_the_picture_the_file_has_now(self):
         """Not the stale one cached for its old path, which 1.19.0 showed after a move back."""
         moved = self._move([self.plate])
-        landed = os.path.join(self.b, "plate.exr")
-        self.images.put(landed, _picture("#2040ff"))    # rendered again at the new path
+        new_path = os.path.join(self.b, "plate.exr")
+        self.images.put(new_path, _picture("#2040ff"))    # rendered again at the new path
         self.images.save()
         back = file_moves.move(file_moves.back(moved))
         file_moves.rekey_moved_files(self.prefs, back.moved)
@@ -651,7 +651,7 @@ class ThePicturesFollowTheFileTest(unittest.TestCase):
         self.assertIsNotNone(png, "the file moved back without a thumbnail")
         self.assertEqual("#2040ff", QtGui.QImage(png).pixelColor(1, 1).name(),
                          "the stale thumbnail of the old path is shown")
-        self.assertIsNone(self.images.valid_path(landed))
+        self.assertIsNone(self.images.valid_path(new_path))
 
     def test_a_hundred_moved_files_render_nothing(self):
         meshes = []
@@ -671,21 +671,21 @@ class ThePicturesFollowTheFileTest(unittest.TestCase):
         self.assertEqual([], asked, "moved files were sent to render again")
 
 
-class TheFileTabMovesWhatLandsOnAFolderTest(unittest.TestCase):
+class TheFileTabMovesWhatIsDroppedOnAFolderTest(unittest.TestCase):
     """A release over a folder row moves the selected files there; Undo Move puts them back."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
-        self.said = []
+        self.shown = []
         previous = debug._ui
-        debug.set_ui(types.SimpleNamespace(status=self.said.append,
-                                           dialog=self.said.append))
+        debug.set_ui(types.SimpleNamespace(status=self.shown.append,
+                                           dialog=self.shown.append))
         self.addCleanup(debug.set_ui, previous)
         self.folders = self.panel.file_folders_model
         self.loc = self.folders.registered_at(self.folders._offset())    # the first location
         self.a, self.b = _child(self.loc, "a"), _child(self.loc, "b")
         self.plate = os.path.join(self.a, "plate.exr")
-        self.landed = os.path.join(self.b, "plate.exr")
+        self.moved_to = os.path.join(self.b, "plate.exr")
         test_support.write_text(self.plate, "plate")
         os.makedirs(self.b)
         self.panel.section_tabs.setChecked("file")
@@ -730,22 +730,22 @@ class TheFileTabMovesWhatLandsOnAFolderTest(unittest.TestCase):
 
     def test_a_release_over_a_folder_moves_the_selection_there(self):
         self._release_over(self.b)
-        self.assertEqual("plate", _read(self.landed))
+        self.assertEqual("plate", _read(self.moved_to))
         self.assertFalse(os.path.exists(self.plate))
         self.assertTrue(test_support.pump_until(lambda: self._tile("plate.exr") is None),
                         "the moved file is still listed where it was")
-        self.assertEqual(messages.MOVE_DONE % ("1 file", "b"), self.said[-1])
+        self.assertEqual(messages.MOVE_DONE % ("1 file", "b"), self.shown[-1])
 
-    def test_the_release_carries_the_files_picture(self):
+    def test_the_release_moves_the_files_picture(self):
         cache = self.panel.file_files_model._get_image_cache()
         cache.put(self.plate, _picture("#d08040"))
         cache.save()
         self._release_over(self.b)
-        held = texture_library.ThumbnailCache(cache.size).paths()
-        self.assertIn(texture_library.ThumbnailCache._key(self.landed), held)
-        self.assertNotIn(texture_library.ThumbnailCache._key(self.plate), held)
+        cached = texture_library.ThumbnailCache(cache.size).paths()
+        self.assertIn(texture_library.ThumbnailCache._key(self.moved_to), cached)
+        self.assertNotIn(texture_library.ThumbnailCache._key(self.plate), cached)
 
-    def test_undo_move_puts_the_file_back(self):
+    def test_undo_move_restores_the_file(self):
         self.assertFalse(self.section.can_undo_move([], None), "premise: nothing to undo yet")
         self._release_over(self.b)
         self.assertTrue(self.section.can_undo_move([], None), "Undo Move is not offered")
@@ -753,15 +753,15 @@ class TheFileTabMovesWhatLandsOnAFolderTest(unittest.TestCase):
         self.assertTrue(test_support.pump_until(lambda: not file_moves.mover.busy()))
         QtWidgets.QApplication.processEvents()
         self.assertEqual("plate", _read(self.plate))
-        self.assertFalse(os.path.exists(self.landed))
-        self.assertEqual(messages.MOVE_BACK % "1 file", self.said[-1])
+        self.assertFalse(os.path.exists(self.moved_to))
+        self.assertEqual(messages.MOVE_BACK % "1 file", self.shown[-1])
         self.assertFalse(self.section.can_undo_move([], None), "Undo Move offered after the undo")
 
     def test_a_taken_name_is_named_on_the_status_line(self):
-        test_support.write_text(self.landed, "other")
+        test_support.write_text(self.moved_to, "other")
         self._release_over(self.b)
-        self.assertEqual(("plate", "other"), (_read(self.plate), _read(self.landed)))
-        self.assertEqual(messages.MOVE_TAKEN % ("plate.exr", "b"), self.said[-1])
+        self.assertEqual(("plate", "other"), (_read(self.plate), _read(self.moved_to)))
+        self.assertEqual(messages.MOVE_TAKEN % ("plate.exr", "b"), self.shown[-1])
         self.assertFalse(self.section.can_undo_move([], None), "nothing moved, yet Undo is offered")
 
     def test_more_than_three_taken_names_end_in_a_count(self):

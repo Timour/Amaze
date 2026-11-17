@@ -76,7 +76,7 @@ def _settle():
     QtWidgets.QApplication.processEvents()
 
 
-class EveryGridModelAnswersThroughTheEngine(unittest.TestCase):
+class EveryGridModelUsesTheEngineData(unittest.TestCase):
     """One `data()` for Materials, Nodes, Code, Colors, File and Online, and none of their own."""
 
     def test_no_grid_model_has_a_data_of_its_own(self):
@@ -154,7 +154,7 @@ class TheModelSortsItsOwnRows(unittest.TestCase):
 class TheOrderHoldsHoweverRowsChange(unittest.TestCase):
     """Inserts, renames and filters keep the order; a change to an unsorted role costs no sort."""
 
-    def test_a_burst_of_new_rows_lands_in_order_with_ONE_sort(self):
+    def test_a_burst_of_new_rows_is_added_in_order_with_one_sort(self):
         model, proxy = _grid(["zulu"])
         sorts = []
         model.layoutChanged.connect(lambda *a: sorts.append(1))
@@ -177,7 +177,7 @@ class TheOrderHoldsHoweverRowsChange(unittest.TestCase):
         _settle()
         self.assertEqual(["bravo", "zulu"], _shown(proxy))
 
-    def test_a_picture_landing_costs_no_sort(self):
+    def test_a_loaded_picture_triggers_no_sort(self):
         model, proxy = _grid(["alpha", "bravo"])
         model._names.reverse()    # out of order on purpose, so a sort would show
         model.reads = 0
@@ -200,7 +200,7 @@ class ASavedAssetHoldsItsSortedRow(unittest.TestCase):
     def setUpClass(cls):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
-    def test_the_row_handed_back_holds_the_record(self):
+    def test_the_returned_row_holds_the_record(self):
         from amaze.core import material
         model = self.panel.code_model
         self.assertTrue(model.rowCount(), "premise: the fixture has snippets to sort among")

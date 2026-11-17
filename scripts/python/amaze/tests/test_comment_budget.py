@@ -108,7 +108,7 @@ def over_the_length():
 
 class TheCommentBudget(unittest.TestCase):
 
-    def test_no_block_is_added_that_the_sweep_has_not_cut(self):
+    def test_no_comment_block_is_over_the_line_budget(self):
         found = over_the_cap()
         verdict = ("a fat block was added - say what it DOES and what to "
                    "watch when calling it, and put the rest in the wiki"

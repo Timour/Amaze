@@ -34,7 +34,7 @@ class _SceneCase(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
         self.loc = self.folders.registered_at(self.folders._offset())
 
-    def _stand(self, index):
+    def _select_row(self, index):
         view = self.panel.cat_list
         view.selectionModel().setCurrentIndex(
             index, QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
@@ -70,7 +70,7 @@ class TheSceneRowInTheFileTab(_SceneCase):
 
     def test_remove_and_locate_leave_every_location_alone(self):
         before = list(self.folders._folders())
-        self._stand(self._row())
+        self._select_row(self._row())
         self.assertEqual([], self.panel.remove_file_folder_user(), "the scene row was removed")
         picked, said = [], []
         ui = mock.MagicMock()
@@ -84,7 +84,7 @@ class TheSceneRowInTheFileTab(_SceneCase):
         self.assertEqual(_hip(), self.folders.scene_folder())
 
     def test_a_click_browses_the_scene_folder_and_remembers_it_by_its_token(self):
-        self._stand(self._row())
+        self._select_row(self._row())
         self.assertEqual(_hip(), self.files.browsing())
         self.assertEqual("$HIP", self.panel.prefs.last_file_folder)
 
@@ -140,8 +140,8 @@ class TheSceneRowFollowsTheScene(_SceneCase):
         self.panel.unwatch_scene()
         self.assertEqual(before - 1, len(hou.hipFile.eventCallbacks()))
 
-    def test_a_save_moves_a_grid_standing_on_the_scene_row(self):
-        self._stand(self._row())
+    def test_a_save_moves_a_grid_showing_the_scene_row(self):
+        self._select_row(self._row())
         moved = self._save()
         self.assertEqual(moved, _hip(), "premise: the save did not move $HIP")
         self.assertEqual(moved, self.folders.scene_folder())
@@ -149,13 +149,13 @@ class TheSceneRowFollowsTheScene(_SceneCase):
         self.assertEqual("$HIP", self.panel.prefs.last_file_folder)
         self.assertEqual(self._row(), self.panel.cat_list.currentIndex())
 
-    def test_a_save_moves_a_grid_standing_in_a_scene_subfolder(self):
+    def test_a_save_moves_a_grid_showing_a_scene_subfolder(self):
         old = _hip()
         os.makedirs(old + "plates")
         _shown(self.folders, old)
         self.assertTrue(test_support.pump_until(lambda: self.folders.rowCount(self._row()) == 1),
                         "premise: the scene folder's subfolder never appeared")
-        self._stand(self.folders.index(0, 0, self._row()))
+        self._select_row(self.folders.index(0, 0, self._row()))
         self.assertEqual(old + "plates", self.files.browsing(), "premise: not on the subfolder")
         moved = self._save()
         test_support.pump_until(lambda: False, timeout=0.05)
@@ -164,7 +164,7 @@ class TheSceneRowFollowsTheScene(_SceneCase):
                          "the sidebar has not selected the scene row")
 
     def test_a_save_leaves_a_grid_on_a_location_alone(self):
-        self._stand(self.folders.index(self.folders._offset(), 0))
+        self._select_row(self.folders.index(self.folders._offset(), 0))
         self.assertEqual(self.loc, self.files.browsing(), "premise: not on the location")
         moved = self._save()
         self.assertEqual(moved, self.folders.scene_folder(), "premise: the row did not move")
@@ -177,7 +177,7 @@ class TheSceneRowFollowsTheScene(_SceneCase):
         with mock.patch.object(files_actions, "scene_saved", files_actions.scene_saved.real):
             moved = self._save()
             self.assertEqual(moved, self.folders.scene_folder(), "a saved scene shows no row")
-            self._stand(self._row())
+            self._select_row(self._row())
             self.assertEqual(moved, self.files.browsing(), "premise: not on the scene row")
             hou.hipFile.clear(suppress_save_prompt=True)
             QtWidgets.QApplication.processEvents()
@@ -207,9 +207,9 @@ class TheSceneWatchItself(unittest.TestCase):
     def test_removing_a_callback_houdini_no_longer_holds_is_no_error(self):
         from amaze.actions import files as files_actions
 
-        def refused(_callback):
+        def raise_not_registered(_callback):
             raise hou.OperationFailed("not registered")
-        with mock.patch.object(hou.hipFile, "removeEventCallback", refused):
+        with mock.patch.object(hou.hipFile, "removeEventCallback", raise_not_registered):
             files_actions.unwatch_scene(lambda *a, **k: None)
 
 

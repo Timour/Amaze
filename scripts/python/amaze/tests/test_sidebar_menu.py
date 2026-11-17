@@ -209,7 +209,7 @@ class ADismissedSidebarMenuRunsNOTHING(unittest.TestCase):
                     % (key, called))
 
 
-class EachSubmenuRowWritesWhatItSays(unittest.TestCase):
+class EachSubmenuRowWritesWhatItsLabelNames(unittest.TestCase):
     """Label, Show and Rename, picked through the menu's own dispatch."""
 
     def setUp(self):
@@ -313,7 +313,7 @@ class EachSubmenuRowWritesWhatItSays(unittest.TestCase):
         self.assertEqual(folder, folders.display_name(path))
 
 
-class TheChipsSitWhereTheDesignDrawsThem(unittest.TestCase):
+class TheChipsArePaintedWhereTheDesignDrawsThem(unittest.TestCase):
     """A chip submenu paints each chip at `amazetheme.MENU_CHIP` inside its row."""
 
     def setUp(self):
@@ -535,7 +535,7 @@ class _FourAssetSidebars:
             index, QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
         return index
 
-    def _stand(self, stored):
+    def _click_row(self, stored):
         """A left click: the press, then the sidebar's own clicked handler. Returns the tiles."""
         self._press(stored)
         self.panel.update_selected_cat()
@@ -546,7 +546,7 @@ class _FourAssetSidebars:
         grid = self.panel.thumblist.model()
         return sorted(str(grid.index(row, 0).data()) for row in range(grid.rowCount()))
 
-    def _assert_standing(self, stored, tiles):
+    def _assert_selected(self, stored, tiles):
         st = self.panel.active_section().stack()
         self.assertEqual(tiles, self._tiles(), "the grid does not show the selected row")
         self.assertEqual("" if category.is_all(stored) else stored,
@@ -562,10 +562,10 @@ class _FourAssetSidebars:
         for key in self.SECTIONS:
             with self.subTest(section=key):
                 kept, gone = self._enter(key)
-                everything = self._stand("_All")
-                kept_tiles = self._stand(kept)
+                everything = self._click_row("_All")
+                kept_tiles = self._click_row(kept)
                 self.assertTrue(kept_tiles, "premise: the kept category shows tiles")
-                self.assertTrue(self._stand(gone), "premise: the removed one shows tiles")
+                self.assertTrue(self._click_row(gone), "premise: the removed one shows tiles")
                 case(kept, gone, everything, kept_tiles)
 
 
@@ -577,29 +577,29 @@ class RemovingACategoryLeavesNoTileOfIt(_FourAssetSidebars, unittest.TestCase):
         self.panel.active_section().menu_remove_category([index], index)
         QtWidgets.QApplication.processEvents()
 
-    def test_removing_the_category_you_stand_on_stands_on_all(self):
+    def test_removing_the_selected_category_selects_all(self):
         def case(kept, gone, everything, kept_tiles):
-            self._stand(gone)
+            self._click_row(gone)
             self._remove(gone)
-            self._assert_standing("_All", everything)
+            self._assert_selected("_All", everything)
         self._each_section(case)
 
-    def test_removing_another_category_keeps_you_where_you_stand(self):
+    def test_removing_another_category_keeps_the_selection(self):
         def case(kept, gone, everything, kept_tiles):
-            self._stand(kept)
+            self._click_row(kept)
             self._remove(gone)
-            self._assert_standing(kept, kept_tiles)
+            self._assert_selected(kept, kept_tiles)
         self._each_section(case)
 
     def test_removing_a_category_while_on_all_keeps_you_on_all(self):
         def case(kept, gone, everything, kept_tiles):
-            self._stand("_All")
+            self._click_row("_All")
             self._remove(gone)
-            self._assert_standing("_All", everything)
+            self._assert_selected("_All", everything)
         self._each_section(case)
 
 
-class RenameAndSortStandWhereTheGridStood(_FourAssetSidebars, unittest.TestCase):
+class RenameAndSortKeepTheGridsRowSelected(_FourAssetSidebars, unittest.TestCase):
     """A right press changes only the sidebar, so Rename and Sort leave both on the grid's row."""
 
     def _rename(self, stored):
@@ -620,60 +620,60 @@ class RenameAndSortStandWhereTheGridStood(_FourAssetSidebars, unittest.TestCase)
         QtWidgets.QApplication.processEvents()
         self.assertNotEqual(before, categories.order_snapshot(), "premise: no row moved")
 
-    def test_renaming_another_category_keeps_you_where_you_stand(self):
+    def test_renaming_another_category_keeps_the_selection(self):
         def case(kept, gone, everything, kept_tiles):
-            self._stand(kept)
+            self._click_row(kept)
             self._rename(gone)
-            self._assert_standing(kept, kept_tiles)
+            self._assert_selected(kept, kept_tiles)
         self._each_section(case)
 
     def test_renaming_a_category_while_on_all_keeps_you_on_all(self):
         def case(kept, gone, everything, kept_tiles):
-            self._stand("_All")
+            self._click_row("_All")
             self._rename(gone)
-            self._assert_standing("_All", everything)
+            self._assert_selected("_All", everything)
         self._each_section(case)
 
-    def test_renaming_the_category_you_stand_on_stands_on_its_new_name(self):
+    def test_renaming_the_selected_category_selects_its_new_name(self):
         def case(kept, gone, everything, kept_tiles):
-            gone_tiles = self._stand(gone)
+            gone_tiles = self._click_row(gone)
             self._rename(gone)
-            self._assert_standing("Renamed", gone_tiles)
+            self._assert_selected("Renamed", gone_tiles)
         self._each_section(case)
 
-    def test_sorting_from_another_category_keeps_you_where_you_stand(self):
+    def test_sorting_from_another_category_keeps_the_selection(self):
         def case(kept, gone, everything, kept_tiles):
-            self._stand(kept)
+            self._click_row(kept)
             self._sort(gone)
-            self._assert_standing(kept, kept_tiles)
+            self._assert_selected(kept, kept_tiles)
         self._each_section(case)
 
     def test_sorting_while_on_all_keeps_you_on_all(self):
         def case(kept, gone, everything, kept_tiles):
-            self._stand("_All")
+            self._click_row("_All")
             self._sort(gone)
-            self._assert_standing("_All", everything)
+            self._assert_selected("_All", everything)
         self._each_section(case)
 
-    def test_sorting_from_the_category_you_stand_on_keeps_you_there(self):
+    def test_sorting_from_the_selected_category_keeps_it_selected(self):
         def case(kept, gone, everything, kept_tiles):
-            gone_tiles = self._stand(gone)
+            gone_tiles = self._click_row(gone)
             self._sort(gone)
-            self._assert_standing(gone, gone_tiles)
+            self._assert_selected(gone, gone_tiles)
         self._each_section(case)
 
 
-class ADismissedMenuStandsWhereTheGridStands(_FourAssetSidebars, unittest.TestCase):
+class ADismissedMenuRestoresTheGridsRow(_FourAssetSidebars, unittest.TestCase):
     """A right press changes only the sidebar, so a menu closed with no pick restores it."""
 
     def test_the_highlight_returns_to_the_grids_row(self):
         def case(kept, gone, everything, kept_tiles):
-            self._stand(kept)
+            self._click_row(kept)
             self._press(gone)
             with mock.patch.object(QtWidgets.QMenu, "exec_", lambda *a, **k: None):
                 self.panel.active_section().catlist_menu()
             QtWidgets.QApplication.processEvents()
-            self._assert_standing(kept, kept_tiles)
+            self._assert_selected(kept, kept_tiles)
         self._each_section(case)
 
 
@@ -733,7 +733,7 @@ class ANameThatReadsAsAnotherIsThatCategory(unittest.TestCase):
             self.panel.material_model.CategoryRole),
             "the grid is narrowed to a category that is gone")
 
-    def test_renaming_onto_a_row_above_merges_and_stands_there(self):
+    def test_renaming_onto_a_row_above_merges_and_selects_it(self):
         filed = self._renamed("usds", "Karma_Mats")
         self.assertEqual(1, self._rows_read().count("Karma_Mats"),
                          "renaming onto a category that exists left two rows")

@@ -72,10 +72,10 @@ class TestExportSucceeds(unittest.TestCase):
         self.assertTrue(os.path.isfile(target))
 
 
-class TestExportRefusesOutLoud(unittest.TestCase):
+class TestExportRefusedStatesItsReason(unittest.TestCase):
     """Every `ExportRefused` states its reason - a silent no-op gives none. ▸p/log-export"""
 
-    def test_no_log_yet_says_so_and_names_the_path(self):
+    def test_no_log_yet_raises_an_error_naming_the_path(self):
         log = _Log(self, contents=None)
         with self.assertRaises(debug.ExportRefused) as caught:
             debug.export_log(log.dest)
@@ -85,21 +85,21 @@ class TestExportRefusesOutLoud(unittest.TestCase):
         self.assertIn("Debug Mode", message,
                       "the error does not name Debug Mode as the fix")
 
-    def test_an_empty_log_is_refused_rather_than_exported(self):
+    def test_an_empty_log_raises_export_refused(self):
         """Exporting a 0-byte file looks like success and delivers nothing."""
         log = _Log(self, contents="")
         with self.assertRaises(debug.ExportRefused) as caught:
             debug.export_log(log.dest)
         self.assertIn("empty", str(caught.exception).lower())
 
-    def test_no_destination_is_refused(self):
+    def test_no_destination_raises_export_refused(self):
         _Log(self)
         with self.assertRaises(debug.ExportRefused) as caught:
             debug.export_log("")
         self.assertIn("destination", str(caught.exception).lower(),
                       "the error does not mention the destination folder")
 
-    def test_an_unwritable_destination_says_which_one(self):
+    def test_an_unwritable_destination_raises_an_error_naming_it(self):
         log = _Log(self)
         blocked = os.path.join(log.tmp, "blocked")
         os.makedirs(blocked, exist_ok=True)

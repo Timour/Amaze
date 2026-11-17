@@ -83,18 +83,18 @@ class TestThumbnailShutdown(unittest.TestCase):
             _app.processEvents()
             time.sleep(0.01)
 
-    def test_prune_survives_a_deleted_thread(self):
+    def test_prune_drops_a_deleted_thread_without_raising(self):
         """A thread whose C++ side is already gone must be dropped, never raise."""
         engine = thumbnails.ThumbnailEngine()
 
-        class _Gone:
+        class _DeletedThread:
             def isFinished(self):
                 raise RuntimeError("Internal C++ object already deleted.")
 
             def requests(self):
                 raise RuntimeError("Internal C++ object already deleted.")
 
-        engine._threads = [_Gone()]
+        engine._threads = [_DeletedThread()]
         engine._prune_threads()          # must not raise
         self.assertEqual(engine._threads, [])
 
@@ -104,12 +104,12 @@ class TestPruneWaitsForItsOwnDeliveries(unittest.TestCase):
 
     def setUp(self):
         self.engine = thumbnails.ThumbnailEngine()
-        self.loader = TestPruneJudgesOnlyItsOwnLoader._FinishedLoader(
+        self.loader = TestPruneChecksOnlyItsOwnLoader._FinishedLoader(
             ["k1", "k2"])
         self.engine._threads = [self.loader]
         self.engine._states = {"k1": "pending", "k2": "pending"}
 
-    def test_a_delivery_between_prune_and_verdict_wins(self):
+    def test_a_delivery_after_the_prune_marks_its_key_done(self):
         self.engine._prune_threads(self.loader)   # the prune that runs before the delivery
         image = QtGui.QImage(4, 4, QtGui.QImage.Format.Format_ARGB32)
         image.fill(QtGui.QColor("red"))
@@ -152,7 +152,7 @@ class TestAFileIsMissingOnlyWhenItsLoadFails(unittest.TestCase):
                 self.assertEqual(expected, self.engine._states[key])
 
 
-class TestAStaleDeliveryNeverBeatsTheFreshOne(unittest.TestCase):
+class TestAStaleDeliveryNeverReplacesTheFreshOne(unittest.TestCase):
     """A load running across a re-render delivers the OLD file after the re-request."""
 
     def setUp(self):
@@ -181,7 +181,7 @@ class TestAStaleDeliveryNeverBeatsTheFreshOne(unittest.TestCase):
         loader.failed.connect(self.engine._on_failed)
         return loader
 
-    def test_the_old_picture_landing_after_the_re_request_is_dropped(self):
+    def test_the_old_picture_arriving_after_the_re_request_is_dropped(self):
         key = ("lib", "mat", "stale-picture")
         self._paint("red")
         old, held = self._requested(key), []
@@ -204,10 +204,10 @@ class TestAStaleDeliveryNeverBeatsTheFreshOne(unittest.TestCase):
         items, self.engine._convert_queue = list(self.engine._convert_queue), []
         return thumbnails._ConvertLoader(items, None)
 
-    def test_a_stale_conversion_never_files_its_png(self):
+    def test_a_stale_conversion_never_emits_its_png(self):
         key, dest = ("tex", self.path, 64), os.path.join(self.dir, "cache", "thumb.png")
-        filed = []
-        self.engine.converted.connect(lambda _key, png: filed.append(png))
+        emitted = []
+        self.engine.converted.connect(lambda _key, png: emitted.append(png))
         self._paint("red")
         old, held = self._converting(key, dest), []
         old.loaded.connect(lambda *delivery: held.append(delivery))
@@ -219,7 +219,7 @@ class TestAStaleDeliveryNeverBeatsTheFreshOne(unittest.TestCase):
         new.failed.connect(self.engine._on_failed)
         new.run()
         self.engine._on_loaded(*held[0])    # the stale one is handled after the fresh one
-        self.assertEqual([dest], filed, "`converted` was not emitted exactly once, for the fresh PNG")
+        self.assertEqual([dest], emitted,"`converted` was not emitted exactly once, for the fresh PNG")
         self.assertEqual(QtGui.QColor("blue").rgb(), QtGui.QImage(dest).pixel(0, 0),
                          "a stale conversion replaced the fresh PNG")
         self.assertEqual(["thumb.png"], os.listdir(os.path.dirname(dest)),
@@ -241,7 +241,7 @@ class TestAStaleDeliveryNeverBeatsTheFreshOne(unittest.TestCase):
         new.run()
         self.assertEqual([key], attempts, "a superseded attempt was reported as this request's")
 
-    def test_an_old_failure_landing_after_the_re_request_marks_nothing_missing(self):
+    def test_an_old_failure_arriving_after_the_re_request_marks_nothing_missing(self):
         key = ("lib", "mat", "stale-failure")
         with open(self.path, "wb") as handle:
             handle.write(b"half a png")
@@ -257,10 +257,10 @@ class TestAStaleDeliveryNeverBeatsTheFreshOne(unittest.TestCase):
         self.assertIsNotNone(self.engine.peek(key))
 
 
-class AnUnsavedPngLeavesNothingAndSaysSo(unittest.TestCase):
+class AnUnsavedPngIsLoggedAndLeavesNothing(unittest.TestCase):
     """`QImage.save` returns False rather than raising, so the worker checks it. ▸r/model-contracts"""
 
-    def test_a_png_that_will_not_save_is_said_and_leaves_no_scratch(self):
+    def test_a_png_that_will_not_save_is_logged_and_leaves_no_scratch(self):
         folder = tempfile.mkdtemp(prefix="amaze_unsaved_")
         self.addCleanup(shutil.rmtree, folder, True)
         image = QtGui.QImage(4, 4, QtGui.QImage.Format.Format_RGB32)
@@ -294,7 +294,7 @@ class TestAConvertIsMissingOnlyWhenItFails(unittest.TestCase):
             with self.subTest(expected):
                 self.assertEqual(expected, self._ran(given))
 
-    def test_the_engine_hears_both_loaders_fail(self):
+    def test_both_dispatchers_connect_the_loader_failed_signal(self):
         import inspect
         for method in ("_dispatch_converts", "_dispatch_files"):
             with self.subTest(dispatch=method):
@@ -302,7 +302,7 @@ class TestAConvertIsMissingOnlyWhenItFails(unittest.TestCase):
                               inspect.getsource(getattr(thumbnails.ThumbnailEngine, method)))
 
 
-class TestPruneJudgesOnlyItsOwnLoader(unittest.TestCase):
+class TestPruneChecksOnlyItsOwnLoader(unittest.TestCase):
     """A loader marks only its own keys missing: deliveries precede `finished` per thread only."""
 
     class _FinishedLoader:
@@ -445,10 +445,10 @@ class TestConvertCancellation(unittest.TestCase):
             "the iconvert child was still running after the engine shut down")
 
 
-class TestParkedThreadsSurviveReload(unittest.TestCase):
+class TestUnstoppableThreadsAreKeptThroughReload(unittest.TestCase):
     """`_unstoppable` holds the last reference to a thread that would not stop; lost, Qt aborts."""
 
-    def test_a_reload_keeps_the_parked_threads(self):
+    def test_a_reload_keeps_the_unstoppable_threads(self):
         marker = object()
         lot, installed = workers._unstoppable, workers._installed
         lot.append(marker)
@@ -537,7 +537,7 @@ class OneHandoverForEveryEngine(unittest.TestCase):
         self.assertTrue(_app.aboutToQuit.disconnect(second.shutdown),
                         "the new engine is not connected to aboutToQuit")
 
-    def test_a_kept_engine_carries_on_untouched(self):
+    def test_a_kept_engine_keeps_running_untouched(self):
         first = self._install()
         first.busy = True
         self.assertIs(first, self._install(keep=lambda old: old.busy), "a busy engine was replaced")
@@ -552,10 +552,10 @@ class OneHandoverForEveryEngine(unittest.TestCase):
                               "this engine was made outside workers.install")
 
 
-class TestDeliveriesSurviveAReload(unittest.TestCase):
+class TestDeliveriesContinueAfterAReload(unittest.TestCase):
     """Models connect when built; after a reload an open tab still gets the new engine's signals."""
 
-    def test_a_model_still_hears_the_engine_after_a_reload(self):
+    def test_a_model_still_receives_the_engine_signals_after_a_reload(self):
         from amaze.core import library as library_mod
 
         prefs = test_support.fixture_prefs(self)

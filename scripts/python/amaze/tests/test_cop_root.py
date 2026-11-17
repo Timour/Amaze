@@ -25,7 +25,7 @@ from amaze.tests import test_support  # noqa: E402 - redirects the log
 TOKEN_ROOT = "/obj/Amaze"    # the path saved files carry; the import maps it
 
 
-class TheCompanionIsTheImportsOwn(unittest.TestCase):
+class RollbackDeletesOnlyTheCopNetworkTheImportCreated(unittest.TestCase):
     """A rolled-back import deletes the COP network it created and nothing else."""
 
     def setUp(self):
@@ -52,7 +52,7 @@ class TheCompanionIsTheImportsOwn(unittest.TestCase):
         self.handler._undo_cop_companion()      # must not raise
 
 
-class ACompanionLandsBesideItsMaterial(unittest.TestCase):
+class TheCompanionIsCreatedBesideItsMaterial(unittest.TestCase):
     """Where the COP network is created: /stage, /obj or the geometry ▸r/houdini-after-create"""
 
     NAME = "companion_home_probe"
@@ -98,7 +98,7 @@ class ACompanionLandsBesideItsMaterial(unittest.TestCase):
         made = self._restored(geo.createNode("matnet"))
         self.assertEqual((geo.path(), "copnet", "Sop"), self._shape(made))
 
-    def test_the_materials_references_are_mapped_to_where_it_landed(self):
+    def test_the_materials_references_are_mapped_to_the_companions_path(self):
         """The saved file carries the token path; the import maps it to the companion's path."""
         made = self._restored(hou.node("/mat"))
         self.assertEqual({"op:" + TOKEN_ROOT + "/" + self.NAME: "op:" + made.path()},
@@ -172,7 +172,7 @@ class AWholeNetworkSaveKeepsItsDots(unittest.TestCase):
             ".children()", source,
             "children() is still what the save collects")
 
-    def test_a_saved_file_carries_the_dot_back(self):
+    def test_a_saved_file_reloads_with_the_dot(self):
         builder, _dot = self._wired_through_a_dot()
         scratch = test_support.scratch_dir("amaze_test_dot_")
         self.addCleanup(shutil.rmtree, scratch, True)
@@ -232,7 +232,7 @@ class ALooseSurfaceSaveKeepsAWireThroughADot(unittest.TestCase):
                           "copyNodesTo now keeps the wire through an uncopied dot")
 
 
-class AnImportCarriesNoOneElsesStamp(unittest.TestCase):
+class AnImportClearsInnerAssetlibIds(unittest.TestCase):
     """An inner `assetlib_id` survives save and reload; an import clears it. ▸r/inherited-stamps"""
 
     def setUp(self):
@@ -241,7 +241,7 @@ class AnImportCarriesNoOneElsesStamp(unittest.TestCase):
         self.scratch = test_support.scratch_dir("amaze_test_stamp_")
         self.addCleanup(shutil.rmtree, self.scratch, True)
 
-    def _saved_with_a_stale_inner_stamp(self):
+    def _saved_with_a_stale_inner_assetlib_id(self):
         """A material file whose inner node has another entry's id, two levels deep."""
         builder = self.parent.createNode("subnet", "builder")
         deep = builder.createNode("subnet", "deep")
@@ -252,19 +252,19 @@ class AnImportCarriesNoOneElsesStamp(unittest.TestCase):
         builder.destroy()
         return path
 
-    def test_the_premise_a_stamp_survives_the_round_trip(self):
+    def test_the_premise_inner_user_data_is_kept_through_save_and_reload(self):
         """Premise, measured: userData on an inner node survives a save and reload."""
-        path = self._saved_with_a_stale_inner_stamp()
+        path = self._saved_with_a_stale_inner_assetlib_id()
         raw = self.parent.createNode("subnet", "raw")
         raw.loadItemsFromFile(path)
-        stamps = [n.userData("assetlib_id") for n in raw.allSubChildren()
+        ids = [n.userData("assetlib_id") for n in raw.allSubChildren()
                   if n.userData("assetlib_id")]
         self.assertIn(
-            "SOMEBODY-ELSES-ID", stamps,
+            "SOMEBODY-ELSES-ID", ids,
             "the stamp no longer survives a save, so clearing it is moot")
 
-    def test_a_strict_load_clears_every_inherited_stamp(self):
-        path = self._saved_with_a_stale_inner_stamp()
+    def test_a_strict_load_clears_every_inner_assetlib_id(self):
+        path = self._saved_with_a_stale_inner_assetlib_id()
         target = self.parent.createNode("subnet", "target")
 
         problem = nodes.load_items_strict(target, path)
@@ -279,7 +279,7 @@ class AnImportCarriesNoOneElsesStamp(unittest.TestCase):
 
     def test_the_sweep_reaches_a_NESTED_node(self):
         """The stale stamp is two subnets down; a walk over children() only would miss it."""
-        path = self._saved_with_a_stale_inner_stamp()
+        path = self._saved_with_a_stale_inner_assetlib_id()
         target = self.parent.createNode("subnet", "nested")
         nodes.load_items_strict(target, path)
         depths = [n.path().count("/") for n in target.allSubChildren()]
@@ -287,7 +287,7 @@ class AnImportCarriesNoOneElsesStamp(unittest.TestCase):
             depths and max(depths) >= 5,
             "the fixture is not actually nested, so this proves nothing")
 
-    def test_a_loose_node_has_its_OWN_stamp_cleared_too(self):
+    def test_a_loose_node_has_its_OWN_assetlib_id_cleared_too(self):
         """A network-destination import creates loose nodes, each with the stamp it was saved with."""
         loose = self.parent.createNode("subnet", "loose")
         loose.setUserData("assetlib_id", "STALE-TOP")
@@ -299,7 +299,7 @@ class AnImportCarriesNoOneElsesStamp(unittest.TestCase):
         self.assertIsNone(loose.userData("assetlib_id"))
         self.assertIsNone(inner.userData("assetlib_id"))
 
-    def test_a_container_keeps_its_own_stamp_by_default(self):
+    def test_a_container_keeps_its_own_assetlib_id_by_default(self):
         """Callers stamp the container right after; by default only the nodes inside are cleared."""
         keeper = self.parent.createNode("subnet", "keeper")
         keeper.setUserData("assetlib_id", "THE-REAL-ONE")

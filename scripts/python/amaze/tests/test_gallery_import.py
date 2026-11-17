@@ -27,7 +27,7 @@ from amaze.tests import test_support  # noqa: E402 - redirects the log
 class EachEntryGoesThroughTheSaveHandedIn(unittest.TestCase):
     """The caller's `save` gets every entry; a save returning `""` counts failed, not imported."""
 
-    def test_two_entries_one_refused(self):
+    def test_two_entries_one_save_returns_empty_and_counts_failed(self):
         node = mock.Mock()
         entry = mock.Mock()
         entry.canCreateChildNode.return_value = True
@@ -58,7 +58,7 @@ def _entries(count):
     return made
 
 
-class AnInterruptKeepsWhatLanded(unittest.TestCase):
+class AnInterruptKeepsTheEntriesSavedBeforeIt(unittest.TestCase):
     """Esc raises from `progress`; the caller's summary keeps the entries saved before it."""
 
     def test_the_callers_summary_holds_the_counts_and_categories(self):
@@ -103,7 +103,7 @@ class AGalleryImportRendersOnceAfterItsSaves(unittest.TestCase):
             gallery_import.import_entries(save, _entries(len(answers)), library=library)
         return asked, batches
 
-    def test_the_saves_skip_their_render_and_one_batch_renders_what_landed(self):
+    def test_the_saves_skip_their_render_and_one_batch_renders_the_saved_rows(self):
         asked, batches = self._import(1, ["Karma", "", "Karma"])
         self.assertEqual([{"render": False}] * 3, asked)
         self.assertEqual([["id0", "id2"]], batches, "not ONE batch of the saved rows")
@@ -128,7 +128,7 @@ class AnEntryWhoseListWasNotSavedIsNamed(unittest.TestCase):
         self.assertEqual(1, len(unlisted), "the entry whose list was not saved was not named")
 
 
-class _Escaped:
+class _InterruptedAtThirdUpdate:
     """Replaces `hou.InterruptableOperation`; raises `OperationInterrupted` at the third update."""
 
     def __init__(self, *_args, **_kwargs):
@@ -195,20 +195,20 @@ class GalleryImportInThePanel(unittest.TestCase):
         return sorted(str(mat.mat_id) for mat in
                       test_support.arrived(self.panel.material_model, held))
 
-    def test_esc_keeps_what_landed_its_categories_and_its_counts(self):
-        with mock.patch.object(hou, "InterruptableOperation", _Escaped):
-            landed = self._import(["GalleryEscA", "GalleryEscB", "GalleryEscC"])
-        self.assertEqual(2, len(landed), "premise: the Esc did not stop the third entry")
+    def test_esc_keeps_the_saved_entries_their_categories_and_counts(self):
+        with mock.patch.object(hou, "InterruptableOperation", _InterruptedAtThirdUpdate):
+            saved = self._import(["GalleryEscA", "GalleryEscB", "GalleryEscC"])
+        self.assertEqual(2, len(saved), "premise: the Esc did not stop the third entry")
         shown = self.panel.category_names_from(self.panel.category_model)
         self.assertEqual([True, True, False],
                          [name in shown for name in ("GalleryEscA", "GalleryEscB", "GalleryEscC")],
                          "the categories of the saved entries have no sidebar row")
         self.assertEqual(messages.GALLERY_IMPORT_INTERRUPTED % (2, 0, 0), self.said[-1])
 
-    def test_what_landed_renders_in_one_batch_with_the_setting_left_on(self):
-        landed = self._import(["GalleryBatchA", "GalleryBatchB"])
-        self.assertEqual(2, len(landed), "premise: the gallery saved nothing")
-        self.assertEqual([landed], self.batches, "not ONE batch of the saved entries")
+    def test_the_saved_entries_render_in_one_batch_with_the_setting_left_on(self):
+        saved = self._import(["GalleryBatchA", "GalleryBatchB"])
+        self.assertEqual(2, len(saved), "premise: the gallery saved nothing")
+        self.assertEqual([saved], self.batches, "not ONE batch of the saved entries")
         self.assertEqual(1, self.panel.prefs.render_on_import)
         self.assertEqual(messages.GALLERY_IMPORT_FINISHED_RENDERING % (2, 0, 0), self.said[-1])
 
@@ -257,16 +257,16 @@ class AGalleryFileIsReadFromItsOwnInstall(unittest.TestCase):
         self.assertEqual([], self._names(os.path.join(folder, "missing.gal")))
         self.assertTrue(hou.galleries.removeGallery(other), "an unrelated gallery was uninstalled")
 
-    def test_an_installed_gallery_that_will_not_reinstall_is_put_back(self):
+    def test_an_installed_gallery_stays_installed_when_its_reinstall_fails(self):
         path = self._gallery("amaze_gallery_back")
         self.assertIsNotNone(hou.galleries.installGallery(path), "premise")
         real = hou.galleries.installGallery
         calls = []
 
-        def refuse_once(gallery_path):
+        def return_none_once(gallery_path):
             calls.append(gallery_path)
             return None if len(calls) == 1 else real(gallery_path)
-        with mock.patch.object(hou.galleries, "installGallery", refuse_once):
+        with mock.patch.object(hou.galleries, "installGallery", return_none_once):
             self.assertEqual([], self._names(path))
         self.assertTrue(hou.galleries.removeGallery(path),
                         "a failed read left that gallery uninstalled for the session")

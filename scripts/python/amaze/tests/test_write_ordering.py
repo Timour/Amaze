@@ -56,9 +56,9 @@ class _LibraryCase(unittest.TestCase):
             return {str(key) for key in json.load(fh)["assets"]}
 
 
-class RemoveAssetHonoursTheIndexWrite(_LibraryCase):
+class RemoveAssetDeletesFilesOnlyAfterTheIndexWrite(_LibraryCase):
 
-    def test_a_refused_write_destroys_nothing_and_the_row_stays(self):
+    def test_a_failed_index_write_deletes_nothing_and_the_row_stays(self):
         """Rows and files change together: a failed save moves neither, nor does the next save."""
         versions.create_version(self.prefs, self.mat_id, "V1")
         store = versions.versions_dir(self.prefs, self.mat_id)
@@ -103,11 +103,11 @@ class RemoveAssetHonoursTheIndexWrite(_LibraryCase):
             "decide it is safe to delete")
 
 
-class AnIdThatCannotNameAFileOwnsNothing(_LibraryCase):
+class AnIdThatCannotNameAFileHasNoFiles(_LibraryCase):
 
     ESCAPING = "../../../Documents/thesis"    # Material.from_dict reads ids verbatim, unvalidated
 
-    def test_an_escaping_id_owns_nothing_and_a_real_one_stays_inside(self):
+    def test_an_escaping_id_has_no_files_and_a_real_ones_stay_inside(self):
         self.assertEqual({}, self.model.asset_files(self.ESCAPING))
         self.assertEqual({}, self.model.asset_directories(self.ESCAPING))
         root = os.path.realpath(self.prefs.dir)
@@ -155,7 +155,7 @@ class SwitchingVersionsIsAllOrNothing(unittest.TestCase):
         with open(self.base[kind], encoding="utf-8") as fh:
             return fh.read(64)
 
-    def _holds(self, kind):
+    def _version_in(self, kind):
         return 2 if "VERSION-2" in self._text(kind) else 1
 
     def test_a_held_file_leaves_the_base_on_one_version(self):
@@ -177,11 +177,11 @@ class SwitchingVersionsIsAllOrNothing(unittest.TestCase):
         self.assertTrue(switched, "a recorded switch that waits on one file was reported as failed")
         self._released()
         self.assertEqual(
-            self._holds(".mat"), self._holds(".json"),
+            self._version_in(".mat"), self._version_in(".json"),
             "the base is a MIXTURE of two versions: its .mat and its "
             "builder come from different ones, so importing it builds "
             "one version's network behind another's parameters")
-        self.assertEqual(self._holds(".mat"), versions.active_version(self.prefs, self.mat_id),
+        self.assertEqual(self._version_in(".mat"), versions.active_version(self.prefs, self.mat_id),
                          "the ledger records another version than the files hold")
 
     def _released(self):
@@ -195,7 +195,7 @@ class SwitchingVersionsIsAllOrNothing(unittest.TestCase):
             self._write(kind, "STRUCTURAL %s" % kind)
 
         self.assertTrue(versions.switch_active(self.prefs, self.mat_id, 1))
-        self.assertEqual(1, self._holds(".mat"))
+        self.assertEqual(1, self._version_in(".mat"))
         self.assertEqual(1, versions.active_version(self.prefs, self.mat_id))
 
         ledger = versions.read_ledger(self.prefs, self.mat_id)
@@ -210,7 +210,7 @@ class SwitchingVersionsIsAllOrNothing(unittest.TestCase):
             "the switch destroyed the ONLY copy of the structural "
             "update - no archive holds it: %s" % archived)
 
-    def test_a_held_switch_lands_whole_once_the_file_is_let_go(self):
+    def test_a_held_switch_completes_once_the_file_is_released(self):
         """A file kind the base lacked is written with the rest, never alone beside the old ones."""
         os.remove(self.base[".json"])
 
@@ -230,13 +230,13 @@ class SwitchingVersionsIsAllOrNothing(unittest.TestCase):
 
         self.assertTrue(switched, "a recorded switch that waits on one file was reported as failed")
         self._released()
-        self.assertEqual((1, 1), (self._holds(".mat"), self._holds(".json")),
+        self.assertEqual((1, 1), (self._version_in(".mat"), self._version_in(".json")),
                          "the switch was applied in part: a material made of two versions")
 
     def test_an_ordinary_switch_still_works(self):
         self.assertTrue(versions.switch_active(self.prefs, self.mat_id, 1))
-        self.assertEqual(1, self._holds(".mat"))
-        self.assertEqual(1, self._holds(".json"))
+        self.assertEqual(1, self._version_in(".mat"))
+        self.assertEqual(1, self._version_in(".json"))
         self.assertEqual(1, versions.active_version(self.prefs, self.mat_id))
 
 
@@ -271,12 +271,12 @@ class TheThumbnailManifestKeepsAnotherWritersWork(unittest.TestCase):
             "PNGs are still on disk and nothing will ever find them again, "
             "so the folder re-converts from scratch on every visit")
 
-    def test_entries_written_right_after_our_save_survive_the_next(self):
+    def test_entries_written_right_after_our_save_are_kept_by_the_next(self):
         """A manifest written just after ours is another writer's, never treated as already read."""
         cache = texture_library.ThumbnailCache(size=256)
         cache._manifest["/textures/wood/1.exr"] = {"mtime": 1, "size": 1}
         cache._dirty = True
-        disarm = self._theirs_land_after(hostos, "write_json_atomic",
+        disarm = self._then_write_theirs(hostos, "write_json_atomic",
                                          cache.manifest_path)
         cache.save()
         disarm()
@@ -284,12 +284,12 @@ class TheThumbnailManifestKeepsAnotherWritersWork(unittest.TestCase):
                          "the entries another writer saved right after ours "
                          "were dropped by our next save, orphaning their PNGs")
 
-    def _theirs_land_after(self, owner, name, path):
+    def _then_write_theirs(self, owner, name, path):
         theirs = {"/textures/metal/%d.exr" % n: {"mtime": 1, "size": 1}
                   for n in range(3)}
         real, armed = getattr(owner, name), [True]
 
-        def then_theirs_land(*args, **kwargs):
+        def call_then_write_theirs(*args, **kwargs):
             answer = real(*args, **kwargs)
             if armed[0]:
                 armed[0] = False
@@ -297,7 +297,7 @@ class TheThumbnailManifestKeepsAnotherWritersWork(unittest.TestCase):
                     json.dump(theirs, fh)
             return answer
 
-        setattr(owner, name, then_theirs_land)
+        setattr(owner, name, call_then_write_theirs)
         self.addCleanup(setattr, owner, name, real)
         return lambda: setattr(owner, name, real)
 
@@ -308,25 +308,25 @@ class TheThumbnailManifestKeepsAnotherWritersWork(unittest.TestCase):
         with open(cache.manifest_path, encoding="utf-8") as fh:
             return len([k for k in json.load(fh) if "/metal/" in k])
 
-    def test_entries_written_while_the_manifest_loads_survive_our_save(self):
+    def test_entries_written_while_the_manifest_loads_are_kept_by_our_save(self):
         """The fingerprint is of the bytes parsed, so a write made after the parse is merged."""
         path = texture_library.ThumbnailCache(size=256).manifest_path
         with open(path, "w", encoding="utf-8") as fh:
             json.dump({"/textures/wood/1.exr": {"mtime": 1, "size": 1}}, fh)
-        disarm = self._theirs_land_after(json, "loads", path)
+        disarm = self._then_write_theirs(json, "loads", path)
         cache = texture_library.ThumbnailCache(size=256)
         disarm()
         self.assertEqual(3, self._saved_metal(cache),
                          "the entries written while the manifest loaded "
                          "were dropped by our save")
 
-    def test_entries_written_while_a_sweep_is_forgotten_survive_our_save(self):
+    def test_entries_written_during_forget_are_kept_by_our_save(self):
         """`forget` reads the file once and keeps that read's fingerprint, never a second one."""
         cache = texture_library.ThumbnailCache(size=256)
         cache._manifest["/textures/wood/1.exr"] = {"mtime": 1, "size": 1}
         cache._dirty = True
         cache.save()
-        disarm = self._theirs_land_after(hostos, "peer_read",
+        disarm = self._then_write_theirs(hostos, "peer_read",
                                          cache.manifest_path)
         cache.forget(["/textures/wood/1.exr"])
         disarm()

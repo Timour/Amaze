@@ -63,16 +63,16 @@ def _choosing(section_key, language=""):
     return mock.patch.object(save_dialog.SaveDialog, "exec", fake_exec)
 
 
-class SaveTargetsOfferWhatCanTakeTheNode(unittest.TestCase):
+class SaveTargetsOfferOnlySectionsThatAcceptTheNode(unittest.TestCase):
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
 
-    def test_save_targets_offer_what_can_take_the_selection(self):
+    def test_save_targets_offer_only_sections_that_accept_the_selection(self):
         """A multi-selection never offers a one-node section, and an empty wrangle no Code."""
         wrangle = _wrangle(self)
 
-        def emptied():
+        def wrangle_with_a_blank_snippet():
             wrangle.parm("snippet").set("   ")
             return [wrangle]
 
@@ -84,7 +84,7 @@ class SaveTargetsOfferWhatCanTakeTheNode(unittest.TestCase):
                 ("two materials",
                  lambda: [_material(self, "m1"), _material(self, "m2")],
                  {"material"}, {"gradient", "code"}),
-                ("an empty wrangle", emptied, set(), {"code"})):
+                ("an empty wrangle", wrangle_with_a_blank_snippet, set(), {"code"})):
             with self.subTest(why):
                 keys = set(self.panel._save_targets(nodes()))
                 self.assertEqual(set(), offered - keys,
@@ -152,13 +152,13 @@ class TheSectionRowDrivesTheRestOfTheDialog(unittest.TestCase):
         self.assertEqual("OpenCL", dialog.combo_language.currentText())
 
 
-class TheChosenSectionIsWhereTheSaveLands(unittest.TestCase):
+class TheSaveIsWrittenToTheChosenSection(unittest.TestCase):
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
         self.panel.prefs.render_on_import = 0
 
-    def test_a_material_saved_to_node_comes_back_in_a_material_library(self):
+    def test_a_material_saved_to_node_imports_back_as_a_vop_network(self):
         node = _material(self, "save_to_node")
         before = self.panel.cop_model.rowCount()
         held = test_support.asset_ids(self.panel.cop_model)
@@ -317,7 +317,7 @@ class ASaveLeavesNothingOnTheUndoStack(unittest.TestCase):
                          "Convert to left its scratch work on the artist's undo stack")
 
 
-class AnUpdateBeforeARestartSaysSo(unittest.TestCase):
+class AnUpdateBeforeARestartShowsTheRestartSentence(unittest.TestCase):
     """The menu reloads from disk and the panel does not, so a new menu can call an old panel."""
 
     def test_an_old_panel_gets_the_restart_sentence_and_keeps_the_selection(self):
@@ -385,7 +385,7 @@ class AnUnderscoredCategoryKeepsItsStoredName(unittest.TestCase):
                          "the list shows the stored spelling")
         self._assert_filed_under_the_stored_name(seen["saved"])
 
-    def test_standing_on_WIP_pre_selects_it(self):
+    def test_a_selected_WIP_row_pre_selects_it(self):
         self.assertTrue(self.panel._select_category("WIP"),
                         "premise: no row shows WIP")
         seen = self._save()

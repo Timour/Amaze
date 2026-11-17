@@ -54,7 +54,7 @@ class _Case(unittest.TestCase):
             return json.load(handle)["assets"][self.mat_id]
 
 
-class TheStoreSitsBesideTheMaterialStore(_Case):
+class TheCodeStoreIsBesideTheMaterialStore(_Case):
 
     def test_a_code_version_is_one_text_file_with_the_ledger(self):
         self.assertTrue(self._save(self.model.NEW_VERSION, SECOND, "helper fast"))
@@ -126,7 +126,7 @@ class TheEditorSavesVersions(_Case):
                          "saving version 1 wrote over version 2")
         self.assertEqual(THIRD, self._on_disk()["code"])
 
-    def test_a_missing_version_is_refused_and_nothing_moves(self):
+    def test_saving_a_missing_version_returns_false_and_changes_nothing(self):
         self._save(self.model.NEW_VERSION, SECOND, "helper fast")
         self.assertFalse(self._save(9, THIRD, "nine"))
         self.assertEqual(SECOND, self._on_disk()["code"])
@@ -153,10 +153,10 @@ class SelectSwitchesTheSnippet(_Case):
                          "the edit that no version held was lost by the switch")
 
 
-class ARefusedListWriteIsSaidOnTheStatusLine(_Case):
+class AFailedCodeJsonWriteShowsOnlyTheLibraryAlert(_Case):
     """A snippet whose code.json write fails stays in memory; only the library's alert is shown."""
 
-    def _refused(self, act):
+    def _with_code_json_write_failing(self, act):
         from amaze.core import library_db
         with test_support.full_disk_for(os.path.join(self.prefs.dir, library_files.CODE)), \
                 test_support.captured_log() as log:
@@ -173,23 +173,23 @@ class ARefusedListWriteIsSaidOnTheStatusLine(_Case):
         held = library_db.document(self.prefs, library_files.CODE)
         self.assertTrue(held.dirty, "the unsaved snippet was dropped, not kept for the next save")
 
-    def test_a_new_snippet_waits_for_the_next_save(self):
-        self._refused(lambda: self.model.add_asset(SECOND, "probe", "VEX", "Examples", "", False))
+    def test_a_new_snippet_is_kept_for_the_next_save(self):
+        self._with_code_json_write_failing(lambda: self.model.add_asset(SECOND, "probe", "VEX", "Examples", "", False))
         row = next(asset for asset in self.model.assets if asset.name == "probe")
         self.mat_id = str(row.mat_id)
         self.assertEqual(SECOND, self._on_disk()["code"], "the kept snippet was never written")
 
-    def test_a_saved_version_waits_for_the_next_save(self):
-        self._refused(lambda: self._save(self.model.NEW_VERSION, SECOND, "helper fast"))
+    def test_a_saved_version_is_kept_for_the_next_save(self):
+        self._with_code_json_write_failing(lambda: self._save(self.model.NEW_VERSION, SECOND, "helper fast"))
         self.assertEqual("helper fast", self._on_disk()["name"], "the kept version was never written")
 
-    def test_a_switched_version_waits_for_the_next_save(self):
+    def test_a_switched_version_is_kept_for_the_next_save(self):
         self._save(self.model.NEW_VERSION, SECOND, "helper fast")
-        self._refused(lambda: self.model.switch_version(self.row, 1))
+        self._with_code_json_write_failing(lambda: self.model.switch_version(self.row, 1))
         self.assertEqual("helper", self._on_disk()["name"], "the kept switch was never written")
 
 
-class TheModelCarriesCodeVersions(_Case):
+class TheModelHoldsCodeVersions(_Case):
 
     def test_the_badge_roles_read_the_code_store(self):
         self._save(self.model.NEW_VERSION, SECOND, "helper fast")
@@ -211,7 +211,7 @@ class TheModelCarriesCodeVersions(_Case):
         self.assertTrue(self.model.switch_version(self.row, 1))
         self.assertEqual((2, "helper"), shown(), "after a select the row still read its cached roles")
 
-    def test_deleting_the_snippet_takes_its_versions(self):
+    def test_deleting_the_snippet_deletes_its_versions(self):
         self._save(self.model.NEW_VERSION, SECOND, "helper fast")
         with patch.object(hou, "ui", MagicMock(), create=True):
             self.assertEqual(1, self.model.remove_rows([self.row]))
@@ -377,7 +377,7 @@ class TheEditorWindowKeepsVersions(unittest.TestCase):
         self.assertEqual(THIRD, added[0].code)
 
 
-class TheSweepsLeaveCodeVersionsAlone(_Case):
+class CheckLibraryLeavesCodeVersionsAlone(_Case):
     """Check Library moves files no database lists, not the code store. ▸r/version-store"""
 
     def test_check_library_moves_a_stray_and_leaves_the_code_store(self):

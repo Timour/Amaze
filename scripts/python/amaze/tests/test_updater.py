@@ -116,7 +116,7 @@ class TheCheckTest(_FeedMixin):
         self.assertTrue(updater.check("1.0").url,
                         "a source-only release returned no URL")
 
-    def test_an_uploaded_zip_wins_over_the_source_archive(self):
+    def test_an_uploaded_zip_is_preferred_over_the_source_archive(self):
         self.answer({"tag_name": "9.9",
                      "zipball_url": "https://example.invalid/src",
                      "assets": [{"name": "amaze.zip",
@@ -129,7 +129,7 @@ class TheCheckTest(_FeedMixin):
         self.answer({"tag_name": "1.0", "assets": []})
         self.assertEqual(updater.UP_TO_DATE, updater.check("1.0").verdict)
 
-    def test_an_unreachable_feed_changes_nothing_and_says_so(self):
+    def test_an_unreachable_feed_returns_unreachable_and_changes_nothing(self):
         self.answer(raising=urllib.error.URLError("offline"))
         result = updater.check("1.0")
         self.assertEqual(updater.UNREACHABLE, result.verdict)
@@ -249,7 +249,7 @@ class TheDownloadTest(_FeedMixin):
         path = updater.download("https://example.invalid/z", self.dir)
         self.assertTrue(os.path.exists(path))
 
-    def test_a_truncated_download_is_refused_and_removed(self):
+    def test_a_truncated_download_raises_oserror_and_is_removed(self):
         """A short body ends the read loop normally; the length check rejects it. ▸p/updater-shape"""
         self.answer(b"PK\x03\x04", headers={"Content-Length": "9999"})
         with self.assertRaises(OSError) as caught:
@@ -258,7 +258,7 @@ class TheDownloadTest(_FeedMixin):
         self.assertEqual([], os.listdir(self.dir),
                          "the partial file was left behind")
 
-    def test_an_empty_download_is_refused(self):
+    def test_an_empty_download_raises_oserror(self):
         self.answer(b"", headers={})
         with self.assertRaises(OSError):
             updater.download("https://example.invalid/z", self.dir)
@@ -288,16 +288,16 @@ class TheDownloadTest(_FeedMixin):
         self.assertEqual(["https://x.invalid/z", "https://x.invalid/p"],
                          streamed)
 
-    def test_a_transfer_that_DIES_mid_read_leaves_nothing_behind(self):
+    def test_a_transfer_that_FAILS_mid_read_leaves_nothing_behind(self):
         """A transfer that raises reaches no length check at all. ▸p/updater-shape"""
-        class _Dying(_Response):
+        class _FailingResponse(_Response):
             def read(self, *args):
                 if self.tell():
                     raise OSError("connection reset")
                 return super().read(4)
 
         def fake(url):
-            return _Dying(b"PK\x03\x04and then the wire drops",
+            return _FailingResponse(b"PK\x03\x04and then the wire drops",
                           {"Content-Length": "26"})
 
         real = matx_sources._request
@@ -372,7 +372,7 @@ class TheInstallCanBeStoppedTest(_FeedMixin):
         self.assertEqual(1.0, operation.reports[-1])
         swap.assert_called_once()
 
-    def test_an_esc_mid_download_changes_nothing_and_says_so(self):
+    def test_an_esc_mid_download_raises_oserror_and_changes_nothing(self):
         from unittest import mock
         from amaze import messages
         _Operation.esc_at = 2
@@ -442,7 +442,7 @@ class TheSwapTest(unittest.TestCase):
         updater.apply_update(self.staged, self.install)
         self.assertEqual("newer", self._which(self.install))
 
-    def test_a_failed_swap_puts_the_old_install_back(self):
+    def test_a_failed_swap_restores_the_old_install(self):
         """Between the two renames there is no install at all. ▸p/updater-shape"""
         real = os.rename
         calls = []
@@ -492,7 +492,7 @@ class TheSwapTest(unittest.TestCase):
             "new", self._which(self.install),
             "a cache on another volume left the update uninstalled")
 
-    def test_a_copy_that_dies_part_way_leaves_no_half_install(self):
+    def test_a_copy_that_fails_part_way_leaves_no_half_install(self):
         """A copy failing part way leaves a fragment at the freed path. ▸r/cross-volume-move"""
         real = os.rename
         real_move = shutil.move
@@ -615,7 +615,7 @@ class TheAboutTabCanActuallyRunAnInstall(unittest.TestCase):
         self.assertEqual("Check for Updates", dialog._btn_update.text(),
                          "the install is still offered after installing")
 
-    def test_a_refused_install_shows_the_updaters_own_sentence(self):
+    def test_a_failed_install_shows_the_updaters_own_sentence(self):
         import hou
         from unittest.mock import patch
 
@@ -687,7 +687,7 @@ class TheAboutTabOffersTheUpdateInOnePlace(unittest.TestCase):
         return dialog._lbl_version.parentWidget().findChild(
             QtWidgets.QFormLayout)
 
-    def test_the_version_line_stands_before_anything_is_asked(self):
+    def test_the_version_line_is_shown_before_the_feed_is_checked(self):
         dialog = self._dialog()
 
         self.assertEqual("Amaze version " + branding.APP_VERSION,
@@ -698,7 +698,7 @@ class TheAboutTabOffersTheUpdateInOnePlace(unittest.TestCase):
                         "an update message is shown in this label, and it "
                         "would widen the dialog instead of wrapping")
 
-    def test_a_found_release_morphs_the_button_and_the_next_press_installs(
+    def test_a_found_release_changes_the_button_and_the_next_press_installs(
             self):
         from unittest.mock import patch
 
@@ -721,7 +721,7 @@ class TheAboutTabOffersTheUpdateInOnePlace(unittest.TestCase):
 
         install.assert_called_once_with(found)
 
-    def test_an_answer_with_nothing_to_install_leaves_the_button_alone(self):
+    def test_a_check_with_nothing_to_install_leaves_the_button_alone(self):
         from unittest.mock import patch
 
         answer = updater.Update(
@@ -745,7 +745,7 @@ class TheAboutTabOffersTheUpdateInOnePlace(unittest.TestCase):
             sentence="Amaze 9.9 is available. You are running 1.0.",
             library_version=library_version, library_since="9.8.0")
 
-    def _answering(self, choice):
+    def _ui_returning(self, choice):
         """hou.ui whose displayMessage returns `choice`; every call is recorded."""
         import hou
         import types
@@ -758,7 +758,7 @@ class TheAboutTabOffersTheUpdateInOnePlace(unittest.TestCase):
         self.addCleanup(patcher.stop)
         return asked
 
-    def test_an_update_that_updates_the_library_turns_red_and_says_so(self):
+    def test_an_update_that_updates_the_library_turns_red_and_shows_the_warning(self):
         """▸ P06: the drawn warning colour and line."""
         from unittest.mock import patch
         from amaze import amazetheme
@@ -784,7 +784,7 @@ class TheAboutTabOffersTheUpdateInOnePlace(unittest.TestCase):
         dialog = self._dialog()
         found = self._found(99)
         for choice, installs in ((1, 0), (0, 1)):
-            asked = self._answering(choice)
+            asked = self._ui_returning(choice)
             with patch.object(updater, "check", return_value=found), \
                     patch.object(updater, "install") as install:
                 dialog._last_update = None
@@ -910,7 +910,7 @@ class AReleaseIsStagedIntoTheINSTALLShape(unittest.TestCase):
             os.path.exists(os.path.join(staged, "scripts", "marker.txt")),
             "the staged tree does not contain the release's own files")
 
-    def test_a_release_missing_an_install_entry_is_refused(self):
+    def test_a_release_missing_an_install_entry_raises_oserror(self):
         with self.assertRaises(OSError) as caught:
             updater.stage_release(
                 self._release_zip(omit=("toolbar",)),
@@ -918,7 +918,7 @@ class AReleaseIsStagedIntoTheINSTALLShape(unittest.TestCase):
         self.assertIn("toolbar", str(caught.exception))
         self.assertIn("Nothing has been changed", str(caught.exception))
 
-    def test_a_member_that_escapes_the_staging_folder_is_refused(self):
+    def test_a_member_that_escapes_the_staging_folder_raises_oserror(self):
         """A member called `../../x` from a feed-named URL must not escape. ▸p/updater-shape"""
         import zipfile
 
@@ -932,7 +932,7 @@ class AReleaseIsStagedIntoTheINSTALLShape(unittest.TestCase):
             os.path.exists(os.path.join(self.dir, "escaped.txt")),
             "the escaping member was written before the refusal")
 
-    def test_a_file_that_is_not_a_zip_is_refused_with_a_sentence(self):
+    def test_a_file_that_is_not_a_zip_raises_oserror_with_a_sentence(self):
         path = os.path.join(self.dir, "captive-portal.zip")
         with open(path, "w", encoding="utf-8") as handle:
             handle.write("<html>sign in to the wifi</html>")
@@ -1018,7 +1018,7 @@ class AReleaseIsCheckedBeforeItIsTrusted(_FeedMixin):
                                 digest=self.digest, size=len(self.body))
         self.assertTrue(os.path.exists(path))
 
-    def test_a_SUBSTITUTED_file_of_the_right_length_is_refused(self):
+    def test_a_SUBSTITUTED_file_of_the_right_length_raises_oserror(self):
         """A different file of exactly the declared size, which the length check cannot see."""
         swapped = b"PK\x03\x04" + b"X" * (len(self.body) - 4)
         self.assertEqual(len(self.body), len(swapped))
@@ -1031,7 +1031,7 @@ class AReleaseIsCheckedBeforeItIsTrusted(_FeedMixin):
         self.assertEqual([], os.listdir(self.dir),
                          "the unverified file was kept anyway")
 
-    def test_a_checksum_this_amaze_cannot_compute_is_a_refusal(self):
+    def test_a_checksum_this_amaze_cannot_compute_raises_oserror(self):
         """"Cannot check" must never read as "checked"."""
         self.answer(self.body,
                     headers={"Content-Length": str(len(self.body))})
@@ -1070,7 +1070,7 @@ class AReleaseIsCheckedBeforeItIsTrusted(_FeedMixin):
             updater.download("https://x.invalid/z", self.dir, size=10)
         self.assertIn("over 10 bytes", str(caught.exception))
 
-    def test_an_archive_that_unpacks_to_gigabytes_is_refused(self):
+    def test_an_archive_that_unpacks_to_gigabytes_raises_oserror(self):
         """A zip bomb is caught by the header's declared expanded size."""
         import zipfile
         archive = os.path.join(self.dir, "bomb.zip")

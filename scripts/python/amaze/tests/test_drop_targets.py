@@ -93,9 +93,9 @@ class DropTargetTest(unittest.TestCase):
         return made
 
 
-class TestTheConnectorQuestion(DropTargetTest):
+class TestConnectorUnderCursor(DropTargetTest):
 
-    def test_a_connector_beside_the_body_is_taken(self):
+    def test_a_connector_beside_the_body_is_the_target(self):
         target = self.node("beside_target")
         for point, triples, wanted in (
                 (hou.Vector2(0.0, -0.30),
@@ -108,7 +108,7 @@ class TestTheConnectorQuestion(DropTargetTest):
                 self.assertEqual(
                     wanted, dragengine.connector_under_cursor(editor, point))
 
-    def test_on_the_body_a_neighbours_stub_does_not_win(self):
+    def test_on_the_body_a_neighbours_stub_is_not_the_target(self):
         # released at the centre, the containing body comes before a neighbour sorting first ▸r/drop-targets
         body = self.node("crowded_body")
         neighbour = self.node("crowded_neighbour")
@@ -120,7 +120,7 @@ class TestTheConnectorQuestion(DropTargetTest):
             dragengine.connector_under_cursor(editor, point),
             (None, "", -1))
 
-    def test_a_neighbour_sorting_first_does_not_steal_the_target(self):
+    def test_a_neighbour_sorting_first_does_not_become_the_target(self):
         # a node body blocks a target only where the cursor is INSIDE it; a nearby neighbour is skipped
         aimed = self.node("aimed_at")
         neighbour = self.node("standing_nearby")
@@ -132,7 +132,7 @@ class TestTheConnectorQuestion(DropTargetTest):
             dragengine.connector_under_cursor(editor, point),
             (aimed, "output", 0))
 
-    def test_a_missing_rect_does_not_take_the_app_down(self):
+    def test_a_missing_rect_still_returns_the_connector(self):
         target = self.node("rectless")
         editor = ScriptedEditor([(target, "output", 0)], {})
         self.assertEqual(
@@ -140,7 +140,7 @@ class TestTheConnectorQuestion(DropTargetTest):
                 editor, hou.Vector2(0.0, -0.30)),
             (target, "output", 0))
 
-    def test_a_missing_editor_answers_nothing(self):
+    def test_a_missing_editor_returns_no_connector(self):
         self.assertEqual(
             dragengine.connector_under_cursor(
                 None, hou.Vector2(0.0, 0.0)),
@@ -157,27 +157,27 @@ class TestTheConnectorQuestion(DropTargetTest):
             (None, "", -1), "an empty hit test still returned a connector")
 
 
-class TestWhatJustLandedIsNeverTheTarget(DropTargetTest):
+class TestTheDroppedNodeIsNeverTheTarget(DropTargetTest):
 
-    def test_the_landed_node_is_never_its_own_target(self):
+    def test_the_dropped_node_is_never_its_own_target(self):
         # placement runs first, so the new node is under the cursor ▸r/drop-targets
-        landed = self.node("just_landed")
+        dropped = self.node("just_landed")
         target = self.node("real_target")
         point = hou.Vector2(0.0, -0.30)
         for triples, rects, wanted in (
-                ([(landed, "node", 0), (target, "output", 0)],
-                 {landed: _rect(0.0, -0.30), target: _rect(0.0, 0.0)},
+                ([(dropped, "node", 0), (target, "output", 0)],
+                 {dropped: _rect(0.0, -0.30), target: _rect(0.0, 0.0)},
                  (target, "output", 0)),
-                ([(landed, "output", 0), (landed, "input", 0)],    # its connectors are OUTSIDE its body
-                 {landed: _rect(0.0, 0.0)}, (None, "", -1))):
+                ([(dropped, "output", 0), (dropped, "input", 0)],    # its connectors are OUTSIDE its body
+                 {dropped: _rect(0.0, 0.0)}, (None, "", -1))):
             with self.subTest(wanted=wanted[1]):
                 editor = ScriptedEditor(triples, rects)
                 self.assertEqual(
                     wanted, dragengine.connector_under_cursor(
-                        editor, point, exclude=[landed]))
+                        editor, point, exclude=[dropped]))
 
 
-class TestTheWiringSurvivesAStaleConnectorIndex(DropTargetTest):
+class TestAStaleConnectorIndexLeavesTheNodeUnconnected(DropTargetTest):
     """A connector index gone at release raises `hou.InvalidInput`; the node is left unconnected."""
 
     def test_a_live_index_still_wires(self):
@@ -185,33 +185,33 @@ class TestTheWiringSurvivesAStaleConnectorIndex(DropTargetTest):
         for side in ("output", "input"):
             with self.subTest(side=side):
                 target = self.node("live_%s_target" % side)
-                landed = self.node("live_%s_landed" % side)
+                dropped = self.node("live_%s_landed" % side)
                 self.assertTrue(dragengine.connect_to_neighbour(
-                    (target, side, 0), [landed]))
-                fed, feeder = ((landed, target) if side == "output"
-                               else (target, landed))
+                    (target, side, 0), [dropped]))
+                fed, feeder = ((dropped, target) if side == "output"
+                               else (target, dropped))
                 self.assertEqual((feeder,), fed.inputs())
 
     def test_a_stale_output_index_drops_without_wiring(self):
         target = self.node("stale_output_target")
-        landed = self.node("stale_output_landed")
+        dropped = self.node("stale_output_landed")
         stale = len(target.outputConnectors())    # one past the end - the index the hit test reported before the node lost an output
         with self.assertRaises(hou.InvalidInput):
-            landed.setInput(0, target, stale)    # Houdini's documented exception, asserted so this cannot pass because nothing raises
+            dropped.setInput(0, target, stale)    # Houdini's documented exception, asserted so this cannot pass because nothing raises
         self.assertFalse(
             dragengine.connect_to_neighbour((target, "output", stale),
-                                            [landed]))
-        self.assertEqual(landed.inputs(), ())
+                                            [dropped]))
+        self.assertEqual(dropped.inputs(), ())
 
     def test_a_stale_input_index_drops_without_wiring(self):
         target = self.node("stale_input_target")
-        landed = self.node("stale_input_landed")
+        dropped = self.node("stale_input_landed")
         stale = len(target.inputConnectors())
         with self.assertRaises(hou.InvalidInput):
-            target.setInput(stale, landed)
+            target.setInput(stale, dropped)
         self.assertFalse(
             dragengine.connect_to_neighbour((target, "input", stale),
-                                            [landed]))
+                                            [dropped]))
         self.assertEqual(target.inputs(), ())
 
 
@@ -242,7 +242,7 @@ class TestTheGhostTick(DropTargetTest):
             "crossing into another editor must not reuse the old "
             "editor's results for the rest of the interval")
 
-    def test_a_new_gesture_forgets_the_previous_answers(self):
+    def test_a_new_gesture_clears_the_previous_results(self):
         editor = ScriptedEditor([], {})
         dragengine.ghost_tick(editor, now=1000.0)
         dragengine.set_ghost_tick_results(True, (None, "x", 3), "copnet")
@@ -317,9 +317,9 @@ class TestTheGhostTick(DropTargetTest):
             "cannot change within a session")
 
 
-class TestTheReachIsTheHostsOwn(DropTargetTest):
+class TestTheLookupUsesHoudinisDropRadius(DropTargetTest):
 
-    def test_it_asks_at_the_drop_radius(self):
+    def test_it_queries_at_the_drop_radius(self):
         # the connector snap radius is twice the drop radius and reaches a neighbour ▸r/drop-targets
         target = self.node("radius_probe")
         editor = ScriptedEditor([(target, "output", 0)],
@@ -344,10 +344,10 @@ class TestTheReachIsTheHostsOwn(DropTargetTest):
                 places=6)
 
 
-class TestThePreviewSurvivesItsOwnNames(unittest.TestCase):
+class TestSplicePreviewResolvesItsGlobals(unittest.TestCase):
     """`splice_preview` resolves every module global it names; a NameError escapes its catch list."""
 
-    def test_the_splice_preview_reaches_its_shapes(self):
+    def test_the_splice_preview_sets_two_shapes(self):
         class _Editor:
             def itemOutputPos(self, item, index):
                 return hou.Vector2(0, 0)
@@ -393,7 +393,7 @@ class _OverlayEditor(object):
         pass
 
 
-class TheReleaseLandsWhereTheOutlineSnapped(unittest.TestCase):
+class TheDropIsPlacedWhereTheOutlineSnapped(unittest.TestCase):
     """The release reads the drop position AFTER `end()` has cleared the outline."""
 
     DELTA = hou.Vector2(0.25, -0.5)
@@ -413,18 +413,18 @@ class TheReleaseLandsWhereTheOutlineSnapped(unittest.TestCase):
         self.assertIsNotNone(drawn, "premise: the outline did not snap")
         return (drawn.x(), drawn.y())
 
-    def test_the_snapped_point_outlives_the_end_of_the_gesture(self):
+    def test_the_snapped_point_is_kept_after_the_gesture_ends(self):
         drawn = self._draw_snapped()
         dragengine.end()
-        landing = dragengine.ghost_snap_position()
+        snapped = dragengine.ghost_snap_position()
         self.assertIsNotNone(
-            landing,
+            snapped,
             "end() cleared the snapped point before the release read "
             "it, so the node is placed at the raw cursor instead")
         self.assertEqual((1.25, 1.5), drawn)
-        self.assertEqual(drawn, (landing.x(), landing.y()))
+        self.assertEqual(drawn, (snapped.x(), snapped.y()))
 
-    def test_a_landing_is_promised_only_while_its_outline_stands(self):
+    def test_a_snap_position_is_returned_only_while_its_outline_is_shown(self):
         for case, steps in (
                 ("the next gesture",
                  (dragengine.end, lambda: dragengine.begin("material"))),
@@ -439,7 +439,7 @@ class TheReleaseLandsWhereTheOutlineSnapped(unittest.TestCase):
                     "%s kept a snap position no outline shows" % case)
 
 
-class ATrackedMissIsAnAnswer(unittest.TestCase):
+class ATrackedMissIsNotLookedUpAgain(unittest.TestCase):
     """A tracked miss reaches the clear branch instead of re-running the lookup every tick."""
 
     def _hover(self, *args, **kwargs):

@@ -58,10 +58,10 @@ class SharedPrefsCase(unittest.TestCase):
             return {"prefs": json.load(handle).get("settings", {})}
 
 
-class AChangeReachesTheNextMachine(SharedPrefsCase):
+class AChangeIsReadOnTheNextMachine(SharedPrefsCase):
     """Shared means the OTHER machine's session reads your value, from the library alone."""
 
-    def test_a_saved_change_is_the_next_machines_answer(self):
+    def test_a_saved_change_is_the_next_machines_value(self):
         a = self.machine(self.home_a)
         a.rendersize = 512
         # OFF, never ON - asserting True passes on the default alone.
@@ -82,7 +82,7 @@ class AChangeReachesTheNextMachine(SharedPrefsCase):
 class TheSharedKeysAreWrittenAsTheCopyAlone(SharedPrefsCase):
     """`settings.json` holds bootstrap and the copy of the shared keys, never them at top level."""
 
-    def test_settings_json_carries_the_copy_not_the_flat_keys(self):
+    def test_settings_json_holds_the_copy_not_the_flat_keys(self):
         a = self.machine(self.home_a)
         a.rendersize = 512
         a.save()
@@ -101,10 +101,10 @@ class TheSharedKeysAreWrittenAsTheCopyAlone(SharedPrefsCase):
 
 
 
-class TheCopyServesAnUnreachableLibrary(SharedPrefsCase):
+class TheCopyIsUsedForAnUnreachableLibrary(SharedPrefsCase):
     """The library is the source; the copy opens the panel when the share is down and must remain."""
 
-    def test_values_survive_the_library_being_gone(self):
+    def test_values_are_kept_when_the_library_is_gone(self):
         a = self.machine(self.home_a)
         a.rendersize = 512
         a.save()
@@ -152,7 +152,7 @@ class TheCopyServesAnUnreachableLibrary(SharedPrefsCase):
             "store was read-only")
 
 
-class TheLibraryIsAdoptedWhenItArrives(SharedPrefsCase):
+class TheLibraryIsAdoptedWhenDirIsSet(SharedPrefsCase):
     """Setting `dir` after load must read the store, or the first save puts local defaults over it."""
 
     def test_pointing_dir_at_a_library_adopts_without_a_load(self):
@@ -168,7 +168,7 @@ class TheLibraryIsAdoptedWhenItArrives(SharedPrefsCase):
                          "fresh install would overwrite the library's "
                          "settings on its first save")
 
-    def test_junk_in_the_store_does_not_poison_a_clamped_setting(self):
+    def test_an_invalid_value_in_the_store_is_validated_like_a_load(self):
         """A hand edit can put text where a size goes, so setting `dir` validates as load does."""
         with open(os.path.join(self.lib, STORE), "w",
                   encoding="utf-8") as handle:
@@ -351,7 +351,7 @@ class EveryRowFollowsAUserOrLibraryChange(SharedPrefsCase):
                          "a per-user row kept the previous user's value")
 
 
-class AMachineRunningBeforeAChangeTakesIt(SharedPrefsCase):
+class AMachineRunningBeforeAChangeReadsIt(SharedPrefsCase):
     """r5: B, open since before A's change, takes it at its next save instead of writing its own back."""
 
     def setUp(self):
@@ -406,7 +406,7 @@ class AMachineRunningBeforeAChangeTakesIt(SharedPrefsCase):
         self.assertEqual([], log.messages("alert"),
                          "A's next change was reported as a conflict with B")
 
-    def test_a_value_pushed_here_follows_a_later_peer_change(self):
+    def test_a_value_saved_here_follows_a_later_peer_change(self):
         a, b = self.both_open()
         with self.on("B"):
             b.rendersize = 300

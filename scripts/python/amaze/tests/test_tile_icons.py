@@ -30,7 +30,7 @@ from amaze.panel import panel as panel_mod  # noqa: E402
 from amaze.tests import test_support  # noqa: E402 - redirects the log
 
 
-def ink_box(image, background="#ef8878"):
+def symbol_box(image, background="#ef8878"):
     """The rect the symbol covers, against the background colour: a composed tile is opaque."""
     mask = image.createMaskFromColor(
         QtGui.QColor(background).rgb(), QtCore.Qt.MaskMode.MaskInColor
@@ -71,11 +71,11 @@ def package_subclasses(base: str) -> list:
 class GeometryTest(unittest.TestCase):
     """The template's geometry, measured in pixels."""
 
-    def test_the_template_icon_lands_where_the_template_put_it(self):
+    def test_the_template_icon_is_where_the_template_put_it(self):
         """The clipboard path spans (156,131) to (356,381), grown by half the 10px stroke each side."""
         image = tile_icons.compose("clipboard", "#ef8878", 512)
         self.assertIsNotNone(image)
-        box = ink_box(image)
+        box = symbol_box(image)
         self.assertEqual((151, 126, 210, 260),
                          (box.x(), box.y(), box.width(), box.height()))
 
@@ -88,7 +88,7 @@ class GeometryTest(unittest.TestCase):
             for name in tile_icons.icon_names():
                 image = tile_icons.compose(name, "#ffffff", 512, weight)
                 self.assertIsNotNone(image, name)
-                box = ink_box(image, "#ffffff")
+                box = symbol_box(image, "#ffffff")
                 self.assertLessEqual(
                     max(box.width(), box.height()), limit,
                     "%s draws %dx%d at weight %s"
@@ -164,7 +164,7 @@ class ChoiceTest(unittest.TestCase):
         self.model.set_tile_icon(self.row, {})
         self.assertEqual(render_path, self.model._mat_paths[self.row])
 
-    def test_the_choice_lands_in_the_store_and_ONLY_there(self):
+    def test_the_choice_is_written_to_the_store_and_ONLY_there(self):
         """An icon choice is stored only in the icons section of the section's database."""
         self.model.set_tile_icon(self.row, {"name": "layers",
                                             "bg": "#4af2a1"})
@@ -212,7 +212,7 @@ class ChoiceTest(unittest.TestCase):
             with self.subTest(raw=raw):
                 self.assertEqual(cleaned, tile_icons.normalise(raw))
 
-    def test_the_choice_survives_a_reload_from_disk(self):
+    def test_the_choice_is_kept_after_a_reload_from_disk(self):
         self.model.set_tile_icon(self.row, {"name": "layers", "bg": "#4af2a1"})
         test_support.reset_database_singletons()
         fresh = cop_library.CopLibrary(preferences=self.prefs)
@@ -342,7 +342,7 @@ class FileRowTest(unittest.TestCase):
                          "clearing did not remove the path on disk")
         self.assertNotIn("/tmp/a.exr", self._on_disk())
 
-    def test_an_unreadable_store_costs_icons_not_the_section(self):
+    def test_an_unreadable_store_loses_the_icons_not_the_section(self):
         path = os.path.join(self.prefs.dir, self.FILES)
         with open(path, "w", encoding="utf-8") as handle:
             handle.write("{ this is not json")
@@ -375,11 +375,11 @@ class LineWeightTest(unittest.TestCase):
                                   tile_icons.STROKE_UNITS)
         bold = tile_icons.compose("box", "#ffffff", 512,
                                   tile_icons.FEATHER_STROKE_UNITS)
-        self.assertGreater(ink_box(bold, "#ffffff").width(),
-                           ink_box(thin, "#ffffff").width())
+        self.assertGreater(symbol_box(bold, "#ffffff").width(),
+                           symbol_box(thin, "#ffffff").width())
 
 
-class InkTest(unittest.TestCase):
+class IconColorTest(unittest.TestCase):
     """`Lines` is chosen per tile, because the background is per tile."""
 
     def test_the_tokens_map_to_the_design_colours(self):
@@ -389,12 +389,12 @@ class InkTest(unittest.TestCase):
             with self.subTest(token=token):
                 self.assertEqual(colour, tile_icons.ink_colour(token))
 
-    def test_the_ink_actually_changes_the_pixels(self):
+    def test_the_icon_color_actually_changes_the_pixels(self):
         light_bg = "#ffffff"
         dark = tile_icons.compose("box", light_bg, 512, 0.8, "dark")
         light = tile_icons.compose("box", light_bg, 512, 0.8, "light")
         # Sample the stroke itself: the centre of the box icon's top edge.
-        box = ink_box(dark, light_bg)
+        box = symbol_box(dark, light_bg)
         x, y = box.x() + box.width() // 2, box.y() + 2
         self.assertEqual("#262626", QtGui.QColor(dark.pixel(x, y)).name())
         self.assertEqual("#d0ced0", QtGui.QColor(light.pixel(x, y)).name())
@@ -408,7 +408,7 @@ class DialogTest(unittest.TestCase):
         self.addCleanup(dialog.deleteLater)
         return dialog
 
-    def test_the_category_field_stays_live_on_a_multi_selection(self):
+    def test_the_category_field_stays_enabled_on_a_multi_selection(self):
         """Name is disabled on a multi-selection; Category stays enabled to move them all."""
         dialog = icon_dialog.IconDialog(
             None, tile_name="", tile_name_enabled=False,
@@ -590,7 +590,7 @@ class DialogTest(unittest.TestCase):
         dialog.accept_button.click()
         self.assertEqual("dark", dialog.spec["ink"])
 
-    def test_the_chip_wears_the_current_colour_and_the_stack_lines_up(self):
+    def test_the_chip_shows_the_current_colour_and_the_stack_lines_up(self):
         """The chip shows the current background; chip and pills align left, the buttons right."""
         dialog = self._dialog({"name": "box", "bg": "#e0523a"})
         dialog.show()
@@ -628,7 +628,7 @@ class DialogTest(unittest.TestCase):
                          "filtering changed what was chosen")
 
 
-class ChooserWearsTheDialogsColoursTest(unittest.TestCase):
+class ChooserUsesTheDialogsColoursTest(unittest.TestCase):
     """The chooser uses the window colour; QSvgRenderer leaves `currentColor` black, so recolour."""
 
     def _dialog(self):
@@ -653,7 +653,7 @@ class ChooserWearsTheDialogsColoursTest(unittest.TestCase):
         # the checked ring, the only mark of the current choice, shows on the dark backdrop
         self.assertIn(theme.color_hex("text_bright"), holder)
 
-    def test_the_icons_are_re_inked_in_the_lightest_grey(self):
+    def test_the_icons_are_recoloured_in_the_lightest_grey(self):
         """A real button's icon has a pixel of the exact ink and no opaque dark pixel anywhere."""
         from amaze.helpers import theme
         dialog = self._dialog()
@@ -679,7 +679,7 @@ class ChooserWearsTheDialogsColoursTest(unittest.TestCase):
                          "drawing in currentColor black on a dark "
                          "backdrop")
 
-    def test_the_icon_pixmaps_carry_their_density(self):
+    def test_the_icon_pixmaps_have_their_device_pixel_ratio(self):
         """Rendered at logical size times dpr, ratio set; tested at 2.0 as headless is 1.0."""
         from amaze.dialogs import icon_dialog
         pixmap = icon_dialog.IconDialog._chooser_icon(
@@ -707,7 +707,7 @@ class MenuWiringTest(unittest.TestCase):
         # the ISOLATED panel - see test_grid_scroll for why a settings-only guard was not enough
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
-    def test_every_section_ANSWERS_with_models_it_actually_has(self):
+    def test_every_section_RETURNS_models_it_actually_has(self):
         """Each section's `tile_models()` returns real models on the live panel."""
         from amaze.panel import sections as sections_mod
 
@@ -903,7 +903,7 @@ class ComposedCacheTest(unittest.TestCase):
         self.assertEqual(0, tile_icons._composed_bytes)
 
 
-class AnotherSessionsIconsSurviveTest(unittest.TestCase):
+class AnotherSessionsIconsAreKeptTest(unittest.TestCase):
     """Another machine's icon choices in files.json survive this machine's next icon write."""
 
     def setUp(self):
@@ -915,7 +915,7 @@ class AnotherSessionsIconsSurviveTest(unittest.TestCase):
     def set_override(self, key, spec):
         return tile_icons.set_override(self.prefs, key, spec, library_files.FILES)
 
-    def _behind_our_back(self, key, name):
+    def _write_as_another_session(self, key, name):
         with open(self.path, encoding="utf-8") as handle:
             data = json.load(handle)
         data.setdefault("icons", {})[key] = {"name": name, "bg": "#222222"}
@@ -929,9 +929,9 @@ class AnotherSessionsIconsSurviveTest(unittest.TestCase):
         with open(self.path, encoding="utf-8") as handle:
             return json.load(handle).get(tile_icons.SECTION, {})
 
-    def test_their_key_survives_our_write(self):
+    def test_another_sessions_key_is_kept_after_our_write(self):
         self.assertTrue(self.set_override("/ours/a.exr", {"name": "layers", "bg": "#111111"}))
-        self._behind_our_back("/theirs/b.exr", "map")
+        self._write_as_another_session("/theirs/b.exr", "map")
         self.assertTrue(self.set_override("/ours/c.exr", {"name": "box", "bg": "#333333"}))
         icons = self._icons()
         self.assertIn("/theirs/b.exr", icons,
@@ -946,7 +946,7 @@ class AnotherSessionsIconsSurviveTest(unittest.TestCase):
     def test_an_in_session_delete_stays_deleted(self):
         """A merge with another session's save must not bring back the icon this session removed."""
         self.set_override("/ours/a.exr", {"name": "layers", "bg": "#111111"})
-        self._behind_our_back("/theirs/b.exr", "map")
+        self._write_as_another_session("/theirs/b.exr", "map")
         self.set_override("/ours/a.exr", {})
         icons = self._icons()
         self.assertNotIn("/ours/a.exr", icons, "removing an icon did not remove it")
@@ -993,10 +993,10 @@ class CustomColourOpensTheHoudiniPickerTest(unittest.TestCase):
                          "Houdini's picker will open INVISIBLE behind it")
 
 
-class TheAboutLogoCarriesItsDensityTest(unittest.TestCase):
+class TheAboutLogoHasItsDevicePixelRatioTest(unittest.TestCase):
     """The About logo holds device pixels with the devicePixelRatio set, like every badge."""
 
-    def test_the_logo_is_stamped_with_the_apps_ratio(self):
+    def test_the_logo_has_the_apps_device_pixel_ratio(self):
         from PySide6 import QtWidgets
         from amaze.dialogs import prefs_dialog
         prefs_dialog._logo_cache = None          # a fresh render
@@ -1286,7 +1286,7 @@ class TileTagsTest(unittest.TestCase):
                         "the tags")
 
 
-class OneRowsIconCostsOneRowsLookups(unittest.TestCase):
+class OneRowsIconDoesOnlyOneRowsLookups(unittest.TestCase):
     """`set_tile_icon` refreshes one row, so a multi-select pass is not quadratic in lookups."""
 
     def test_set_tile_icon_does_not_walk_every_row(self):
@@ -1474,11 +1474,11 @@ class TheLineWeightRedrawsEverySection(unittest.TestCase):
         thin = model.data(index, QtCore.Qt.ItemDataRole.DecorationRole)
         repainted = []
 
-        def heard(top, bottom, _roles=()):
+        def record_repaint(top, bottom, _roles=()):
             repainted.append((top.row(), bottom.row()))
 
-        model.dataChanged.connect(heard)
-        self.addCleanup(model.dataChanged.disconnect, heard)
+        model.dataChanged.connect(record_repaint)
+        self.addCleanup(model.dataChanged.disconnect, record_repaint)
         self.set_weight("feather")
         self.assertTrue(any(top <= 0 <= bottom for top, bottom in repainted),
                         "the Colors tile got no dataChanged to repaint")

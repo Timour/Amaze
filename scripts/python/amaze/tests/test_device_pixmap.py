@@ -35,7 +35,7 @@ def _svg(testcase):
     return path
 
 
-class ADevicePixmapIsRoundedAndStamped(unittest.TestCase):
+class ADevicePixmapIsRoundedAndHasItsPixelRatio(unittest.TestCase):
 
     def test_the_device_width_is_side_times_ratio_rounded_never_zero(self):
         """QPixmap truncates a float (19.5 rasterises at 19) and a 0-wide pixmap paints nothing."""
@@ -50,9 +50,9 @@ class ADevicePixmapIsRoundedAndStamped(unittest.TestCase):
         self.assertEqual(18, pixmap.size().width() / pixmap.devicePixelRatio())
 
 
-class TheFourSitesDrawThroughIt(unittest.TestCase):
+class TheFourCallSitesUseDevicePixmap(unittest.TestCase):
 
-    def test_no_site_hand_rolls_the_contract_any_more(self):
+    def test_no_code_outside_device_pixmap_renders_and_sets_the_ratio_itself(self):
         """Code outside `device_pixmap` calling `render_svg_pixmap` and `setDevicePixelRatio`."""
         import ast
         import re
@@ -102,7 +102,7 @@ class TheFourSitesDrawThroughIt(unittest.TestCase):
             "a missing badge came back as a sized transparent pixmap, "
             "which paints over the thumbnail instead of skipping")
 
-    def test_the_glyph_cache_still_hands_back_its_own_object(self):
+    def test_the_glyph_cache_still_returns_the_same_object(self):
         from amaze.panel import notes_panel
         notes_panel._glyph_cache.clear()
         self.addCleanup(notes_panel._glyph_cache.clear)

@@ -38,7 +38,7 @@ class _Model:
         raise AssertionError("the walk asked for a row nobody declared")
 
 
-class TheGroupedImportStopsAtTheFirstRefusalTest(unittest.TestCase):
+class TheGroupedImportStopsAtTheFirstFailureTest(unittest.TestCase):
     """The `break` keeps it to one dialog: N failed assets must not open N dialogs."""
 
     def setUp(self):
@@ -57,7 +57,7 @@ class TheGroupedImportStopsAtTheFirstRefusalTest(unittest.TestCase):
                 self.context, ids)
         return self.panel.material_model, refused
 
-    def test_a_refusal_stops_the_walk(self):
+    def test_a_failure_stops_the_loop(self):
         model, refused = self._run(
             {"a": (0, (True, "", [])),
              "b": (1, (False, "gone", [])),
@@ -69,7 +69,7 @@ class TheGroupedImportStopsAtTheFirstRefusalTest(unittest.TestCase):
             "multi-drop can open one dialog per asset")
         self.assertEqual(1, refused.call_count)
 
-    def test_every_asset_lands_when_none_refuses(self):
+    def test_every_asset_is_imported_when_none_fails(self):
         model, refused = self._run(
             {"a": (0, (True, "", [])), "b": (1, (True, "", []))},
             ["a", "b"])
@@ -77,7 +77,7 @@ class TheGroupedImportStopsAtTheFirstRefusalTest(unittest.TestCase):
         self.assertEqual([], refused.call_args_list,
                          "a multi-drop with no failure still called `debug.refuse`")
 
-    def test_an_id_the_model_does_not_hold_is_skipped_not_refused(self):
+    def test_an_id_the_model_does_not_hold_is_skipped_and_the_loop_continues(self):
         """A missing row is `continue`, never `break`: one stale id must not stop the assets still there."""
         model, refused = self._run(
             {"gone": (-1, None), "b": (1, (True, "", []))},
@@ -86,7 +86,7 @@ class TheGroupedImportStopsAtTheFirstRefusalTest(unittest.TestCase):
                          "a stale id was imported, or stopped the import loop")
         self.assertEqual([], refused.call_args_list)
 
-    def test_a_refusal_with_no_reason_does_not_speak(self):
+    def test_a_failure_with_no_reason_does_not_call_debug_refuse(self):
         """`not ok` with an empty reason does not call `debug.refuse`, and still stops the loop."""
         model, refused = self._run(
             {"a": (0, (False, "", [])), "b": (1, (True, "", []))},
@@ -94,7 +94,7 @@ class TheGroupedImportStopsAtTheFirstRefusalTest(unittest.TestCase):
         self.assertEqual([], refused.call_args_list)
         self.assertEqual([0, 1], model.attempted)
 
-    def test_the_refusal_names_the_network_it_landed_in(self):
+    def test_the_failure_names_the_network_it_was_imported_into(self):
         _model, refused = self._run(
             {"a": (0, (False, "gone", []))}, ["a"])
         self.assertEqual(self.context.path(),

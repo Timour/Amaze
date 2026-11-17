@@ -41,7 +41,7 @@ class DeleteLocalCacheTest(unittest.TestCase):
             256, prefix="geo_thumbnails_test_black")
         self.addCleanup(shutil.rmtree, self.geometry.cache_dir, True)
 
-    def test_the_geometry_cache_survives_a_texture_cache_clear(self):
+    def test_the_geometry_cache_stores_again_after_a_texture_cache_clear(self):
         self.textures.clear()
         self.assertFalse(
             os.path.isdir(self.geometry.cache_dir),
@@ -189,7 +189,7 @@ class ReconcileIsOnePassTest(unittest.TestCase):
              for i in range(entries)})
         return cache
 
-    def test_many_folders_cost_one_pass(self):
+    def test_many_folders_read_the_manifest_once(self):
         for why, run in (
                 ("reconciling 50 directories", lambda cache: cache.reconcile_many(
                     {"/live/sub%d" % i: ["a.png"] for i in range(50)})),
@@ -417,7 +417,7 @@ class TheFilesAndProxyArePairedOnce(unittest.TestCase):
     def test_a_dropped_index_is_no_row_and_each_is_mapped_once(self):
         """An invalid map is no row, never -1, and one map per index: a proxy can move in between."""
         section = sections.FileSection.__new__(sections.FileSection)
-        section.tile_models = lambda: (object(), _DroppingProxy())
+        section.tile_models = lambda: (object(), _InvalidIndexProxy())
         files, rows = sections.Section._model_and_rows(
             section, [QtCore.QModelIndex()])
         self.assertEqual([], rows)
@@ -431,7 +431,7 @@ class TheFilesAndProxyArePairedOnce(unittest.TestCase):
 class FileOpensOnTheFolderItLeft(unittest.TestCase):
     """Opening File selects the remembered location's row, All, or the scene row."""
 
-    def test_activation_stands_on_the_remembered_row(self):
+    def test_activation_selects_the_remembered_row(self):
         panel = test_support.fixture_panel(self)
         folders = panel.file_folders_model
         second = test_support.fresh_files_folder(self)
@@ -486,9 +486,9 @@ class RemovingALocationLeavesNoTileOfIt(unittest.TestCase):
         for path in (self.gone, below):
             self.assertTrue(self.folders.add_folder(path), "premise: no location added")
         self.section = self.panel.sections["file"]
-        self.kept_tiles = self._stand(self.folders.row_of(self.kept))
+        self.kept_tiles = self._click_row(self.folders.row_of(self.kept))
         self.assertTrue(self.kept_tiles, "premise: the kept location shows tiles")
-        self.rest = sorted(self.kept_tiles + self._stand(self.folders.row_of(below)))
+        self.rest = sorted(self.kept_tiles + self._click_row(self.folders.row_of(below)))
 
     def _press(self, row):
         """What a right press does: the row is selected and current, and no click handler runs."""
@@ -498,7 +498,7 @@ class RemovingALocationLeavesNoTileOfIt(unittest.TestCase):
             index, QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
         return index
 
-    def _stand(self, row):
+    def _click_row(self, row):
         """A left click: the press, then the sidebar's own clicked handler. Returns the tiles."""
         self._press(row)
         self.panel.update_selected_cat()
@@ -517,7 +517,7 @@ class RemovingALocationLeavesNoTileOfIt(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
         self.assertIsNone(self.folders.row_of(self.gone), "premise: the row is gone")
 
-    def _assert_standing(self, row, tiles):
+    def _assert_selected(self, row, tiles):
         prefix = hostos.canonical_path_key(self.gone).rstrip("/") + "/"
         stale = [path for path in self._tiles() if path.startswith(prefix)]
         self.assertEqual([], stale, "tiles of the removed location still show")
@@ -527,24 +527,24 @@ class RemovingALocationLeavesNoTileOfIt(unittest.TestCase):
         self.assertEqual([row], [index.row() for index in view.selectedIndexes()],
                          "the sidebar highlights another row")
 
-    def test_removing_the_location_you_stand_on_stands_on_all(self):
-        self.assertNotEqual(self.kept_tiles, self._stand(self.folders.row_of(self.gone)),
+    def test_removing_the_selected_location_selects_all(self):
+        self.assertNotEqual(self.kept_tiles, self._click_row(self.folders.row_of(self.gone)),
                             "premise: the removed location shows its own tiles")
         self._remove_gone()
-        self._assert_standing(0, self.rest)
+        self._assert_selected(0, self.rest)
         self.assertEqual(self.folders.ALL_LABEL, self.panel.prefs.last_file_folder,
                          "File reopens on the removed location's neighbour")
 
-    def test_removing_another_location_keeps_you_where_you_stand(self):
-        self._stand(self.folders.row_of(self.kept))
+    def test_removing_another_location_keeps_the_selection(self):
+        self._click_row(self.folders.row_of(self.kept))
         self._remove_gone()
-        self._assert_standing(self.folders.row_of(self.kept), self.kept_tiles)
+        self._assert_selected(self.folders.row_of(self.kept), self.kept_tiles)
 
-    def test_removing_a_location_while_on_all_drops_its_tiles(self):
-        self.assertGreater(len(self._stand(0)), len(self.rest),
+    def test_removing_a_location_while_on_all_removes_its_tiles(self):
+        self.assertGreater(len(self._click_row(0)), len(self.rest),
                            "premise: All shows every location")
         self._remove_gone()
-        self._assert_standing(0, self.rest)
+        self._assert_selected(0, self.rest)
 
 
 class _Source:
@@ -561,7 +561,7 @@ class _Source:
         return self._row
 
 
-class _DroppingProxy:
+class _InvalidIndexProxy:
     """Every index is gone: mapToSource returns an invalid one."""
 
     def mapToSource(self, _index):

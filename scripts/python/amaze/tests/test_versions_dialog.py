@@ -54,23 +54,23 @@ class TheIconIsNotClipped(unittest.TestCase):
                             "icon_versions_dialog.svg")
         image = ui_helpers.render_svg_pixmap(path, 120).toImage()
 
-        def ink_width(y):
+        def painted_width(y):
             xs = [x for x in range(image.width())
                   if image.pixelColor(x, y).alpha() > 30]
             return (xs[-1] - xs[0] + 1) if xs else 0
 
-        rows = [y for y in range(image.height()) if ink_width(y)]
+        rows = [y for y in range(image.height()) if painted_width(y)]
         self.assertTrue(rows, "the glyph rendered nothing")
-        widest = max(ink_width(y) for y in rows)
+        widest = max(painted_width(y) for y in rows)
         for edge, y in (("top", rows[0]), ("bottom", rows[-1])):
             self.assertLess(
-                ink_width(y), widest * 0.5,
+                painted_width(y), widest * 0.5,
                 "the %s row spans %s of a %s-wide glyph - that is a "
                 "flat cut, so the stroke is being clipped"
-                % (edge, ink_width(y), widest))
+                % (edge, painted_width(y), widest))
 
 
-class TheVersionsWindowStandsOnItsFrame(unittest.TestCase):
+class TheVersionsWindowMatchesItsDesignFrame(unittest.TestCase):
     """D01's window, list, buttons and rows have the positions and sizes the design frame gives."""
 
     def setUp(self):
@@ -84,7 +84,7 @@ class TheVersionsWindowStandsOnItsFrame(unittest.TestCase):
         self.assertEqual(tuple(theme.ui_px(n) for n in amazetheme.DIALOG_LAYOUT["D01"]["frame"]),
                          (self.dialog.width(), self.dialog.height()))
 
-    def test_the_list_and_the_buttons_land_where_drawn(self):
+    def test_the_list_and_the_buttons_are_placed_where_drawn(self):
         boxes = amazetheme.drawn_boxes("D01")
         for widget, key in ((self.dialog._list, ("QListWidget", None)),
                             (self.dialog._select, ("QPushButton", amazetheme.BTN_SELECT)),
@@ -104,15 +104,15 @@ class TheVersionsWindowStandsOnItsFrame(unittest.TestCase):
         ratio = picture.devicePixelRatio()
         top = px(rows["pitch"]) + px(rows["box_y"])    # the active version is the second row
 
-        def ink(x, y):
+        def color_at(x, y):
             return QtGui.QColor(picture.pixel(int(x * ratio), int(y * ratio))).name()
 
         selected = QtGui.QColor(amazetheme.D01_SELECTED_BACKGROUND).name()
-        self.assertEqual(selected, ink(px(rows["box_x"]) + 1, top + 1),
+        self.assertEqual(selected, color_at(px(rows["box_x"]) + 1, top + 1),
                          "the selected row is not painted at its position in the design")
-        self.assertNotEqual(selected, ink(px(rows["box_x"]) + 1, top - 1),
+        self.assertNotEqual(selected, color_at(px(rows["box_x"]) + 1, top - 1),
                             "the selection fills the gap the frame leaves above the row")
-        self.assertNotEqual(selected, ink(px(rows["box_x"]), top),
+        self.assertNotEqual(selected, color_at(px(rows["box_x"]), top),
                             "the picked row's corner is square; the frame rounds it")
 
 
@@ -143,7 +143,7 @@ class TheDayIsNeverCut(unittest.TestCase):
             self.assertIn(day, drawn, "a row's date was cut short")
 
 
-class TheListIsTheLedger(unittest.TestCase):
+class TheListShowsTheSavedVersions(unittest.TestCase):
     """Newest first, each row shows name and save date; the active version is selected on open."""
 
     def test_the_rows_are_newest_first_with_the_day_saved(self):
@@ -163,7 +163,7 @@ class TheListIsTheLedger(unittest.TestCase):
 class SelectAndCancel(unittest.TestCase):
     """Select sets `chosen` to the selected version's number; Cancel sets it to the active one."""
 
-    def test_select_answers_the_picked_version(self):
+    def test_select_accepts_with_the_picked_version(self):
         dialog = _dialog(self)
         dialog._list.setCurrentRow(0)
         dialog._select.click()
@@ -245,7 +245,7 @@ class NothingThatSizesReadsTheScreen(unittest.TestCase):
 
     SIZING_READS = ("screen_ratio", "devicePixelRatio", "devicePixelRatioF")
 
-    def test_the_dialog_shell_holds_no_screen_read_at_all(self):
+    def test_asset_dialog_and_versions_dialog_read_no_screen(self):
         for name, source in (("AssetDialog", inspect.getsource(base_dialog.AssetDialog)),
                              ("versions_dialog", inspect.getsource(versions_dialog))):
             with self.subTest(source=name):

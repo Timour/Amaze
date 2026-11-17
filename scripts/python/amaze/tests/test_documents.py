@@ -55,7 +55,7 @@ class _Two(unittest.TestCase):
         return self.open(user).document(MATERIALS)
 
 
-class AChangeIsAUsersTest(_Two):
+class AChangeRecordsItsUserTest(_Two):
 
     def test_an_entry_records_who_changed_it_and_when(self):
         entry = self.on_disk()[ASSETS]["A1"]
@@ -135,7 +135,7 @@ class TwoUsersAtOnceTest(_Two):
         self.assertTrue(self.anna.refresh())
         self.assertEqual("White Oak", self.anna.get(ASSETS, "A2")["name"])
 
-    def test_a_removal_of_what_the_other_left_alone_holds(self):
+    def test_a_removal_of_what_the_other_user_did_not_change_is_kept(self):
         self.anna.drop(ASSETS, "A2")
         self.erik.put(ASSETS, "A5", {"name": "New"})
         self.assertEqual({"A1", "A5"}, set(self.both_save()[ASSETS]))
@@ -193,7 +193,7 @@ class TwoUsersAtOnceTest(_Two):
 class AKeyMovedForEveryUserTest(_Two):
     """`rekey_everyones` moves one key in every user's table, and a merge keeps the move."""
 
-    def test_the_move_reaches_every_user_and_survives_a_peers_save(self):
+    def test_the_move_reaches_every_user_and_is_kept_after_a_peers_save(self):
         self.anna.put_mine(STARS, "old", True)
         self.assertTrue(self.anna.save())
         self.erik.refresh()
@@ -211,7 +211,7 @@ class AKeyMovedForEveryUserTest(_Two):
 
 class WhatTheEngineDoesNotKnowIsKeptTest(_Two):
 
-    def test_keys_and_sections_of_a_later_build_survive_a_save(self):
+    def test_keys_and_sections_of_a_later_build_are_kept_by_a_save(self):
         raw = self.on_disk()
         raw["later"] = {"new": 1}
         raw[ASSETS]["A1"]["later_field"] = [1, 2]
@@ -229,17 +229,17 @@ class ABurstIsOneSaveTest(_Two):
 
     def test_twenty_changes_reach_the_disk_in_one_write_after_one_read(self):
         disk = CountingDisk(MATERIALS)
-        asked = []
-        library = self.open(ANNA, defer=asked.append, disk=disk)
+        pending = []
+        library = self.open(ANNA, defer=pending.append, disk=disk)
         document = library.document(MATERIALS)
         disk.reads = 0
         for number in range(20):
             document.put(ASSETS, "B%d" % number, {"name": "burst %d" % number})
-        self.assertEqual(20, len(asked), "each change calls the caller's `defer`")
+        self.assertEqual(20, len(pending), "each change calls the caller's `defer`")
         self.assertEqual((0, 0), (disk.reads, disk.swaps), "and nothing is written until the deferred save runs")
-        self.assertTrue(asked[-1]())
+        self.assertTrue(pending[-1]())
         self.assertEqual((1, 1), (disk.reads, disk.swaps))
-        self.assertEqual(documents.UNCHANGED, asked[0]().reason, "a second deferred save has nothing to write")
+        self.assertEqual(documents.UNCHANGED, pending[0]().reason, "a second deferred save has nothing to write")
         self.assertEqual(22, len(self.on_disk()[ASSETS]))
 
     def test_flush_saves_what_is_waiting_and_only_that(self):
@@ -256,13 +256,13 @@ class ABurstIsOneSaveTest(_Two):
 class ARowAndItsFilesTest(_Two):
     """A change made inside `holding()` is saved together with its files, in one commit."""
 
-    def test_a_held_change_waits_and_lands_with_its_files(self):
-        asked = []
-        library = self.open(ANNA, defer=asked.append)
+    def test_a_held_change_waits_and_is_saved_with_its_files(self):
+        pending = []
+        library = self.open(ANNA, defer=pending.append)
         document = library.document(MATERIALS)
         with library.holding():
             document.put(ASSETS, "A9", {"name": "saved with its file"})
-        self.assertEqual([], asked, "a change inside `holding()` never calls `defer`")
+        self.assertEqual([], pending, "a change inside `holding()` never calls `defer`")
         saved = document.save(also=lambda change: change.put_file("materials/A9.mat", b"nodes"))
         self.assertTrue(saved)
         self.assertIn("A9", self.on_disk()[ASSETS])
@@ -282,7 +282,7 @@ class ARowAndItsFilesTest(_Two):
         self.assertFalse(saved)
         self.assertFalse(os.path.exists(os.path.join(self.dir, "materials", "A1.mat")))
 
-    def test_a_peer_save_between_is_merged_and_the_files_still_land(self):
+    def test_a_peer_save_between_is_merged_and_the_files_are_still_written(self):
         self.erik.put(ASSETS, "E1", {"name": "Erik's"})
         self.assertTrue(self.erik.save())
         self.anna.put(ASSETS, "A9", {"name": "Anna's"})
@@ -294,12 +294,12 @@ class ARowAndItsFilesTest(_Two):
         self.assertEqual({"A1", "A2", "E1", "A9"}, set(self.on_disk()[ASSETS]))
 
 
-class RefusalsHoldTest(_Two):
+class AnUnreadableOrNewerFileIsNotWrittenTest(_Two):
 
     def path(self) -> str:
         return os.path.join(self.dir, MATERIALS)
 
-    def test_a_file_that_stops_reading_keeps_what_is_held_and_takes_no_change(self):
+    def test_a_file_that_stops_reading_keeps_what_is_loaded_and_takes_no_change(self):
         good = open(self.path(), "rb").read()
         for broken in (b"", b"half a fi"):
             with open(self.path(), "wb") as handle:

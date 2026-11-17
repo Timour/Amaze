@@ -20,7 +20,7 @@ from amaze.panel import grid  # noqa: E402
 from amaze.tests import test_support  # noqa: E402 - redirects the log
 
 
-class TheWheelIsONEEngineForBothViews(unittest.TestCase):
+class OneWheelHandlerServesBothViews(unittest.TestCase):
     """One wheel handler for both views and axes; a view without prefs uses `SCROLL_SPEED`."""
 
     VIEWS = ("DragDropListView", "DragDropTableView")
@@ -103,7 +103,7 @@ class SelectingNeverScrollsTheGridTest(unittest.TestCase):
     def setUpClass(cls):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))  # an isolated panel, every path in the tempdir
 
-    def test_selecting_a_half_cut_tile_leaves_the_view_where_it_was(self):
+    def test_selecting_a_partly_visible_tile_does_not_move_the_scrollbar(self):
         """A partly visible tile made current in a small viewport does not move the scrollbar."""
         view = self.panel.thumblist
         model = view.model()
@@ -139,7 +139,7 @@ class SelectingNeverScrollsTheGridTest(unittest.TestCase):
             before, bar.value(),
             "the scrollbar moved when the current index changed")
 
-    def test_the_view_stays_put_through_the_view_mode_switch(self):
+    def test_the_scrollbar_does_not_move_when_the_view_mode_switches(self):
         """`setViewMode()` re-applies view state, so both modes must keep the view from self-scrolling."""
         kept = self.panel.prefs.view_mode
         self.addCleanup(setattr, self.panel.prefs, "view_mode", kept)

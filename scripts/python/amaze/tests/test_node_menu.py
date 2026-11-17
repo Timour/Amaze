@@ -94,7 +94,7 @@ def _geo(test, name="menu_geo"):
     return geo
 
 
-def _speakers(test):
+def _recording_ui(test):
     """`hou.ui` patched to record its dialogs in `test.said` and its status line in `test.bar`."""
     test.said, test.bar, test.details = [], [], []
     ui = types.SimpleNamespace(
@@ -225,7 +225,7 @@ class AConvertBuildsTheTwinBesideTheNode(unittest.TestCase):
     """One menu command, one undo step: the twin is current and selected, the source as it was."""
 
     def setUp(self):
-        _speakers(self)
+        _recording_ui(self)
 
     def _convert(self, source, target):
         from amaze.core import renderers
@@ -266,7 +266,7 @@ class AConvertBuildsTheTwinBesideTheNode(unittest.TestCase):
         self.assertEqual("Karma", nodes.NodeHandler(None).get_renderer_from_node(twin))
         self.assertEqual(1, len(self.said) + len(self.bar), "said nothing, or twice")
 
-    def test_a_node_with_no_route_says_why(self):
+    def test_a_node_with_no_route_shows_why(self):
         from amaze.utils import rc_calls
         geo = _geo(self, "menu_no_route")
         before = set(geo.parent().children())
@@ -282,7 +282,7 @@ class AConvertBuildsTheTwinBesideTheNode(unittest.TestCase):
         self.assertEqual(([], []), (self.said, self.bar))
 
     @unittest.skipUnless(REDSHIFT, "the Redshift plugin is not loaded")
-    def test_the_twin_lands_beside_the_source(self):
+    def test_the_twin_is_placed_beside_the_source(self):
         source = _materialx(self, "menu_placed")
         source.setPosition(hou.Vector2(7, -3))
         twin = self._convert(source, "Redshift")
@@ -312,7 +312,7 @@ class ASwapPutsTheTwinInTheNodesPlace(unittest.TestCase):
     """The old node destroyed, the twin at its exact name, path and position, all one undo step."""
 
     def setUp(self):
-        _speakers(self)
+        _recording_ui(self)
 
     def _swap(self, source, target):
         from amaze.core import renderers
@@ -339,7 +339,7 @@ class ASwapPutsTheTwinInTheNodesPlace(unittest.TestCase):
                          "the swap is not one undo step")
         return twin, old_type, before
 
-    def _undo_brings_it_back(self, path, old_type, before):
+    def _assert_undo_restores_it(self, path, old_type, before):
         hou.undos.performUndo()
         back = hou.node(path)
         self.assertIsNotNone(back, "one undo did not bring the old node back")
@@ -356,7 +356,7 @@ class ASwapPutsTheTwinInTheNodesPlace(unittest.TestCase):
         self.assertEqual([], self.said, "a clean swap opened a dialog")
         self.assertEqual(['Amaze: ' + messages.NODE_SWAPPED % ("menu_swap_rs", "Redshift")],
                          self.bar)
-        self._undo_brings_it_back(path, old_type, before)
+        self._assert_undo_restores_it(path, old_type, before)
 
     @unittest.skipUnless(REDSHIFT_TYPE and REDSHIFT, "the Redshift plugin is not loaded")
     def test_a_redshift_material_is_swapped_for_karma(self):
@@ -364,7 +364,7 @@ class ASwapPutsTheTwinInTheNodesPlace(unittest.TestCase):
         path = source.path()
         _twin, old_type, before = self._swap(source, "Karma")
         self.assertEqual(1, len(self.said) + len(self.bar), "said nothing, or twice")
-        self._undo_brings_it_back(path, old_type, before)
+        self._assert_undo_restores_it(path, old_type, before)
 
     @unittest.skipUnless(REDSHIFT, "the Redshift plugin is not loaded")
     def test_a_reference_by_path_reaches_the_new_material(self):
@@ -401,7 +401,7 @@ class ASelectionConvertsAsOne(unittest.TestCase):
     """A right-click on a selected node converts the whole selection, as Save saves it."""
 
     def setUp(self):
-        _speakers(self)
+        _recording_ui(self)
 
     def _made(self, parent, before):
         made = [c for c in parent.children() if c not in before]

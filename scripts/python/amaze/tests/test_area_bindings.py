@@ -172,10 +172,10 @@ EXPECTED_BADGES = {
 ONLINE_BADGES = {"favourite"}   # the online world is read-only: nothing there can be starred, commented or versioned
 
 
-class EveryContextCarriesTheBadgesItsModelCanAnswer(AreaBindingCase):
+class EveryContextShowsTheBadgesItsModelSupports(AreaBindingCase):
     """Each section declares its badges, so a badge left unwired fails this test."""
 
-    def test_each_section_carries_exactly_the_badges_it_should(self):
+    def test_each_section_has_exactly_its_expected_badges(self):
         for key, expected in EXPECTED_BADGES.items():
             with self.subTest(section=key):
                 panel = self.activate(key)
@@ -186,7 +186,7 @@ class EveryContextCarriesTheBadgesItsModelCanAnswer(AreaBindingCase):
                     "badge wired nowhere is not painted and raises no error"
                     % key)
 
-    def test_a_model_that_can_answer_a_badge_has_it_wired(self):
+    def test_a_model_with_a_badge_role_has_that_badge_wired(self):
         """A section whose model answers a badge role but whose delegate omits it fails here."""
         from amaze.panel import delegates
         for key, expected in EXPECTED_BADGES.items():
@@ -207,7 +207,7 @@ class EveryContextCarriesTheBadgesItsModelCanAnswer(AreaBindingCase):
                     "this file records a reason for" % (key, role_name,
                                                         badge))
 
-    def test_the_online_world_carries_only_its_own(self):
+    def test_the_online_mode_grid_shows_only_online_badges(self):
         panel = self.panel
         panel.enter_online_mode()
         QtWidgets.QApplication.processEvents()
@@ -309,7 +309,7 @@ class TheToolbarFollowsTheContext(AreaBindingCase):
 class TheCommentsPaneFollowsTheContext(AreaBindingCase):
     """Comments subject per context: asset id, raw path for File rows, uid for a gradient."""
 
-    def test_every_section_answers_with_a_subject_or_with_nothing(self):
+    def test_every_section_notes_subject_is_a_key_or_none(self):
         for key in BINDINGS:
             with self.subTest(section=key):
                 panel = self.activate(key)
@@ -326,10 +326,10 @@ class TheCommentsPaneFollowsTheContext(AreaBindingCase):
                         "'<section>:<id>'" % (key, subject))
 
 
-class TheOnlineWorldBindsTheSameFourAreas(AreaBindingCase):
+class TheOnlineModeBindsTheSameFourAreas(AreaBindingCase):
     """The online world is a separate mode, not a view mode, but uses the same four widgets."""
 
-    def test_entering_binds_the_online_models_and_leaving_puts_back_yours(self):
+    def test_entering_binds_the_online_models_and_leaving_restores_the_local_ones(self):
         panel = self.activate("gradient")
         self.addCleanup(self._restore)
         before = self.bound(panel)
@@ -375,7 +375,7 @@ class TheOnlineWorldBindsTheSameFourAreas(AreaBindingCase):
         self.assertEqual({names[1]}, {online.record(row).source
                                       for row in range(online.rowCount())})
 
-    def test_its_delegate_carries_no_role_the_online_model_lacks(self):
+    def test_its_delegate_has_no_role_the_online_model_lacks(self):
         """Columns follow the active delegate's roles, so the online one has only online roles."""
         delegate = self.panel.matx_delegate
         model = self.panel.matx_online_model
@@ -411,7 +411,7 @@ class TheOnlineWorldBindsTheSameFourAreas(AreaBindingCase):
             "an online record, which has no library asset to store it")
 
 
-class TheOnlineWorldIsASKEDLikeAnySection(AreaBindingCase):
+class TheOnlineContextIsCalledLikeAnySection(AreaBindingCase):
     """The panel calls the online context like any section; `_is_online()` only tests the mode."""
 
     def test_the_context_declares_every_verb_the_branches_relied_on(self):
@@ -465,7 +465,7 @@ class TheOnlineWorldIsASKEDLikeAnySection(AreaBindingCase):
             "so the code moved from the panel to OnlineContext is broken")
 
 
-class EveryTileDelegateIsSweptByEverySweep(AreaBindingCase):
+class EveryTileDelegateIsInTileDelegates(AreaBindingCase):
     """`tile_delegates()` is built from the sections, so every loop over it reaches each delegate."""
 
     def test_every_sections_delegate_is_in_the_one_list(self):
@@ -487,9 +487,9 @@ class EveryTileDelegateIsSweptByEverySweep(AreaBindingCase):
 class TheBindingsAreDeclaredNotHandWritten(unittest.TestCase):
     """Every section activates through its own activate(); the online world enters via the panel."""
 
-    _PUT_BACKS = ("preserving_selection_and_current", "keep_editor_focus")    # ▸p/amaze-follows-houdini
+    _RESTORERS = ("preserving_selection_and_current", "keep_editor_focus")    # ▸p/amaze-follows-houdini
 
-    def test_no_import_module_puts_the_artist_back(self):
+    def test_no_import_module_restores_the_selection_or_editor_focus(self):
         """An import leaves the new node selected and the editors where Houdini puts them."""
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         found = []
@@ -498,7 +498,7 @@ class TheBindingsAreDeclaredNotHandWritten(unittest.TestCase):
                      "drop_placement.py", "tile_capture.py"):
             with open(os.path.join(root, "panel", name), encoding="utf-8") as fh:
                 source = fh.read()
-            for wrapper in self._PUT_BACKS:
+            for wrapper in self._RESTORERS:
                 if wrapper in source:
                     found.append("%s uses %s" % (name, wrapper))
         self.assertEqual(
@@ -507,7 +507,7 @@ class TheBindingsAreDeclaredNotHandWritten(unittest.TestCase):
             "back, which undoes what Houdini does for a new node: %s" % found)
 
 
-class TheReleaseVerbsLiveOnTheirSections(unittest.TestCase):
+class TheReleaseVerbsAreDefinedOnTheirSections(unittest.TestCase):
     """Every release verb a drop rule names is callable on the section that declares it."""
 
     def test_every_rule_named_verb_is_defined_by_its_section(self):
@@ -533,10 +533,10 @@ class TheReleaseVerbsLiveOnTheirSections(unittest.TestCase):
             "and there is no panel fallback any more: %s" % missing)
 
 
-class EveryDoubleClickReachesTheClickWalker(unittest.TestCase):
+class EveryDoubleClickCallsClickOnRow(unittest.TestCase):
     """A double-click calls `click_on_row` in every section, including a newly added one."""
 
-    def test_every_section_and_a_new_one_reach_the_walker(self):
+    def test_every_section_and_a_new_one_call_click_on_row(self):
         from amaze.panel import sections
 
         class _Panel:

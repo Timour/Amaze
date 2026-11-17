@@ -72,7 +72,7 @@ class PinEnvSetsOnlyWhatTheProductReadsAsUnset(unittest.TestCase):
         scope.doCleanups()
         return before, inside, hou.getenv(self.NAME)
 
-    def test_unset_and_empty_are_pinned_then_put_back(self):
+    def test_unset_and_empty_are_pinned_then_restored(self):
         for start in (None, ""):
             with self.subTest(start=start):
                 before, inside, after = self._through_a_pin(start)
@@ -84,7 +84,7 @@ class PinEnvSetsOnlyWhatTheProductReadsAsUnset(unittest.TestCase):
 
 
 @unittest.skipUnless(hou, "Houdini is not loaded")
-class RendererLoadedAsksTheProductsProbe(unittest.TestCase):
+class RendererLoadedCallsTheProductsProbe(unittest.TestCase):
     """`renderer_loaded` calls the conversion engine's check, so `plugins_loaded` can fake it."""
 
     def test_it_follows_the_answer_plugins_loaded_fakes(self):
@@ -96,9 +96,9 @@ class RendererLoadedAsksTheProductsProbe(unittest.TestCase):
 
 
 @unittest.skipUnless(hou, "Houdini is not loaded")
-class SceneCleanupsTakeWhatATestBuilt(unittest.TestCase):
+class SceneCleanupsDeleteWhatATestBuilt(unittest.TestCase):
 
-    def test_drop_node_takes_the_node_and_a_second_drop_is_quiet(self):
+    def test_drop_node_deletes_the_node_and_a_second_drop_raises_nothing(self):
         import hou
         node = hou.node("/obj").createNode("null", "amaze_drop_probe")
         path = node.path()

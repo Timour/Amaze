@@ -57,7 +57,7 @@ class TheListKeepsTheMostRecentFirst(unittest.TestCase):
         self.assertFalse(self.prefs.note_library_opened(self.a),
                          "the list reported a change, so every open would save it")
 
-    def test_nothing_drops_off(self):
+    def test_no_library_is_dropped_from_a_long_list(self):
         folders = [_folder(self, "L%d" % n) for n in range(25)]
         for folder in folders:
             self.prefs.note_library_opened(folder)
@@ -71,7 +71,7 @@ class TheListKeepsTheMostRecentFirst(unittest.TestCase):
         self.assertTrue(self.prefs.remove_libraries([self.b]))
         self.assertEqual([self.a], self.prefs.libraries)
 
-    def test_the_list_survives_a_save(self):
+    def test_the_list_is_kept_by_a_save(self):
         for folder in (self.a, self.b):
             self.prefs.note_library_opened(folder)
         self.prefs.save()
@@ -171,7 +171,7 @@ class ManageLibrariesTest(unittest.TestCase):
         self.assertEqual({"Studio": True, "Archive": True, "Archive-gone": False}, reached)
 
 
-class TheManageWindowStandsOnItsFrame(unittest.TestCase):
+class TheManageWindowMatchesItsDesignFrame(unittest.TestCase):
     """D15's window, list, buttons and rows match the boxes of its design frame."""
 
     def setUp(self):
@@ -192,7 +192,7 @@ class TheManageWindowStandsOnItsFrame(unittest.TestCase):
         self.assertEqual(tuple(theme.ui_px(n) for n in amazetheme.DIALOG_LAYOUT["D15"]["frame"]),
                          (self.dialog.width(), self.dialog.height()))
 
-    def test_the_list_and_the_buttons_land_where_drawn(self):
+    def test_the_list_and_the_buttons_are_where_drawn(self):
         boxes = amazetheme.drawn_boxes("D15")
         for widget, key in ((self.dialog._list, ("QListWidget", None)),
                             (self.dialog._remove, ("QPushButton", amazetheme.BTN_REMOVE_FROM_LIST)),
@@ -210,21 +210,21 @@ class TheManageWindowStandsOnItsFrame(unittest.TestCase):
         ratio = picture.devicePixelRatio()
         top = px(rows["pitch"]) + px(rows["box_y"])
 
-        def ink(x, y):
+        def color_at(x, y):
             return QtGui.QColor(picture.pixel(int(x * ratio), int(y * ratio))).name()
 
         selected = QtGui.QColor(amazetheme.D15_SELECTED_BACKGROUND).name()
-        self.assertEqual(selected, ink(px(rows["box_x"]) + 1, top + 1),
+        self.assertEqual(selected, color_at(px(rows["box_x"]) + 1, top + 1),
                          "the selected row is not painted at its designed box")
-        self.assertNotEqual(selected, ink(px(rows["box_x"]) + 1, top - 1),
+        self.assertNotEqual(selected, color_at(px(rows["box_x"]) + 1, top - 1),
                             "the selection fills the gap the frame leaves above the row")
-        self.assertNotEqual(selected, ink(px(rows["box_x"]) - 1, top + 1),
+        self.assertNotEqual(selected, color_at(px(rows["box_x"]) - 1, top + 1),
                             "the selection fills the inset the frame leaves beside the row")
-        self.assertNotEqual(selected, ink(px(rows["box_x"]), top),
+        self.assertNotEqual(selected, color_at(px(rows["box_x"]), top),
                             "the selected row's corner is square; the frame rounds it")
 
 
-class EveryDrawnListWearsTheListGround(unittest.TestCase):
+class EveryDrawnListHasTheListBackground(unittest.TestCase):
     """D15 and D01 both build their list with `drawn_list`, so one test covers both."""
 
     def _dialogs(self):
@@ -237,7 +237,7 @@ class EveryDrawnListWearsTheListGround(unittest.TestCase):
         return (("D15", library_dialog.ManageLibrariesDialog(prefs)),
                 ("D01", versions_dialog.VersionsDialog("brushed_steel", listed, 2)))
 
-    def test_the_list_ground_is_houdinis_list_colour_with_round_corners(self):
+    def test_the_list_background_is_houdinis_list_colour_with_round_corners(self):
         for frame, dialog in self._dialogs():
             with self.subTest(frame=frame):
                 self.addCleanup(dialog.deleteLater)
@@ -249,14 +249,14 @@ class EveryDrawnListWearsTheListGround(unittest.TestCase):
                 corner = dialog._list.mapTo(dialog, dialog._list.rect().topLeft())
                 x, y, high = corner.x(), corner.y(), dialog._list.height()
 
-                def ink(at_x, at_y, picture=picture, ratio=ratio):    # bound per subTest
+                def color_at(at_x, at_y, picture=picture, ratio=ratio):    # bound per subTest
                     return QtGui.QColor(picture.pixel(int(at_x * ratio),
                                                       int(at_y * ratio))).name()
 
-                ground = theme.list_background().name()
-                self.assertEqual(ground, ink(x + 10, y + high - 3),
+                background = theme.list_background().name()
+                self.assertEqual(background, color_at(x + 10, y + high - 3),
                                  "the empty list area is not the list colour")
-                self.assertNotEqual(ground, ink(x, y),
+                self.assertNotEqual(background, color_at(x, y),
                                     "the list's corner is square; the frame rounds it")
 
 

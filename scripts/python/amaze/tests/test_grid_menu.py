@@ -108,7 +108,7 @@ class TheTableIsWellFormED(unittest.TestCase):
                             "%s's %r table names %r, which it does not "
                             "have" % (name, entry.label, fact))
 
-    def test_a_submenu_row_declares_a_verb_to_carry_its_payload(self):
+    def test_a_submenu_row_declares_a_verb_for_its_children(self):
         """A submenu's children dispatch through the parent's verb, so a parent with children needs one."""
         for name in MENU_CONTEXTS:
             context = getattr(sections, name)
@@ -163,7 +163,7 @@ class NoMenuIsWrittenInThePanelAnyMore(unittest.TestCase):
 class TheBuilderTidiesItsOwnSeparators(unittest.TestCase):
     """Conditional rows yield leading, doubled and trailing dividers; the builder removes them."""
 
-    def test_no_leading_doubled_or_trailing_divider_survives(self):
+    def test_no_leading_doubled_or_trailing_divider_remains(self):
         for rows, tidy in (([None, "b"], ["b"]),
                            (["a", None, None, "b"], ["a", None, "b"]),
                            (["a", None], ["a"]),
@@ -172,7 +172,7 @@ class TheBuilderTidiesItsOwnSeparators(unittest.TestCase):
                 self.assertEqual(tidy, grid._tidy_separators(rows))
 
 
-class TheMenusAreWhatSHIPPED(unittest.TestCase):
+class TheMenusMatchTheOldHandlersOutput(unittest.TestCase):
     """The six old handlers' recorded output, now built by `grid.py`; only the empty cases differ."""
 
     @classmethod
@@ -268,7 +268,7 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
                 self.assertTrue(row.endswith("(off)"),
                                 "%r stayed enabled on a multi-selection" % row)
 
-    def test_node_keeps_its_shape(self):
+    def test_node_menu_over_no_assets(self):
         """The fixture has no Node assets, so this is the empty case, which once produced no menu."""
         self.assertEqual(
             ["Load Asset(off)", "----",
@@ -332,7 +332,7 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
              "Refresh"],
             render(menu))
 
-    def test_online_imports_say_HOW_MANY_they_are_about_to_fetch(self):
+    def test_online_imports_show_HOW_MANY_they_are_about_to_fetch(self):
         """On a multi-selection the imports show a count, from the same indexes the import runs on."""
         context = self.panel.online_context
         proxy = self.panel.matx_sorted_model
@@ -392,7 +392,7 @@ class TheRowTheMenuIsAboutIsAlwaysSELECTED(unittest.TestCase):
             % seen["current"].row())
 
 
-class AMenuDoesNotOUTLIVEItsRightClick(unittest.TestCase):
+class AMenuIsDeletedOnceClosed(unittest.TestCase):
     """A grid menu is deleted once closed: parented to the panel, nothing else would delete it."""
 
     @classmethod
@@ -535,7 +535,7 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
         self.assertEqual([mock.call("Redshift"), mock.call("Karma"),
                           mock.call("Karma")], convert.call_args_list)
 
-    def test_online_import_carries_the_renderer_to_import_records(self):
+    def test_online_import_passes_the_renderer_to_import_records(self):
         """C06a/C06b: the picked Import child is passed on as `renderer`; a bare call means Karma."""
         panel = self.panel
         context = panel.online_context
@@ -553,7 +553,7 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
             self.assertEqual({"renderer": "Karma"},
                              lib.call_args.kwargs)
 
-    def test_neither_online_scene_import_puts_the_editor_back(self):
+    def test_neither_online_scene_import_opens_a_restore_block(self):
         """Both online scene imports run with no restore block open. ▸p/amaze-follows-houdini"""
         import types
         from amaze.helpers import helpers
@@ -588,7 +588,7 @@ def icon_image(action):
     return action.icon().pixmap(QtCore.QSize(16, 16)).toImage()
 
 
-class EveryRendererRowWEARSTheFilterMenusIcon(unittest.TestCase):
+class EveryRendererRowShowsTheFilterMenusIcon(unittest.TestCase):
     """C13, C01b, C06a, C06b: one icon per renderer, named in one table, drawn by one function."""
 
     RENDERERS = ("MaterialX", "Redshift", "Octane")
@@ -632,7 +632,7 @@ class EveryRendererRowWEARSTheFilterMenusIcon(unittest.TestCase):
                 return {child.text(): child for child in action.menu().actions()}
         return {}
 
-    def test_convert_to_and_import_wear_the_filter_menus_icons(self):
+    def test_convert_to_and_import_show_the_filter_menus_icons(self):
         with self._everything_offered():
             filter_menu, material_menu, online_menu = self._build()
             filtered = {act.text(): act for act in filter_menu.actions()}
@@ -748,7 +748,7 @@ class AVerbActsOnlyOnRowsStillThere(unittest.TestCase):
         self.assertEqual(before ^ {picked}, self._starred(model),
                          "the favourite was set on another tile than the one picked")
 
-    def test_a_folder_reloaded_under_the_menu_hands_its_verb_nothing(self):
+    def test_a_folder_reloaded_under_the_menu_passes_its_verb_nothing(self):
         """A finished move reloads the folder; Copy Path then copies nothing, not a stale path."""
         clipboard = QtWidgets.QApplication.clipboard()
         clipboard.setText("sentinel")
@@ -757,7 +757,7 @@ class AVerbActsOnlyOnRowsStillThere(unittest.TestCase):
         self.assertEqual("sentinel", clipboard.text(), "a reloaded row's path was copied")
 
 
-class EveryVerbREACHESItsOwner(unittest.TestCase):
+class EveryVerbIsCalledThroughThePanel(unittest.TestCase):
     """The five verbs the panel already defined are called THROUGH it, not copied into a table."""
 
     @classmethod

@@ -23,9 +23,9 @@ from amaze.panel import notes_panel  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
 
-class TheSubjectBelongsToTheContext(unittest.TestCase):
+class EveryContextHasACommentSubject(unittest.TestCase):
 
-    def test_every_context_answers_the_question_itself(self):
+    def test_every_context_defines_comment_subject(self):
         for name in ("AssetSection", "FileSection", "GradientSection",
                      "OnlineContext"):
             with self.subTest(context=name):
@@ -138,7 +138,7 @@ class TheSubjectIsRightForEachContext(unittest.TestCase):
             "the uid in the comment key belongs to a different palette "
             "than the one the header names")
 
-    def test_a_selected_current_row_is_answered_without_listing_the_selection(self):
+    def test_a_selected_current_row_is_found_without_listing_the_selection(self):
         """This runs on every selection change, so it must not list a large selection."""
         panel = self.panel
         panel.section_tabs.setChecked("material")
@@ -319,7 +319,7 @@ class TheHeaderFollowsTheAssetItNames(unittest.TestCase):
         self.pane.set_subject(sections.CommentSubject("material:asset-1", "New Name", "Karma"))
         self.assertEqual("New Name", self.pane.name_label.text())
 
-    def test_an_edit_IN_PROGRESS_survives_the_header_update(self):
+    def test_an_edit_IN_PROGRESS_is_kept_through_the_header_update(self):
         """`set_subject` runs on every click, so a rename sets the header but never reloads the page."""
         self.pane.text_edit.setPlainText("half a sentence")
         self.pane.set_subject(sections.CommentSubject("material:asset-1", "New Name", "Karma"))
@@ -327,7 +327,7 @@ class TheHeaderFollowsTheAssetItNames(unittest.TestCase):
                          self.pane.text_edit.toPlainText())
 
 
-class APendingEditIsNotLostOnTheWayOUT(unittest.TestCase):
+class APendingEditIsSavedWhenThePaneCLOSES(unittest.TestCase):
     """Typed text waits 600ms for the debounce, so every way the pane closes saves it first."""
 
     def setUp(self):
@@ -384,7 +384,7 @@ class APendingEditIsNotLostOnTheWayOUT(unittest.TestCase):
         self.assertEqual(before, self._stored("material:asset-2"))
 
 
-class ALibrarySwitchLeavesTheNoteWhereItWasTyped(unittest.TestCase):
+class ALibrarySwitchSavesTheNoteInTheLibraryItWasTypedIn(unittest.TestCase):
     """A page is written to the library it was read from, and a switch leaves nothing selected."""
 
     def setUp(self):

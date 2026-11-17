@@ -81,9 +81,9 @@ class _OnThePanel(unittest.TestCase):
 
     def setUp(self):
         _Recording.opened.clear()
-        self.said = []
+        self.status_lines = []
         ui = types.SimpleNamespace(
-            setStatusMessage=lambda text, *a, **k: self.said.append(text),
+            setStatusMessage=lambda text, *a, **k: self.status_lines.append(text),
             displayMessage=lambda *a, **k: 0)
         patcher = mock.patch.object(hou, "ui", ui, create=True)
         patcher.start()
@@ -117,16 +117,16 @@ class TheOnlineImportRunsInsideHoudinisOperation(_OnThePanel):
              (0.75, "2/2  Moss"), (1.0, "2/2  Moss")],
             _Recording.opened[0].reports)
 
-    def test_an_esc_stops_the_batch_after_the_current_record_and_says_so(self):
+    def test_an_esc_stops_the_batch_after_the_current_record_and_shows_it_stopped(self):
         imported = self._import(["Bricks", "Moss", "Rust"], _EscOnTheThirdReport)
         self.assertEqual(["Bricks"], imported,
                          "the Esc did not stop the batch after the current record")
-        self.assertIn(messages.ONLINE_IMPORT_STOPPED % (1, 3), self.said[-1])
+        self.assertIn(messages.ONLINE_IMPORT_STOPPED % (1, 3), self.status_lines[-1])
 
 
 class TheSceneImportRunsInsideHoudinisOperation(_OnThePanel):
 
-    def test_an_esc_stops_the_batch_after_the_current_record_and_says_so(self):
+    def test_an_esc_stops_the_batch_after_the_current_record_and_shows_it_stopped(self):
         from amaze.core import matx_import
         from amaze.render import nodes
         built = []
@@ -146,7 +146,7 @@ class TheSceneImportRunsInsideHoudinisOperation(_OnThePanel):
             self.panel.online_import.import_records_to_scene([_record("Bricks"), _record("Moss")])
         self.assertEqual(["Bricks"], built,
                          "the Esc did not stop the scene import after the current record")
-        self.assertIn(messages.ONLINE_IMPORT_STOPPED % (1, 2), self.said[-1])
+        self.assertIn(messages.ONLINE_IMPORT_STOPPED % (1, 2), self.status_lines[-1])
 
 
 class TheMultiMaterialSaveRunsInsideHoudinisOperation(_OnThePanel):
@@ -179,11 +179,11 @@ class TheMultiMaterialSaveRunsInsideHoudinisOperation(_OnThePanel):
         self.assertEqual([(0.0, "1/2  save_probe_a"), (0.5, "2/2  save_probe_b")],
                          _Recording.opened[0].reports)
 
-    def test_an_esc_stops_the_batch_after_the_current_material_and_says_so(self):
+    def test_an_esc_stops_the_batch_after_the_current_material_and_shows_it_stopped(self):
         saved = self._save(["a", "b", "c"], _EscOnTheSecondReport)
         self.assertEqual(["save_probe_a"], saved,
                          "the Esc did not stop the save after the current material")
-        self.assertIn(messages.SAVE_STOPPED % (1, 3), self.said[-1])
+        self.assertIn(messages.SAVE_STOPPED % (1, 3), self.status_lines[-1])
 
 
 class AnEscInsideOneRecordReachesTheBatch(_OnThePanel):
@@ -230,7 +230,7 @@ class AnEscInsideOneRecordReachesTheBatch(_OnThePanel):
             self.panel.package_import.import_record(record, self._Interrupting(), restore=True)
 
 
-class ThePanelPumpsNothingForImportsAndSaves(unittest.TestCase):
+class ThePanelCallsNoProcessEventsForImportsAndSaves(unittest.TestCase):
     """The import and save paths let Houdini's operation process events, never themselves."""
 
     def test_no_processEvents_in_the_import_and_save_paths(self):

@@ -51,9 +51,9 @@ def menu_verbs_calling(*attributes):
     return offenders
 
 
-class EveryContextOwnsTheVerbsItOffers(unittest.TestCase):
+class EveryContextImplementsTheVerbsItOffers(unittest.TestCase):
 
-    def test_a_context_with_no_tiles_answers_harmlessly(self):
+    def test_a_context_without_favourites_ignores_the_favourite_verb(self):
         """Online rows have no favourite state, so the verb is a no-op there, never an error."""
         context = sections.OnlineContext.__new__(sections.OnlineContext)
         self.assertFalse(sections.OnlineContext.takes_favourites)
@@ -79,11 +79,11 @@ class OnlyASectionThatRENDERSOffersUpdatePreview(unittest.TestCase):
                     self.assertTrue(callable(
                         getattr(context, "update_preview", None)))
                 self.assertEqual(
-                    in_menu, bool(self._preview_gate(name)),
+                    in_menu, bool(self._render_image_listed(name)),
                     "%s's menu is wrong about Update Render for an empty "
                     "selection" % name)
 
-    def _preview_gate(self, name):
+    def _render_image_listed(self, name):
         """Render Image is a row of the shared Thumbnail submenu; this returns whether it is listed."""
         entry = next(e for e in sections.GRID_MENU_TAIL
                      if e.label == "Thumbnail")
@@ -91,7 +91,7 @@ class OnlyASectionThatRENDERSOffersUpdatePreview(unittest.TestCase):
         return "Render Image" in [row[0] for row in getattr(context, entry.children)([], None)]
 
 
-class DeleteIsONEShapeWithFourSetsOfWORDS(unittest.TestCase):
+class DeleteIsOneProcedureWithFourPrompts(unittest.TestCase):
     """Delete counts distinct rows, asks, removes highest row first, then refreshes the sidebar."""
 
     DELETING = ("MaterialSection", "CopSection", "CodeSection",   # Delete removes a library record; File has no Delete, its rows are files
@@ -101,7 +101,7 @@ class DeleteIsONEShapeWithFourSetsOfWORDS(unittest.TestCase):
         """A File row is a file on disk; the section browses locations and owns nothing in them."""
         self.assertFalse(sections.FileSection.deletes_rows)
 
-    def test_each_context_says_what_deleting_COSTS(self):
+    def test_each_context_prompt_names_what_deleting_removes(self):
         for name in self.DELETING:
             with self.subTest(context=name):
                 context = getattr(sections, name)
@@ -140,7 +140,7 @@ class DeleteIsONEShapeWithFourSetsOfWORDS(unittest.TestCase):
                                  context.delete_prompt(1, "Sunset"))
 
 
-class TheCUSTOMIZEDialogSurvivesAModelRESET(unittest.TestCase):
+class TheCustomizeDialogFindsItsTilesAfterAModelReset(unittest.TestCase):
     """A model reset invalidates every persistent index, so tiles are found by `tile_key(row)`."""
 
     def setUp(self):
@@ -193,7 +193,7 @@ class TheCUSTOMIZEDialogSurvivesAModelRESET(unittest.TestCase):
                     "the icon was applied to a different asset - the rows were "
                     "re-ordered under the open dialog")
 
-    def test_every_tile_model_says_what_its_rows_are_KEYED_by(self):
+    def test_every_tile_model_returns_the_key_of_its_rows(self):
         """Each model keys its rows by an id, a path or a uid, without the panel knowing which."""
         for attr in ("material_model", "cop_model", "code_model",
                      "file_files_model", "gradient_model"):
@@ -214,7 +214,7 @@ class TheCUSTOMIZEDialogSurvivesAModelRESET(unittest.TestCase):
                         % attr)
 
 
-class NoMENUKnowsHowToFavourite(unittest.TestCase):
+class NoMenuHandlerFavouritesRowsItself(unittest.TestCase):
     """No menu verb favourites, deletes or relayouts rows itself, read from the source."""
 
     def test_no_right_click_handler_favourites_or_deletes_rows_itself(self):
@@ -344,7 +344,7 @@ class FavouritingWorksInEverySection(unittest.TestCase):
                                  bool(proxy.index(0, 0).data(role)),
                                  "%s's favourite did not toggle back" % key)
 
-    def test_the_PANEL_hands_the_verb_to_whichever_context_is_showing(self):
+    def test_the_panel_passes_the_verb_to_the_context_shown(self):
         """The entry point every menu calls, checked outside Materials so it cannot assume that model."""
         _context, proxy, index = self._first_row("gradient")
         role = self._favourite_role(self.panel, "gradient")
@@ -360,7 +360,7 @@ class FavouritingWorksInEverySection(unittest.TestCase):
         self.panel.grid_toggle_favourite([proxy.index(0, 0)])
         QtWidgets.QApplication.processEvents()
 
-    def test_unfavouriting_LEAVES_a_favourites_only_grid(self):
+    def test_unfavouriting_removes_the_tile_from_a_favourites_only_grid(self):
         """With Favourites-only on, un-favouriting a tile takes it out of the grid."""
         for key in ("file", "gradient"):
             with self.subTest(section=key):
@@ -466,7 +466,7 @@ class ANonModalDialogHoldsIDENTITYNotRowNumbers(unittest.TestCase):
         self.assertEqual("granite, polished", dialog.tags_edit.text(),
                          "a tagged tile opened with an EMPTY Tags field")
 
-    def test_the_icon_lands_on_the_asset_that_was_SELECTED(self):
+    def test_the_icon_is_set_on_the_asset_that_was_selected(self):
         target_id = str(self.model.assets[2].mat_id)
         bystander_id = str(self.model.assets[1].mat_id)
         dialog = self._open_for(2)
@@ -648,7 +648,7 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
                 self._assert_no_row_moved_inside(caught,
                                                  "Convert to %s" % target)
 
-    def test_both_directions_report_in_the_words_they_always_did(self):
+    def test_both_directions_name_both_renderers_in_the_summary(self):
         """One verb, two directions: each summary names both renderers as the menus show them."""
         ui = mock.Mock()
         report = types.SimpleNamespace(summary_lines=lambda: ["a line"])
@@ -892,7 +892,7 @@ class ARowHeldAcrossASaveIsFoundAgain(unittest.TestCase):
                          "Save Version wrote over other materials: each update saves, "
                          "and the first save took in a deletion above the rows it held")
 
-    def test_a_node_is_a_library_material_by_its_stamp_and_never_by_its_name(self):
+    def test_a_node_is_a_library_material_by_its_metadata_and_never_by_its_name(self):
         model = self._material_tiles()
         asset = model.assets[3]
 
@@ -930,7 +930,7 @@ class ARowHeldAcrossASaveIsFoundAgain(unittest.TestCase):
                       "the edit repainted the row its asset left, not the one it is on")
 
 
-class CustomizeOffersTheOwningSectionsCategories(unittest.TestCase):
+class CustomizeOffersTheEditedSectionsCategories(unittest.TestCase):
     """Customize lists the categories of the section it edits; a mixed selection opens with none."""
 
     def setUp(self):
@@ -1033,7 +1033,7 @@ class ADeleteOverASelectionSavesOnce(unittest.TestCase):
                          "a deleted asset's files stayed behind")
         self.assertEqual(self.model.rowCount(), len(self.model._mat_paths))
 
-    def test_a_refused_save_puts_every_row_back_and_keeps_every_file(self):
+    def test_a_save_returning_false_restores_every_row_and_keeps_every_file(self):
         before = [str(a.mat_id) for a in self.model.assets]
         self._delete(refuse=True)
         self.assertEqual(before, [str(a.mat_id) for a in self.model.assets],
@@ -1128,7 +1128,7 @@ class _SavesThroughThePanel:
             lambda builder: builder.createNode("mtlxstandard_surface")).builder
             for number in range(count)]
 
-    def _held(self, assets, builder=True):
+    def _nodes_with_asset_ids(self, assets, builder=True):
         held = (self._builders(len(assets)) if builder else
                 [self.staging.createNode("null", "held%d" % n) for n in range(len(assets))])
         for node, asset in zip(held, assets):
@@ -1156,14 +1156,14 @@ class _SavesThroughThePanel:
         return self.shown[1:], log
 
 
-class ASaveVersionTheListCannotTakeIsSaidOnce(_SavesThroughThePanel, unittest.TestCase):
+class ASaveVersionWhoseDatabaseWriteFailsAlertsOnce(_SavesThroughThePanel, unittest.TestCase):
     """Save Version with the database write failing: only the library's alert; rows kept for later."""
 
     def _save_over(self, count):
         from amaze.core import library_db
         assets = self._karma(count)
         index = self._list_of(self.panel.material_model)
-        shown, log = self._save(self._held(assets), test_support.full_disk_for(index))
+        shown, log = self._save(self._nodes_with_asset_ids(assets), test_support.full_disk_for(index))
         self.assertEqual([], shown, "a dialog was shown besides the library's own alert")
         self.assertTrue(log.matching("could not save the library", "alert"),
                         "premise: the database write went through")
@@ -1180,7 +1180,7 @@ class ASaveVersionTheListCannotTakeIsSaidOnce(_SavesThroughThePanel, unittest.Te
         self.assertEqual([], self._save_over(2), "a status line was shown besides the library's own alert")
 
 
-class ASaveVersionSaysWhatItDidNotUpdateOnce(_SavesThroughThePanel, unittest.TestCase):
+class ASaveVersionNamesWhatItDidNotUpdateOnce(_SavesThroughThePanel, unittest.TestCase):
     """Every material Save Version did not update, named once with its reason, after the batch."""
 
     def _files(self, assets):
@@ -1191,20 +1191,20 @@ class ASaveVersionSaysWhatItDidNotUpdateOnce(_SavesThroughThePanel, unittest.Tes
                 found.append(handle.read())
         return found
 
-    def test_an_unset_ocio_is_said_once_and_nothing_is_written(self):
+    def test_an_unset_ocio_is_shown_once_and_nothing_is_written(self):
         assets = self._karma(2)
         before = self._files(assets)
         was = hou.getenv("OCIO") or ""
         hou.putenv("OCIO", "")    # an empty $OCIO counts as unset, as the save reads it
         self.addCleanup(hou.putenv, "OCIO", was)
-        shown, _log = self._save(self._held(assets))
+        shown, _log = self._save(self._nodes_with_asset_ids(assets))
         self.assertEqual([messages.OCIO_NOT_SET], shown,
                          "an unset $OCIO was shown more than once, or with Update failed after it")
         self.assertEqual(before, self._files(assets), "a material was written without $OCIO")
 
-    def test_a_node_that_is_no_builder_is_one_sentence(self):
+    def test_a_node_that_is_no_builder_is_named_in_one_sentence(self):
         assets = self._karma(1)
-        shown, _log = self._save(self._held(assets, builder=False))
+        shown, _log = self._save(self._nodes_with_asset_ids(assets, builder=False))
         self.assertEqual(
             [messages.MATERIAL_NOT_UPDATED % (assets[0].name, messages.UPDATE_REFUSED_NOT_A_BUILDER)],
             shown, "the not-a-builder message and Update failed came as two dialogs")
@@ -1217,7 +1217,7 @@ class ASaveVersionSaysWhatItDidNotUpdateOnce(_SavesThroughThePanel, unittest.Tes
                 handle.write(b"\0their-bytes")
             stat = os.stat(path)
             os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 5_000_000_000))
-        shown, log = self._save(self._held(assets))
+        shown, log = self._save(self._nodes_with_asset_ids(assets))
         lines = "\n".join(messages.MATERIAL_NOT_UPDATED_LINE
                           % (asset.name, messages.UPDATE_REFUSED_CHANGED_ON_DISK) for asset in assets)
         self.assertEqual([(messages.MATERIALS_NOT_UPDATED, lines)], shown,
@@ -1233,7 +1233,7 @@ class ASaveVersionSaysWhatItDidNotUpdateOnce(_SavesThroughThePanel, unittest.Tes
             raise OSError(28, "No space left on device")
 
         try:
-            shown, _log = self._save(self._held(assets), mock.patch.object(
+            shown, _log = self._save(self._nodes_with_asset_ids(assets), mock.patch.object(
                 render_nodes.NodeHandler, "_save_copy", failing))
         except OSError as exc:
             self.fail("the error propagated out of Save Version, after %s: %s" % (tried, exc))
@@ -1244,7 +1244,7 @@ class ASaveVersionSaysWhatItDidNotUpdateOnce(_SavesThroughThePanel, unittest.Tes
                          "the errors were not named in the batch's one message")
 
 
-class ASaveNewTheListCannotTakeIsSaidOnce(_SavesThroughThePanel, unittest.TestCase):
+class ASaveNewWhoseDatabaseWriteFailsShowsOneDialog(_SavesThroughThePanel, unittest.TestCase):
     """A new material or node setup whose database write fails saves nothing; one dialog names it."""
 
     def _dialog(self, name=""):

@@ -65,53 +65,53 @@ class AlertIsOncePerConditionTest(unittest.TestCase):
             "how often the condition fired")
 
 
-class SayUnlistedNamesWhatTheListDidNotTake(unittest.TestCase):
+class ReportUnlistedShowsOneStatusLineTest(unittest.TestCase):
     """`library.report_unlisted`: one status line at the end of six callers; none when all saved"""
 
     def setUp(self):
         from amaze.utils import rc_calls
-        self.said = []
+        self.lines = []
         self.shown = []
         self.addCleanup(debug.set_ui, debug._ui)
         debug.set_ui(rc_calls.HoudiniUI)
 
     def _ui(self):
         return types.SimpleNamespace(
-            setStatusMessage=lambda text, *a, **k: self.said.append(text),
+            setStatusMessage=lambda text, *a, **k: self.lines.append(text),
             displayMessage=lambda text, *a, **k: self.shown.append(text),
         )
 
-    def _say(self, names, **kwargs):
+    def _report_unlisted(self, names, **kwargs):
         from amaze.core import library as library_mod
         with mock.patch.object(hou, "ui", self._ui(), create=True):
             library_mod.report_unlisted(names, **kwargs)
         self.assertEqual([], self.shown, "the status line opened a dialog")
-        return self.said
+        return self.lines
 
-    def test_nothing_is_said_when_every_row_landed(self):
+    def test_no_status_line_when_every_record_is_saved(self):
         """The empty check: without it a batch with no failure ends on `0 materials were added`."""
-        self.assertEqual([], self._say([]))
+        self.assertEqual([], self._report_unlisted([]))
 
     def test_one_added_row_is_named(self):
-        said = self._say(["Rust"])
-        self.assertEqual(1, len(said), said)
-        self.assertIn('"Rust" was added, but the library could not be saved.', said[0])
+        lines = self._report_unlisted(["Rust"])
+        self.assertEqual(1, len(lines), lines)
+        self.assertIn('"Rust" was added, but the library could not be saved.', lines[0])
 
     def test_several_added_rows_are_counted_not_named(self):
-        said = self._say(["Rust", "Chrome", "Oak"])
-        self.assertEqual(1, len(said), "a batch wrote more than one line: %r" % said)
-        self.assertIn("3 materials were added, but the library could not be saved.", said[0])
+        lines = self._report_unlisted(["Rust", "Chrome", "Oak"])
+        self.assertEqual(1, len(lines), "a batch wrote more than one line: %r" % lines)
+        self.assertIn("3 materials were added, but the library could not be saved.", lines[0])
 
-    def test_one_updated_row_says_updated(self):
-        said = self._say(["Rust"], updated=True)
-        self.assertIn('"Rust" was updated, but the library could not be saved.', said[0])
+    def test_one_updated_row_is_reported_as_updated(self):
+        lines = self._report_unlisted(["Rust"], updated=True)
+        self.assertIn('"Rust" was updated, but the library could not be saved.', lines[0])
 
-    def test_several_updated_rows_say_updated(self):
-        said = self._say(["Rust", "Chrome"], updated=True)
-        self.assertIn("2 materials were updated, but the library could not be saved.", said[0])
+    def test_several_updated_rows_are_reported_as_updated(self):
+        lines = self._report_unlisted(["Rust", "Chrome"], updated=True)
+        self.assertIn("2 materials were updated, but the library could not be saved.", lines[0])
 
 
-class TheOnlineImportEndsOnThatLine(unittest.TestCase):
+class AnOnlineImportReportsUnlistedRecordsLast(unittest.TestCase):
     """A batch collects the records the library could not save and shows one line, after all else"""
 
     class _Panel:
@@ -134,7 +134,7 @@ class TheOnlineImportEndsOnThatLine(unittest.TestCase):
 
         panel = self._Panel()
         with mock.patch.object(hou, "ui", types.SimpleNamespace(
-                setStatusMessage=lambda text, *a, **k: self.said.append(text),
+                setStatusMessage=lambda text, *a, **k: self.lines.append(text),
                 displayMessage=lambda text, *a, **k: self.shown.append(
                     "\n\n".join(filter(None, (text, k.get("details")))))),    # the list is passed in `details`
                 create=True):
@@ -143,43 +143,43 @@ class TheOnlineImportEndsOnThatLine(unittest.TestCase):
 
     def setUp(self):
         from amaze.utils import rc_calls
-        self.said = []
+        self.lines = []
         self.shown = []
         self.addCleanup(debug.set_ui, debug._ui)
         debug.set_ui(rc_calls.HoudiniUI)
 
-    def test_a_landed_but_unlisted_record_is_named_and_is_no_failure(self):
+    def test_an_imported_but_unlisted_record_is_named_and_is_no_failure(self):
         from amaze.core import library as library_mod
         self._batch({"Rust": (True, library_mod.ListNotSaved("Rust"))})
         self.assertEqual([], self.shown, "an unlisted record opened the failure dialog")
-        self.assertEqual(1, len(self.said), self.said)
-        self.assertIn('"Rust" was added, but the library could not be saved.', self.said[0])
+        self.assertEqual(1, len(self.lines), self.lines)
+        self.assertIn('"Rust" was added, but the library could not be saved.', self.lines[0])
 
-    def test_a_batch_counts_only_the_records_its_list_refused(self):
+    def test_a_batch_counts_only_the_records_its_list_did_not_save(self):
         from amaze.core import library as library_mod
         self._batch({"Rust": (True, library_mod.ListNotSaved("Rust")),
                      "Chrome": (True, ""),
                      "Oak": (True, library_mod.ListNotSaved("Oak"))})
-        self.assertEqual(1, len(self.said), self.said)
-        self.assertIn("2 materials were added", self.said[0])
+        self.assertEqual(1, len(self.lines), self.lines)
+        self.assertIn("2 materials were added", self.lines[0])
 
-    def test_a_batch_that_all_landed_says_nothing(self):
+    def test_a_batch_that_all_saved_writes_no_status_line(self):
         self._batch({"Rust": (True, ""), "Chrome": (True, "")})
-        self.assertEqual([], self.said, "a clean batch wrote the status line anyway")
+        self.assertEqual([], self.lines, "a clean batch wrote the status line anyway")
 
     def test_a_real_failure_still_opens_its_dialog_and_is_not_a_status_line(self):
         self._batch({"Rust": (False, "the fetch died")})
-        self.assertEqual([], self.said, "a failure was reported as merely unlisted")
+        self.assertEqual([], self.lines, "a failure was reported as merely unlisted")
         self.assertEqual(1, len(self.shown), self.shown)
         self.assertIn("the fetch died", self.shown[0])
 
 
-class RefuseIsTheGestureSinkTest(unittest.TestCase):
+class DebugRefuseReportsGestureFailuresTest(unittest.TestCase):
     """`debug.refuse`: a wrong target on the status line, damage in a dialog. ▸p/refusal-sink"""
 
     def setUp(self):
         from amaze.utils import rc_calls
-        self.said = []
+        self.lines = []
         self.shown = []
         self.printed = []
         self.addCleanup(debug.set_ui, debug._ui)
@@ -188,7 +188,7 @@ class RefuseIsTheGestureSinkTest(unittest.TestCase):
     def _ui(self):
         """Both calls, so a wrong branch fills the wrong list instead of raising an AttributeError."""
         return types.SimpleNamespace(
-            setStatusMessage=lambda text, *a, **k: self.said.append(text),
+            setStatusMessage=lambda text, *a, **k: self.lines.append(text),
             displayMessage=lambda text, *a, **k: self.shown.append(text),
         )
 
@@ -197,23 +197,23 @@ class RefuseIsTheGestureSinkTest(unittest.TestCase):
         for call in singleShot.call_args_list:
             call.args[1]()
 
-    def test_bad_aim_goes_to_the_status_line_every_time(self):
+    def test_a_wrong_target_goes_to_the_status_line_every_time(self):
         """Starts with `Amaze: `, and is never de-duplicated the way an alert is."""
         with mock.patch.object(hou, "ui", self._ui(), create=True):
             for _ in range(3):
                 debug.refuse("that node has no file parameter")
         self.assertEqual([], self.shown,
                          "a wrong-target refusal opened a dialog")
-        self.assertEqual(3, len(self.said),
+        self.assertEqual(3, len(self.lines),
                          "the refusal was de-duplicated like an alert, so "
                          "a repeated action looked like it succeeded")
-        for text in self.said:
+        for text in self.lines:
             self.assertTrue(text.startswith("Amaze: "),
                             "the status line does not start with `Amaze: `: "
                             "%r" % text)
             self.assertIn("that node has no file parameter", text)
 
-    def test_bad_aim_is_information_not_a_warning(self):
+    def test_a_wrong_target_is_information_not_a_warning(self):
         """Houdini prints `Warning:` before a Warning line; a missed drop is only information."""
         severities = []
         ui = types.SimpleNamespace(
@@ -234,7 +234,7 @@ class RefuseIsTheGestureSinkTest(unittest.TestCase):
                 "receives the drag's own release click")
             self.assertEqual(1, later.call_count)
             self._fire_deferred(later)
-        self.assertEqual([], self.said,
+        self.assertEqual([], self.lines,
                          "library damage went to the status line, which "
                          "the next write erases")
         self.assertEqual(['"Rust": asset file is missing.'], self.shown)
@@ -253,18 +253,18 @@ class RefuseIsTheGestureSinkTest(unittest.TestCase):
         self.assertEqual(['"Rust": asset file is missing.'], self.shown,
                          "the dialog did not open once the event loop was idle")
 
-    def test_with_nothing_handed_over_the_log_only_prints(self):
+    def test_without_set_ui_the_log_only_prints(self):
         """The log shows messages in Houdini only through the object given to `set_ui`."""
         debug.set_ui(None)
         with mock.patch.object(hou, "ui", self._ui(), create=True), \
                 mock.patch("builtins.print", self.printed.append):
             debug.refuse("no ramp here")
             debug.refuse(debug.Damage("gone"))
-        self.assertEqual(([], []), (self.said, self.shown),
+        self.assertEqual(([], []), (self.lines, self.shown),
                          "the log called Houdini's UI with nothing handed over")
         self.assertEqual(2, len(self.printed))
 
-    def test_headless_says_it_anyway_and_does_not_raise(self):
+    def test_headless_prints_it_and_does_not_raise(self):
         self.assertFalse(hasattr(hou, "ui"),
                          "this host HAS a ui, so the fallback is untested")
         with mock.patch("builtins.print", self.printed.append):
@@ -288,7 +288,7 @@ class RefuseIsTheGestureSinkTest(unittest.TestCase):
             debug.refuse(debug.Damage("gone"))
         self.assertEqual([], self.printed, "a fallback printed on Windows")
 
-class TheImportFunctionsMarkTheirRefusalsTest(unittest.TestCase):
+class TheImportFunctionsMarkTheirFailureReasonsTest(unittest.TestCase):
     """Every literal refusal the import functions in nodes.py return, classified. ▸p/refusal-sink"""
 
     ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -322,7 +322,7 @@ class TheImportFunctionsMarkTheirRefusalsTest(unittest.TestCase):
             return expr.value
         return ""
 
-    def _authored_refusals(self):
+    def _failure_reasons_in_nodes(self):
         """{sentence: marked} for every literal refusal the FUNCTIONS return."""
         with open(os.path.join(self.ROOT, "render", "nodes.py"),
                   encoding="utf-8") as fh:
@@ -347,9 +347,9 @@ class TheImportFunctionsMarkTheirRefusalsTest(unittest.TestCase):
                     found[sentence] = marked
         return found
 
-    def test_each_sentence_is_marked_exactly_as_its_severity_says(self):
+    def test_each_sentence_is_marked_with_its_severity(self):
         """Fails, and never passes on nothing found, when a sentence is reworded or moved."""
-        found = self._authored_refusals()
+        found = self._failure_reasons_in_nodes()
         missing = [opening for opening in self.DAMAGE
                    if not any(s.startswith(opening) for s in found)]
         self.assertEqual(
@@ -456,7 +456,7 @@ class NoReleaseVerbOpensAModalInline(unittest.TestCase):
             + "\n  ".join(offenders))
 
 
-class AFailedReleaseSpeaksThroughTheSink(unittest.TestCase):
+class AFailedReleaseIsReportedThroughDebugRefuse(unittest.TestCase):
     """Two import paths run for real: nothing opens inside the release; the reason goes to `refuse`."""
 
     @classmethod
@@ -465,19 +465,19 @@ class AFailedReleaseSpeaksThroughTheSink(unittest.TestCase):
 
     def setUp(self):
         from amaze.utils import rc_calls
-        self.shown, self.said = [], []
+        self.shown, self.lines = [], []
         self.addCleanup(debug.set_ui, debug._ui)
         debug.set_ui(rc_calls.HoudiniUI)
         ui = types.SimpleNamespace(
             displayMessage=lambda text, *a, **k: self.shown.append(text),
-            setStatusMessage=lambda text, *a, **k: self.said.append(text))
+            setStatusMessage=lambda text, *a, **k: self.lines.append(text))
         for patcher in (mock.patch.object(hou, "ui", ui, create=True),
                         mock.patch.object(QtCore.QTimer, "singleShot")):
             patcher.start()
             self.addCleanup(patcher.stop)
         self.later = QtCore.QTimer.singleShot
 
-    def test_a_scene_that_will_not_open_is_told_after_the_release(self):
+    def test_a_scene_that_will_not_open_is_reported_after_the_release(self):
         """`open_hip_scene` on a scene file, with `hou.hipFile.load` failing."""
         from amaze.core import locations
         panel = self.panel
@@ -499,7 +499,7 @@ class AFailedReleaseSpeaksThroughTheSink(unittest.TestCase):
         self.assertEqual(1, len(self.shown))
         self.assertIn(proxy.index(row, 0).data(path_role), self.shown[0])
 
-    def test_a_network_that_takes_no_geometry_is_said_on_the_status_line(self):
+    def test_a_network_that_takes_no_geometry_is_shown_on_the_status_line(self):
         """`import_geo_in_context` where node creation fails: a wrong target, never a dialog."""
         def refuse(*_args, **_kwargs):
             raise hou.OperationFailed("Cannot create a node inside a locked asset")
@@ -510,8 +510,8 @@ class AFailedReleaseSpeaksThroughTheSink(unittest.TestCase):
         self.assertIsNone(made)
         self.assertEqual(([], 0), (self.shown, self.later.call_count),
                          "a network refusing the import opened a dialog")
-        self.assertEqual(1, len(self.said), "the refusal was not shown on the status line")
-        self.assertIn("rock.bgeo.sc", self.said[0])
+        self.assertEqual(1, len(self.lines), "the refusal was not shown on the status line")
+        self.assertIn("rock.bgeo.sc", self.lines[0])
 
 
 class TheTenSitesAreConvertedTest(unittest.TestCase):
@@ -530,7 +530,7 @@ class TheTenSitesAreConvertedTest(unittest.TestCase):
             "online-unsafe-archive-paths",),
     }
 
-    def test_a_database_that_does_not_read_says_how_to_get_it_back(self):
+    def test_a_read_only_database_message_names_the_check(self):
         """Only library_db.py decides a database is read-only; its messages point at the check."""
         from amaze import messages
         for text in (messages.DATABASE_CORRUPT_READ_ONLY, messages.DATABASE_MISSING_READ_ONLY,
@@ -555,13 +555,13 @@ class TheTenSitesAreConvertedTest(unittest.TestCase):
                          "condition(s) no longer raised: %s" % missing)
 
 
-class EveryWayInHandsTheLogItsSpeaker(unittest.TestCase):
+class EveryEntryPointCallsSetUi(unittest.TestCase):
     """Houdini shows the log's messages only after `set_ui`; every entry point calls it first."""
 
     REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__))))))
 
-    def test_every_shelf_tool_that_imports_amaze_hands_it_over(self):
+    def test_every_shelf_tool_that_imports_amaze_calls_set_ui(self):
         """In its script, or by the rc_calls function the script calls, run here with no screen."""
         import re
         import xml.etree.ElementTree as ET
@@ -583,7 +583,7 @@ class EveryWayInHandsTheLogItsSpeaker(unittest.TestCase):
                     missing.append("%s (%s)" % (tool.get("name"), name))
         self.assertEqual([], missing, "these tools' alerts would print instead of showing")
 
-    def test_the_pane_hands_it_over_before_the_log_starts(self):
+    def test_the_pane_calls_set_ui_before_the_log_starts(self):
         import inspect
         from amaze.panel import panel
         source = inspect.getsource(panel.AmazePanel.__init__)
@@ -591,16 +591,16 @@ class EveryWayInHandsTheLogItsSpeaker(unittest.TestCase):
         self.assertLess(source.index("rc_calls.start()"), source.index("debug.install()"),
                         "the session header is written before `rc_calls.start()` sets up the log")
 
-    def test_save_to_amaze_hands_it_over(self):
+    def test_save_to_amaze_calls_start(self):
         import inspect
         from amaze.utils import rc_calls
         self.assertIn("start()", inspect.getsource(rc_calls.save))
 
 
-class AHeldDatabaseIsNeverCalledCorrupt(unittest.TestCase):
+class AHeldDatabaseIsNeverReportedCorrupt(unittest.TestCase):
     """A database that is there but cannot be opened is read-only for now, never reported corrupt."""
 
-    def test_held_is_read_only_silent_and_judged_again(self):
+    def test_held_is_read_only_not_alerted_and_checked_again(self):
         from amaze.core import guard, library_db, library_files
         prefs = test_support.fixture_prefs(self)
         test_support.reset_database_singletons()
@@ -640,7 +640,7 @@ class AHeldDatabaseIsNeverCalledCorrupt(unittest.TestCase):
 class APendingChangeKeepsItsUser(unittest.TestCase):
     """A change waiting for the save timer is saved as the user who made it, in its own library."""
 
-    def test_a_switch_to_another_library_and_user_does_not_take_it_over(self):
+    def test_a_switch_to_another_library_and_user_does_not_save_it_as_theirs(self):
         import shutil
         from amaze.core import documents, guard, library_db, library_files
         prefs = test_support.fixture_prefs(self)

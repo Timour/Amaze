@@ -301,7 +301,7 @@ class TestAssignNodeLookup(unittest.TestCase):
         self.live.setDisplayFlag(True)
         self.display = self.lopnet.displayNode()
 
-    def test_the_connected_assign_node_wins(self):
+    def test_the_connected_assign_node_is_chosen(self):
         found = self.dragengine.find_assignmaterial(
             self.lopnet, connected_to=self.display)
         self.assertIsNotNone(found, "no assignmaterial found in the chain")
@@ -324,7 +324,7 @@ class TestAssignNodeLookup(unittest.TestCase):
             first.path(), self.dragengine.find_assignmaterial(lonely).path())
 
 
-class TestLockedContextIsRefused(unittest.TestCase):
+class TestLockedContextReturnsAReason(unittest.TestCase):
     """A drop into a locked asset returns a reason; `hou.PermissionError` is not an OperationFailed."""
 
     def test_the_import_reports_instead_of_raising(self):
@@ -339,11 +339,11 @@ class TestLockedContextIsRefused(unittest.TestCase):
 
         handler = nodes_mod.NodeHandler(prefs)
 
-        def refuse(*args, **kwargs):
+        def raise_permission_error(*args, **kwargs):
             raise hou.PermissionError("Cannot create a node inside a "
                                       "locked asset")
 
-        handler.update_context = refuse
+        handler.update_context = raise_permission_error
         asset = None   # files must exist, or the import stops before `update_context`
         for candidate in model.assets:
             payload = material.payload_path(
@@ -368,7 +368,7 @@ class TestLockedContextIsRefused(unittest.TestCase):
 class TheViewportDropUsesHoudinisOwnLibraryPicker(unittest.TestCase):
     """The Solaris viewport drop picks or makes the Material Library as Houdini's own drop does."""
 
-    def test_the_drop_asks_the_stock_picker_and_amaze_keeps_no_rule_of_its_own(self):
+    def test_the_drop_uses_the_stock_picker_and_amaze_keeps_no_rule_of_its_own(self):
         import inspect
         from amaze.core import dragengine
         from amaze.panel import drop_placement

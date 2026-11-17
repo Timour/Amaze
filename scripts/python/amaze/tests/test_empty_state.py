@@ -92,7 +92,7 @@ class TheDeclarationsAreWellFormed(unittest.TestCase):
                     % (blank, verb))
 
 
-class TheQuotedStringCannotRunAway(unittest.TestCase):
+class TheQuotedSearchIsElided(unittest.TestCase):
 
     def test_a_long_search_is_elided(self):
         out = empty_state._elide("x" * 200)
@@ -101,7 +101,7 @@ class TheQuotedStringCannotRunAway(unittest.TestCase):
         self.assertEqual("metal", empty_state._elide("  metal  "))
 
 
-class TheEngineSaysWhichBlank(unittest.TestCase):
+class TheEngineChoosesWhichBlank(unittest.TestCase):
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -193,7 +193,7 @@ class TheFavouritesBlankIsItsOwnBlank(unittest.TestCase):
             "with a search active the search explains the empty grid, and "
             "clearing it must come first")
 
-    def test_one_star_anywhere_flips_the_discriminator(self):
+    def test_one_star_anywhere_makes_any_favourite_true(self):
         """A star just set must show in `_any_favourite` at once - no cache may be in between."""
         self._unstar_everything()
         self.assertFalse(empty_state._any_favourite(self.source))
@@ -204,7 +204,7 @@ class TheFavouritesBlankIsItsOwnBlank(unittest.TestCase):
             "_any_favourite does not see the star just set, so the "
             "favourites empty state would say no favourites exist")
 
-    def test_unstarring_a_multi_selection_lands_on_the_selected_rows(self):
+    def test_unstarring_a_multi_selection_unstars_the_selected_rows(self):
         """Under favourites-only a flip drops its proxy row, so map every row to source before any flip."""
         self._unstar_everything()
         self.panel.grid_toggle_favourite([self.proxy.index(0, 0),
@@ -234,7 +234,7 @@ class TheButtonCanBeClicked(unittest.TestCase):
         if self.page is None:
             self.skipTest("no grid pane layout in this fixture")
 
-    def test_the_page_does_not_refuse_mouse_events(self):
+    def test_the_page_is_not_transparent_for_mouse_events(self):
         attribute = QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents
         for widget in [self.page] + self.page.findChildren(QtWidgets.QWidget):
             self.assertFalse(
@@ -303,7 +303,7 @@ class TheTextWraps(unittest.TestCase):
         self.assertTrue(self.page._head.wordWrap())
 
 
-class OnlyOneFaceIsUp(unittest.TestCase):
+class OnlyOneGridPaneWidgetIsShown(unittest.TestCase):
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -325,7 +325,7 @@ class OnlyOneFaceIsUp(unittest.TestCase):
                          "a view-mode change hid the empty state")
 
 
-class TheQuoteRidesTheFirstRunBlankOnly(unittest.TestCase):
+class OnlyTheFirstRunBlankShowsTheQuote(unittest.TestCase):
     """Only the first-run empty state shows a quotation; the page clears it for any other."""
 
     def test_a_declared_quote_is_a_line_and_an_attribution(self):
@@ -341,7 +341,7 @@ class TheQuoteRidesTheFirstRunBlankOnly(unittest.TestCase):
                             "%s declares a QUOTE with an empty part"
                             % key)
 
-    def test_only_the_first_run_blank_carries_it(self):
+    def test_only_the_first_run_blank_shows_it(self):
         panel = test_support.fixture_panel(self)
         for blank in (empty_state.NO_MATCH, empty_state.NO_FAVOURITES,
                       empty_state.UNREACHABLE):
@@ -363,7 +363,7 @@ class AnEmptyCategoryIsThePlainGrid(unittest.TestCase):
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
 
-    def _stand_on_a_new_category(self, key):
+    def _select_a_new_category(self, key):
         """Add `Probe` with the sidebar's own menu action, select it, return the grid's proxy."""
         panel = self.panel
         panel.section_tabs.setChecked(key)
@@ -384,7 +384,7 @@ class AnEmptyCategoryIsThePlainGrid(unittest.TestCase):
     def test_it_shows_the_grid_and_no_words(self):
         for key in ("material", "gradient", "code"):
             with self.subTest(section=key):
-                proxy = self._stand_on_a_new_category(key)
+                proxy = self._select_a_new_category(key)
                 self.assertTrue(proxy.sourceModel().rowCount(),
                                 "premise: the section holds rows elsewhere")
                 self.assertEqual((None, ""),
@@ -398,7 +398,7 @@ class AnEmptyCategoryIsThePlainGrid(unittest.TestCase):
 
     def test_a_right_click_on_it_opens_the_grid_menu(self):
         """Code's menu offers New File over an empty selection, which is the point of the empty grid."""
-        self._stand_on_a_new_category("code")
+        self._select_a_new_category("code")
         for table in (False, True):
             with self.subTest(list_mode=table):
                 shown = right_click_menu(self, self.panel, table)
@@ -407,7 +407,7 @@ class AnEmptyCategoryIsThePlainGrid(unittest.TestCase):
                                  "the empty grid's menu does not start with "
                                  "an enabled New File: %s" % shown)
 
-    def test_a_drop_on_it_lands_where_a_populated_grid_sends_it(self):
+    def test_a_drop_on_it_reaches_the_widget_a_populated_grid_drops_on(self):
         """Qt delivers a drop to the first widget up from the cursor that accepts drops."""
         def drop_target():
             widget = pane_hit(self.panel)
@@ -423,7 +423,7 @@ class AnEmptyCategoryIsThePlainGrid(unittest.TestCase):
         self.assertIsInstance(populated,
                               dragdrop_widgets.DragDropCentralWidget,
                               "premise: a populated grid passes drops to the save widget")
-        self._stand_on_a_new_category("material")
+        self._select_a_new_category("material")
         self.assertIs(populated, drop_target(),
                       "a node dropped on an empty category reaches another "
                       "widget than on a populated grid")
@@ -439,15 +439,15 @@ class AnEmptyCategoryIsThePlainGrid(unittest.TestCase):
             panel.grid_toggle_favourite([proxy.index(0, 0)])
             QtWidgets.QApplication.processEvents()
         self.assertTrue(empty_state._any_favourite(source), "premise: one star")
-        self._stand_on_a_new_category("material")
+        self._select_a_new_category("material")
         panel.cb_favsonly.setChecked(True)
         self.addCleanup(panel.cb_favsonly.setChecked, False)
         QtWidgets.QApplication.processEvents()
         self.assertEqual((None, ""), empty_state.verdict(panel))
         self.assertNotIn("blank", faces(panel))
 
-    def test_a_search_in_it_still_says_nothing_matches(self):
-        self._stand_on_a_new_category("code")
+    def test_a_search_in_it_still_shows_the_no_match_blank(self):
+        self._select_a_new_category("code")
         self.panel.line_filter.setText("zzzz-no-such-asset")
         self.panel.filter_thumb_view()
         self.addCleanup(self.panel.clear_filter_box)
@@ -459,7 +459,7 @@ class AnEmptyCategoryIsThePlainGrid(unittest.TestCase):
 
     def test_a_section_with_nothing_saved_keeps_its_first_run_blank(self):
         """The fixture saves no Node asset; a new category there is still a section with nothing."""
-        proxy = self._stand_on_a_new_category("cop")
+        proxy = self._select_a_new_category("cop")
         self.assertEqual(0, proxy.sourceModel().rowCount(),
                          "premise: the fixture saves no Node asset")
         self.assertEqual((empty_state.EMPTY_SECTION, ""),
@@ -468,7 +468,7 @@ class AnEmptyCategoryIsThePlainGrid(unittest.TestCase):
         self.assertEqual(amazetheme.EMPTY_NODE[empty_state.EMPTY_SECTION][0],
                          self.panel.empty_page._head.text())
 
-    def test_an_unreadable_location_still_says_so(self):
+    def test_an_unreadable_location_still_shows_the_unreachable_blank(self):
         panel = self.panel
         panel.section_tabs.setChecked("file")
         QtWidgets.QApplication.processEvents()
@@ -510,7 +510,7 @@ class AnEmptyLocationIsThePlainGrid(unittest.TestCase):
             self.assertTrue(self.folders.remove_folder(self.folders.row_of(path)),
                             "premise: the fixture location was not removed")
 
-    def _stand(self, row):
+    def _click_row(self, row):
         """A left click on the sidebar row: select it, then call its clicked handler."""
         view = self.panel.cat_list
         view.selectionModel().setCurrentIndex(
@@ -531,12 +531,12 @@ class AnEmptyLocationIsThePlainGrid(unittest.TestCase):
     def test_all_over_locations_that_hold_nothing_shows_the_grid(self):
         self._register_empty()
         self._drop_fixture()
-        self._stand(0)
+        self._click_row(0)
         self._assert_plain_grid()
 
     def test_the_favourites_star_over_an_empty_location_shows_the_grid(self):
         """An empty location has nothing a star could hide, so its grid stays up."""
-        self._stand(self.folders.row_of(self._register_empty()))
+        self._click_row(self.folders.row_of(self._register_empty()))
         self._assert_plain_grid()
         self.panel.cb_favsonly.setChecked(True)
         self.addCleanup(self.panel.cb_favsonly.setChecked, False)
@@ -544,7 +544,7 @@ class AnEmptyLocationIsThePlainGrid(unittest.TestCase):
         self._assert_plain_grid()
 
     def test_a_right_click_on_an_empty_location_opens_the_grid_menu(self):
-        self._stand(self.folders.row_of(self._register_empty()))
+        self._click_row(self.folders.row_of(self._register_empty()))
         section = self.panel.active_section()
         menu, _verbs = grid.build_grid_menu(self.panel, section, [], None)
         self.addCleanup(menu.deleteLater)
@@ -558,14 +558,14 @@ class AnEmptyLocationIsThePlainGrid(unittest.TestCase):
 
     def test_no_location_keeps_the_first_run_blank(self):
         self._drop_fixture()
-        self._stand(0)
+        self._click_row(0)
         self.assertEqual((empty_state.EMPTY_SECTION, ""), empty_state.verdict(self.panel))
         self.assertEqual(["blank"], faces(self.panel))
         self.assertEqual(amazetheme.EMPTY_FILE[empty_state.EMPTY_SECTION][0],
                          self.panel.empty_page._head.text())
 
 
-class TheUnreachableBlankPointsAtSomethingReal(unittest.TestCase):
+class TheUnreachableBlankNamesARegisteredFolder(unittest.TestCase):
     """Only a scan clears the unreadable flag, so the empty state names only a registered folder."""
 
     def setUp(self):
@@ -591,7 +591,7 @@ class TheUnreachableBlankPointsAtSomethingReal(unittest.TestCase):
                          empty_state.unreadable_folder(self.panel),
                          "the empty state cannot name the folder it is about")
 
-    def test_a_dead_folder_does_not_hijack_another_folders_blank(self):
+    def test_an_unreadable_folder_does_not_change_another_folders_blank(self):
         """The empty state describes the selected folder, never an unreadable folder elsewhere."""
         folders = self.panel.file_folders_model
         registered = folders._folders()
@@ -642,7 +642,7 @@ class TheUnreachableBlankPointsAtSomethingReal(unittest.TestCase):
                          "from the one the message names")
 
 
-class EveryBoundProxyAnnouncesItsFilterPass(unittest.TestCase):
+class EveryBoundProxyHasARefilteredSignal(unittest.TestCase):
     """`track` watches `refiltered` on whatever the grid holds; every bound proxy must have it."""
 
     @classmethod

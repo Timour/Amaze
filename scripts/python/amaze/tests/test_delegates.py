@@ -21,7 +21,7 @@ from amaze.panel import delegates  # noqa: E402
 from amaze.tests import test_support  # noqa: E402 - redirects the debug log
 
 
-class _ExplodingModel(QtCore.QAbstractListModel):
+class _RaisingModel(QtCore.QAbstractListModel):
     """Row 1 raises, as a real row does when it vanishes between layout and paint."""
 
     def __init__(self, only_role=None):
@@ -38,7 +38,7 @@ class _ExplodingModel(QtCore.QAbstractListModel):
         return "row %d" % index.row()
 
 
-class TheTileStandsOnItsFrame(unittest.TestCase):
+class TheTileMatchesItsDesignFrame(unittest.TestCase):
     """The tile's cell and every badge match where the T frames draw them. ▸r/tile-from-frame"""
 
     def setUp(self):
@@ -80,7 +80,7 @@ class TheTileStandsOnItsFrame(unittest.TestCase):
                 self.assertEqual(self._drawn(badge),
                                  (got.x(), got.y(), got.width(), got.height()))
 
-    def test_a_badge_drawn_in_two_places_refuses(self):
+    def test_a_badge_drawn_in_two_places_raises(self):
         """Two frames disagreeing on a badge's place is a document error, not a choice."""
         from unittest import mock
         from amaze import amazetheme
@@ -146,7 +146,7 @@ class TheTileStandsOnItsFrame(unittest.TestCase):
 
         original = self.D.__dict__["_badge_pixmap"]
         self.D._badge_pixmap = staticmethod(
-            lambda art, side, dpr=1.0, opacity=None: QtGui.QPixmap(side, side))
+            lambda svg, side, dpr=1.0, opacity=None: QtGui.QPixmap(side, side))
         self.addCleanup(setattr, self.D, "_badge_pixmap", original)
 
         _kind, x, y, w, h, _text = self.node["thumbnail"]
@@ -196,7 +196,7 @@ class TheSvgCacheTest(unittest.TestCase):
         ui_helpers._SVG_CACHE.clear()
         self.addCleanup(ui_helpers._SVG_CACHE.clear)
 
-    def test_the_second_ask_does_not_render_again(self):
+    def test_the_second_request_does_not_render_again(self):
         self.ui_helpers.render_svg_pixmap(self.icon, 32)
         self.assertEqual(1, len(self.ui_helpers._SVG_CACHE))
         self.ui_helpers.render_svg_pixmap(self.icon, 32)
@@ -261,7 +261,7 @@ class OneSvgPainterTest(unittest.TestCase):
                         self.assertTrue(ui_helpers.paint_svg(got, source))
                         self.assertEqual(want, self._image(got))
 
-    def test_unreadable_art_answers_false_and_leaves_the_device_clear(self):
+    def test_an_unreadable_svg_returns_false_and_leaves_the_device_clear(self):
         from amaze.helpers import ui_helpers
         image = QtGui.QImage(8, 8, QtGui.QImage.Format.Format_ARGB32)
         image.fill(QtGui.QColor("#ff0000"))
@@ -335,9 +335,9 @@ class PainterBalanceTest(unittest.TestCase):
         return before, after
 
     def test_a_failing_tile_leaves_the_save_stack_balanced(self):
-        before, after = self._paint_row(_ExplodingModel(), 0)
+        before, after = self._paint_row(_RaisingModel(), 0)
         self.assertEqual(before, after, "a healthy tile leaked its pen/font")
-        self._paint_row(_ExplodingModel(), 1)
+        self._paint_row(_RaisingModel(), 1)
         unbalanced = [m for m in self.messages if "saved states" in m]
         self.assertEqual(
             [], unbalanced,
@@ -346,7 +346,7 @@ class PainterBalanceTest(unittest.TestCase):
 
     def test_no_pen_or_font_leaks_however_late_the_failure(self):
         """Raising on the last role read: `_paint` reads every role before its first setPen."""
-        model = _ExplodingModel(
+        model = _RaisingModel(
             only_role=QtCore.Qt.ItemDataRole.UserRole + 3)
         before, after = self._paint_row(model, 1)
         self.assertEqual(
@@ -565,7 +565,7 @@ class BadgeFamilyTest(unittest.TestCase):
     NAMES = ("badge_open", "badge_favourite", "badge_favourite_off", "badge_versions",
              "badge_comment", "badge_execute") + tuple(r.badge for r in renderers.ALL)
 
-    def test_all_four_arts_exist_and_render(self):
+    def test_all_four_svgs_exist_and_render(self):
         for name in self.NAMES:
             mark = delegates.AssetItemDelegate._badge_pixmap(name, 22, 2.0)
             self.assertFalse(
@@ -616,7 +616,7 @@ class BadgeFamilyTest(unittest.TestCase):
             painter.end()
         return asked
 
-    def test_every_corner_asks_for_its_own_art_at_the_family_size(self):
+    def test_every_corner_requests_its_own_svg_at_the_badge_side_size(self):
         """Each badge requests its own art by name, at the `_badge_side` size and the real dpr."""
         corner = delegates.AssetItemDelegate._badge_side(128)
         rest = amazetheme.BADGE_REST_OPACITY
@@ -632,25 +632,25 @@ class BadgeFamilyTest(unittest.TestCase):
             len(cases), len(delegates.BADGES),
             "the badge table and this test disagree about how many "
             "badges there are - a new row must be tested here too")
-        for role_kw, value, art, expected, opacity in cases:
+        for role_kw, value, svg, expected, opacity in cases:
             asked = self._asked_for(role_kw, value, 128)
             self.assertEqual(
-                [(art, expected, 2.0, opacity)], asked,
+                [(svg, expected, 2.0, opacity)], asked,
                 "%s is not drawn through `_badge_pixmap`, or the pass "
                 "requested a badge no role was set for" % role_kw)
 
-    def test_the_renderer_badge_draws_each_renderers_own_art(self):
+    def test_the_renderer_badge_draws_each_renderers_own_svg(self):
         """One badge per renderer, from the renderer table; an old name maps to its renderer."""
         corner = delegates.AssetItemDelegate._badge_side(128)
         cases = [(r.key, r.badge) for r in renderers.ALL] + [("MaterialX", "badge_renderer_materialx")]
-        for stored, art in cases:
+        for stored, svg in cases:
             with self.subTest(renderer=stored):
-                self.assertEqual([(art, corner, 2.0, None)],
+                self.assertEqual([(svg, corner, 2.0, None)],
                                  self._asked_for("renderer", stored, 128))
         self.assertEqual([], self._asked_for("renderer", "Cycles", 128),
                          "a renderer Amaze does not offer drew a badge")
 
-    def test_every_button_badge_wears_the_one_rest_and_hover_opacity(self):
+    def test_every_button_badge_uses_the_one_rest_and_hover_opacity(self):
         """Every button badge uses the rest opacity; hovered, its hover art or hover opacity."""
         role = QtCore.Qt.ItemDataRole.UserRole + 66
         family = {b.name for b in delegates.BADGES if b.dims or b.off_svg}
@@ -680,10 +680,10 @@ class BadgeFamilyTest(unittest.TestCase):
                 for name, value in cases:
                     current["value"] = value
                     badge = delegates.BADGE[name]
-                    art = badge.off_svg if value is False else badge.svg
+                    svg = badge.off_svg if value is False else badge.svg
                     drawn = badge.off_hover_svg if value is False else badge.hover_svg
-                    for hovered, want in ((False, (art, rest)),
-                                          (True, (drawn, None) if drawn else (art, hover))):
+                    for hovered, want in ((False, (svg, rest)),
+                                          (True, (drawn, None) if drawn else (svg, hover))):
                         delegate = test_support.tile_delegate({name: role})
                         delegate.set_badge_click(name, lambda index: None)
                         if hovered:
@@ -920,7 +920,7 @@ class TheSubtitleIsTheNAMEsSize(unittest.TestCase):
                          "the two lines measure differently")
 
 
-class TheFontCacheTellsFontsApart(unittest.TestCase):
+class TheFontCacheKeepsDifferentFontsApart(unittest.TestCase):
     """`fonts_for` caches fonts: fonts differing in anything drawn get their own entry ▸r/font-sizing"""
 
     def _isolated_cache(self):

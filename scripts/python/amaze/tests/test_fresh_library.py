@@ -18,14 +18,14 @@ from amaze.prefs import prefs as prefs_mod
 from amaze.tests import test_support
 
 
-class EveryNewLibraryIsBornThroughCreateLibrary(unittest.TestCase):
+class EveryNewLibraryIsMadeByCreateLibrary(unittest.TestCase):
     """`create_library` writes the library's own database and nothing else."""
 
     def setUp(self):
         self.lib = tempfile.mkdtemp(prefix="amaze_fresh_starter_")
         self.addCleanup(shutil.rmtree, self.lib, ignore_errors=True)
 
-    def test_it_is_born_at_this_amazes_version(self):
+    def test_it_records_this_amazes_version(self):
         """A library with no version recorded is treated as one to convert."""
         prefs_mod.create_library(self.lib)
         with open(os.path.join(self.lib, "DataBase.json"), encoding="utf-8") as handle:
@@ -99,7 +99,7 @@ class TheAssetWriterMakesItsFolderInsideTheLibraryOnly(unittest.TestCase):
         self.assertEqual("subnet", record["builder"].get("type"),
                          "the first save left no builder beside its .mat")
 
-    def test_a_refused_destination_is_not_created(self):
+    def test_a_destination_outside_the_library_raises_and_is_not_created(self):
         """Raising after making the folder would be the same bug with a better error message."""
         with self.assertRaises(hostos.PathOutsideBase):
             self._save(os.path.join(self.outside, "elsewhere"))

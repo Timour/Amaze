@@ -24,7 +24,7 @@ from amaze.core import file_library, texture_library  # noqa: E402 - after test_
 from amaze.prefs import prefs as prefs_module  # noqa: E402
 
 
-class FilterMenuEngineTest(unittest.TestCase):
+class FilterMenuTest(unittest.TestCase):
     """One Filter menu code path for five sections; the panel passes each value on uninterpreted."""
 
     @classmethod
@@ -111,7 +111,7 @@ class FilterMenuEngineTest(unittest.TestCase):
             total, self.panel.code_sorted_model.rowCount(),
             "All does not put every snippet back")
 
-    def test_all_stores_no_filter_and_the_sidebar_counts_survive_it(self):
+    def test_all_stores_no_filter_and_keeps_the_sidebar_counts(self):
         """Rows without a renderer show only unfiltered; storing `All` once zeroed sidebar counts."""
         self._labels_for("material")
         self.panel.filter_actions["All"].setChecked(True)

@@ -72,9 +72,9 @@ class _Library(unittest.TestCase):
         return os.path.exists(os.path.join(self.dir, "trash", day, *relative.split("/")))
 
 
-class TheReportIsTheGuardsJudgementTest(_Library):
+class TheReportUsesTheGuardsVerdictsTest(_Library):
 
-    def test_a_corrupt_database_is_named_and_holds_every_move_back(self):
+    def test_a_corrupt_database_is_named_and_move_aside_raises(self):
         with open(os.path.join(self.dir, MATERIALS), "w", encoding="utf-8") as handle:
             handle.write("{ ruined")
         self.asset("ORPHAN1")
@@ -446,7 +446,7 @@ class TheFilesSectionTest(unittest.TestCase):
                       "will be back when the drive is.", self.text(findings))
 
 
-class TheFixesKeepTheirWordTest(_Library):
+class TheOtherFixesTest(_Library):
     """Fixes the tests above leave out: leftovers, unknown files, stars, locations, trash."""
 
     def files_prefs(self):
@@ -574,11 +574,11 @@ class TheThreeLightsTest(_Library):
         self.assertEqual([], found["lines"])
         self.assertFalse(found["fixable"])
 
-    def test_references_are_not_judged_without_the_files_section(self):
+    def test_references_are_not_checked_without_the_files_section(self):
         self.assertEqual((library_check.UNCHECKED, None),
                          self.lights()["lights"][library_check.REFS])
 
-    def test_a_corrupt_database_is_one_error_and_leaves_the_files_unjudged(self):
+    def test_a_corrupt_database_is_one_error_and_leaves_the_files_unchecked(self):
         _corrupt(self.dir)
         self.asset("ORPHAN1")
         found = self.lights()
@@ -617,7 +617,7 @@ class TheThreeLightsTest(_Library):
         self.assertEqual([], library_check.done_lines(done))
         self.assertEqual(before, _read(self.dir, MATERIALS))
 
-    def test_a_folder_that_cannot_be_listed_leaves_the_files_unjudged(self):
+    def test_a_folder_that_cannot_be_listed_leaves_the_files_unchecked(self):
         if hasattr(os, "getuid") and os.getuid() == 0:
             self.skipTest("root lists every folder")
         os.chmod(self.materials, 0)
@@ -695,7 +695,7 @@ class TheThreeLightsTest(_Library):
         self.assertIn("1 folder in the Files section is gone.",
                       library_check.finding_lines(findings))
 
-    def test_a_drive_that_is_not_connected_leaves_the_references_unjudged(self):
+    def test_a_drive_that_is_not_connected_leaves_the_references_unchecked(self):
         prefs, folder = self.files_prefs()
         away = os.path.join(folder, "away")
         prefs.add_file_folder(away)
@@ -902,7 +902,7 @@ class TheRepairDialogTest(_Broken):
         self.assertIn("AAA1", _read(self.dir, MATERIALS)["assets"])
         self.assertEqual([], self.trashed())
 
-    def test_fix_safe_says_what_it_did_as_counts(self):
+    def test_fix_safe_reports_what_it_did_as_counts(self):
         shown = self.run_dialog(1)
         self.assertEqual(["1 material added to the database."],
                          [text for text, _asked in shown[1:]])
@@ -912,7 +912,7 @@ class TheRepairDialogTest(_Broken):
 
     second = 0    # the button the fake picks in the second message: Move to Trash
 
-    def test_fix_all_names_what_goes_to_the_trash_and_says_what_it_did_as_counts(self):
+    def test_fix_all_names_what_goes_to_the_trash_and_reports_what_it_did_as_counts(self):
         shown = self.run_dialog(0)
         text, asked = shown[1]
         self.assertEqual(messages.CONFIRM_FIX_ALL_TRASH, text)
@@ -949,10 +949,10 @@ class TheRepairDialogTest(_Broken):
         self.assertEqual(1, len(shown))
 
 
-class EachRepairGoesRedWhenItIsBrokenTest(unittest.TestCase):
+class EachRepairTestFailsWhenItsStepIsPatchedOutTest(unittest.TestCase):
     """Each TheTwoFixesTest test fails when the step it depends on is patched to do nothing."""
 
-    SABOTAGES = (
+    PATCHED_STEPS = (
         ("test_fix_safe_recovers_and_trashes_removes_and_replaces_nothing",
          "amaze.core.guard.Change.put", lambda *_a, **_k: None),
         ("test_fix_all_also_removes_the_entry_and_trashes_the_leftovers",
@@ -967,8 +967,8 @@ class EachRepairGoesRedWhenItIsBrokenTest(unittest.TestCase):
          "amaze.core.guard.Change.replace", lambda *_a, **_k: None),
     )
 
-    def test_every_repair_test_catches_its_sabotage(self):
-        for name, target, broken in self.SABOTAGES:
+    def test_every_repair_test_fails_with_its_step_patched_out(self):
+        for name, target, broken in self.PATCHED_STEPS:
             with self.subTest(name=name, target=target):
                 result = unittest.TestResult()
                 with mock.patch(target, broken):
@@ -977,10 +977,10 @@ class EachRepairGoesRedWhenItIsBrokenTest(unittest.TestCase):
                                 "%s passed with %s patched out" % (name, target))
 
 
-class EachFixGoesRedWhenItIsBrokenTest(unittest.TestCase):
+class EachFixTestFailsWhenItsGuardStepIsPatchedOutTest(unittest.TestCase):
     """Each fix's test fails when the guard step it depends on is patched to do nothing."""
 
-    SABOTAGES = (
+    PATCHED_STEPS = (
         ("test_restore_a_backup_keeps_the_database_you_have_as_an_undo_copy",
          "amaze.core.guard.Guard.restore", lambda *_a, **_k: None),
         ("test_orphaned_files_go_to_the_librarys_trash",
@@ -997,8 +997,8 @@ class EachFixGoesRedWhenItIsBrokenTest(unittest.TestCase):
          "amaze.core.guard.Change.put", lambda *_a, **_k: None),
     )
 
-    def test_every_fix_test_catches_its_sabotage(self):
-        for name, target, broken in self.SABOTAGES:
+    def test_every_fix_test_fails_with_its_step_patched_out(self):
+        for name, target, broken in self.PATCHED_STEPS:
             with self.subTest(name=name):
                 result = unittest.TestResult()
                 with mock.patch(target, broken):

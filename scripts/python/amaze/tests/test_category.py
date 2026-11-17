@@ -116,7 +116,7 @@ class TestCategories(unittest.TestCase):
         self.assertNotIn("_All", stored, "All is a view, never stored")
 
 
-class NormalizeBracketsItsResetTest(unittest.TestCase):
+class NormalizeEmitsAResetPairTest(unittest.TestCase):
     """`normalize_categories` emits a reset pair around replacing its rows. ▸r/model-contracts"""
 
     def _model(self, entries):

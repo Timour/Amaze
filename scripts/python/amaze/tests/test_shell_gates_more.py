@@ -20,7 +20,7 @@ from amaze.tests.test_shell_gates import (
 class SyncInstallGateTest(GateFixture):
     """`sync-install.sh`'s slower cases; its checks on the real install stay in the default run."""
 
-    def test_it_ships_and_runs_no_suite(self):
+    def test_it_copies_and_runs_no_suite(self):
         """The push and `run-tests.sh` test the commit; a sync only copies it and checks the copy."""
         result = self.sync("crash")
         self.assertEqual(result.returncode, 0, self.both(result))
@@ -36,7 +36,7 @@ class SyncInstallGateTest(GateFixture):
                 os.path.isfile(os.path.join(self.install, relative)),
                 "%s was not copied to the install" % relative)
 
-    def test_a_scratch_destination_takes_a_dirty_tree(self):
+    def test_a_scratch_destination_accepts_a_dirty_tree(self):
         """A sabotage is a dirty tree, so it gets a different DESTINATION rather than an exemption."""
         _write(os.path.join(self.repo, "scripts", "python", "amaze",
                             "stray.py"), "# sabotaged, never committed\n")
@@ -84,7 +84,7 @@ class SyncInstallGateTest(GateFixture):
         self.assertEqual(result.returncode, 0, self.both(result))
         self.assertIn(SYNC_SHIPPED_MSG, result.stdout)
 
-    def test_it_wires_the_push_gate_in_a_fresh_clone(self):
+    def test_it_sets_core_hooks_path_in_a_fresh_clone(self):
         """A fresh clone has no hook until the sync sets it; without that, no push is checked."""
         self.assertEqual(
             subprocess.run(("git", "-C", self.repo, "config", "--get",
@@ -101,7 +101,7 @@ class SyncInstallGateTest(GateFixture):
 class PrePushGateTest(GateFixture):
     """`pre-push`'s slower cases; the process gate and failing-suite check run by default."""
 
-    def test_green_suite_allows_the_push_and_says_so(self):
+    def test_green_suite_allows_the_push_and_prints_so(self):
         self._commit(os.path.join("scripts", "python", "amaze", "widget.py"))
         result = self.push("green")
         self.assertEqual(result.returncode, 0, self.both(result))
@@ -112,7 +112,7 @@ class PrePushGateTest(GateFixture):
         self.assertEqual(lines[-1], PUSH_END,
                          "pre-push stopped early:\n%s" % result.stdout)
 
-    def test_a_suite_that_cannot_run_is_refused(self):
+    def test_a_suite_that_cannot_run_blocks_the_push(self):
         self._commit(os.path.join("scripts", "python", "amaze", "widget.py"))
         for mode in ("crash", "no_tests", "silent", "leak"):    # crashes, runs no test, prints nothing, or leaks
             with self.subTest(mode=mode):
@@ -124,7 +124,7 @@ class PrePushGateTest(GateFixture):
                 self.assertIn("PUSH REFUSED", result.stderr)
                 self.assertReachedEnd(result, PUSH_RED_END)
 
-    def test_a_stale_escape_hatch_does_not_disable_the_gate(self):
+    def test_a_stale_amaze_skip_tests_does_not_skip_the_suite(self):
         """Exported and forgotten - set, but to a sha that is no longer HEAD, so the suite still runs."""
         self._commit(os.path.join("scripts", "python", "amaze", "widget.py"))
         result = self.push("red", AMAZE_SKIP_TESTS=self.base_sha)
@@ -191,7 +191,7 @@ class PrePushSelectionTest(GateFixture):
                          "a run of some tests updated the live install")
         self.assertIn(PUSH_END, result.stdout)
 
-    def test_a_red_selection_refuses_the_push(self):
+    def test_a_red_selection_blocks_the_push(self):
         self._mapped()
         self._change("return 1", "return 2")
         result = self.push("red")
@@ -221,7 +221,7 @@ class PrePushSelectionTest(GateFixture):
         self._change('"1.0.0"', '"2.0.0"', BRANDING)
         self.assertWhole(self.push("green"), "a new minor or major version")
 
-    def test_a_run_by_hand_on_every_houdini_refuses_a_test_skipped_on_all(self):
+    def test_a_run_by_hand_on_every_houdini_fails_on_a_test_skipped_on_all(self):
         """The push no longer runs every Houdini; `run-tests.sh --all-versions` keeps the check."""
         self._houdinis("Houdini21", "Houdini22")
         self._mapped()

@@ -61,7 +61,7 @@ class PeerReadTest(unittest.TestCase):
                          "a same-size peer edit read as unchanged")
         self.assertEqual({"a": 2}, answer.document)
 
-    def test_an_unparseable_file_refuses_rather_than_reporting_nothing(self):
+    def test_an_unparseable_file_reads_as_peer_unreadable_not_unchanged(self):
         for raw in (b"{ this is not json", json.dumps([1, 2, 3]).encode("utf-8")):
             with self.subTest(raw=raw):
                 self._write(None, raw=raw)

@@ -61,7 +61,7 @@ class _Rows(QtCore.QAbstractListModel):
         return None
 
 
-class TheVersionsBadgeAnswersOnlyWhereItIsDrawn(unittest.TestCase):
+class TheVersionsBadgeTakesClicksOnlyWhereItIsDrawn(unittest.TestCase):
 
     def setUp(self):
         self.clicked = []

@@ -18,7 +18,7 @@ from amaze import branding  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
 
-class TheBugReportCarriesTheMachine(unittest.TestCase):
+class TheBugReportIncludesTheVersions(unittest.TestCase):
     def test_the_url_is_the_new_issue_page_with_the_three_facts(self):
         """Amaze, Houdini and OS versions, one per line, intact in the `QUrl` the button opens."""
         from PySide6 import QtCore

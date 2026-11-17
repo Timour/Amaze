@@ -83,7 +83,7 @@ class TheRendererTableIsWrittenOnce(unittest.TestCase):
                     self.assertTrue(getattr(fake.prefs, renderer.switch),
                                     "saving a %s material did not switch it on" % stored)
 
-    def test_no_other_module_spells_a_renderer_preference(self):
+    def test_no_other_module_names_a_renderer_preference(self):
         """A switch or sample count named outside the table defines a renderer in a second place."""
         spelled = []
         for root, _dirs, files in os.walk(PACKAGE):
@@ -132,7 +132,7 @@ class RendererDefaultsAgree(unittest.TestCase):
         self.assertIn("Redshift", offered)
 
 
-class SharedDefaultsLiveInOneTable(unittest.TestCase):
+class SharedDefaultsAreInOneTable(unittest.TestCase):
     """`SHARED_KEYS` states each shared default once; `__init__` and `load()` both read it."""
 
     def _settings(self, document):
@@ -207,16 +207,16 @@ class LoadNeverRaisesAndAlwaysValidates(unittest.TestCase):
         "render_on_import": None,
     }
 
-    def _write_poison(self, folder, **extra):
+    def _write_invalid_settings(self, folder, **extra):
         import json
         with open(os.path.join(folder, "settings.json"), "w",
                   encoding="utf-8") as handle:
             json.dump(dict(self.POISON, **extra), handle)
 
-    def test_a_poisoned_settings_file_still_loads(self):
+    def test_an_invalid_settings_file_still_loads(self):
         folder = tempfile.mkdtemp(prefix="amaze_prefs_poison_")
         self.addCleanup(shutil.rmtree, folder, True)
-        self._write_poison(folder)
+        self._write_invalid_settings(folder)
 
         p = prefs_mod.Prefs()
         p.path = folder
@@ -235,12 +235,12 @@ class LoadNeverRaisesAndAlwaysValidates(unittest.TestCase):
                          "a junk render setting loaded raw instead of "
                          "falling back to its default")
 
-    def test_preferences_opens_over_a_poisoned_file(self):
+    def test_preferences_opens_over_an_invalid_settings_file(self):
         """The Render rows pass these straight to spin boxes, which raise on anything but a number."""
         from amaze.dialogs import prefs_dialog
         from amaze.tests import test_support
         p = test_support.fixture_prefs(self)
-        self._write_poison(p.path, directory=p.dir,
+        self._write_invalid_settings(p.path, directory=p.dir,
                            library_user=test_support.FIXTURE_USER)
         p.load()
         dlg = prefs_dialog.PrefsDialog(p, panel=None)
@@ -337,7 +337,7 @@ class ThePerUserBlocksRoundTripAndMerge(unittest.TestCase):
                   encoding="utf-8") as handle:
             return json.load(handle)
 
-    def test_blocks_survive_a_load_save_round_trip(self):
+    def test_blocks_are_kept_through_a_load_save_round_trip(self):
         folder = self._folder()
         self._write(folder, {"users": {
             "aa11": {"thumbsize": 64},
@@ -350,7 +350,7 @@ class ThePerUserBlocksRoundTripAndMerge(unittest.TestCase):
         self.assertEqual({"thumbsize": 256, "view_mode": "list"},
                          raw["bb22"])
 
-    def test_junk_shapes_load_without_raising_and_die_on_save(self):
+    def test_junk_shapes_load_without_raising_and_are_dropped_on_save(self):
         """load() may not raise, and refresh_data() rewrites the key from the attribute, dropping junk."""
         for junk in (5, "x", [1], {"a-uid": "not-a-dict"},
                      {"a-uid": None}):
@@ -362,7 +362,7 @@ class ThePerUserBlocksRoundTripAndMerge(unittest.TestCase):
                 p.save()
                 self.assertEqual({}, self._read(folder)["users"])
 
-    def test_a_uid_this_pane_lacks_arrives_whole(self):
+    def test_a_uid_this_pane_lacks_is_merged_whole(self):
         folder = self._folder()
         self._write(folder, {})
         p = self._prefs_at(folder)
@@ -377,7 +377,7 @@ class ThePerUserBlocksRoundTripAndMerge(unittest.TestCase):
         self.assertEqual({"view_mode": "list"}, raw["bb22"],
                          "the other pane's user was dropped")
 
-    def test_inside_a_shared_uid_ours_wins_per_key(self):
+    def test_inside_a_shared_uid_this_panes_value_is_kept_per_key(self):
         folder = self._folder()
         self._write(folder, {})
         p = self._prefs_at(folder)
@@ -393,7 +393,7 @@ class ThePerUserBlocksRoundTripAndMerge(unittest.TestCase):
                          "a key only the other pane had was dropped")
 
 
-class APointerMovedInOnePaneStaysMoved(unittest.TestCase):
+class ALibrarySwitchInOnePaneIsKept(unittest.TestCase):
     """r6: each pane has its own Prefs on one settings.json; B's saves keep A's library switch."""
 
     def test_the_other_panes_second_save_keeps_the_switch(self):
@@ -437,7 +437,7 @@ class TheLibraryIsTheOneTheSettingsName(unittest.TestCase):
         for gone in ("test_library_dir", "seed_test_folder", "TEST_LIB_SUBDIR"):
             self.assertFalse(hasattr(prefs_mod, gone), gone)
 
-    def test_settings_that_still_carry_the_old_keys_open_the_configured_library(self):
+    def test_settings_that_still_hold_the_old_keys_open_the_configured_library(self):
         root = tempfile.mkdtemp(prefix="amaze_old_keys_")
         self.addCleanup(shutil.rmtree, root, True)
         real, other, settings = (os.path.join(root, name) for name in ("real", "other", "cfg"))
@@ -462,7 +462,7 @@ class TheLibraryIsTheOneTheSettingsName(unittest.TestCase):
         self.assertTrue(fresh.load())
         self.assertEqual(os.path.normpath(real), os.path.normpath(fresh.dir))
 
-    def test_the_saved_pointer_takes_one_shape(self):
+    def test_the_saved_directory_is_normalised_by_one_helper(self):
         """The saved `directory` is normalised by one helper, `_normalised_dir`."""
         from amaze.prefs import persistence
         for raw, shaped in (("C:\\Lib\\3D", "C:/Lib/3D/"),
@@ -477,9 +477,9 @@ class TheLibraryIsTheOneTheSettingsName(unittest.TestCase):
             self.assertEqual(shaped, p.dir, "the saved `directory` was normalised differently")
 
 
-class TheHomeLayoutsLiveInHostos(unittest.TestCase):
+class TheHomeLayoutsAreInHostos(unittest.TestCase):
 
-    def test_rehome_only_answers_when_the_result_exists(self):
+    def test_rehome_rewrites_only_when_the_result_exists(self):
         home = os.path.expanduser("~").replace("\\", "/").rstrip("/")
         self.assertEqual(
             "/Users/someone-else/definitely/not/here",
@@ -497,7 +497,7 @@ class TheHomeLayoutsLiveInHostos(unittest.TestCase):
             "recognised layout and must be left as it is")
 
 
-class ContainmentAnswersAsRealpathDoes(unittest.TestCase):
+class ContainmentMatchesRealpath(unittest.TestCase):
     """`contained_join` resolves the base once and calls realpath only where a link could redirect."""
 
     @staticmethod
@@ -522,7 +522,7 @@ class ContainmentAnswersAsRealpathDoes(unittest.TestCase):
         os.symlink(os.path.join(self.outside, "o.mat"), os.path.join(self.base, "mat", "o.mat"))
         os.symlink(os.path.join(self.base, "mat", "a.mat"), os.path.join(self.base, "mat", "in.mat"))
 
-    def test_every_shape_gets_the_answer_realpath_gives(self):
+    def test_every_path_form_gets_the_result_realpath_gives(self):
         shapes = [("mat", "a.mat"), ("mat/a.mat",), ("mat", "missing.mat"), ("new", "deeper", "x.mat"),
                   ("mat", "in.mat"), ("mat", "o.mat"), ("mat", "away", "o.mat"), ("mat", "away"),
                   ("mat/", "a.mat"), ("mat", "..", "..", "x.mat"), ("mat", "..", "mat", "a.mat"),
@@ -573,7 +573,7 @@ class OnlineDownloadsStayInsideTheLibrary(unittest.TestCase):
             "contained_join - and its uid comes from the remote "
             "catalogue, so `../x` writes outside the cache root")
 
-    def test_a_package_past_the_cap_is_refused_before_it_unpacks(self):
+    def test_a_package_past_the_cap_raises_package_too_large_before_unpacking(self):
         import shutil
         import tempfile
         import zipfile
@@ -648,10 +648,10 @@ class OnlineDownloadsStayInsideTheLibrary(unittest.TestCase):
                         "the failure was written onto the record")
 
 
-class RefreshDropsEveryCacheASourceKeeps(unittest.TestCase):
+class RefreshClearsEveryCacheASourceKeeps(unittest.TestCase):
     """Refresh drops every source cache, or the old site is served until restart."""
 
-    def test_gpuopen_refresh_drops_the_category_map(self):
+    def test_gpuopen_refresh_clears_the_category_map(self):
         from amaze.core import matx_sources
         source = matx_sources.GPUOpenSource()
         source._categories = {"1": "Metals"}
@@ -662,7 +662,7 @@ class RefreshDropsEveryCacheASourceKeeps(unittest.TestCase):
             "category lists its materials under Uncategorized until "
             "Houdini restarts")
 
-    def test_every_source_with_hosted_pictures_drops_their_places(self):
+    def test_every_source_with_hosted_pictures_clears_their_zip_offsets(self):
         """A picture's offset is read from the zip once; kept past Refresh it points into the old zip."""
         from amaze.core import matx_sources
         hosting = [cls for cls in matx_sources.SOURCES if cls.PREVIEWS]
@@ -679,7 +679,7 @@ class RefreshDropsEveryCacheASourceKeeps(unittest.TestCase):
 
 class TheShippedTableIsClosedAfterTheSizeCheck(unittest.TestCase):
 
-    def test_judging_a_live_answer_leaves_no_file_open(self):
+    def test_usable_leaves_no_file_open(self):
         """`_usable` reads the shipped table to size a live answer, and closes it."""
         import gc
         import warnings
@@ -706,7 +706,7 @@ class AFullSourceIsLogged(unittest.TestCase):
         found.name = name
         return found
 
-    def test_a_source_that_fills_the_cap_says_so(self):
+    def test_a_source_that_fills_the_cap_is_logged(self):
         """No source fills the cap today; the log records when one starts to."""
         from amaze.core import matx_library
         from amaze.tests import test_support
@@ -722,10 +722,10 @@ class AFullSourceIsLogged(unittest.TestCase):
                          "no line in the log, or a short one did")
 
 
-class TheCatalogueCacheLandsWhole(unittest.TestCase):
+class TheCatalogueCacheIsWrittenWhole(unittest.TestCase):
     """The on-disk Online catalogue is replaced whole or not at all."""
 
-    def test_a_write_that_dies_part_way_keeps_the_last_catalogue(self):
+    def test_a_write_that_fails_part_way_keeps_the_last_catalogue(self):
         import json
 
         from amaze.tests import test_support
@@ -747,11 +747,11 @@ class TheCatalogueCacheLandsWhole(unittest.TestCase):
         self.assertEqual(3, len(model._load_cache() or ()),
                          "premise: the first catalogue was not saved")
 
-        def torn(obj, handle, *args, **kwargs):
+        def write_part_then_fail(obj, handle, *args, **kwargs):
             handle.write('{"records": [{"sou')
             raise OSError(28, "No space left on device")
 
-        with mock.patch.object(json, "dump", torn):
+        with mock.patch.object(json, "dump", write_part_then_fail):
             with test_support.captured_log():
                 model._save_cache([matx_sources.MatxRecord(
                     source="GPUOpen", uid="x", title="X")])
@@ -764,7 +764,7 @@ class TheCatalogueCacheLandsWhole(unittest.TestCase):
 class ARemapOnAColourChainStillRemaps(unittest.TestCase):
     """With a color3 source mtlxremap/mtlxclamp use `_color3` parms: ranges go via `_set_poly_parm`."""
 
-    def test_the_range_values_reach_the_live_parm_variant(self):
+    def test_the_range_values_are_set_on_the_live_parm_variant(self):
         from amaze.render import material_converter as mc
         parent = hou.node("/mat")
         if parent is None:
@@ -826,7 +826,7 @@ class ARemapOnAColourChainStillRemaps(unittest.TestCase):
             "new_min was not set on the clamp's LIVE low variant")
 
 
-class VendorTransformsAreOpenPBRsAlone(unittest.TestCase):
+class VendorTransformsRunOnlyInTheOpenPBRConverter(unittest.TestCase):
     """The fuzz^2.5 curve and coat-roughness mix are OpenPBR-only; elsewhere they corrupt 1:1 values."""
 
     def test_only_the_openpbr_converter_runs_them(self):
@@ -878,7 +878,7 @@ class VendorTransformsAreOpenPBRsAlone(unittest.TestCase):
                              "`convert_openpbr_material` no longer runs its transforms")
 
 
-class ConvertNodeCarriesTheTargetInput(unittest.TestCase):
+class ConvertNodePassesTheTargetInput(unittest.TestCase):
     """`target_input` is passed to every converter taking it, so a nested texture keeps its role."""
 
     def test_a_converter_that_accepts_it_receives_it(self):
@@ -943,13 +943,13 @@ class AHalfFetchedPackageIsNotReused(unittest.TestCase):
 
         return Record()
 
-    def test_a_fetch_that_dies_leaves_no_destination(self):
+    def test_a_fetch_that_fails_leaves_no_destination(self):
         from amaze.core import matx_import
         from amaze.tests import test_support
 
         prefs = test_support.fixture_prefs(self)
 
-        class DyingSource:
+        class FailingSource:
             name = "stub"
 
             def fetch(self, record, resolution, dest_dir, progress=None):
@@ -969,7 +969,7 @@ class AHalfFetchedPackageIsNotReused(unittest.TestCase):
                     handle.write(b"PNG")
                 return {"mtlx": None}
 
-        for source, why in ((DyingSource(), "connection dropped"),
+        for source, why in ((FailingSource(), "connection dropped"),
                             (NoMtlxSource(), "No .mtlx")):
             with self.subTest(why=why):
                 record = self._record()
@@ -984,7 +984,7 @@ class AHalfFetchedPackageIsNotReused(unittest.TestCase):
                     "a failed or .mtlx-less fetch left files at the destination - "
                     "every later import reuses or rejects it")
 
-    def test_the_retry_fetches_fresh_and_lands_complete(self):
+    def test_the_retry_fetches_fresh_and_is_complete(self):
         from amaze.core import matx_import
         from amaze.tests import test_support
 
@@ -1017,7 +1017,7 @@ class AHalfFetchedPackageIsNotReused(unittest.TestCase):
             "the `.downloading` folder remains after a successful fetch")
 
 
-class ANoVariantAssetRefusesWithAReason(unittest.TestCase):
+class ANoVariantAssetRaisesWithItsName(unittest.TestCase):
     """`StopIteration` has an empty str(), so a fetch with no .mtlx variant names the asset."""
 
     def test_fetch_with_no_variants_names_the_asset(self):
@@ -1137,7 +1137,7 @@ class SettingsAreNotWrittenPerMouseMove(unittest.TestCase):
 
 class TheFileLoaderQueueDoesNotBusySpin(unittest.TestCase):
 
-    def test_it_re_arms_on_a_frame_not_immediately(self):
+    def test_it_reschedules_after_a_frame_not_immediately(self):
         """A zero-delay re-arm runs the handler at full event-loop rate on the painting thread."""
         tree = ast.parse(source_of("core/thumbnails.py"))
         delays = []    # the RE-ARM only: the first schedule has nothing to wait for
@@ -1160,7 +1160,7 @@ class TheFileLoaderQueueDoesNotBusySpin(unittest.TestCase):
 
 class OneRuleForWhatBelongsInAFolder(unittest.TestCase):
 
-    def test_the_two_answers_cannot_disagree(self):
+    def test_matches_in_and_matches_agree(self):
         class Prefs:
             file_show_unknown = False
 
@@ -1178,7 +1178,7 @@ class TheOsHandOffsNeverRaise(unittest.TestCase):
     """The log buttons call these without a try: a failing or missing handler is caught inside."""
 
     def test_no_platform_branch_raises_when_every_handler_fails(self):
-        def refuse(*_args, **_kwargs):
+        def missing_program(*_args, **_kwargs):
             raise FileNotFoundError("no such program")
 
         for mac, windows in ((True, False), (False, True), (False, False)):
@@ -1188,7 +1188,7 @@ class TheOsHandOffsNeverRaise(unittest.TestCase):
                     mock.patch.object(hostos, "is_windows",
                                       return_value=windows), \
                     mock.patch.object(hostos.subprocess, "call",
-                                      side_effect=refuse), \
+                                      side_effect=missing_program), \
                     mock.patch.object(hostos.os, "startfile", create=True,
                                       side_effect=OSError("no app")):
                 hostos.open_path("/nowhere/amaze_debug.jsonl")
@@ -1223,7 +1223,7 @@ class RevealGoesThroughHoudiniFirst(unittest.TestCase):
         self.assertEqual([target, self.folder], self.shown)    # no trailing /: that would select nothing
         self.assertEqual([], self.revealed)
 
-    def test_without_a_ui_or_when_houdini_refuses_hostos_reveals(self):
+    def test_without_a_ui_or_when_houdini_raises_hostos_reveals(self):
         from amaze.helpers import ui_helpers
         self.assertFalse(hasattr(hou, "ui"), "this host HAS a ui, so the fallback is untested")
         ui_helpers.reveal(self.folder)
@@ -1414,7 +1414,7 @@ class TheCacheWipeCannotBeSuppressed(unittest.TestCase):
             "cached thumbnail with no question asked")
 
 
-class PreferencesSpeakTheDrawnWords(unittest.TestCase):
+class PreferencesShowTheDrawnTexts(unittest.TestCase):
     """Three Preferences messages use the designed wording in `messages.py`, not an inline copy."""
 
     def _dialog(self):
@@ -1451,10 +1451,10 @@ class PreferencesSpeakTheDrawnWords(unittest.TestCase):
         dlg = self._dialog()
         folder = test_support.scratch_dir("amaze_log_save_")
         self.addCleanup(shutil.rmtree, folder, True)
-        asked, said = [], []
+        asked, displayed = [], []
 
         def display(text, *_args, **kwargs):
-            said.append(dict(kwargs, text=text))
+            displayed.append(dict(kwargs, text=text))
             return answer
 
         ui = types.SimpleNamespace(
@@ -1468,34 +1468,34 @@ class PreferencesSpeakTheDrawnWords(unittest.TestCase):
                 mock.patch("amaze.helpers.ui_helpers.reveal") as reveal:
             dlg.save_debug_log()
         self.assertEqual([hou.fileType.Directory], [k.get("file_type") for k in asked])
-        return folder, export, said, reveal
+        return folder, export, displayed, reveal
 
     def test_the_log_save_failure(self):
         from amaze import messages
         failure = OSError("the disk is full")
-        _folder, _export, said, _reveal = self._save_log(side_effect=failure)
+        _folder, _export, displayed, _reveal = self._save_log(side_effect=failure)
         self.assertEqual([(messages.LOG_NOT_SAVED_UNEXPECTED % failure, messages.TITLE_LOG_NOT_SAVED,
                            hou.severityType.Warning)],
-                         [(s["text"], s.get("title"), s.get("severity")) for s in said])
+                         [(s["text"], s.get("title"), s.get("severity")) for s in displayed])
 
-    def test_a_refused_log_save_says_why(self):
+    def test_an_export_refused_log_save_shows_the_reason(self):
         from amaze import messages
         from amaze.core import debug
-        _folder, _export, said, _reveal = self._save_log(
+        _folder, _export, displayed, _reveal = self._save_log(
             side_effect=debug.ExportRefused("the log is empty"))
         self.assertEqual([("the log is empty", messages.TITLE_LOG_NOT_SAVED,
                            hou.severityType.Warning)],
-                         [(s["text"], s.get("title"), s.get("severity")) for s in said])
+                         [(s["text"], s.get("title"), s.get("severity")) for s in displayed])
 
     def test_a_saved_log_offers_show_in_folder(self):
         from amaze import messages
         target = os.path.join("/somewhere", "amaze_debug.jsonl")
         for answer, revealed in ((0, [target]), (1, [])):
             with self.subTest(answer=answer):
-                folder, export, said, reveal = self._save_log(answer=answer, return_value=target)
+                folder, export, displayed, reveal = self._save_log(answer=answer, return_value=target)
                 self.assertEqual(os.path.normpath(folder),
                                  os.path.normpath(export.call_args.args[0]))
-                shown, = said
+                shown, = displayed
                 self.assertEqual(messages.LOG_SAVED_AS % "amaze_debug.jsonl", shown["text"])
                 self.assertEqual(messages.HELP_LOG_SAVED, shown.get("help"))
                 self.assertEqual(messages.TITLE_LOG_SAVED, shown.get("title"))
@@ -1539,7 +1539,7 @@ class ThePresetThemeIsFollowed(unittest.TestCase):
         self.prefs["pluto_ui.themeName"] = "Default Colorful"
         self.assertEqual(self._base([280, 5, 18]), self._read_base())
 
-    def test_hand_edited_values_win_over_the_name(self):
+    def test_hand_edited_values_take_precedence_over_the_name(self):
         self.prefs.update({"pluto_ui.themeName": "Default Colorful",
                            "pluto_ui.themeValues": json.dumps(
                                {"base": [100, 10, 20], "primary": [270, 29, 55],
@@ -1634,7 +1634,7 @@ class APickedRootKeepsItsSlash(unittest.TestCase):
                                      self._picked(method, answer, windows))
 
 
-class ALoadOnceAnswerIsKeptUntilCleared(unittest.TestCase):
+class ALoadOnceResultIsKeptUntilCleared(unittest.TestCase):
     """Each cached result is computed on the first call and kept until `cache_clear()`."""
 
     def _fresh(self, cached):

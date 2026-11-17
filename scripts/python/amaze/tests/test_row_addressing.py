@@ -44,7 +44,7 @@ def _model(testcase, count):
     return model
 
 
-class AStarNeverLandsOnARowThatWasNotAskedFor(unittest.TestCase):
+class AStarIsWrittenOnlyToTheRequestedRow(unittest.TestCase):
 
     def _flip(self, model, row):
         """Record which mat_id the star was written against."""
@@ -69,7 +69,7 @@ class AStarNeverLandsOnARowThatWasNotAskedFor(unittest.TestCase):
                     "returns -1, which indexes the LAST one" % row)
 
 
-class ABatchRefusesARowItCannotRender(unittest.TestCase):
+class ABatchSkipsARowPastTheEnd(unittest.TestCase):
 
     def test_a_row_past_the_end_is_not_rendered(self):
         """`isValid()` cannot tell: a plain QModelIndex stays valid after its rows are removed."""

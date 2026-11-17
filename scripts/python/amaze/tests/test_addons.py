@@ -92,7 +92,7 @@ class TheWriterTest(_Workspace):
         self.assertIn("One: addon_icon 'icons/one.tif' is not an .svg or .png",
                       str(caught.exception))
 
-    def test_a_group_whose_nodes_disagree_is_refused(self):
+    def test_a_group_whose_nodes_differ_raises_package_error(self):
         files = {"otls/example_one.hda": "1", "otls/example_two.hda": "2", "icons/one.svg": "s"}
         nodes = [_node("One", "one", group="Pair"),
                  _node("Two", "two", group="Pair", short="Does another.")]
@@ -110,7 +110,7 @@ class TheWriterTest(_Workspace):
         self.assertEqual([("Pair", ["Pair"]), ("Pair", ["Two"]), ("Three", ["Three"])],
                          [(row["name"], [n["label"] for n in row["nodes"]]) for row in rows])
 
-    def test_a_group_that_is_not_text_is_refused(self):
+    def test_a_group_that_is_not_text_raises_package_error(self):
         with self.assertRaises(packages.PackageError) as caught:
             self.package(nodes=[_node("One", "one", group=5)])
         self.assertIn("One: group is not text", str(caught.exception))
@@ -141,12 +141,12 @@ class TheWriterTest(_Workspace):
                       "lacks description"):
             self.assertIn(named, str(caught.exception))
 
-    def test_a_path_that_leaves_the_folder_is_refused(self):
+    def test_a_path_that_leaves_the_folder_raises_package_error(self):
         with self.assertRaises(packages.PackageError) as caught:
             self.package({"../outside.hda": "x", "otls/example_one.hda": "1", "icons/one.svg": "s"})
         self.assertIn("'../outside.hda' is not a plain relative path", str(caught.exception))
 
-    def test_a_listed_file_missing_from_root_is_refused(self):
+    def test_a_listed_file_missing_from_root_raises_package_error(self):
         test_support.write_text(os.path.join(self.root, "icons", "one.svg"), "s")
         with self.assertRaises(packages.PackageError) as caught:
             addons.write(self.out, self.fields(), self.root,
@@ -169,13 +169,13 @@ class TheReaderTest(_Workspace):
                 target.writestr(name, data)
         return copy
 
-    def test_an_unlisted_member_is_refused(self):
+    def test_an_unlisted_member_raises_package_error(self):
         copy = self._rewritten(self.package(), extra={"otls/stowaway.hda": "x"})
         with self.assertRaises(packages.PackageError) as caught:
             addons.read(copy)
         self.assertIn("member otls/stowaway.hda is not listed", str(caught.exception))
 
-    def test_a_package_in_the_old_shape_is_refused(self):
+    def test_a_package_in_the_old_shape_raises_package_error(self):
         path = self.package()
         manifest = addons.read(path)
         for node in manifest["nodes"]:
@@ -185,18 +185,18 @@ class TheReaderTest(_Workspace):
             addons.read(self._rewritten(path, manifest))
         self.assertIn("a node lacks addon_icon, short_description", str(caught.exception))
 
-    def test_a_newer_format_is_refused(self):
+    def test_a_newer_format_raises_package_error(self):
         path = self.package()
         manifest = dict(addons.read(path), format=packages.FORMAT + 1)
         with self.assertRaises(packages.PackageError) as caught:
             addons.read(self._rewritten(path, manifest))
         self.assertIn("newer than", str(caught.exception))
 
-    def test_a_field_of_the_wrong_type_is_refused_by_name(self):
+    def test_a_field_of_the_wrong_type_raises_an_error_naming_it(self):
         path = self.package()
         good = addons.read(path)
         node = good["nodes"][0]
-        for name, manifest, said in (
+        for name, manifest, expected in (
                 ("a list", [], messages.PACKAGE_NOT_READABLE % os.path.basename(path + ".edited")),
                 ("a member", dict(good, files=good["files"] + [["x"]]),
                  "['x'] is not a plain relative path"),
@@ -217,11 +217,11 @@ class TheReaderTest(_Workspace):
                 with self.subTest(name, call=call):
                     with self.assertRaises(packages.PackageError) as caught:
                         call(copy)
-                    self.assertIn(said, str(caught.exception))
+                    self.assertIn(expected, str(caught.exception))
             with self.subTest(name, call="nothing written"):
                 self.assertEqual([], os.listdir(root))
 
-    def test_the_library_import_refuses_an_add_on(self):
+    def test_import_package_raises_package_error_for_an_add_on(self):
         library = types.SimpleNamespace(dir=os.path.join(self.dir, "library") + os.sep)
         with self.assertRaises(packages.PackageError) as caught:
             packages.import_package({}, library, self.package())
@@ -233,7 +233,7 @@ class TheInstallerTest(_Workspace):
     def _folder(self):
         return os.path.join(self.amaze, addons.ROOT, "example")
 
-    def test_an_install_lands_as_its_folder_with_its_manifest(self):
+    def test_an_install_writes_its_folder_with_its_manifest(self):
         addons.install(self.package(), self.amaze, running=(22, 0, 466))
         self.assertTrue(os.path.isfile(os.path.join(self._folder(), "otls", "example_one.hda")))
         self.assertEqual("1.2.3", addons.installed(self.amaze, "example")["version"])
@@ -255,7 +255,7 @@ class TheInstallerTest(_Workspace):
                          "a file removed in the new version is still installed")
         self.assertEqual("1.3.0", addons.installed(self.amaze, "example")["version"])
 
-    def test_an_older_houdini_is_refused_and_nothing_changes(self):
+    def test_an_older_houdini_raises_package_error_and_nothing_changes(self):
         addons.install(self.package(), self.amaze, running=(22, 0, 466))
         with self.assertRaises(packages.PackageError) as caught:
             addons.install(self.package(version="2.0.0"), self.amaze, running=(21, 0, 729))
@@ -279,7 +279,7 @@ class TheInstallerTest(_Workspace):
         self.assertEqual("1.2.3", addons.installed(self.amaze, "example")["version"])
         self.assertFalse(os.path.exists(self._folder() + ".installing"))
 
-    def test_an_add_on_unpacking_past_the_cap_is_refused_and_the_old_stays(self):
+    def test_an_add_on_unpacking_past_the_cap_raises_and_the_old_version_stays(self):
         addons.install(self.package(), self.amaze, running=(22, 0, 466))
         path = self.package({"otls/example_one.hda": "x" * 4000, "icons/one.svg": "s"},
                             version="1.3.0")
@@ -333,7 +333,7 @@ class _ThreeRows(_Workspace):
 
 class TheSwitchTest(_ThreeRows):
 
-    def test_off_moves_a_groups_files_out_of_houdinis_reach_and_on_brings_them_back(self):
+    def test_off_moves_a_groups_files_where_houdini_does_not_load_them_and_on_moves_back(self):
         pair, three = addons.rows(addons.install(self.three_rows(), self.amaze, running=(22, 0, 466)))
         addons.set_on(self.amaze, "example", pair, False)
         self.assertEqual((False, True), (addons.is_on(self.amaze, "example", pair),
@@ -407,7 +407,7 @@ class TheStoreTest(_ThreeRows):
         self.assertTrue(os.path.isfile(self.hda("three")), "the update turned Three off")
 
 
-    def test_the_download_lands_in_houdinis_temp_dir(self):
+    def test_the_download_is_saved_in_houdinis_temp_dir(self):
         """Downloads go to `HOUDINI_TEMP_DIR`, as the thumbnail jobs do, not tempfile's default."""
         import hou
         houdini_temp = os.path.join(self.dir, "houdini_temp")
@@ -430,7 +430,7 @@ class TheStoreTest(_ThreeRows):
         self.assertEqual(houdini_temp, os.path.dirname(os.path.dirname(landed[0])))
         self.assertEqual([], os.listdir(houdini_temp), "the temporary folder was not removed")
 
-    def test_an_esc_during_the_download_installs_nothing_and_says_so(self):
+    def test_an_esc_during_the_download_installs_nothing_and_returns_download_stopped(self):
         """The download runs under Esc with a progress bar; the install that follows never does."""
         import hou
         opened = []
@@ -457,14 +457,14 @@ class TheStoreTest(_ThreeRows):
         from amaze.actions import addons as addon_actions
         with mock.patch.object(matx_sources, "download", download), \
                 mock.patch.object(hou, "InterruptableOperation", Operation, create=True):
-            said = addon_actions.install(
+            message = addon_actions.install(
                 [("Example", "1.3.0", "https://example.invalid/addons/Example-1.3.0.amazepkg")],
                 self.amaze)
-        self.assertEqual(messages.DOWNLOAD_STOPPED, said)
+        self.assertEqual(messages.DOWNLOAD_STOPPED, message)
         self.assertTrue(opened and opened[0].kwargs.get("open_interrupt_dialog"))
         self.assertIsNone(addons.installed(self.amaze, "example"), "a stopped download installed")
 
-    def test_an_esc_after_one_add_on_says_which_one_did_install(self):
+    def test_an_esc_after_one_add_on_returns_a_message_naming_the_installed_one(self):
         """A stop on the second download leaves the first installed, and the message names it."""
         import hou
         calls = []
@@ -492,18 +492,18 @@ class TheStoreTest(_ThreeRows):
         from amaze.actions import addons as addon_actions
         with mock.patch.object(matx_sources, "download", download), \
                 mock.patch.object(hou, "InterruptableOperation", Operation, create=True):
-            said = addon_actions.install(
+            message = addon_actions.install(
                 [("Example", "1.3.0", "https://example.invalid/addons/Example-1.3.0.amazepkg"),
                  ("Other", "2.0.0", "https://example.invalid/addons/Other-2.0.0.amazepkg")],
                 self.amaze)
-        self.assertNotIn("Nothing has been changed", said)
-        self.assertIn(messages.ADDONS_INSTALLED % "Example 1.3.0", said)
-        self.assertIn(messages.ADDONS_REST_STOPPED, said)
+        self.assertNotIn("Nothing has been changed", message)
+        self.assertIn(messages.ADDONS_INSTALLED % "Example 1.3.0", message)
+        self.assertIn(messages.ADDONS_REST_STOPPED, message)
 
 
 class AnAmazeUpdateKeepsItsAddOnsTest(_Workspace):
 
-    def test_the_updater_carries_the_add_ons_into_the_new_install(self):
+    def test_the_updater_copies_the_add_ons_into_the_new_install(self):
         test_support.write_text(os.path.join(self.amaze, "scripts", "old.txt"), "the version being replaced")
         test_support.write_text(os.path.join(self.amaze, addons.ROOT, "example", packages.MANIFEST), "{}")
         staged = os.path.join(self.dir, "staged")
@@ -530,23 +530,23 @@ class AnAmazeUpdateKeepsItsAddOnsTest(_Workspace):
                       for folder, _dirs, names in os.walk(self.dir)
                       for name in names if addons.ROOT in folder.split(os.sep))
 
-    def test_a_carry_that_fails_refuses_the_update_and_keeps_the_old_install(self):
+    def test_a_failed_carry_raises_oserror_and_keeps_the_old_install(self):
         """The OSError has the reason, the old install is kept, the next update copies them."""
         test_support.write_text(os.path.join(self.amaze, "scripts", "which.txt"), "1.0")
         test_support.write_text(os.path.join(self.amaze, self.HOME_MADE), "a home-made add-on")
         real, calls = addons.carry, []
 
-        def held_once(old, new):
+        def fails_once(old, new):
             calls.append(new)
             if len(calls) == 1:
                 raise OSError(13, "Permission denied", os.path.join(old, self.HOME_MADE))
             return real(old, new)
 
-        with mock.patch.object(addons, "carry", held_once):
-            with self.assertRaises(OSError) as refused:
+        with mock.patch.object(addons, "carry", fails_once):
+            with self.assertRaises(OSError) as caught:
                 updater.apply_update(self._release("staged1", "1.1"), self.amaze)
-            self.assertIn("add-ons", str(refused.exception))
-            self.assertIn("Permission denied", str(refused.exception), "the OSError lost its reason")
+            self.assertIn("add-ons", str(caught.exception))
+            self.assertIn("Permission denied", str(caught.exception), "the OSError lost its reason")
             self.assertEqual("1.0", self._which(), "a failed update still replaced the install")
             self.assertEqual([os.path.join("Amaze", self.HOME_MADE)], self._add_on_files(),
                              "a failed update moved the add-ons out of the install")
@@ -555,7 +555,7 @@ class AnAmazeUpdateKeepsItsAddOnsTest(_Workspace):
         self.assertEqual([os.path.join("Amaze", self.HOME_MADE)], self._add_on_files(),
                          "after the next update the add-ons are not only in the install")
 
-    def test_a_leftover_beside_the_install_gives_its_add_ons_back_before_it_goes(self):
+    def test_a_leftover_beside_the_install_has_its_add_ons_copied_before_it_is_deleted(self):
         """`<install>.replacing` from an older build can hold the only copy of the add-ons."""
         test_support.write_text(os.path.join(self.amaze, "scripts", "which.txt"), "1.1")
         leftover = self.amaze + ".replacing"
@@ -567,7 +567,7 @@ class AnAmazeUpdateKeepsItsAddOnsTest(_Workspace):
                          "the leftover was deleted with the only copy of the add-ons in it")
         self.assertFalse(os.path.exists(leftover))
 
-    def test_a_leftover_whose_add_ons_cannot_be_carried_is_kept(self):
+    def test_a_leftover_whose_add_ons_cannot_be_copied_is_kept(self):
         test_support.write_text(os.path.join(self.amaze, "scripts", "which.txt"), "1.1")
         leftover = self.amaze + ".replacing"
         test_support.write_text(os.path.join(leftover, self.HOME_MADE), "a home-made add-on")
@@ -602,10 +602,10 @@ class TheCarryTest(_Workspace):
         self.assertEqual(self._tree(self.amaze), self._tree(self.new))
         self.assertEqual(4, len(self._tree(self.amaze)), "`carry` emptied the old tree")
 
-    def test_a_carry_that_dies_part_way_takes_back_what_it_copied(self):
+    def test_a_carry_that_fails_part_way_removes_what_it_copied(self):
         real = shutil.copytree
 
-        def dies_in_b(src, dst, *args, **kwargs):
+        def fails_in_b(src, dst, *args, **kwargs):
             if os.path.basename(src) == "b":
                 test_support.write_text(os.path.join(dst, "otls", "fragment"), "half")
                 why = "[Errno 28] No space left on device"
@@ -613,7 +613,7 @@ class TheCarryTest(_Workspace):
             return real(src, dst, *args, **kwargs)
 
         os.makedirs(self.new)
-        with mock.patch.object(shutil, "copytree", dies_in_b):
+        with mock.patch.object(shutil, "copytree", fails_in_b):
             with self.assertRaises(OSError) as failed:
                 addons.carry(self.amaze, self.new)
         self.assertEqual("[Errno 28] No space left on device", str(failed.exception),
@@ -634,7 +634,7 @@ class ThePackageTemplateTest(unittest.TestCase):
         self.assertEqual(amaze + "/" + addons.ROOT, template["package_path"],
                          "package_path cannot use $AMAZE, so it repeats the folder in full")
 
-    def test_the_template_loads_one_amaze_when_two_package_files_carry_its_name(self):
+    def test_the_template_loads_one_amaze_when_two_package_files_have_its_name(self):
         """Houdini loads the first `Amaze.json` that has `load_package_once` ▸r/load-package-once."""
         with open(os.path.join(REPO, "Amaze.json"), encoding="utf-8") as handle:
             template = json.load(handle)

@@ -42,13 +42,13 @@ class TestFacts(unittest.TestCase):
         for kind in ("metal", "transmissive", "subsurface", "opaque"):
             self.assertGreater(kinds[kind], 0, "no %s facts" % kind)
 
-    def test_metals_carry_a_measured_finish(self):
+    def test_metals_have_a_measured_roughness(self):
         """The reference set gives metals roughness 0; the measured finish gives a metal its own."""
         rough = [f["roughness"] for f in generator.online_facts()
                  if generator.fact_kind(f) == "metal" and f["roughness"] > 0]
         self.assertGreaterEqual(len(rough), 5)
 
-    def test_classifier_rejects_the_substring_trap(self):
+    def test_classifier_finds_no_metal_inside_another_word(self):
         """The classifier itself, never a pre-classified dict: the tin-in-satin case ▸r/rgl-values"""
         infer = matx_sources.RGLSource.infer_metal
         for args, metal in (
@@ -225,7 +225,7 @@ class TestGeneratedSpecs(unittest.TestCase):
 class TestGeneratedMaterials(unittest.TestCase):
     """The built material, not just the numbers."""
 
-    def test_builds_wired_and_carries_provenance(self):
+    def test_builds_wired_and_records_provenance(self):
         staging = hou.node("/obj").createNode("matnet")
         try:
             for seed in range(8):
@@ -240,7 +240,7 @@ class TestGeneratedMaterials(unittest.TestCase):
         finally:
             staging.destroy()
 
-    def test_spec_values_land_on_the_shader(self):
+    def test_spec_values_are_set_on_the_shader(self):
         staging = hou.node("/obj").createNode("matnet")
         try:
             builder, spec = generator.generate_random_material(
@@ -270,13 +270,13 @@ class OneShaderSetterForEveryValueSource(unittest.TestCase):
     def _rounded(self, shader, name):
         return tuple(round(v, 4) for v in shader.parmTuple(name).eval())
 
-    def test_a_colour_with_alpha_lands_its_first_three_channels(self):
+    def test_a_colour_with_alpha_sets_its_first_three_channels(self):
         made = nodes.build_karma_material(
             self.staging, "alpha",
             generator.spec_adapter({"base_color": [0.1, 0.2, 0.3, 1.0]}))
         self.assertEqual((0.1, 0.2, 0.3), self._rounded(made.shader, "base_color"))
 
-    def test_a_value_that_is_not_a_number_costs_only_itself(self):
+    def test_a_value_that_is_not_a_number_skips_only_that_parameter(self):
         from amaze.core import matx_import
         builder = nodes.make_karma_builder(self.staging, "values")
         shader = matx_import._values_to_standard_surface(
@@ -296,11 +296,11 @@ class TestCatalogueFreshness(unittest.TestCase):
     def test_offline_falls_back_to_the_shipped_table(self):
         real_text, real_json = matx_sources.get_text, matx_sources.get_json
 
-        def dead(*args, **kwargs):
+        def no_network(*args, **kwargs):
             raise OSError("simulated: no network")
 
-        matx_sources.get_text = dead
-        matx_sources.get_json = dead
+        matx_sources.get_text = no_network
+        matx_sources.get_json = no_network
         try:
             for source in self._sources():
                 source.refresh()          # drop any cached catalogue
@@ -360,18 +360,18 @@ class TestCatalogueFreshness(unittest.TestCase):
         pb._table_path = lambda: missing
         return real
 
-    def test_a_bad_payload_is_refused_with_no_table_to_fall_back_on(self):
+    def test_a_bad_payload_raises_and_is_not_kept_when_there_is_no_table(self):
         """With no table, the re-fetch also goes through `_usable` ▸r/matx-source-quirks"""
         pb = self._pb()
         real_json = matx_sources.get_json
         real_table = self._without_the_shipped_table(pb)
         fetches = []
 
-        def portal(url, *a, **k):
+        def sign_in_page(url, *a, **k):
             fetches.append(url)
             return {"error": "sign in to continue"}
 
-        matx_sources.get_json = portal
+        matx_sources.get_json = sign_in_page
         try:
             pb.refresh()
             with self.assertRaises(Exception) as caught:
@@ -393,7 +393,7 @@ class TestCatalogueFreshness(unittest.TestCase):
             pb._table_path = real_table
             pb.refresh()
 
-    def test_a_transient_failure_still_gets_its_second_chance(self):
+    def test_a_transient_failure_is_retried_once(self):
         """With no table, a first transient failure is retried and the good response is kept."""
         pb = self._pb()
         real_json = matx_sources.get_json
@@ -482,7 +482,7 @@ class RGLRoughnessTest(unittest.TestCase):
     def _alpha(column):
         return math.tan((column / 8.0) ** 2 * math.pi / 2) / 0.6436
 
-    def test_a_half_width_reads_on_the_squared_grid_and_lands_as_its_root(self):
+    def test_a_half_width_is_read_on_the_squared_grid_and_returned_as_its_root(self):
         self.assertAlmostEqual(math.sqrt(self._alpha(4)),
                                self._roughness([self.WIDE, self.WIDE]), places=4)
 
@@ -514,7 +514,7 @@ class RGLRoughnessTest(unittest.TestCase):
     def test_a_satin_with_a_neutral_mirror_stays_white(self):
         self.assertNotIn("specularColor", self._values("satin_white", [0.7] * 12))
 
-    def test_a_painted_satin_reaches_the_import_with_its_reflection(self):
+    def test_a_painted_satin_keeps_its_specular_color_in_the_import(self):
         values = matx_sources.RGLSource()._values_for("satin_blue")
         self.assertIn("specularColor", values, "the shipped satin_blue has no specularColor")
         self.assertLess(values["color"][0], values["color"][2], "satin_blue is not blue")
@@ -552,7 +552,7 @@ class TestDownloadIntegrity(unittest.TestCase):
         finally:
             matx_sources.download = real_download
 
-    def test_a_poisoned_cache_heals_itself(self):
+    def test_a_corrupt_cached_file_is_downloaded_again(self):
         import os
         target = os.path.join(self.tmp, "stale_rgb.bsdf")
         with open(target, "wb") as handle:
@@ -617,7 +617,7 @@ class TestDownloadIntegrity(unittest.TestCase):
         self.assertIn("roughness", got["values"])
         self.assertTrue(matx_sources.RGLSource._is_measurement(target))
 
-    def test_a_measurement_that_does_not_parse_twice_is_refused_in_one_sentence(self):
+    def test_a_measurement_that_does_not_parse_twice_raises_one_message(self):
         asked = self._served(self.TRUNCATED)
         record, target = self._cached("truncated", self.TRUNCATED)
         with self.assertRaises(Exception) as refused:
@@ -637,7 +637,7 @@ class ThirdPartyHostTest(unittest.TestCase):
         self.assertEqual("https://api.matlib.gpuopen.com/api",
                          matx_sources.GPUOpenSource.API)
 
-    def test_no_source_url_carries_our_app_name(self):
+    def test_no_source_url_contains_our_app_name(self):
         """No third-party URL may contain our app name."""
         import inspect
 
@@ -696,7 +696,7 @@ class TruncatedDownloadTest(unittest.TestCase):
         import tempfile
         return os.path.join(tempfile.mkdtemp(prefix="amaze_trunc_"), "f.bsdf")
 
-    def test_a_truncated_transfer_is_refused(self):
+    def test_a_truncated_transfer_raises_oserror(self):
         url = self._serve_once(b"x" * 1000, declared_length=100000)
         dest = self._dest()
         with self.assertRaises(OSError) as caught:
@@ -709,7 +709,7 @@ class TruncatedDownloadTest(unittest.TestCase):
         self.assertFalse(os.path.exists(dest + ".part"),
                          "the partial file was left behind")
 
-    def test_a_download_past_the_ceiling_is_refused(self):
+    def test_a_download_past_the_size_limit_raises_download_too_large(self):
         from unittest import mock
 
         from amaze import messages
@@ -725,7 +725,7 @@ class TruncatedDownloadTest(unittest.TestCase):
                 self.assertEqual([], os.listdir(os.path.dirname(dest)),
                                  "a rejected download left a file behind")
 
-    def test_a_complete_transfer_still_lands(self):
+    def test_a_complete_transfer_is_kept(self):
         """The size checks must not reject good downloads."""
         for body, declared in ((b"y" * 5000, 5000), (b"z" * 300, None)):    # a missing Content-Length is not a wrong one
             with self.subTest(declared=declared):
@@ -735,14 +735,14 @@ class TruncatedDownloadTest(unittest.TestCase):
                 self.assertEqual(len(body), os.path.getsize(dest))
 
 
-class SilentOnlineFailureTest(unittest.TestCase):
+class UnreachableHostIsLoggedTest(unittest.TestCase):
     """An unreachable host never looks like an empty catalogue; asserted on `captured_log()`."""
 
     def setUp(self):
         self.real_json = matx_sources.get_json
         self.addCleanup(setattr, matx_sources, "get_json", self.real_json)
 
-    def _dead(self, *args, **kwargs):
+    def _no_network(self, *args, **kwargs):
         raise OSError("nodename nor servname provided")
 
     def _source(self, name):
@@ -753,7 +753,7 @@ class SilentOnlineFailureTest(unittest.TestCase):
         record = matx_sources.MatxRecord(
             source="PolyHaven", uid="aerial_asphalt_01",
             title="Aerial Asphalt 01", kind="package", payload={})
-        matx_sources.get_json = self._dead
+        matx_sources.get_json = self._no_network
 
         with test_support.captured_log() as log:
             self.assertEqual([], source.resolutions(record))
@@ -774,7 +774,7 @@ class SilentOnlineFailureTest(unittest.TestCase):
         """A failed lookup is not cached as {}, or every material is Uncategorized ▸r/matx-source-quirks"""
         source = self._source("GPUOpen")
         source._categories = None
-        matx_sources.get_json = self._dead
+        matx_sources.get_json = self._no_network
 
         with test_support.captured_log():
             self.assertEqual({}, source._category_map())
@@ -792,7 +792,7 @@ class SilentOnlineFailureTest(unittest.TestCase):
                          "the category map is no longer cached on success")
 
 
-class MtlxRepairHonestyTest(unittest.TestCase):
+class MtlxRepairReportTest(unittest.TestCase):
     """A repair that could not be written is not reported as a repair ▸r/matx-source-quirks"""
 
     def setUp(self):
@@ -912,17 +912,17 @@ class PartialCatalogueTest(unittest.TestCase):
         self.assertEqual(
             1, len(self.saved), "a complete catalogue was not cached")
 
-    def test_the_error_carries_a_reason(self):
+    def test_the_error_records_a_reason(self):
         """The error records a reason, not only the exception type a dozen causes share."""
         worker = self.matx_library._CatalogueWorker([], 0)
 
-        class _Dead:
+        class _Unreachable:
             name = "GPUOpen"
 
             def list_materials(self, **kwargs):
                 raise OSError("nodename nor servname provided")
 
-        worker._sources = [_Dead()]
+        worker._sources = [_Unreachable()]
         captured = {}
         worker.done = type("S", (), {
             "emit": lambda _self, r, e, g: captured.update(errors=e)})()
@@ -978,7 +978,7 @@ class NoNetworkBeforeTheProgressBarTest(unittest.TestCase):
                     self._records(named.name, count=1)[0]))
 
 
-class AnotherResolutionIsSaidOnTheStatusLine(unittest.TestCase):
+class AnotherResolutionIsShownOnTheStatusLine(unittest.TestCase):
     """When the set resolution does not exist, the next one is downloaded and the status line says so."""
 
     def _found(self, available, wanted="2k", source=None):
@@ -1022,12 +1022,12 @@ class AnotherResolutionIsSaidOnTheStatusLine(unittest.TestCase):
         self.assertEqual((source, None, ""), found)
         self.assertEqual([], said)
 
-    def test_a_substitute_is_downloaded_and_said_once(self):
+    def test_a_substitute_is_downloaded_and_shown_once(self):
         used, said, messages = self._source_for(["1k", "4k"])
         self.assertEqual("4k", used)
         self.assertEqual([messages.MATX_RESOLUTION_SUBSTITUTED % ("2k", "Rust", "4k")], said)
 
-    def test_the_set_resolution_says_nothing(self):
+    def test_the_set_resolution_shows_no_message(self):
         for available, wanted in ((["1k", "2k", "4k"], "2k"), (["1K-JPG", "2K-JPG"], "2K-JPG")):
             with self.subTest(available=available):
                 used, said, _messages = self._source_for(available)
@@ -1059,13 +1059,13 @@ class CertificateVerificationTest(unittest.TestCase):
         real = matx_sources.urllib.request.build_opener
         calls = []
 
-        class _Refusing:
+        class _ConnectionRefused:
             def open(self, req, *args, **kwargs):
                 calls.append(req)
                 raise urllib.error.URLError(OSError("connection refused"))
 
         matx_sources.urllib.request.build_opener = \
-            lambda *args, **kwargs: _Refusing()
+            lambda *args, **kwargs: _ConnectionRefused()
         try:
             with self.assertRaises(urllib.error.URLError):
                 matx_sources._request("https://example.invalid/thing")

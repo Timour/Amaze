@@ -78,7 +78,7 @@ class TheReleaseResolvesToTheNetworkUnderThePointer(_ReleaseCase):
             net, self.panel.drop_placement.context_under_cursor(self.matcher),
             "a release on blank canvas missed the network being shown")
 
-    def test_a_container_under_the_pointer_takes_the_release(self):
+    def test_a_container_under_the_pointer_receives_the_nodes(self):
         """Released ON a copnet, the nodes go inside it, not beside it."""
         net = hou.node("/obj").createNode("copnet", "target_cop")
         self._patch(_fake_editor(hou.node("/obj"), items=[(net,)]))
@@ -124,7 +124,7 @@ class TheReleaseResolvesToTheNetworkUnderThePointer(_ReleaseCase):
             net, self.panel.drop_placement.context_under_cursor(self.matcher))
 
 
-class TheNodeDropLandsWhereItWasReleased(_ReleaseCase):
+class TheNodeDropIsCreatedWhereItWasReleased(_ReleaseCase):
     """`drop_cop_at_release`: the Node section's drop handler, end to end."""
 
     def setUp(self):
@@ -142,7 +142,7 @@ class TheNodeDropLandsWhereItWasReleased(_ReleaseCase):
             self.panel.cop_model.index(
                 len(self.panel.cop_model.assets) - 1, 0))
 
-    def test_the_network_lands_in_the_editors_network_at_the_cursor(self):
+    def test_the_network_is_created_in_the_editors_network_at_the_cursor(self):
         """The created nodes centre on the release point, as Houdini places new nodes."""
         index = self._saved_cop_asset()
         dest = hou.node("/obj").createNode("copnet", "drop_dest")
@@ -157,7 +157,7 @@ class TheNodeDropLandsWhereItWasReleased(_ReleaseCase):
         self.assertAlmostEqual(
             anchor.y(), sum(n.position().y() for n in landed) / len(landed))
 
-    def test_an_invalid_index_lands_nothing(self):
+    def test_an_invalid_index_creates_nothing(self):
         """A drag started on blank grid space has an invalid index; row -1 is the LAST asset."""
         self._saved_cop_asset()
         dest = hou.node("/obj").createNode("copnet", "untouched")
@@ -167,13 +167,13 @@ class TheNodeDropLandsWhereItWasReleased(_ReleaseCase):
         self.assertEqual((), dest.children(),
                          "an invalid index still built a network")
 
-    def test_a_release_over_nothing_is_silent(self):
+    def test_a_release_over_no_pane_creates_nothing_and_returns_false(self):
         """A release over no pane builds nothing and reports no error."""
         index = self._saved_cop_asset()
         self._patch(None)
         self.assertFalse(self.section.drop_cop_at_release(index))
 
-    def test_a_refused_context_goes_to_the_status_line_with_the_network(self):
+    def test_a_wrong_context_is_reported_by_debug_refuse_with_the_network(self):
         """A wrong context is a user aiming error: `debug.refuse`, no dialog. ▸p/refusal-sink"""
         index = self._saved_cop_asset()
         dest = hou.node("/obj").createNode("matnet", "vop_dest")
@@ -192,7 +192,7 @@ class TheNodeDropLandsWhereItWasReleased(_ReleaseCase):
                          "`debug.refuse` did not record WHICH network rejected it")
 
 
-class MaterialNetworkGateTest(unittest.TestCase):
+class MaterialDropOnlyIntoVopNetworksTest(unittest.TestCase):
     """A material drop creates nodes only where the network accepts a VOP; elsewhere none."""
 
     @classmethod
@@ -205,7 +205,7 @@ class MaterialNetworkGateTest(unittest.TestCase):
         self.assertTrue(idx.isValid(), "premise: a material exists")
         return idx
 
-    def test_accepts_context_is_the_one_gate(self):
+    def test_accepts_context_is_true_only_for_a_vop_network(self):
         matnet = hou.node("/obj").createNode("matnet")
         self.addCleanup(matnet.destroy)
         lopnet = hou.node("/obj").createNode("lopnet")
@@ -280,7 +280,7 @@ class MaterialNetworkGateTest(unittest.TestCase):
             "hou.ui) - the ghost must simply not snap, never raise")
         self.assertIsNone(dragengine.ghost_snap_position())
 
-    def test_the_ghost_uses_the_hosts_placement_recipe(self):
+    def test_the_drag_preview_uses_houdinis_node_shape_per_context(self):
         matnet = hou.node("/obj").createNode("matnet")
         self.addCleanup(matnet.destroy)
         lopnet = hou.node("/obj").createNode("lopnet")
@@ -295,7 +295,7 @@ class MaterialNetworkGateTest(unittest.TestCase):
             dragengine._ghost_half_for(_fake_editor(matnet)),
             "VOP contexts use the flat new-node half, as Houdini does")
 
-    def test_the_ghost_reads_the_hosts_half_size(self):
+    def test_the_drag_preview_reads_getNewNodeHalfSize(self):
         """`nodegraphutils.getNewNodeHalfSize()` is used, never copied; headless it cannot import."""
         import sys
         import types

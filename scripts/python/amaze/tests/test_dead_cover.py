@@ -103,9 +103,9 @@ class TheIntersectionTest(_ReportsMixin):
                           "difference between them IS the diagnosis")
 
 
-class TheRefusalsTest(_ReportsMixin):
+class TheExitCodeTwoTest(_ReportsMixin):
 
-    def test_every_input_it_cannot_judge_refuses(self):
+    def test_every_unusable_report_exits_with_2(self):
         """Exit 2, never 0: a Houdini crash exits 0, so testsRun is the only signal."""
         a = self.write_report("a.json", [["test_y.B.test_dead", "why"]])
         bad = os.path.join(self.dir, "bad.json")
@@ -136,7 +136,7 @@ class TheHostNameTest(unittest.TestCase):
 
 class TheReportWriterTest(_ReportsMixin):
 
-    def test_the_report_carries_ids_reasons_and_the_count(self):
+    def test_the_report_holds_ids_reasons_and_the_count(self):
         result = _FakeResult([("test_b.B.test_two", "second"),
                               ("test_a.A.test_one", "first")], tests_run=42)
         path = os.path.join(self.dir, "report.json")
@@ -169,7 +169,7 @@ class TheReportWriterTest(_ReportsMixin):
 
 class WhatUnittestItselfGuaranteesTest(unittest.TestCase):
 
-    def test_a_result_carries_skipped_ids_not_just_a_count(self):
+    def test_a_result_holds_skipped_ids_not_just_a_count(self):
         class Sample(unittest.TestCase):
             @unittest.skip("decorator")
             def test_decorator(self):
@@ -196,7 +196,7 @@ class WhatUnittestItselfGuaranteesTest(unittest.TestCase):
                         "name a dead test with nothing to act on")
 
 
-class TheWiringTest(unittest.TestCase):
+class TheRunTestsScriptTest(unittest.TestCase):
 
     def test_all_versions_reports_each_run_and_checks_them_together(self):
         """run-tests.sh sets the variable run_suite reads, runs the checker, detects a subset run."""
