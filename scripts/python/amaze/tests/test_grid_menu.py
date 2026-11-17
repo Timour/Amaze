@@ -63,7 +63,7 @@ def rows_of(table):
 
 
 def holds_rows(entry) -> bool:
-    """A fixed submenu: its rows have the verbs, so it has none of its own."""
+    """A fixed submenu: its rows have the handlers, so it has none of its own."""
     return isinstance(entry.children, tuple)
 
 
@@ -78,7 +78,7 @@ class TheTableIsWellFormED(unittest.TestCase):
                     "%s shows tiles and offers no right-click menu"
                     % name)
 
-    def test_every_named_verb_exists_on_the_context(self):
+    def test_every_named_handler_exists_on_the_context(self):
         for name in MENU_CONTEXTS:
             context = getattr(sections, name)
             for entry in rows_of(context.GRID_MENU):
@@ -86,10 +86,10 @@ class TheTableIsWellFormED(unittest.TestCase):
                     continue
                 with self.subTest(context=name, entry=entry.label):
                     self.assertTrue(
-                        callable(getattr(context, entry.verb, None)),
-                        '%s\'s "%s" names verb %r, which it does not '
+                        callable(getattr(context, entry.handler, None)),
+                        '%s\'s "%s" names handler %r, which it does not '
                         "have - the entry would raise on click"
-                        % (name, entry.label, entry.verb))
+                        % (name, entry.label, entry.handler))
 
     def test_every_named_FACT_exists_on_the_context(self):
         """A missing name reads as False: a missing `shown` deletes the entry, a missing `needs` greys it."""
@@ -108,16 +108,16 @@ class TheTableIsWellFormED(unittest.TestCase):
                             "%s's %r table names %r, which it does not "
                             "have" % (name, entry.label, fact))
 
-    def test_a_submenu_row_declares_a_verb_for_its_children(self):
-        """A submenu's children dispatch through the parent's verb, so a parent with children needs one."""
+    def test_a_submenu_row_declares_a_handler_for_its_children(self):
+        """A submenu's children dispatch through the parent's handler, so a parent with children needs one."""
         for name in MENU_CONTEXTS:
             context = getattr(sections, name)
             for entry in rows_of(context.GRID_MENU):
                 if entry.children and not holds_rows(entry):
                     with self.subTest(context=name, entry=entry.label):
                         self.assertTrue(
-                            entry.verb,
-                            '%s\'s "%s" submenu has no verb, so picking '
+                            entry.handler,
+                            '%s\'s "%s" submenu has no handler, so picking '
                             "a row in it does nothing" % (name, entry.label))
 
 
@@ -324,7 +324,7 @@ class TheMenusMatchTheOldHandlersOutput(unittest.TestCase):
     def test_online_menu_over_an_empty_selection(self):
         """Built directly, as the online context uses the network; only Refresh is enabled when empty."""
         context = self.panel.online_context
-        menu, _verbs = grid.build_grid_menu(self.panel, context, [], None)
+        menu, _handlers = grid.build_grid_menu(self.panel, context, [], None)
         plugins = (off_unless_loaded("Redshift"), off_unless_loaded("Octane"))
         self.assertEqual(
             ["Import to Materials > [MaterialX, Redshift%s, Octane%s](off)" % plugins,
@@ -337,7 +337,7 @@ class TheMenusMatchTheOldHandlersOutput(unittest.TestCase):
         context = self.panel.online_context
         proxy = self.panel.matx_sorted_model
         pretend = [proxy.index(row, 0) for row in range(3)]
-        menu, _verbs = grid.build_grid_menu(
+        menu, _handlers = grid.build_grid_menu(
             self.panel, context, pretend, pretend[0])
         labels = [action.text() for action in menu.actions()]
         self.assertIn("Import to Materials (3)", labels)
@@ -345,7 +345,7 @@ class TheMenusMatchTheOldHandlersOutput(unittest.TestCase):
         self.assertNotIn("Refresh (3)", labels,
                          "Refresh acts on no rows, so a count is wrong")
         one = pretend[:1]
-        menu, _verbs = grid.build_grid_menu(self.panel, context, one, one[0])
+        menu, _handlers = grid.build_grid_menu(self.panel, context, one, one[0])
         self.assertIn("Import to Materials",
                       [action.text() for action in menu.actions()],
                       "a single row shows a count")
@@ -446,13 +446,13 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
                     QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
                 context = panel.active_section()
                 called = []
-                verbs = {entry.verb for entry in context.GRID_MENU
-                         if entry.verb}
+                handlers = {entry.handler for entry in context.GRID_MENU
+                            if entry.handler}
                 patches = [
                     mock.patch.object(
-                        type(context), verb,
-                        lambda *a, _v=verb, **k: called.append(_v))
-                    for verb in verbs]
+                        type(context), handler,
+                        lambda *a, _v=handler, **k: called.append(_v))
+                    for handler in handlers]
                 with mock.patch.object(QtWidgets.QMenu, "exec_",
                                        lambda *a, **k: None):
                     for patch in patches:
@@ -476,7 +476,7 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
                                lambda _self, _indexes: frozenset(held)), \
                 plugins_loaded("Redshift", "Octane"):
             indexes = context.grid_selection()
-            menu, _verbs = grid.build_grid_menu(
+            menu, _handlers = grid.build_grid_menu(
                 panel, context, indexes, None)
         row = [r for r in render(menu) if r.startswith("Convert >")]
         return row[0] if row else None
@@ -517,13 +517,13 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
         panel = self.panel
         indexes = self._select_karma_rows(1)
         with plugins_loaded():
-            menu, _verbs = grid.build_grid_menu(
+            menu, _handlers = grid.build_grid_menu(
                 panel, panel.active_section(), indexes, indexes[0])
         row = [r for r in render(menu) if r.startswith("Convert >")]
         self.assertEqual(["Convert > [MaterialX(off), Redshift(off), Octane(off)](off)"], row)
 
     def test_convert_to_dispatches_by_the_child_picked(self):
-        """One verb whose payload names the renderer: each child calls only its own converter."""
+        """One handler whose payload names the renderer: each child calls only its own converter."""
         panel = self.panel
         panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()
@@ -577,7 +577,7 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
                 mock.patch.object(panel, "matx_online_model"), \
                 mock.patch.object(type(context), "_records", lambda self, idx: [rec]):
             panel.matx_online_model.record.return_value = rec
-            context.double_click(index)    # the import path the menu verb does not share
+            context.double_click(index)    # the import path the menu handler does not share
             context.menu_import_to_scene([], None)
         self.assertEqual([0, 0], depth,
                          "an import reached the scene inside a restore block")
@@ -618,9 +618,9 @@ class EveryRendererRowShowsTheFilterMenusIcon(unittest.TestCase):
         panel = self.panel
         panel.build_filter_menu()
         context = panel.active_section()
-        material_menu, _verbs = grid.build_grid_menu(
+        material_menu, _handlers = grid.build_grid_menu(
             panel, context, context.grid_selection(), None)
-        online_menu, _verbs = grid.build_grid_menu(
+        online_menu, _handlers = grid.build_grid_menu(
             panel, panel.online_context, [], None)
         return panel.menu_filter, material_menu, online_menu
 
@@ -703,8 +703,8 @@ class EveryRendererRowShowsTheFilterMenusIcon(unittest.TestCase):
                          "the renderer icon names are defined in more than one file")
 
 
-class AVerbActsOnlyOnRowsStillThere(unittest.TestCase):
-    """The menu's event loop can change the grid; the verb gets the picked rows' current state."""
+class AHandlerActsOnlyOnRowsStillThere(unittest.TestCase):
+    """The menu's event loop can change the grid; the handler gets the picked rows' current state."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -748,7 +748,7 @@ class AVerbActsOnlyOnRowsStillThere(unittest.TestCase):
         self.assertEqual(before ^ {picked}, self._starred(model),
                          "the favourite was set on another tile than the one picked")
 
-    def test_a_folder_reloaded_under_the_menu_passes_its_verb_nothing(self):
+    def test_a_folder_reloaded_under_the_menu_passes_its_handler_nothing(self):
         """A finished move reloads the folder; Copy Path then copies nothing, not a stale path."""
         clipboard = QtWidgets.QApplication.clipboard()
         clipboard.setText("sentinel")
@@ -757,8 +757,8 @@ class AVerbActsOnlyOnRowsStillThere(unittest.TestCase):
         self.assertEqual("sentinel", clipboard.text(), "a reloaded row's path was copied")
 
 
-class EveryVerbIsCalledThroughThePanel(unittest.TestCase):
-    """The five verbs the panel already defined are called THROUGH it, not copied into a table."""
+class EveryHandlerIsCalledThroughThePanel(unittest.TestCase):
+    """The five handlers the panel already defined are called THROUGH it, not copied into a table."""
 
     @classmethod
     def setUpClass(cls):
@@ -794,19 +794,19 @@ class EveryVerbIsCalledThroughThePanel(unittest.TestCase):
                 ("Render Image", "grid_update_preview", ("material", "file"))):
             for key in keys:
                 with self.subTest(section=key, entry=label):
-                    with mock.patch.object(type(self.panel), owner) as verb:
+                    with mock.patch.object(type(self.panel), owner) as handler:
                         self._pick(key, label)
-                    self.assertTrue(verb.called)
+                    self.assertTrue(handler.called)
 
     def test_CUSTOMIZE_reaches_the_shared_handler_in_every_section(self):
         """`tile_models()` returns the models each context has, so Customize reaches a real pair."""
         for key in ("material", "gradient", "code", "file"):
             with self.subTest(section=key):
                 with mock.patch.object(type(self.panel),
-                                       "edit_tile_icon") as verb:
+                                       "edit_tile_icon") as handler:
                     self._pick(key, "Customize")
-                self.assertTrue(verb.called)
-                model, proxy, _indexes = verb.call_args[0]
+                self.assertTrue(handler.called)
+                model, proxy, _indexes = handler.call_args[0]
                 self.assertIsNotNone(model, "%s named no model" % key)
                 self.assertIsNotNone(proxy, "%s named no proxy" % key)
 

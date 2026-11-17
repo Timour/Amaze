@@ -14,20 +14,20 @@ from amaze.helpers import theme, ui_helpers
 QtGui.QPixmapCache.setCacheLimit(65536)   # 64MB, app-wide for all of Houdini; set once, here
 
 class Badge:
-    """One tile badge: its ID, the model role it reads, its click `verb`, its SVGs and tooltips."""
+    """One tile badge: its ID, the model role it reads, its click `handler`, its SVGs and tooltips."""
 
-    __slots__ = ("name", "svg", "role", "role_attr", "verb", "minimum", "equals", "dims",
+    __slots__ = ("name", "svg", "role", "role_attr", "handler", "minimum", "equals", "dims",
                  "hover_svg", "press_svg", "off_svg", "off_hover_svg", "tip", "off_tip",
                  "svg_for")
 
-    def __init__(self, name, svg, role="", role_attr="", verb="", minimum=0, equals="",
+    def __init__(self, name, svg, role="", role_attr="", handler="", minimum=0, equals="",
                  dims=False, hover_svg="", press_svg="", off_svg="", off_hover_svg="",
                  tip="", off_tip="", svg_for=None) -> None:
         self.name = name
         self.svg = svg
         self.role = role              # the model role, by name, whose value decides if it is drawn; "" = always
         self.role_attr = role_attr    # the delegate attribute holding that role's number; list columns read it
-        self.verb = verb              # the section method a click runs; "" = an indicator, not a button
+        self.handler = handler        # the section method a click runs; "" = an indicator, not a button
         self.minimum = minimum        # drawn when the count is at least this: one version has no history
         self.equals = equals          # the role value this badge is drawn for; "" = any truthy value
         self.dims = dims              # its ON art's icon is drawn at the button opacities, rest and hover
@@ -374,8 +374,8 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
             if badge.role_attr:
                 setattr(self, badge.role_attr, getattr(tile_model, badge.role)
                         if badge.name in self._tile else None)
-            if badge.name in self._tile and badge.verb and on_badge is not None:
-                self.set_badge_click(badge.name, on_badge(badge.verb))
+            if badge.name in self._tile and badge.handler and on_badge is not None:
+                self.set_badge_click(badge.name, on_badge(badge.handler))
 
     @staticmethod
     def _to_pixmap(icon):

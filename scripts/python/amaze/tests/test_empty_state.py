@@ -68,8 +68,8 @@ class TheDeclarationsAreWellFormed(unittest.TestCase):
                           "%s declares no EMPTY_SECTION text, and there is no "
                           "shared one to use instead" % key)
 
-    def test_every_declared_verb_is_a_method_on_the_panel(self):
-        """A verb that is not a panel method hides its button without an error."""
+    def test_every_declared_handler_is_a_method_on_the_panel(self):
+        """A handler that is not a panel method hides its button without an error."""
         tables = [empty_state.SHARED]
         tables += [getattr(c, "EMPTY", {})
                    for c in sections.SECTION_INDEX.values()]
@@ -79,17 +79,17 @@ class TheDeclarationsAreWellFormed(unittest.TestCase):
                 self.assertLessEqual(words[1].count("%s"), 1, blank)
                 self.assertEqual(
                     bool(words[2]), bool(words[3]),
-                    "%s declares label %r against verb %r - a button that "
-                    "does nothing, or a verb never offered"
+                    "%s declares label %r against handler %r - a button that "
+                    "does nothing, or a handler never offered"
                     % (blank, words[2], words[3]))
-                verb = words[3]
-                if not verb:
+                handler = words[3]
+                if not handler:
                     continue
                 self.assertTrue(
-                    callable(getattr(panel_module.AmazePanel, verb, None)),
-                    "%s names the verb %r, which is not a panel method - "
+                    callable(getattr(panel_module.AmazePanel, handler, None)),
+                    "%s names the handler %r, which is not a panel method - "
                     "its button would be hidden with no error"
-                    % (blank, verb))
+                    % (blank, handler))
 
 
 class TheQuotedSearchIsElided(unittest.TestCase):
@@ -130,7 +130,7 @@ class TheEngineChoosesWhichBlank(unittest.TestCase):
         self.assertEqual("", self.panel.line_filter.text())
         self.assertEqual(before, view.model().rowCount(),
                          "the box is empty and the grid is still "
-                         "filtered - the verb did not refilter")
+                         "filtered - the handler did not refilter")
 
 
 class TheFavouritesBlankIsItsOwnBlank(unittest.TestCase):
@@ -172,12 +172,12 @@ class TheFavouritesBlankIsItsOwnBlank(unittest.TestCase):
             "an unstarred library under the favourites filter was taken "
             "for an empty category, quoting an empty name")
 
-        self.panel.clear_favourites_filter()    # NOTHING ELSE is called: the button's own verb
+        self.panel.clear_favourites_filter()    # NOTHING ELSE is called: the button's own handler
         QtWidgets.QApplication.processEvents()
         self.assertFalse(self.panel.cb_favsonly.isChecked())
         self.assertEqual(before, self.proxy.rowCount(),
                          "the star is off and the grid is still "
-                         "filtered - the verb did not refilter")
+                         "filtered - the handler did not refilter")
 
     def test_a_search_still_outranks_the_favourites_blank(self):
         self._unstar_everything()
@@ -546,7 +546,7 @@ class AnEmptyLocationIsThePlainGrid(unittest.TestCase):
     def test_a_right_click_on_an_empty_location_opens_the_grid_menu(self):
         self._click_row(self.folders.row_of(self._register_empty()))
         section = self.panel.active_section()
-        menu, _verbs = grid.build_grid_menu(self.panel, section, [], None)
+        menu, _handlers = grid.build_grid_menu(self.panel, section, [], None)
         self.addCleanup(menu.deleteLater)
         expected = [(action.text(), action.isEnabled()) for action in menu.actions()
                     if not action.isSeparator()]
@@ -610,7 +610,7 @@ class TheUnreachableBlankNamesARegisteredFolder(unittest.TestCase):
             "unreadable folder the user has not selected")
 
     def test_the_locate_button_moves_the_folder_the_message_names(self):
-        """With the sidebar on All, the verb selects the named folder before the shared picker runs."""
+        """With the sidebar on All, the handler selects the named folder before the shared picker runs."""
         folders = self.panel.file_folders_model
         target = test_support.fresh_files_folder(self)    # a second folder, so using the current one is caught
         folders.add_folder(target)

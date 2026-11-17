@@ -351,7 +351,7 @@ def _folder_size(path: str) -> tuple:
 
 def _files_section(preferences) -> dict:
     """The Files section's folders missing or on an unmounted drive, and starred files gone."""
-    found = {"dead_folders": [], "unmounted_folders": [], "dead_stars": []}
+    found = {"dead_folders": [], "unmounted_folders": [], "favorites_of_missing_files": []}
     if preferences is None:
         return found
     from amaze.core import locations
@@ -367,7 +367,7 @@ def _files_section(preferences) -> dict:
             continue
         if not os.path.isdir(os.path.dirname(path)):    # its folder is not here, or not synced yet
             continue
-        found["dead_stars"].append(path)
+        found["favorites_of_missing_files"].append(path)
     return found
 
 
@@ -1007,7 +1007,7 @@ def _files_section_lines(findings: dict) -> list:
                         "it is" if len(unmounted) == 1 else "they are",
                         "it is" if len(unmounted) == 1 else "they are",
                         "it will be" if len(unmounted) == 1 else "they will be"))
-    stars = findings.get("dead_stars") or []
+    stars = findings.get("favorites_of_missing_files") or []
     if stars:
         said.append("%s gone from %s folder:\n  %s" % (
             "This starred file is" if len(stars) == 1
@@ -1248,12 +1248,12 @@ def set_aside_folders(findings: dict, guard_session: bool = True) -> list:
     return done
 
 
-def drop_dead_stars(findings: dict, guard_session: bool = True) -> list:
+def drop_favorites_of_missing_files(findings: dict, guard_session: bool = True) -> list:
     """Unstar each starred file gone from a folder that is still here, as one change."""
     if guard_session:
         _raise_if_library_open_in_houdini()
     from amaze.core import locations
-    gone = [path for path in findings.get("dead_stars", ())
+    gone = [path for path in findings.get("favorites_of_missing_files", ())
             if not os.path.exists(path) and os.path.isdir(os.path.dirname(path))]
     if gone:
         locations.set_favourites(findings["preferences"], {path: False for path in gone})

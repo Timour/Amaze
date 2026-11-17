@@ -378,8 +378,8 @@ class TheImportFunctionsMarkTheirFailureReasonsTest(unittest.TestCase):
             "a dialog during the drag:\n  " + "\n  ".join(wrong))
 
 
-class NoReleaseVerbOpensAModalInline(unittest.TestCase):
-    """A release verb calls `debug.refuse`: a modal in a release gets its click. ▸p/refuse-vs-alert"""
+class NoReleaseHandlerOpensAModalInline(unittest.TestCase):
+    """A release handler calls `debug.refuse`: a modal in a release gets its click. ▸p/refuse-vs-alert"""
 
     ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     MODALS = {"displayMessage", "displayConfirmation", "displayCustomConfirmation", "readInput",
@@ -406,23 +406,23 @@ class NoReleaseVerbOpensAModalInline(unittest.TestCase):
         return found
 
     @staticmethod
-    def _release_verbs() -> set:
-        """Every verb a section declares for a release, read off the live DropRules."""
+    def _release_handlers() -> set:
+        """Every handler a section declares for a release, read off the live DropRules."""
         from amaze.panel import sections
-        verbs = set()
+        handlers = set()
         for cls in sections.SECTION_CLASSES + (sections.OnlineContext,):
             for rule in [cls.DROP] + list(cls.DROP_BY_KIND.values()):
                 if rule is not None:
-                    verbs.update(v for v in (rule.on_node, rule.on_space, rule.resolve)
-                                 if v)
-        return verbs
+                    handlers.update(v for v in (rule.on_node, rule.on_space, rule.resolve)
+                                    if v)
+        return handlers
 
-    def test_no_release_verb_reaches_a_modal(self):
+    def test_no_release_handler_reaches_a_modal(self):
         own = {"section": self._methods("panel/sections.py"),
                "panel": self._methods("panel/panel.py", "AmazePanel")}
         own.update((held, self._methods(*where)) for held, where in self.HELPERS.items())
-        stack = [("section", verb, verb) for verb in sorted(self._release_verbs())]
-        stack += [("panel", verb, verb) for verb in self.PANEL_RELEASES]
+        stack = [("section", handler, handler) for handler in sorted(self._release_handlers())]
+        stack += [("panel", handler, handler) for handler in self.PANEL_RELEASES]
         seen, offenders = set(), []
         while stack:
             side, name, path = stack.pop()
@@ -451,7 +451,7 @@ class NoReleaseVerbOpensAModalInline(unittest.TestCase):
                          "premise: the walk no longer reaches these functions - update REACHED")
         self.assertEqual(
             [], offenders,
-            "a release verb opens a modal inline, where it takes the drag's own "
+            "a release handler opens a modal inline, where it takes the drag's own "
             "release click - return the reason to debug.refuse:\n  "
             + "\n  ".join(offenders))
 

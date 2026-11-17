@@ -414,8 +414,8 @@ class TheOnlineModeBindsTheSameFourAreas(AreaBindingCase):
 class TheOnlineContextIsCalledLikeAnySection(AreaBindingCase):
     """The panel calls the online context like any section; `_is_online()` only tests the mode."""
 
-    def test_the_context_declares_every_verb_the_branches_relied_on(self):
-        """Every verb a deleted branch relied on is still declared by the online context."""
+    def test_the_context_declares_every_handler_the_branches_relied_on(self):
+        """Every handler a deleted branch relied on is still declared by the online context."""
         from amaze.panel import sections
         online = sections.OnlineContext
         self.assertEqual(
@@ -426,13 +426,13 @@ class TheOnlineContextIsCalledLikeAnySection(AreaBindingCase):
             (), getattr(online, "SIDEBAR_MENU", None),
             "the online world declares a sidebar menu now, so "
             "catlist_rc_menu's deleted branch is no longer a no-op")
-        for verb in ("filter_text", "filter_favorites",
-                     "select_category", "double_click"):
+        for handler in ("filter_text", "filter_favorites",
+                        "select_category", "double_click"):
             self.assertIn(
-                verb, vars(online),
+                handler, vars(online),
                 "OnlineContext does not declare %s, so the panel branch "
                 "deleted for it has nothing to call and the online "
-                "world silently does nothing" % verb)
+                "world silently does nothing" % handler)
 
     def test_the_sidebar_still_filters_the_catalogue_when_online(self):
         """Runs the moved `select_category` body by driving the category models directly."""
@@ -507,11 +507,11 @@ class TheBindingsAreDeclaredNotHandWritten(unittest.TestCase):
             "back, which undoes what Houdini does for a new node: %s" % found)
 
 
-class TheReleaseVerbsAreDefinedOnTheirSections(unittest.TestCase):
-    """Every release verb a drop rule names is callable on the section that declares it."""
+class TheReleaseHandlersAreDefinedOnTheirSections(unittest.TestCase):
+    """Every release handler a drop rule names is callable on the section that declares it."""
 
-    def test_every_rule_named_verb_is_defined_by_its_section(self):
-        """Every DROP / DROP_BY_KIND named verb must be callable on its declaring section class."""
+    def test_every_rule_named_handler_is_defined_by_its_section(self):
+        """Every DROP / DROP_BY_KIND named handler must be callable on its declaring section class."""
         from amaze.panel import sections
         missing = []
         for cls in sections.SECTION_CLASSES:
@@ -529,7 +529,7 @@ class TheReleaseVerbsAreDefinedOnTheirSections(unittest.TestCase):
                     missing.append("%s.%s" % (cls.__name__, name))
         self.assertEqual(
             [], missing,
-            "these declared verbs do not resolve on their own section, "
+            "these declared handlers do not resolve on their own section, "
             "and there is no panel fallback any more: %s" % missing)
 
 

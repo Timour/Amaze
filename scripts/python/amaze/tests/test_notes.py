@@ -1072,7 +1072,7 @@ class VersionsBadgeHoverTest(unittest.TestCase):
         self._model.setData(index, True, favourite)
         self.assertEqual(tooltips.BADGE_FAVORITE_REMOVE, words("favourite"))
         for badge in delegates.BADGES:
-            self.assertEqual(bool(badge.verb), bool(badge.tip),
+            self.assertEqual(bool(badge.handler), bool(badge.tip),
                              "%s: a button names its action and an indicator "
                              "says nothing" % badge.name)
         help_body = inspect.getsource(delegates.AssetItemDelegate.helpEvent)

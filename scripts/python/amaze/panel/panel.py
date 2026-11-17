@@ -1814,15 +1814,15 @@ class AmazePanel(QtWidgets.QWidget):
             context.set_sidebar_colour(name, colour)    # the context decides the store and the repaint
 
 
-    def _badge_click_handler(self, verb):
-        """A badge click runs the section's `verb` method: on the selection if the tile is in it."""
+    def _badge_click_handler(self, handler):
+        """A badge click runs the section's `handler` method: on the selection if the tile is in it."""
         def click(index):
             context = self.active_section()
-            if context is None or not hasattr(context, verb):
+            if context is None or not hasattr(context, handler):
                 return
             selmodel = self.thumblist.selectionModel()
             rows = grid_columns.selected_rows(selmodel) if selmodel is not None else []
-            getattr(context, verb)(rows if index in rows else [index], index)
+            getattr(context, handler)(rows if index in rows else [index], index)
         return click
 
     def grid_toggle_favourite(self, indexes) -> None:
@@ -2515,14 +2515,14 @@ class AmazePanel(QtWidgets.QWidget):
             "Amaze Import Nodes Asset", messages.NAMELESS_NODE_ASSET,
             messages.NODE_ASSETS_IMPORT_FAILURES)
 
-    def _import_selection(self, proxy, model, verb, label: str, noun: str, summary: str) -> None:
-        """Each selected tile through `verb(model, source_index)`: ONE undo entry, one dialog."""
+    def _import_selection(self, proxy, model, import_asset, label: str, noun: str, summary: str) -> None:
+        """Each selected tile through `import_asset(model, source_index)`: ONE undo entry, one dialog."""
         failures = []
         with hou.undos.group(label):    # the containers and what loads into them revert as one step
             for index in grid_columns.selected_rows(self.thumblist.selectionModel()):
                 source_index = proxy.mapToSource(index)
                 try:
-                    ok, reason, _created = verb(model, source_index)
+                    ok, reason, _created = import_asset(model, source_index)
                 except Exception as e:    # a failing tile is added to the report; the rest still import
                     try:
                         name = model.assets[source_index.row()].name
@@ -2601,17 +2601,17 @@ class AmazePanel(QtWidgets.QWidget):
         extra = {"basis": payload} if payload else {}    # only when there is one
         sel = self._visible_selected_nodes()
         if rule.click_on_node and len(sel) == 1:
-            hint = sections.drop_verb(section, rule.click_on_node)    # the verbs a rule names resolve on the SECTION, never on the panel
+            hint = sections.drop_handler(section, rule.click_on_node)    # the handlers a rule names resolve on the SECTION, never on the panel
             if bool(hint(index, sel[0], **extra)):
                 return True
             debug.event("interact", "the selected node did not accept the payload - "
                         "trying the network",
-                        verb=rule.click_on_node, node=sel[0].path())
+                        handler=rule.click_on_node, node=sel[0].path())
         if rule.click_resolve:
-            verb = sections.drop_verb(section, rule.click_resolve)
-            return bool(verb(index, **extra))
+            handler = sections.drop_handler(section, rule.click_resolve)
+            return bool(handler(index, **extra))
         if rule.on_space:
-            create = sections.drop_verb(section, rule.on_space)
+            create = sections.drop_handler(section, rule.on_space)
             for network in self._view_create_networks():
                 if create(index, network, **extra):
                     return True

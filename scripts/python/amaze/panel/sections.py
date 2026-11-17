@@ -40,20 +40,20 @@ DropRule = collections.namedtuple(
 
 MenuEntry = collections.namedtuple(
     "MenuEntry",
-    "label verb needs shown children count_suffix checkable",
+    "label handler needs shown children count_suffix checkable",
     defaults=("", "any", "", "", False, ""),
 )
 
 SEPARATOR = MenuEntry("")  # the empty label is what makes it a divider
 
 GRID_MENU_TAIL = (
-    MenuEntry("Thumbnail", verb="menu_thumbnail", children="thumbnail_actions"),    # the tile's thumbnail: render, capture, customize
-    MenuEntry("Favorite", verb="menu_favourite"),
-    MenuEntry("Delete", verb="menu_delete", shown="deletes_rows"),
+    MenuEntry("Thumbnail", handler="menu_thumbnail", children="thumbnail_actions"),    # the tile's thumbnail: render, capture, customize
+    MenuEntry("Favorite", handler="menu_favourite"),
+    MenuEntry("Delete", handler="menu_delete", shown="deletes_rows"),
 )
 
 UNDO_MOVE = (    # first in both File menus while the last move can be undone
-    MenuEntry("Undo Move", verb="menu_undo_move", needs="always", shown="can_undo_move"),
+    MenuEntry("Undo Move", handler="menu_undo_move", needs="always", shown="can_undo_move"),
     SEPARATOR,
 )
 
@@ -77,7 +77,7 @@ class Section:
     exports_categories = False    # the View menu's Export Category is enabled where the sidebar holds categories
 
     empty_noun = "items"  # the noun the shared empty-state texts use for these
-    EMPTY: dict = {}      # `nothing-yet`: (headline, sentence, button, verb)
+    EMPTY: dict = {}      # `nothing-yet`: (headline, sentence, button, handler)
 
     sidebar_attr = ""
     delegate_attr = ""
@@ -427,7 +427,7 @@ class Section:
         self.panel.tile_capture.onto_tile(self, current)
 
     def thumbnail_actions(self, indexes, current) -> tuple:
-        """The Thumbnail submenu's rows, each naming the verb it runs; Render Image only where one renders."""
+        """The Thumbnail submenu's rows, each naming its method; Render Image only where one renders."""
         rows = []
         if self.menu_offers_preview(indexes, current):
             rows.append(("Render Image", "menu_update_preview", "", bool(indexes)))
@@ -505,14 +505,14 @@ class AssetSection(Section):
     takes_category_drops = True
 
     SIDEBAR_MENU = (  # shared by Material, Node and Code; Rename acts on one category, the rest on the selection
-        MenuEntry("Add", verb="menu_add_category", needs="always"),
-        MenuEntry("Rename", verb="menu_rename_category", needs="one"),
-        MenuEntry("Delete", verb="menu_remove_category"),
+        MenuEntry("Add", handler="menu_add_category", needs="always"),
+        MenuEntry("Rename", handler="menu_rename_category", needs="one"),
+        MenuEntry("Delete", handler="menu_remove_category"),
         SEPARATOR,
-        MenuEntry("Sort by name", verb="menu_sort_categories",
+        MenuEntry("Sort by name", handler="menu_sort_categories",
                   needs="always"),
         SEPARATOR,
-        MenuEntry("Label", verb="menu_label_colour", children="label_colours"),
+        MenuEntry("Label", handler="menu_label_colour", children="label_colours"),
     )
 
     def menu_add_category(self, indexes, current, payload=None) -> None:
@@ -761,8 +761,8 @@ class MaterialSection(AssetSection):
                 "not affected." % count)
 
     GRID_MENU = (    # the section's entries, a divider, then GRID_MENU_TAIL, as in the C01/C01b frames
-        MenuEntry("Load Asset to", verb="menu_copy_to", children="copy_to_targets"),
-        MenuEntry("Convert", verb="menu_convert_to",
+        MenuEntry("Load Asset to", handler="menu_copy_to", children="copy_to_targets"),
+        MenuEntry("Convert", handler="menu_convert_to",
                   children="convert_targets",
                   needs="selection_is_convertible"),
         SEPARATOR,
@@ -960,7 +960,7 @@ class CopSection(AssetSection):
     EMPTY = amazetheme.EMPTY_NODE    # no button, for the same reason as Material
     QUOTE = amazetheme.QUOTE_NODE
     GRID_MENU = (    # the material menu without renderer-specific entries; Load Asset is enabled on a multi-selection
-        MenuEntry("Load Asset", verb="menu_load"),
+        MenuEntry("Load Asset", handler="menu_load"),
         SEPARATOR,
     ) + GRID_MENU_TAIL
 
@@ -1097,10 +1097,10 @@ class CodeSection(AssetSection):
     empty_noun = "snippet"
     EMPTY = amazetheme.EMPTY_CODE    # New File needs no selection, so it always works
     GRID_MENU = (    # Load Asset and Edit act on one snippet; New File needs no selection and stays enabled
-        MenuEntry("New File", verb="menu_new_snippet", needs="always"),
+        MenuEntry("New File", handler="menu_new_snippet", needs="always"),
         SEPARATOR,
-        MenuEntry("Load Asset", verb="menu_apply", needs="one"),
-        MenuEntry("Edit", verb="menu_edit", needs="one"),
+        MenuEntry("Load Asset", handler="menu_apply", needs="one"),
+        MenuEntry("Edit", handler="menu_edit", needs="one"),
         SEPARATOR,
     ) + GRID_MENU_TAIL
 
@@ -1778,17 +1778,17 @@ class FileSection(FolderSection):
     )
 
     GRID_MENU = UNDO_MOVE + (  # the selection's KINDS decide the actions; no Delete: these are the user's own files
-        MenuEntry("New Folder", verb="menu_new_folder", needs="menu_new_enabled"),
+        MenuEntry("New Folder", handler="menu_new_folder", needs="menu_new_enabled"),
         SEPARATOR,
-        MenuEntry("Open Scene", verb="menu_load_scene", needs="one",
+        MenuEntry("Open Scene", handler="menu_load_scene", needs="one",
                   shown="selection_has_scene"),
-        MenuEntry("Save Scene", verb="menu_save_scene", needs="menu_new_enabled"),
+        MenuEntry("Save Scene", handler="menu_save_scene", needs="menu_new_enabled"),
         SEPARATOR,
-        MenuEntry("Load Asset", verb="menu_import", needs="menu_import_enabled",
+        MenuEntry("Load Asset", handler="menu_import", needs="menu_import_enabled",
                   shown="selection_has_importable"),
-        MenuEntry("Copy Path", verb="menu_copy_path"),
+        MenuEntry("Copy Path", handler="menu_copy_path"),
         SEPARATOR,
-        MenuEntry("Show Location", verb="menu_reveal", needs="one"),
+        MenuEntry("Show Location", handler="menu_reveal", needs="one"),
     ) + GRID_MENU_TAIL
 
     _PATH_ONLY = DropRule(on_node="drop_file_path_on_node",    # per row kind: every kind sets its path on a node; a drop off any node differs
@@ -1922,21 +1922,21 @@ class FileSection(FolderSection):
         return True
 
     SIDEBAR_MENU = UNDO_MOVE + (  # per-location entries need a REAL row: All is no location, its key `""`
-        MenuEntry("Add", verb="menu_add_location", needs="always"),
-        MenuEntry("Locate", verb="menu_locate_location",
+        MenuEntry("Add", handler="menu_add_location", needs="always"),
+        MenuEntry("Locate", handler="menu_locate_location",
                   needs="on_a_location"),
-        MenuEntry("Rename", verb="menu_rename_location",
+        MenuEntry("Rename", handler="menu_rename_location",
                   children="rename_actions", needs="on_a_location"),
-        MenuEntry("Remove", verb="menu_remove_location",
+        MenuEntry("Remove", handler="menu_remove_location",
                   needs="on_a_location"),
         SEPARATOR,
-        MenuEntry("Sort by name", verb="menu_sort_locations",
+        MenuEntry("Sort by name", handler="menu_sort_locations",
                   needs="always"),
         SEPARATOR,
-        MenuEntry("Show", verb="menu_show", children="show_actions",
+        MenuEntry("Show", handler="menu_show", children="show_actions",
                   needs="on_a_location"),
         SEPARATOR,
-        MenuEntry("Label", verb="menu_label_colour", children="label_colours",
+        MenuEntry("Label", handler="menu_label_colour", children="label_colours",
                   needs="on_a_location"),
     )
 
@@ -2115,13 +2115,13 @@ class OnlineContext(Section):
         return None
 
     GRID_MENU = (    # named for where the material goes, a submenu for its renderer, as in C06/C06a/C06b
-        MenuEntry("Import to Materials", verb="menu_import_to_library",
+        MenuEntry("Import to Materials", handler="menu_import_to_library",
                   children="import_targets", count_suffix=True),
-        MenuEntry("Import to Scene", verb="menu_import_to_scene",
+        MenuEntry("Import to Scene", handler="menu_import_to_scene",
                   children="import_targets", count_suffix=True),
-        MenuEntry("Restore", verb="menu_restore_packages",
+        MenuEntry("Restore", handler="menu_restore_packages",
                   shown="selection_is_amaze_packages", count_suffix=True),
-        MenuEntry("Refresh", verb="menu_refresh", needs="always"),
+        MenuEntry("Refresh", handler="menu_refresh", needs="always"),
     )
 
     def _records(self, indexes) -> list:
@@ -2206,10 +2206,10 @@ class GradientSection(AssetSection):
 
     offers_preview_update = False  # drawn from its ramp; nothing to re-render
     GRID_MENU = (  # both submenus are built per entry, so `children` names a method
-        MenuEntry("Load Asset", verb="menu_apply_ramp", needs="one"),
-        MenuEntry("Load Asset as", verb="menu_apply_ramp", children="ramp_bases",
+        MenuEntry("Load Asset", handler="menu_apply_ramp", needs="one"),
+        MenuEntry("Load Asset as", handler="menu_apply_ramp", children="ramp_bases",
                   needs="one"),
-        MenuEntry("Copy Color", verb="menu_copy_swatch",
+        MenuEntry("Copy Color", handler="menu_copy_swatch",
                   children="palette_swatches", needs="one"),
         SEPARATOR,
     ) + GRID_MENU_TAIL
@@ -2301,16 +2301,16 @@ class GradientSection(AssetSection):
         return name in self.panel.gradient_model.user_categories()    # excludes any synthetic sidebar row
 
     SIDEBAR_MENU = (  # everything below All is a real user category, so the per-category entries exist only on such a row
-        MenuEntry("Add", verb="menu_add_category", needs="always"),
-        MenuEntry("Rename", verb="menu_rename_category", needs="one",
+        MenuEntry("Add", handler="menu_add_category", needs="always"),
+        MenuEntry("Rename", handler="menu_rename_category", needs="one",
                   shown="on_a_category"),
-        MenuEntry("Delete", verb="menu_remove_category",
+        MenuEntry("Delete", handler="menu_remove_category",
                   shown="on_a_category"),
         SEPARATOR,
-        MenuEntry("Sort by name", verb="menu_sort_categories",
+        MenuEntry("Sort by name", handler="menu_sort_categories",
                   needs="always"),
         SEPARATOR,
-        MenuEntry("Label", verb="menu_label_colour", children="label_colours",
+        MenuEntry("Label", handler="menu_label_colour", children="label_colours",
                   shown="on_a_category"),
     )
 
@@ -2408,7 +2408,7 @@ def drop_rule(section, panel, index):
     return getattr(section, "DROP", None)
 
 
-def drop_verb(section, name):
+def drop_handler(section, name):
     """The bound method a DropRule names, always the section's own; an unknown name raises."""
     return getattr(section, name)
 

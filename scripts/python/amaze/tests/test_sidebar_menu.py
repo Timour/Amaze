@@ -54,7 +54,7 @@ SHOW_NEW = ("Show > [Pathname[ ], Subfolder[ ], ----, Other Files[x], ----, "
 class TheTableIsWellFormED(unittest.TestCase):
     """No panel, no Qt - every name in a row must resolve."""
 
-    def test_every_named_verb_and_fact_resolves(self):
+    def test_every_named_handler_and_fact_resolves(self):
         for name in SIDEBAR_CONTEXTS:
             context = getattr(sections, name)
             for entry in context.SIDEBAR_MENU:
@@ -62,9 +62,9 @@ class TheTableIsWellFormED(unittest.TestCase):
                     continue
                 with self.subTest(context=name, entry=entry.label):
                     self.assertTrue(
-                        callable(getattr(context, entry.verb, None)),
-                        '%s\'s "%s" names verb %r, which it does not have'
-                        % (name, entry.label, entry.verb))
+                        callable(getattr(context, entry.handler, None)),
+                        '%s\'s "%s" names handler %r, which it does not have'
+                        % (name, entry.label, entry.handler))
                     facts = [entry.shown, entry.children, entry.checkable]
                     if entry.needs not in ("any", "one", "always"):
                         facts.append(entry.needs)
@@ -168,7 +168,7 @@ class TheSidebarMenusAreWhatSHIPPED(unittest.TestCase):
 
 
 class ADismissedSidebarMenuRunsNOTHING(unittest.TestCase):
-    """Dismissing the menu runs no verb: dispatch is a dict, so a None pick matches no verb."""
+    """Dismissing the menu runs no handler: dispatch is a dict, so a None pick matches no handler."""
 
     @classmethod
     def setUpClass(cls):
@@ -188,12 +188,12 @@ class ADismissedSidebarMenuRunsNOTHING(unittest.TestCase):
                     QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
                 context = panel.active_section()
                 called = []
-                verbs = {e.verb for e in context.SIDEBAR_MENU if e.verb}
+                handlers = {e.handler for e in context.SIDEBAR_MENU if e.handler}
                 patches = [
                     mock.patch.object(
-                        type(context), verb,
-                        lambda *a, _v=verb, **k: called.append(_v))
-                    for verb in verbs]
+                        type(context), handler,
+                        lambda *a, _v=handler, **k: called.append(_v))
+                    for handler in handlers]
                 with mock.patch.object(QtWidgets.QMenu, "exec_",
                                        lambda *a, **k: None):
                     for patch in patches:
@@ -327,7 +327,7 @@ class TheChipsArePaintedWhereTheDesignDrawsThem(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
         section = self.panel.active_section()
         index = self.panel.cat_list.model().index(1, 0)
-        menu, _verbs = grid.build_menu(self.panel, section, section.SIDEBAR_MENU, [index], index)
+        menu, _handlers = grid.build_menu(self.panel, section, section.SIDEBAR_MENU, [index], index)
         self.addCleanup(menu.deleteLater)
         chips = next(a.menu() for a in menu.actions() if a.text() == "Label")
         chips.ensurePolished()
@@ -381,20 +381,20 @@ class StructuralSignalsStayOutsideRelayout(unittest.TestCase):
                     if not (isinstance(call, ast.Call)
                             and isinstance(call.func, ast.Attribute)):
                         continue
-                    verb = call.func.attr
+                    method = call.func.attr
                     receiver = ast.unparse(call.func.value)
-                    if verb in self.ROW_WRITERS or (
-                            verb in self.CATEGORY_WRITERS
+                    if method in self.ROW_WRITERS or (
+                            method in self.CATEGORY_WRITERS
                             and "cat" in receiver.lower()):
                         offenders.append("%s:%d %s.%s" % (
-                            name, call.lineno, receiver, verb))
+                            name, call.lineno, receiver, method))
         self.assertEqual(
             [], offenders,
             "a call that can insert, remove or save runs inside a "
             "layout-change pair - the pattern that segfaults H21: %s" % offenders)
 
 
-class TheCategoryVerbsMoveNoRowInsideALayoutChange(unittest.TestCase):
+class TheCategoryHandlersMoveNoRowInsideALayoutChange(unittest.TestCase):
     """Rename and Remove edit asset rows in place; the next save loads another session's rows."""
 
     def setUp(self):
@@ -420,14 +420,14 @@ class TheCategoryVerbsMoveNoRowInsideALayoutChange(unittest.TestCase):
                 return proxy.index(row, 0)
         self.fail("premise: no sidebar row is stored %r" % stored)
 
-    def _assert_no_row_moved_inside(self, caught, verb):
+    def _assert_no_row_moved_inside(self, caught, operation):
         self.assertIn("Filed elsewhere",
                       [asset.name for asset in self.model.assets],
                       "premise: the save loaded no other session's row")
         self.assertEqual(
             [], caught,
             "%s moved rows inside a layout-change pair - the pattern that "
-            "segfaults H21: %s" % (verb, caught))
+            "segfaults H21: %s" % (operation, caught))
 
     def test_rename(self):
         self.assertTrue(self.panel._select_category("usds"))

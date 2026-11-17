@@ -183,14 +183,14 @@ class ACategoryIsActedOnByItsStoredName(_PanelCase):
             method_source("panel/sections.py", "AssetSection",
                           "sidebar_key"),
             "AssetSection.sidebar_key stopped reading the helper, so "
-            "every sidebar verb behind it now acts on the DISPLAYED "
+            "every sidebar handler behind it now acts on the DISPLAYED "
             "name")
-        for verb in ("menu_rename_category", "menu_remove_category"):
+        for handler in ("menu_rename_category", "menu_remove_category"):
             self.assertIn(
                 "sidebar_key",
-                method_source("panel/sections.py", "AssetSection", verb),
+                method_source("panel/sections.py", "AssetSection", handler),
                 "%s reads a category name without going through "
-                "sidebar_key" % verb)
+                "sidebar_key" % handler)
         source = source_of("panel/panel.py")    # one function for the selected category, or the dialogs disagree
         self.assertEqual(
             1, source.count("def selected_category_name"),

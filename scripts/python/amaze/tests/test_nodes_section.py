@@ -526,7 +526,7 @@ class NodesSectionTest(unittest.TestCase):
 class TheRenderDecisionIsMadeInOneMethod(unittest.TestCase):
     """One method decides Cop-or-Sop; a source scan fails if another place decides it again."""
 
-    def test_the_create_verbs_are_called_only_inside_thumbs(self):
+    def test_the_create_methods_are_called_only_inside_thumbs(self):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         callers = []
         for base, _dirs, files in os.walk(root):
@@ -560,7 +560,7 @@ class TheRenderDecisionIsMadeInOneMethod(unittest.TestCase):
                 context, "asset1", thumb_node)
         return outcome, sop, cop
 
-    def test_both_spellings_of_each_context_map_to_one_verb(self):
+    def test_both_spellings_of_each_context_map_to_one_method(self):
         """Save reads a category name, Update Render a renderer tag, empty when old: one normalisation."""
         for context, thumb_node, sop_args, cop_args in (
                 ("Sop", "", ("asset1",), None),

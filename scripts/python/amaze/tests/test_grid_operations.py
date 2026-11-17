@@ -1,4 +1,4 @@
-"""The Grid area's operations: each verb is one Section method that is handed the selection."""
+"""The Grid area's operations: each handler is one Section method that is handed the selection."""
 
 import ast
 import contextlib
@@ -32,29 +32,29 @@ from amaze.tests import test_support  # noqa: E402
 PACKAGE =os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def menu_verbs_calling(*attributes):
-    """Every `menu_*` verb in sections.py that calls one of these methods, as name:line."""
+def menu_handlers_calling(*attributes):
+    """Every `menu_*` handler in sections.py that calls one of these methods, as name:line."""
     with open(os.path.join(PACKAGE, "panel", "sections.py"),
               encoding="utf-8") as handle:
         tree = ast.parse(handle.read())
-    verbs = [node for node in ast.walk(tree)
-             if isinstance(node, ast.FunctionDef)
-             and node.name.startswith("menu_")]
-    assert verbs, "no menu verbs found to check - the scan is vacuous"
+    handlers = [node for node in ast.walk(tree)
+                if isinstance(node, ast.FunctionDef)
+                and node.name.startswith("menu_")]
+    assert handlers, "no menu handlers found to check - the scan is vacuous"
     offenders = []
-    for verb in verbs:
-        for call in ast.walk(verb):
+    for handler in handlers:
+        for call in ast.walk(handler):
             if (isinstance(call, ast.Call)
                     and isinstance(call.func, ast.Attribute)
                     and call.func.attr in attributes):
-                offenders.append("%s:%d" % (verb.name, call.lineno))
+                offenders.append("%s:%d" % (handler.name, call.lineno))
     return offenders
 
 
-class EveryContextImplementsTheVerbsItOffers(unittest.TestCase):
+class EveryContextImplementsTheHandlersItOffers(unittest.TestCase):
 
-    def test_a_context_without_favourites_ignores_the_favourite_verb(self):
-        """Online rows have no favourite state, so the verb is a no-op there, never an error."""
+    def test_a_context_without_favourites_ignores_the_favourite_handler(self):
+        """Online rows have no favourite state, so the handler is a no-op there, never an error."""
         context = sections.OnlineContext.__new__(sections.OnlineContext)
         self.assertFalse(sections.OnlineContext.takes_favourites)
         context.toggle_favourite([])          # must not raise
@@ -215,29 +215,29 @@ class TheCustomizeDialogFindsItsTilesAfterAModelReset(unittest.TestCase):
 
 
 class NoMenuHandlerFavouritesRowsItself(unittest.TestCase):
-    """No menu verb favourites, deletes or relayouts rows itself, read from the source."""
+    """No menu handler favourites, deletes or relayouts rows itself, read from the source."""
 
     def test_no_right_click_handler_favourites_or_deletes_rows_itself(self):
-        offenders = menu_verbs_calling("toggle_fav", "toggle_favorite",
-                                       "remove_asset")
+        offenders = menu_handlers_calling("toggle_fav", "toggle_favorite",
+                                          "remove_asset")
         self.assertEqual(
             [], offenders,
-            "a right-click verb still favourites or removes rows itself, "
+            "a right-click handler still favourites or removes rows itself, "
             "at %s - which is where the repaint and the highest-row-first "
             "rule have to be remembered" % offenders)
 
     def test_no_layout_change_is_opened_or_closed_by_hand(self):
         """A model's begin/end contract or ui_helpers.relayout(); a bare layoutChanged segfaults H21."""
-        def emits(name, menu_verbs_only, signal):
+        def emits(name, menu_handlers_only, signal):
             with open(os.path.join(PACKAGE, "panel", name),
                       encoding="utf-8") as handle:
                 tree = ast.parse(handle.read())
             scopes = [tree]
-            if menu_verbs_only:
+            if menu_handlers_only:
                 scopes = [node for node in ast.walk(tree)
                           if isinstance(node, ast.FunctionDef)
                           and node.name.startswith("menu_")]
-                self.assertTrue(scopes, "no menu verbs found to check")
+                self.assertTrue(scopes, "no menu handlers found to check")
             return ["%s:%d" % (name, call.lineno)
                     for scope in scopes for call in ast.walk(scope)
                     if isinstance(call, ast.Call)
@@ -246,8 +246,8 @@ class NoMenuHandlerFavouritesRowsItself(unittest.TestCase):
                     and isinstance(call.func.value, ast.Attribute)
                     and signal(call)]
 
-        for why, name, menu_verbs_only, signal in (
-                ("a right-click verb opens or closes one", "sections.py", True,
+        for why, name, menu_handlers_only, signal in (
+                ("a right-click handler opens or closes one", "sections.py", True,
                  lambda call: call.func.value.attr.startswith("layout")),
                 ("panel.py opens one", "panel.py", False,
                  lambda call: call.func.value.attr == "layoutAboutToBeChanged"),
@@ -275,13 +275,13 @@ class NoMenuHandlerFavouritesRowsItself(unittest.TestCase):
                  lambda call: not call.args
                  and call.func.value.attr == "layoutChanged")):
             with self.subTest(why):
-                self.assertEqual([], emits(name, menu_verbs_only, signal),
+                self.assertEqual([], emits(name, menu_handlers_only, signal),
                                  "%s by hand - use ui_helpers.relayout(), "
                                  "which closes it in a finally" % why)
 
 
 class FavouritingWorksInEverySection(unittest.TestCase):
-    """Through the real panel and models, the verb toggles the star in all three section kinds."""
+    """Through the real panel and models, the handler toggles the star in all three section kinds."""
 
     @classmethod
     def setUpClass(cls):
@@ -310,7 +310,7 @@ class FavouritingWorksInEverySection(unittest.TestCase):
             self.assertGreater(proxy.rowCount(), 0, "the filter left none")
             self.assertNotEqual(
                 0, proxy.mapToSource(proxy.index(0, 0)).row(),
-                "the surviving row is source row 0 too, so a verb "
+                "the surviving row is source row 0 too, so a handler "
                 "acting on the proxy row would still be right here")
         return context, proxy, proxy.index(0, 0)
 
@@ -324,7 +324,7 @@ class FavouritingWorksInEverySection(unittest.TestCase):
         model = panel.thumblist.model().sourceModel()
         return model.FavoriteRole
 
-    def test_the_verb_flips_the_star_in_each_section(self):
+    def test_the_handler_flips_the_star_in_each_section(self):
         for key in ("material", "gradient", "file"):
             with self.subTest(section=key):
                 context, proxy, index = self._first_row(key, displaced=True)
@@ -344,7 +344,7 @@ class FavouritingWorksInEverySection(unittest.TestCase):
                                  bool(proxy.index(0, 0).data(role)),
                                  "%s's favourite did not toggle back" % key)
 
-    def test_the_panel_passes_the_verb_to_the_context_shown(self):
+    def test_the_panel_passes_the_handler_to_the_context_shown(self):
         """The entry point every menu calls, checked outside Materials so it cannot assume that model."""
         _context, proxy, index = self._first_row("gradient")
         role = self._favourite_role(self.panel, "gradient")
@@ -355,7 +355,7 @@ class FavouritingWorksInEverySection(unittest.TestCase):
 
         self.assertEqual(
             not before, bool(proxy.index(0, 0).data(role)),
-            "the panel's verb did nothing in Color - it is still "
+            "the panel's handler did nothing in Color - it is still "
             "acting on one section by name")
         self.panel.grid_toggle_favourite([proxy.index(0, 0)])
         QtWidgets.QApplication.processEvents()
@@ -625,11 +625,11 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
                 summary_lines=lambda: [])
         return convert
 
-    def _assert_no_row_moved_inside(self, caught, verb):
+    def _assert_no_row_moved_inside(self, caught, operation):
         self.assertEqual(
             [], caught,
             "%s moved rows inside a layout-change pair - the shape that "
-            "segfaults H21: %s" % (verb, caught))
+            "segfaults H21: %s" % (operation, caught))
 
     def test_convert_in_either_direction(self):
         for source, target, twin in (("Karma", "Redshift", "rs_twin"),
@@ -649,7 +649,7 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
                                                  "Convert to %s" % target)
 
     def test_both_directions_name_both_renderers_in_the_summary(self):
-        """One verb, two directions: each summary names both renderers as the menus show them."""
+        """One handler, two directions: each summary names both renderers as the menus show them."""
         ui = mock.Mock()
         report = types.SimpleNamespace(summary_lines=lambda: ["a line"])
         for target, source, shown in (

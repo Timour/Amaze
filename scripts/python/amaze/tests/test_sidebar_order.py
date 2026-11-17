@@ -73,7 +73,7 @@ class SortByNameTest(unittest.TestCase):
 
 
 class TheSortActionRestoresTheCurrentSidebarRow(unittest.TestCase):
-    """Sort by name resets the model, clearing the selection; the verb restores the current row."""
+    """Sort by name resets the model, clearing the selection; the handler restores the current row."""
 
     @classmethod
     def setUpClass(cls):

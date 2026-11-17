@@ -85,9 +85,9 @@ def _file_lines(findings: dict) -> list:
 
 def _ref_lines(findings: dict) -> list:
     said = []
-    stars = len(findings.get("dead_stars") or ())
+    stars = len(findings.get("favorites_of_missing_files") or ())
     if stars:
-        said.append(messages.CHECK_DEAD_FAVORITES % (
+        said.append(messages.CHECK_FAVORITES_OF_MISSING_FILES % (
             repair.favorites(stars), _are(stars),
             "a file that is" if stars == 1 else "files that are"))
     dead = len(findings.get("dead_folders") or ())
@@ -106,7 +106,8 @@ def lights(findings: dict) -> dict:
     """{part: (CLEAN, 0) | (FOUND, count) | (UNCHECKED, None)} for Errors, Files and Ref."""
     held = bool(_in_state(findings, ("held",)))
     unread = _in_state(findings, _UNREAD)
-    refs = len(findings.get("dead_stars") or ()) + len(findings.get("dead_folders") or ())
+    refs = (len(findings.get("favorites_of_missing_files") or ())
+            + len(findings.get("dead_folders") or ()))
     files_unread = any(entry["filename"] == naming.FILES for entry in unread)
 
     def status(unchecked: bool, count: int) -> tuple:
@@ -219,7 +220,8 @@ def safe_fixes(findings: dict) -> list:
             and not repair.why_nothing_can_be_added(findings)):
         fixes.append("recover")
     if shown[REFS][0] == FOUND:
-        fixes.extend(key for key, held in (("favorites", "dead_stars"), ("folders", "dead_folders"))
+        fixes.extend(key for key, held in (("favorites", "favorites_of_missing_files"),
+                                           ("folders", "dead_folders"))
                      if findings.get(held))
     return fixes
 
@@ -250,7 +252,7 @@ def found_names(findings: dict) -> list:
         for key in ("leftovers", "unknown", "unknown_folders", "held_back"):
             names.extend(entry[0] for entry in findings.get(key) or ())
     if shown[REFS][0] == FOUND:
-        names.extend(findings.get("dead_stars") or ())
+        names.extend(findings.get("favorites_of_missing_files") or ())
         names.extend(findings.get("dead_folders") or ())
     return [str(name) for name in names]
 
@@ -302,8 +304,8 @@ def _fix_safe(findings: dict, done: dict, guard_session: bool) -> None:
         done["locations"] += len(_attempt(done, "folders", repair.set_aside_folders, findings,
                                           guard_session=guard_session) or ())
     if "favorites" in fixes:
-        done["favorites"] += len(_attempt(done, "favorites", repair.drop_dead_stars, findings,
-                                          guard_session=guard_session) or ())
+        done["favorites"] += len(_attempt(done, "favorites", repair.drop_favorites_of_missing_files,
+                                          findings, guard_session=guard_session) or ())
 
 
 def fix_safe(findings: dict, guard_session: bool = True) -> dict:

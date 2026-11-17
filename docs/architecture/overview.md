@@ -191,12 +191,12 @@ can be left undeclared.
 | field | what it declares |
 |---|---|
 | `label` | the row's text, from the UI text register; an empty one is a divider, and leading, doubled and trailing ones are dropped, so a table with conditional rows never places them by hand |
-| `verb` | NAME of a method on the section, called as `verb(indexes, current, payload)` |
+| `handler` | NAME of a method on the section, called as `handler(indexes, current, payload)` |
 | `needs` | what makes the row LIVE — `any` (the default), `one`, `always`, or the name of a fact — and it greys, never hides |
 | `shown` | the fact deciding whether the row EXISTS at all |
 | `children` | a method returning `((label, payload, icon, live[, checked]), ...)`; the icon is a hex colour, painted as a chip at `amazetheme.MENU_CHIP`, a `ui/` icon name, drawn by `ui_helpers.menu_icon` as the Filter menu's are, or empty. A renderer's icon is named once, in `core/renderers.py` |
 | `count_suffix` | appends ` (N)` on a multi-selection |
-| `checkable` | the fact giving the CURRENT state, making it a tick-box whose verb receives the state the user chose |
+| `checkable` | the fact giving the CURRENT state, making it a tick-box whose handler receives the state the user chose |
 
 **The Grid Menu** (2026-08-03) is the same idea for right-click. Every
 context declares `GRID_MENU` — a tuple of `MenuEntry` rows, one per
@@ -227,14 +227,14 @@ to end, reintroduced one level down. The drag code keeps only its
 key-to-class lookup, because a drag provides a section key and
 a click provides the section.
 
-**One RESOLVER for the verbs a rule names**, `sections.drop_verb(
-section, name)` (2026-08-13, ROADMAP line 24): every named verb — the
-release bodies, the click verbs, the creation rules, the holder node
+**One RESOLVER for the handlers a rule names**, `sections.drop_handler(
+section, name)` (2026-08-13, ROADMAP line 24): every named handler — the
+release bodies, the click handlers, the creation rules, the holder node
 type — is a method of the declaring Section, and both drag and click
 look it up there. The panel fallback the migration kept is REMOVED; a
-declaration naming a verb its section does not define raises an error,
+declaration naming a handler its section does not define raises an error,
 and `test_area_bindings` checks every declaration to keep it that way.
-The panel keeps the shared release plumbing the verbs call
+The panel keeps the shared release plumbing the handlers call
 (`drop_placement.context_under_cursor`,
 `drop_placement.release_position_in`, `drop_placement.create_holder_node`,
 `drop_placement.scene_path`, `_node_under_cursor`) — shared because it
@@ -244,7 +244,7 @@ has no per-type behaviour.
 tried first; a node that cannot accept the drop FALLS THROUGH to
 the creation step. Anything other than exactly one visible selected node
 skips straight to that step. A menu's extra value (Color's ramp basis)
-is passed as a `payload`, and only to verbs that declare they take one.
+is passed as a `payload`, and only to handlers that declare they take one.
 
 **WHICH MODELS A LIBRARY SWITCH REPOINTS is derived, not listed.**
 Each section declares `library_model_attrs` — the panel attributes
@@ -774,7 +774,7 @@ restore-on-end, release-target resolution (`viewport_release_target`),
 container placement (`first_materiallibrary(connected_to=)`,
 `find_assignmaterial`), Houdini's stock LOP helpers (`stock_lop()`), and
 `keep_editor_focus` — a viewport release never moves the user's editors.
-Sections' release verbs call the import code; the panel keeps
+Sections' release handlers call the import code; the panel keeps
 the shared plumbing. The one native drag left is the texture file drag.
 Rules: an item is placed where it is dropped; nothing is created before release;
 SOP and LOP contexts never reference each other; empty viewport space is a
@@ -1009,8 +1009,8 @@ panel/drop_placement.py   Where a drop or a click creates nodes: the network,
 panel/tile_capture.py     Capture: the Scene View onto one tile, or the
                           open scene onto its File tile (`panel.tile_capture`)
 panel/sections.py         The Sections (node-types) + registry + the
-                          per-section GRID_MENU tables + every verb a
-                          DROP rule names (release bodies, click verbs,
+                          per-section GRID_MENU tables + every handler a
+                          DROP rule names (release bodies, click handlers,
                           creation rules - line 24, 2026-08-13)
 panel/grid.py             The GRID area - the one right-click menu
                           builder over those tables

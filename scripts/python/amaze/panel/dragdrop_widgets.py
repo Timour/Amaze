@@ -371,7 +371,7 @@ class GridGestureMixin:
                             helpers.forget_placed()
                             live = getattr(panel, "sections",
                                            {}).get(section)
-                            with dragengine.holding_drop_group():    # one undo group: the verb, its placement and the wire insert
+                            with dragengine.holding_drop_group():    # one undo group: the handler, its placement and the wire insert
                                 outcome = self._apply_drop_rule(
                                     rule, panel, live, idx, event)
                                 if outcome:
@@ -389,11 +389,11 @@ class GridGestureMixin:
         """The node type an on_space drop would create in `dest`; `""` is none: a plain box."""
         cls = sections.SECTION_INDEX.get(section)
         name = rule.holder_node_type or getattr(cls, "holder_node_type", "")
-        verb = getattr(cls, "holder_node_type_method", "")
-        if not name and verb and index is not None:
+        handler = getattr(cls, "holder_node_type_method", "")
+        if not name and handler and index is not None:
             try:
                 live = getattr(panel, "sections", {}).get(section)
-                name = sections.drop_verb(live, verb)(index, dest)
+                name = sections.drop_handler(live, handler)(index, dest)
             except (AttributeError, hou.OperationFailed):
                 name = ""
         return name or ""
@@ -461,16 +461,16 @@ class GridGestureMixin:
         if rule.on_node is not None:
             node = panel._node_under_cursor()
             if node is not None:
-                apply_to_node = sections.drop_verb(section, rule.on_node)
+                apply_to_node = sections.drop_handler(section, rule.on_node)
                 return bool(apply_to_node(idx, node))
         if rule.resolve is not None:
-            resolve = sections.drop_verb(section, rule.resolve)
+            resolve = sections.drop_handler(section, rule.resolve)
             return bool(resolve(idx))
         if rule.on_space is not None:
             net = panel.drop_placement.network_under_release()
             if net is None:
                 return section.reject_drop()
-            create = sections.drop_verb(section, rule.on_space)    # the position is used only when the editor under the cursor shows that network
+            create = sections.drop_handler(section, rule.on_space)    # the position is used only when the editor under the cursor shows that network
             return bool(create(idx, net, panel.drop_placement.release_position_in(net)))
         return section.reject_drop()
 

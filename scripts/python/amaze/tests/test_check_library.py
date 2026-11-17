@@ -518,7 +518,8 @@ class TheOtherFixesTest(_Library):
         findings = repair.survey(prefs)
         self.assertIn("This starred file is gone from its folder:\n  %s" % os.path.normpath(star),
                       "\n".join(repair.report_lines(findings)))
-        self.assertEqual([star], repair.drop_dead_stars(findings, guard_session=False))
+        self.assertEqual([star], repair.drop_favorites_of_missing_files(findings,
+                                                                        guard_session=False))
         self.assertNotIn(star, prefs.file_favorites)
 
     def test_a_location_whose_folder_is_gone_is_set_aside(self):

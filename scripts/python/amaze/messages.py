@@ -45,15 +45,15 @@ CONFIRM_MOVE_UNKNOWN_ASIDE = 'Move the files Amaze does not know to the trash?'
 
 CONFIRM_SET_ASIDE_FOLDERS = 'Set aside %s in the Files section?'
 
-CONFIRM_REMOVE_DEAD_STARS = 'Remove %s of files that are gone?'
+CONFIRM_REMOVE_FAVORITES_OF_MISSING_FILES ='Remove %s of files that are gone?'
 
 CONFIRM_PUT_IN_UNCATEGORIZED = 'Put %s in %s?'
 
 FOLDERS_SET_ASIDE_DONE = 'Set aside %s in the Files section. Adding a folder again brings back its comments, icons and favorites.%s'
 
-DEAD_STARS_ALSO_REMOVED = ' Removed %s of files that are gone as well.'
+FAVORITES_OF_MISSING_FILES_ALSO_REMOVED =' Removed %s of files that are gone as well.'
 
-DEAD_STARS_REMOVED_DONE = 'Removed %s of files that are gone.'
+FAVORITES_OF_MISSING_FILES_REMOVED_DONE ='Removed %s of files that are gone.'
 
 PUT_IN_UNCATEGORIZED_DONE = 'Put %s in %s.'
 
@@ -321,7 +321,7 @@ BUTTON_MOVE_UNKNOWN_ASIDE = 'Move %d Unknown Files to Trash'
 
 BUTTON_SET_ASIDE_FOLDERS = 'Set Aside %s'
 
-BUTTON_REMOVE_DEAD_STARS = 'Remove %s of Missing Files'
+BUTTON_REMOVE_FAVORITES_OF_MISSING_FILES ='Remove %s of Missing Files'
 
 BUTTON_PUT_IN_UNCATEGORIZED = 'Put %s in %s'
 
@@ -369,7 +369,7 @@ CHECK_UNKNOWN = '%s %s not known to Amaze.'
 
 CHECK_CONFLICT_COPIES = '%s from a sync service.'
 
-CHECK_DEAD_FAVORITES = '%s %s of %s gone.'
+CHECK_FAVORITES_OF_MISSING_FILES ='%s %s of %s gone.'
 
 CHECK_DEAD_FOLDERS = '%s in the Files section %s gone.'
 
@@ -470,7 +470,7 @@ HELP_MOVE_UNKNOWN_ASIDE = "These are not files Amaze made or knows: %s. They mov
 
 HELP_SET_ASIDE_FOLDERS = "Each folder's comments, icons and favorites are kept, and come back when the folder is added again. Its files are not touched.%s"
 
-HELP_DEAD_STARS_GO_TOO = ' Favorites of files that are gone from a folder still on this computer are removed too.'
+HELP_FAVORITES_OF_MISSING_FILES_REMOVED_TOO =' Favorites of files that are gone from a folder still on this computer are removed too.'
 
 HELP_PUT_IN_UNCATEGORIZED = 'Each one has no category now, so it shows only under All.'
 

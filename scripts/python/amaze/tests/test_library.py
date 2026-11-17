@@ -1315,23 +1315,23 @@ class FavouritesArePerUserTest(unittest.TestCase):
 
 
 class TheSharedBaseHasNothingRendererSpecific(unittest.TestCase):
-    """`AssetLibrary` is shared; `MaterialLibrary` holds a material's labels, the actions its verbs."""
+    """`AssetLibrary` is shared; `MaterialLibrary` holds the labels, `actions/` the functions."""
 
     RENDERER_SHAPED = (  # checked with `vars()`, since `getattr` also finds inherited names on every subclass
         "is_usd_material", "shader_type_label",
     )
-    MATERIAL_VERBS = ("add_asset", "update_asset_content", "import_asset_to_scene",
-                      "convert", "render_thumbnails")    # actions/materials.py's, on no model
-    RENDER_VERBS = ("render_thumbnail", "render_thumbnails")    # Update Render's, on no model at all
+    MATERIAL_ACTIONS = ("add_asset", "update_asset_content", "import_asset_to_scene",
+                        "convert", "render_thumbnails")    # actions/materials.py's, on no model
+    RENDER_ACTIONS = ("render_thumbnail", "render_thumbnails")    # Update Render's, on no model at all
 
-    def test_the_verbs_are_the_actions_not_the_models(self):
+    def test_the_functions_are_in_actions_not_in_the_models(self):
         from amaze.core import code_library, cop_library, gradient_library, library
-        for name in self.MATERIAL_VERBS:
-            self.assertIn(name, vars(material_actions), "%s is not a Material verb" % name)
+        for name in self.MATERIAL_ACTIONS:
+            self.assertIn(name, vars(material_actions), "%s is not a Material action" % name)
             self.assertNotIn(name, vars(library.MaterialLibrary),
                              "%s is back on the Material model" % name)
-        for name in self.RENDER_VERBS:
-            self.assertIn(name, vars(material_actions), "%s is not a Material verb" % name)
+        for name in self.RENDER_ACTIONS:
+            self.assertIn(name, vars(material_actions), "%s is not a Material action" % name)
             for model in (library.AssetLibrary, cop_library.CopLibrary,
                           code_library.CodeLibrary, gradient_library.GradientLibrary):
                 self.assertNotIn(name, vars(model),

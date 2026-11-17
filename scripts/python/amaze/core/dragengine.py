@@ -394,7 +394,7 @@ _held = {"armed": False, "group": None}    # the release's one undo group, while
 
 @contextmanager
 def holding_drop_group():
-    """One undo entry per release: the first `drop_group` its verb opens stays open until this exits."""
+    """One undo entry per release: the first `drop_group` a handler opens stays open until this exits."""
     _held.update(armed=True, group=None)
     error = (None, None, None)
     try:
@@ -411,7 +411,7 @@ def holding_drop_group():
 
 @contextmanager
 def drop_group(label: str):
-    """A drop verb's undo group, held open under `holding_drop_group` for the splice. ▸r/undo-groups"""
+    """A handler's undo group, held open under `holding_drop_group` for the splice. ▸r/undo-groups"""
     if _held["armed"] and _held["group"] is None:
         group = hou.undos.group(label)
         group.__enter__()

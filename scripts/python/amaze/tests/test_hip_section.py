@@ -378,11 +378,11 @@ class NoAutomaticCaptureTest(unittest.TestCase):
                                       "test is not exercising anything")
         end = code.find("def ", start + 10)
         body = code[start:end if end > 0 else len(code)]
-        for verb in (name + "(" for name in _CAPTURE_ENTRY_POINTS):    # the CALLS
+        for call in (name + "(" for name in _CAPTURE_ENTRY_POINTS):    # the CALLS
             self.assertNotIn(
-                verb, body,
+                call, body,
                 "opening a scene calls %s; it must only open the scene"
-                % verb)
+                % call)
 
     def test_the_scan_can_actually_see_the_panel(self):
         """Checks the scan itself: each file scan must find the function it looks for."""
@@ -1996,7 +1996,7 @@ class CheckLibraryConfirmsBeforeChangingTest(unittest.TestCase):
     """Source-derived: every action Check Library runs is confirmed first, Cancel on Return and Esc."""
 
     ACTIONS = ("repair.move_aside(", "repair.recover(",
-               "repair.restore_backup(","repair.set_aside_folders(", "repair.drop_dead_stars(",
+               "repair.restore_backup(","repair.set_aside_folders(", "repair.drop_favorites_of_missing_files(",
                "repair.rescue_uncategorised(")
     CONFIRMS = ("_confirmed(", "**_copy_buttons(")
 

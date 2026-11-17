@@ -248,7 +248,7 @@ class ExportMenuTest(unittest.TestCase):
     def setUpClass(cls):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
-    def test_every_menu_offers_its_package_verbs(self):
+    def test_every_menu_offers_its_package_actions(self):
         from amaze.panel import sections
         for cls_ in sections.SECTION_CLASSES:
             with self.subTest(section=cls_.key):

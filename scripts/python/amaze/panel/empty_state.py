@@ -110,7 +110,7 @@ def quote_for(panel, blank: str) -> tuple:
 
 
 def words_for(panel, blank: str, detail: str) -> tuple:
-    """(headline, sentence, button label, verb) with %s filled in; a blank verb means no button."""
+    """(headline, sentence, button label, handler) with %s filled in; no handler means no button."""
     section = panel.active_section()
     table = dict(SHARED)
     declared = getattr(section, "EMPTY", None) or {}
@@ -119,14 +119,14 @@ def words_for(panel, blank: str, detail: str) -> tuple:
     if not words:
         return ("", "", "", "")
 
-    headline, sentence, label, verb = words
+    headline, sentence, label, handler = words
     if "%s" in headline:
         headline = headline % _elide(detail)
     if "%s" in sentence:
         filler = detail if blank == UNREACHABLE \
             else getattr(section, "empty_noun", "items")
         sentence = sentence % filler
-    return (headline, sentence, label, verb)
+    return (headline, sentence, label, handler)
 
 
 class EmptyPage(QtWidgets.QWidget):
@@ -167,14 +167,14 @@ class EmptyPage(QtWidgets.QWidget):
         outer.addWidget(self._btn, 0,
                         QtCore.Qt.AlignmentFlag.AlignHCenter)
         outer.addStretch(1)
-        self._verb = ""
+        self._handler_name = ""
 
     def button(self):
         return self._btn
 
     def say(self, panel, blank: str, detail: str) -> None:
         """Show this empty state's texts and connect its button to the panel method."""
-        headline, sentence, label, verb = words_for(panel, blank, detail)
+        headline, sentence, label, handler_name = words_for(panel, blank, detail)
         self._head.setText(headline)
         self._head.setVisible(bool(headline))
         self._text.setText(sentence)
@@ -184,16 +184,16 @@ class EmptyPage(QtWidgets.QWidget):
         self._quote.setText("%s\n%s" % (line, attribution) if line else "")
         self._quote.setVisible(bool(line))
 
-        handler = getattr(panel, verb, None) if verb else None
+        handler = getattr(panel, handler_name, None) if handler_name else None
         wanted = bool(label) and callable(handler)
         self._btn.setText(label if wanted else "")
         self._btn.setVisible(wanted)
-        if self._verb != verb:
-            if self._verb:                  # only ever one connection
+        if self._handler_name != handler_name:
+            if self._handler_name:          # only ever one connection
                 self._btn.clicked.disconnect()
             if wanted:
                 self._btn.clicked.connect(handler)
-            self._verb = verb
+            self._handler_name = handler_name
 
 
 def page(panel):

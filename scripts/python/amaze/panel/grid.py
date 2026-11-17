@@ -77,14 +77,14 @@ def _tidy_separators(rows):
 
 
 def build_menu(panel, context, entries, indexes, current):
-    """The QMenu for one entry table and its {action: (verb, payload)}, without showing it."""
+    """The QMenu for one entry table and its {action: (handler, payload)}, without showing it."""
     menu = QtWidgets.QMenu(panel)
-    verbs = {}
-    _fill(menu, panel, context, entries, indexes, current, verbs)
-    return menu, verbs
+    handlers = {}
+    _fill(menu, panel, context, entries, indexes, current, handlers)
+    return menu, handlers
 
 
-def _fill(menu, panel, context, entries, indexes, current, verbs) -> None:
+def _fill(menu, panel, context, entries, indexes, current, handlers) -> None:
     """Add one entry table's rows to `menu`; `children` names rows or is a table of entries."""
     rows = []
     for entry in entries:
@@ -106,7 +106,7 @@ def _fill(menu, panel, context, entries, indexes, current, verbs) -> None:
         if isinstance(entry.children, tuple):    # a fixed submenu: each row keeps its own shown/needs
             submenu = menu.addMenu(label)
             submenu.menuAction().setEnabled(enabled)
-            _fill(submenu, panel, context, entry.children, indexes, current, verbs)
+            _fill(submenu, panel, context, entry.children, indexes, current, handlers)
             continue
         if entry.children:
             children = getattr(context, entry.children)(indexes, current)
@@ -132,22 +132,22 @@ def _fill(menu, panel, context, entries, indexes, current, verbs) -> None:
                     action = submenu.addAction(child_label)
                 action.setEnabled(bool(live))    # greys when it has nothing to act on, as at the top
                 if checked is None:
-                    verbs[action] = (entry.verb, payload)
-                else:    # a toggle: the verb gets the state the user just asked for
+                    handlers[action] = (entry.handler, payload)
+                else:    # a toggle: the handler gets the state the user just asked for
                     action.setCheckable(True)
                     action.setChecked(bool(checked))
-                    verbs[action] = (entry.verb, (payload, not checked))
+                    handlers[action] = (entry.handler, (payload, not checked))
             continue
         action = menu.addAction(label)
         action.setEnabled(enabled)
         if entry.checkable:
-            action.setCheckable(True)    # a TOGGLE: the verb is handed the state the user just asked for
+            action.setCheckable(True)    # a TOGGLE: the handler is handed the state the user just asked for
             state = _resolve(context, entry.checkable, indexes, current,
                              False)
             action.setChecked(state)
-            verbs[action] = (entry.verb, not state)
+            handlers[action] = (entry.handler, not state)
         else:
-            verbs[action] = (entry.verb, None)
+            handlers[action] = (entry.handler, None)
 
 
 def build_grid_menu(panel, context, indexes, current):
@@ -195,27 +195,27 @@ def _open(panel, context, entries, indexes, view) -> None:
         return
     current = selected_current(view, indexes)    # the row the menu is about is ALWAYS a selected row
 
-    menu, verbs = build_menu(panel, context, entries, indexes, current)
+    menu, handlers = build_menu(panel, context, entries, indexes, current)
     persistent = [QtCore.QPersistentModelIndex(index) for index in indexes]    # exec_ runs Qt's loop: a model can reset
     persistent_current = QtCore.QPersistentModelIndex(current) if current is not None else None
     chosen = menu.exec_(QtGui.QCursor.pos())
-    verb, payload = verbs.get(chosen, ("", None))    # a dismissed menu and a never-built entry are both None - a dict lookup, never `==` chains
+    handler, payload = handlers.get(chosen, ("", None))    # a dismissed menu and a never-built entry are both None - a dict lookup, never `==` chains
     menu.deleteLater()    # after the lookup, which is keyed by its QActions ▸r/menu-lifetime
-    if not verb:
+    if not handler:
         return
     live = [QtCore.QModelIndex(index) for index in persistent if index.isValid()]
-    if persistent and not live and _needs(entries, verb) != "always":
+    if persistent and not live and _needs(entries, handler) != "always":
         return    # every row the menu was opened on was removed from the model
     if persistent_current is not None and persistent_current.isValid():
         current = QtCore.QModelIndex(persistent_current)
     else:
         current = live[0] if live else None
-    getattr(context, verb)(live, current, payload)
+    getattr(context, handler)(live, current, payload)
 
 
-def _needs(entries, verb) -> str:
-    """What the entry naming `verb` needs; its submenu rows use the same verb."""
-    return next((entry.needs for entry in entries if entry.verb == verb), "any")
+def _needs(entries, handler) -> str:
+    """What the entry naming `handler` needs; its submenu rows use the same handler."""
+    return next((entry.needs for entry in entries if entry.handler == handler), "any")
 
 
 def restore_drag_mode(panel) -> None:

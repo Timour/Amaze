@@ -700,7 +700,7 @@ class CreationRuleTest(unittest.TestCase):
                 if route == "click":
                     self.panel.click_on_row(section, index)
                 else:
-                    section.menu_apply([index], index)    # the verb the menu table names
+                    section.menu_apply([index], index)    # the handler the menu table names
                 wrangles = [c for c in sop.children()
                             if "wrangle" in c.type().name()]
                 self.assertEqual(
@@ -1228,9 +1228,9 @@ class _FakeIndex:
 
 
 class DoubleClickDispatchTest(unittest.TestCase):
-    """Each kind gets its own `DROP_BY_KIND` verb via `click_on_row` on a real FileSection."""
+    """Each kind gets its own `DROP_BY_KIND` handler via `click_on_row` on a real FileSection."""
 
-    def test_every_kind_reaches_its_own_verb(self):
+    def test_every_kind_reaches_its_own_handler(self):
         from amaze.panel import panel as panel_mod
         from amaze.panel import sections
         for kind, expected in (("image", "create_image_node_in"),
@@ -2519,7 +2519,7 @@ class CheckLibraryDropsOnlyFileStarsTest(unittest.TestCase):
         from amaze.core import repair
         findings = repair.survey(panel.prefs)
         lines = repair.report_lines(findings)
-        repair.drop_dead_stars(findings, guard_session=False)
+        repair.drop_favorites_of_missing_files(findings, guard_session=False)
 
         self.assertTrue(
             locations_mod.is_favourite(panel.prefs, mat_id, model.DB_FILENAME),

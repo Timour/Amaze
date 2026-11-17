@@ -306,7 +306,7 @@ class AWrittenRenderRepaintsItsTile(unittest.TestCase):
 
 
 class UpdateRenderOnMaterialTiles(unittest.TestCase):
-    """Update Render on a Material selection is one render batch, through the Material verbs."""
+    """Update Render on a Material selection is one render batch, through the Material actions."""
 
     @classmethod
     def setUpClass(cls):
