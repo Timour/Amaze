@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.34.8
+
+- Fix All lists what it moves to the trash before it does, with `Skip These`.
+- A corrupt or missing database with no backup starts empty.
+- Converting an old library keeps its old databases in the trash, and stops with a message when a file is in use.
+- A database that could not be read for a moment takes changes again.
+- A folder added inside a File location keeps its files' favorites, comments and icons, for every user.
+- Deleting an asset removes its comments and icon with it.
+
 ## 1.34.7
 
 - Preferences ▸ About: the logo is no longer squeezed.
