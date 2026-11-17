@@ -155,11 +155,11 @@ class TwoUsersAtOnceTest(_Two):
     def test_a_user_never_writes_into_another_users_stars(self):
         self.erik.put_mine(STARS, "A2", True)
         self.assertTrue(self.erik.save())
-        self.anna._data[STARS][ERIK] = {"A1": True}
         self.anna.put_mine(STARS, "A1", True)
+        self.anna.put_mine(STARS, "A2", None)
         self.assertTrue(self.anna.save())
         self.assertEqual({"A2": True}, self.on_disk()[STARS][ERIK],
-                         "what is on disk for another user is theirs alone")
+                         "`put_mine` changed another user's table")
 
     def test_two_users_comments_on_one_asset_are_both_kept(self):
         self.anna.put(COMMENTS, "A1", {"items": [{"id": "c1", "by": ANNA, "text": "Too red"}]})
@@ -188,6 +188,25 @@ class TwoUsersAtOnceTest(_Two):
         self.assertEqual("Changed", self.erik.get(ASSETS, "A1")["name"])
         self.assertFalse(self.erik.refresh(), "nothing changed on disk since")
         self.assertFalse(self.erik.dirty)
+
+
+class AKeyMovedForEveryUserTest(_Two):
+    """`rekey_everyones` moves one key in every user's table, and a merge keeps the move."""
+
+    def test_the_move_reaches_every_user_and_survives_a_peers_save(self):
+        self.anna.put_mine(STARS, "old", True)
+        self.assertTrue(self.anna.save())
+        self.erik.refresh()
+        self.erik.put_mine(STARS, "old", True)
+        self.erik.put_mine(STARS, "eriks", True)
+        self.assertTrue(self.erik.save())
+        self.anna.refresh()
+        self.assertEqual(2, self.anna.rekey_everyones(STARS, "old", "new"))
+        self.erik.put(ASSETS, "A9", {"name": "meanwhile"})
+        self.assertTrue(self.erik.save())
+        self.assertTrue(self.anna.save())
+        stored = self.on_disk()[STARS]
+        self.assertEqual({ANNA: {"new": True}, ERIK: {"eriks": True, "new": True}}, stored)
 
 
 class WhatTheEngineDoesNotKnowIsKeptTest(_Two):

@@ -24,10 +24,12 @@ Collision = collections.namedtuple("Collision", "document section key field by")
 class Saved:
     """A save's outcome: whether the file holds the change, and the reason when it does not."""
 
-    __slots__ = ("ok", "reason", "detail")
+    __slots__ = ("ok", "reason", "detail", "merged")
 
-    def __init__(self, ok: bool, reason: str = SAVED, detail: str = "") -> None:
+    def __init__(self, ok: bool, reason: str = SAVED, detail: str = "",
+                 merged: bool = False) -> None:
         self.ok, self.reason, self.detail = ok, reason, detail
+        self.merged = merged    # another session's changes were read into memory on the way
 
     def __bool__(self) -> bool:
         return self.ok
@@ -230,6 +232,22 @@ class Document:
         self._touch()
         return True
 
+    def rekey_everyones(self, section: str, old: str, new: str) -> int:
+        """Move the entry at `old` to `new` in every user's table of a per-user section; how many."""
+        if not self._may_change(section, guard.PER_USER):
+            return 0
+        moved = 0
+        for own in self._data[section].values():
+            if isinstance(own, dict) and old in own and old != new:
+                was, there = own.pop(old), own.get(str(new))
+                if isinstance(was, dict) and isinstance(there, dict):
+                    was = dict(was, **there)    # an entry already at `new` keeps its own fields
+                own[str(new)] = there if there is not None and not isinstance(was, dict) else was
+                moved += 1
+        if moved:
+            self._touch()
+        return moved
+
     def changed(self, section: str) -> list:
         """The keys of a section that differ from the file as last read: what the next save writes."""
         ours, base = self._data[section], self._base.get(section) or {}
@@ -244,19 +262,19 @@ class Document:
     def _merge(self, theirs_document: dict) -> None:
         """Merge the file on disk into memory; the disk copy becomes the base of the next merge."""
         theirs, extra = self._split(theirs_document)
-        me, merged = self.user(), {}
+        merged = {}
         for section, how in self.kind.sections.items():
             ours, base = self._data[section], self._base[section]
 
             def collide(key, field, by, section=section):
                 self.collisions.append(Collision(self.name, section, key, field, by))
-            if how == guard.PER_USER:
-                table = {uid: copy.deepcopy(own) for uid, own in theirs[section].items()
-                         if uid != me}
-                own = _merge_table(ours.get(me, {}), theirs[section].get(me, {}),
-                                   base.get(me, {}), None) if me else {}
-                if own:
-                    table[me] = own
+            if how == guard.PER_USER:    # each user's table three ways: one this session did not change takes theirs
+                table = {}
+                for uid in list(ours) + [one for one in theirs[section] if one not in ours]:
+                    own = _merge_table(ours.get(uid) or {}, theirs[section].get(uid) or {},
+                                       base.get(uid) or {}, None)
+                    if own:
+                        table[uid] = own
             else:
                 table = _merge_table(ours, theirs[section], base, collide)
             merged[section] = table
@@ -294,6 +312,7 @@ class Document:
         user = self.user()
         if not user:
             return Saved(False, NO_USER)
+        merged = False
         for _attempt in range(SAVE_TRIES):
             change = self.guard.change(user)
             if self._dirty:
@@ -308,20 +327,19 @@ class Document:
                     self.verdict, self.why, self._ticket = reading.verdict, reading.why, None
                     debug.event("documents", "save refused - the file no longer reads",
                                 file=self.name, verdict=reading.verdict)
-                    return Saved(False, reading.verdict, reading.why)
+                    return Saved(False, reading.verdict, reading.why, merged)
                 self._merge(reading.document)
                 self._ticket = reading.ticket
+                merged = True
                 continue
-            except guard.Refused as exc:
-                return Saved(False, DENIED, str(exc))
-            except OSError as exc:
-                return Saved(False, DENIED, str(exc))
+            except (guard.Refused, OSError) as exc:
+                return Saved(False, DENIED, str(exc), merged)
             self._ticket = tickets.get(self.name, self._ticket)
             self._base = copy.deepcopy(self._data)
             self._dirty = False
             self.verdict = guard.FINE
-            return Saved(True, UNFINISHED if change.waiting else SAVED, change.waiting)
-        return Saved(False, MOVED)
+            return Saved(True, UNFINISHED if change.waiting else SAVED, change.waiting, merged)
+        return Saved(False, MOVED, merged=merged)
 
 
 class Library:

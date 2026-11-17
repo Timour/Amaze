@@ -181,7 +181,8 @@ def _save_one(key: str, held: documents.Document, also=None) -> documents.Saved:
     saved = held.save(also=both)
     told(saved, held.name)
     judge(key, held)
-    _tell_listeners(key, held.name)
+    if saved.merged:    # only then does memory hold rows the models have not shown
+        _tell_listeners(key, held.name)
     return saved
 
 
