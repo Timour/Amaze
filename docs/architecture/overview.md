@@ -7,7 +7,7 @@ what is meant. Rename a term in this file and the new name is the one to
 use from then on.
 
 Read this before a big change. Keep it current when the architecture
-moves (this is the *what exists now* map; a private development log,
+changes (this is the *what exists now* map; a private development log,
 kept outside this repo, is the *what we did and why* log).
 
 ---
@@ -24,9 +24,9 @@ The same widgets are reused for every kind of
 asset; switching tabs just repoints them at different data. Behind the
 panel are six standalone **Engines** (thumbnails, image conversion,
 keyed stores, Karma materials, debug, OS integration) that the rest of
-the code talks to through small, stable APIs. Each
-tab is a **Section** object — a node-type-like plug-in that tells the
-panel how to drive the shared widgets. Data is read/written through
+the code calls through small, stable APIs. Each
+tab is a **Section** object — a node-type-like plug-in that defines how the
+panel uses the shared widgets. Data is read/written through
 **Models** backed by a **Library** folder on disk.
 
 ---
@@ -36,24 +36,24 @@ panel how to drive the shared widgets. Data is read/written through
 | Term | What it is | In code |
 |---|---|---|
 | **Panel** | The whole window. One class, built once. | `panel/panel.py` → `AmazePanel` |
-| **Toolbar** | Top strip, mirrored left: Categories, View + Filter menus, Online, Comments, Grid/List toggle, Favourites star, size slider, Filter box, then Capture (every section, greyed online), Generate Material (every section) and the Preferences gear at the far right. The View menu holds the imports and the two package exports, each greyed unless the shown context has what it writes. Categories and Online were promoted out of the View menu (2026-08-01): a control that toggles state is a button, not a menu row, and having both is how a toggle ends up disagreeing with the thing it toggles. Every chip's four state pixmaps come from `ChipToggleButton.set_art` — art as drawn at rest, hover lightens, and a chip whose ON state is carried by COLOUR (star amber, Online amber) does not lighten at all. Disabled chips paint at 50%. | built in `init_ui()`, states in `ui_helpers.ChipToggleButton.set_art` |
-| **Section Tab Strip** | The Material/Color/Node/Code/File tab bar (singular since the 2026-07-31 merge; stored keys keep their historical names). Carries the **Cancel chip** at its right end: shown exactly while the conversion bar shows — `panel.set_conversion_bar_visible` is the bar's ONE visibility door and moves both — it stops a background thumbnail render while one runs (`husk_job.jobs`, which owns the bar meanwhile), otherwise the File section's image batch (flush first, then cancel). | `ui_helpers.SectionTabBar` |
-| **Sidebar** | Left list: categories (asset sections + Color) or folders (File). ONE view, `sidebar.SidebarTreeView`: a flat model paints exactly as the old list did, root decoration off and nothing painted below the last row; in File each location unfolds to its subfolders, and a row reads colour bar, Houdini's own arrow (drawn by the delegate, after the bar), name. Qt's own indent-column arrows are switched off (`drawBranches`); a click on the row's arrow opens or closes it without selecting. Rows sit in the STORED order — the name sort retired 2026-08-14 — with "All" pinned to row 0 by the database (and, in File, `$HIP` fixed at row 1 by the model), and the ORDER IS THE USER'S: hold a row for the platform's press-hold time (`QApplication.startDragTime`) and it grabs — live moves under the mouse, one write on release, Esc restores. One controller (`sidebar.SidebarReorder`) speaks the Section contract (`reorders_sidebar` + four verbs), so every section works the same and Online simply answers no. Whether a dragged tile may be DROPPED on a row is the context's answer — `Section.takes_category_drops` and `accepts_category_drop` — not a list of section keys held by the panel (`CATEGORY_SECTIONS`, retired 2026-08-04). | the `cat_list` widget, `panel/sidebar.py` |
-| **Grid** | The main thumbnail area. GRID scales 64-512 with a magnet at 128; LIST is a table fixed at its smallest size (the slider greys out) whose row is as wide as its COLUMNS need, scrolling sideways rather than squeezing or dropping any. LIST mode is a real `QTableView` over a real `QAbstractTableModel` (the migration completed 2026-08-04); the painted header strip, `ListColumnHeader`, `ListColumns` and the delegate's list-painting branch are all retired. **The grid selection speaks in ROWS** (2026-08-06): a SelectRows selection answers one index per CELL - ten per row, hidden thumb column included - so every reader collapses to one index per row at column 0 through `grid_columns.selected_rows`, and the current, double-click and drag indexes are normalised to column 0 the same way (`live_current_index`, the panel's double-click entry, the drag press). The table carries the same context-menu and double-click wiring as the list view. The column ORDER lives once, in `core/grid_columns.COLUMNS`; every grid model answers it, and sorts its own rows, through the **Grid Engine** (§4i). WIDTHS are fixed defaults the user can DRAG (`panel.COLUMN_DEFAULT_WIDTH`, derived from the real library), with the last column taking the slack — nothing is measured at runtime. Tile badges are grid-only: at list size a badge is 12px and its art rasterises to a dark smudge, so those four facts are columns there instead. | the `thumblist` and `thumbtable` widgets, `panel/grid.py`, `panel/delegates.py` |
+| **Toolbar** | Top strip, mirrored left: Categories, View + Filter menus, Online, Comments, Grid/List toggle, Favourites star, size slider, Filter box, then Capture (every section, greyed online), Generate Material (every section) and the Preferences gear at the far right. The View menu holds the imports and the two package exports, each greyed unless the shown context has what it writes. Categories and Online were moved out of the View menu (2026-08-01): a control that toggles state is a button, not a menu row, and having both lets the button and the menu row show different states. Every chip's four state pixmaps come from `ChipToggleButton.set_art` — the SVG as drawn at rest, hover lightens, and a chip whose ON state is shown by COLOUR (star amber, Online amber) does not lighten at all. Disabled chips paint at 50%. | built in `init_ui()`, states in `ui_helpers.ChipToggleButton.set_art` |
+| **Section Tab Strip** | The Material/Color/Node/Code/File tab bar (singular since the 2026-07-31 merge; stored keys keep their historical names). Carries the **Cancel chip** at its right end: shown exactly while the conversion bar shows — `panel.set_conversion_bar_visible` is the only function that shows or hides the bar, and it shows or hides both — it stops a background thumbnail render while one runs (`husk_job.jobs`, which controls the bar meanwhile), otherwise the File section's image batch (flush first, then cancel). | `ui_helpers.SectionTabBar` |
+| **Sidebar** | Left list: categories (asset sections + Color) or folders (File). ONE view, `sidebar.SidebarTreeView`: a flat model paints exactly as the old list did, root decoration off and nothing painted below the last row; in File each location unfolds to its subfolders, and a row shows colour bar, Houdini's own arrow (drawn by the delegate, after the bar), name. Qt's own indent-column arrows are switched off (`drawBranches`); a click on the row's arrow opens or closes it without selecting. Rows are shown in the STORED order — the name sort was removed 2026-08-14 — with "All" fixed at row 0 by the database (and, in File, `$HIP` fixed at row 1 by the model), and the ORDER IS THE USER'S: hold a row for the platform's press-hold time (`QApplication.startDragTime`) and it is picked up — it moves live under the mouse, one write on release, Esc restores. One class (`sidebar.SidebarReorder`) calls the Section API (`reorders_sidebar` + five methods), so every section works the same and in Online `reorders_sidebar` is False. Whether a dragged tile may be DROPPED on a row is decided by the context — `Section.takes_category_drops` and `accepts_category_drop` — not by a list of section keys held by the panel (`CATEGORY_SECTIONS`, removed 2026-08-04). | the `cat_list` widget, `panel/sidebar.py` |
+| **Grid** | The main thumbnail area. GRID scales 64-512 and snaps to 128 when near it; LIST is a table fixed at its smallest size (the slider greys out) whose row is as wide as its COLUMNS need, scrolling sideways rather than squeezing or dropping any. LIST mode is a real `QTableView` over a real `QAbstractTableModel` (the migration completed 2026-08-04); the painted header strip, `ListColumnHeader`, `ListColumns` and the delegate's list-painting branch are all removed. **The grid selection is read in ROWS** (2026-08-06): a SelectRows selection returns one index per CELL - ten per row, hidden thumb column included - so every caller reduces it to one index per row at column 0 through `grid_columns.selected_rows`, and the current, double-click and drag indexes are normalised to column 0 the same way (`live_current_index`, the panel's double-click entry, the drag press). The table carries the same context-menu and double-click wiring as the list view. The column ORDER is defined once, in `core/grid_columns.COLUMNS`; every grid model reads it, and sorts its own rows, through the **Grid Engine** (§4i). WIDTHS are fixed defaults the user can DRAG (`panel.COLUMN_DEFAULT_WIDTH`, derived from the real library), with the last column filling the remaining width — nothing is measured at runtime. Tile badges are grid-only: at list size a badge is 12px and its SVG rasterises to a dark smudge, so those four facts are columns there instead. | the `thumblist` and `thumbtable` widgets, `panel/grid.py`, `panel/delegates.py` |
 | **Tile** | One item in the Grid (thumbnail + name + subtitle). Painted by the **Tile Delegate**. | `AssetItemDelegate` |
-| **Tile Badges** | ONE drawn family (2026-08-01): each glyph on its own dark backdrop (`ui/badge_*.svg` — the palette lives in the ART, never in code), rendered AS DRAWN through one engine (`_badge_pixmap`) at one size rule (`_badge_side`). Corners: top-left open scene, top-right favourite, lower-left versions, lower-right comment. TWO are BUTTONS, driven by the `BADGES` table: versions (click opens the Versions dialog) and, since 2026-08-21, favourite — always drawn where a section wires its click (every local grid, never Online): dim white star at rest, brighter on hover, amber when favourite, and a click toggles the selection's stars through the section's own `toggle_favourite`. Wiring the click (`set_badge_click`) is what MAKES a badge a button; hit-testing, hover and tooltips all derive from the same table. | `delegates.py` `_paint_badges`, `button_badge_at` |
+| **Tile Badges** | ONE drawn family (2026-08-01): each glyph on its own dark backdrop (`ui/badge_*.svg` — the colours are in the SVG files, never in code), rendered AS DRAWN by one function (`_badge_pixmap`) at one size rule (`_badge_side`). Corners: top-left open scene, top-right favourite, lower-left versions, lower-right comment. TWO are BUTTONS, driven by the `BADGES` table: versions (click opens the Versions dialog) and, since 2026-08-21, favourite — always drawn where a section wires its click (every local grid, never Online): dim white star at rest, brighter on hover, amber when favourite, and a click toggles the selection's stars through the section's own `toggle_favourite`. Wiring the click (`set_badge_click`) is what MAKES a badge a button; hit-testing, hover and tooltips all derive from the same table. | `delegates.py` `_paint_badges`, `button_badge_at` |
 | **Filter Box** | The search field in the Toolbar. | `line_filter` |
 
 ---
 
 ## 3. Sections — the node-types of the panel
 
-A **Section** is one tab. It is a small object that tells the **Panel**
-how to drive the shared widgets for its kind of asset. The Panel owns the
-widgets and the data; a Section only says *what to do with them*.
+A **Section** is one tab. It is a small object that defines how the **Panel**
+uses the shared widgets for its kind of asset. The Panel holds the
+widgets and the data; a Section only defines *what to do with them*.
 
 **File:** `panel/sections.py`. **Registry:** `SECTION_CLASSES`, built in
-the order of `core/section_list.py`, the one `((key, label), ...)` list,
+the order of `core/section_list.py`, the only `((key, label), ...)` list,
 which needs neither the panel nor Houdini to read. Adding a section = a
 new class in `sections.py` and its line in the list; a class takes its
 label from the list, and everything that lists the sections reads the
@@ -61,8 +61,8 @@ list - the tab strip, the Show/Hide toggles, and the pref that persists
 them. `panel.ALL_SECTIONS` is the same tuple, not a second list to keep
 in step.
 
-Read a KEY as an identifier, never as a name: keys are load-bearing in
-saved preferences and in every asset record, and the retired
+Read a KEY as an identifier, never as a name: keys are stored in
+saved preferences and in every asset record, and the removed
 `texture`/`geometry`/`hip` must never be stripped.
 
 The five sections, grouped by **Archetype** (they share machinery):
@@ -77,17 +77,17 @@ The five sections, grouped by **Archetype** (they share machinery):
 
 Plus one *view mode*, not a section:
 
-- **Online Browser** — a parallel WORLD with a Section's interface:
-  `sections.OnlineContext`, reached through `panel.active_section()` like any
-  section, so every area path stops asking which world it is in. It is
+- **Online Browser** — a separate context with a Section's interface:
+  `sections.OnlineContext`, returned by `panel.active_section()` like any
+  section, so no code path has to check whether the panel is online. It is
   NOT in `SECTION_CLASSES` and never appears in `enabled_sections`,
   because it is not a section. Its delegate carries only the roles
   `matx_library` has — no version, licence, comments or category
   colour — so the online grid cannot paint a column no online record
-  can fill. Entering and leaving route through `_apply_context`, the
-  one path a section takes, which is what stopped the Capture button,
-  the search box and the Comments subject drifting when you went
-  online. (2026-08-03; it was a view mode over Materials before.)
+  can fill. Entering and leaving go through `_apply_context`, the
+  same function a section switch uses, which fixed the Capture button,
+  the search box and the Comments subject showing stale state when you
+  went online. (2026-08-03; it was a view mode over Materials before.)
 
 ### The three Archetypes
 
@@ -102,12 +102,12 @@ Plus one *view mode*, not a section:
   convert in the background (`('tex', path, size)` engine keys),
   geometry renders in the blocking ESC-interruptable pass
   (`('geo', path, cache_dir)`), scene rows show their CAPTURE from the
-  library's `captures` folder (`core/captures.py`), and unknown files draw their OS
+  library's `captures` folder (`core/captures.py`), and unknown files show their OS
   icon. Per-location recursion, custom names and the remove-time cache
-  sweep live on `FileFolders`. A subfolder row browses its own path
-  (`BrowseRole`) by the rules of the location it sits in
-  (`locations.owner_of`, the innermost when locations nest), and carries
-  no `PathRole`, so every location verb passes it by. The `$HIP` row is
+  cleanup are implemented in `FileFolders`. A subfolder row browses its own path
+  (`BrowseRole`) by the rules of the location it is in
+  (`locations.owner_of`, the innermost when locations nest), and has
+  no `PathRole`, so every location action skips it. The `$HIP` row is
   one more top row of the same model, fixed at row 1 before the
   registered locations (`FolderTreeModel.set_scene_folder`, no record on
   disk): the scene's folder, shown only while the scene has a file on
@@ -139,52 +139,52 @@ Plus one *view mode*, not a section:
 | `delete_rows(indexes)` | Delete, highest row first — offered only where `deletes_rows` is True (File has no Delete: its rows are files on disk) |
 | `delete_prompt(count, name)` | what deleting costs, in this section's words — the wording lives in the UI text register |
 | `sidebar_key(index)` | what a **Sidebar** row is keyed by — a category name in three sections, a registered folder PATH in File |
-| `reorders_sidebar` + `sidebar_movable` / `move_sidebar_row` / `sidebar_order_snapshot` / `restore_sidebar_order` / `commit_sidebar_order` | the press-hold reorder (`sidebar.SidebarReorder` asks) — the base speaks the category form, File overrides in folder terms, Online answers no |
+| `reorders_sidebar` + `sidebar_movable` / `move_sidebar_row` / `sidebar_order_snapshot` / `restore_sidebar_order` / `commit_sidebar_order` | the press-hold reorder (`sidebar.SidebarReorder` calls them) — the base class implements them for categories, File overrides them for folders, in Online `reorders_sidebar` is False |
 | `sidebar_colour(name)` / `set_sidebar_colour(name, colour)` | read and write that row's colour, in whichever store this context keeps it |
 | `takes_file_drops` + `accepts_file_drop` / `drop_folder` / `move_files_to` / `can_undo_move` / `menu_undo_move` | a **Grid** tile released on a **Sidebar** folder moves the selected files there on disk (File only; `core/file_moves.py`), and Undo Move puts the last move back |
-| `double_click(index)` | a **Tile** is double-clicked (the *primary action*) — routes through the **Click Door** below |
+| `double_click(index)` | a **Tile** is double-clicked (the *primary action*) — calls `panel.click_on_row` (below) |
 | `rc_menu()` | right-click on the **Grid** — renders `GRID_MENU` (below) |
 | `catlist_menu()` | right-click on the **Sidebar** — renders `SIDEBAR_MENU` |
 | `edit_dialog()` | open the section's edit **Dialog** (see §6), if any |
-| `can_save(nodes)` / `save_categories()` / `takes_language` | the **Save Door** asks every section whether it could take these scene nodes, and what its Category row offers; `takes_language` lights the Language row (Code only). One right-click entry and the panel drop both go through `panel.save_from_node` |
+| `can_save(nodes)` / `save_categories()` / `takes_language` | `panel.save_from_node` (through `_save_targets`) calls every section to learn whether it can save these scene nodes, and what its Category row offers; `takes_language` lights the Language row (Code only). One right-click entry and the panel drop both go through `panel.save_from_node` |
 | `prefs_changed()` | Preferences closed — re-scan live filesystem/render state |
 
 The Panel's shared handlers dispatch to `panel.active_section().<method>()`
 instead of branching on the section key.
 
 Plus one piece of DATA, alongside `key` and `label`: **`search_hint`** —
-what the **Filter Box** says while this section is active. It sits on the
-ARCHETYPE, because the archetype is what decides the answer (Asset
+what the **Filter Box** shows while this section is active. It is set on the
+ARCHETYPE, because the archetype decides what a search matches (Asset
 sections take `:tag`, the File section has only a file name, Color also
 matches the colour names inside a palette). The Panel writes it in
 `_sync_filter_placeholder()`, called wherever the section or the view
 mode changes; the **Online Browser** supplies its own, since its search
-is a third thing again. Wording in the UI text register.
+matches something different again. Wording in the UI text register.
 
-**A VALUE CARRIES ITS OWN NAME.** Several values travelling together go
-as a named tuple, never a bare tuple read by position:
+**A VALUE CARRIES ITS OWN NAME.** Several values passed together are
+a named tuple, never a bare tuple read by position:
 
 | named tuple | fields | what to watch |
 |---|---|---|
 | `sections.AssetStack` | `model proxy selection categories` | the four models an Asset section works through; read by NAME |
-| `sections.CommentSubject` | `key section name type category colour` | `colour` is the CATEGORY's colour, not the comment's |
-| `sections.FileLocation` | `path label colour` | the registered folder a File row came from; `label` is its custom name, else the path |
+| `sections.CommentSubject` | `key name type` | `key` is the notes key (`notes.note_key`); `type` is the row's renderer label, or its file format in File |
+| `sections.FilterEntry` | `id label value icon` | `id` is what the remembered choice saves, so a label can change |
 
 **The two DECLARATIONS a section author writes.** Both are data — names
-of methods, never callables — and both fall through where a field is
-undeclared.
+of methods, never callables — and every field has a default, so a field
+can be left undeclared.
 
-`sections.DropRule`, the doors a row offers:
+`sections.DropRule`, the drag and click actions a row offers:
 
-| field | aimed by | the verb takes |
+| field | used for | the method takes |
 |---|---|---|
 | `on_node` | DRAG, cursor over a node | `(index, node)` |
 | `on_space` | DRAG, cursor over empty network space | `(index, network, position)` |
-| `resolve` | DRAG, finds its own landing | `(index)` |
-| `outside` | DRAG, released outside the panel | `(index)` |
+| `resolve` | DRAG, finds its own target | `(index)` |
 | `click_on_node` | CLICK, the SELECTION | `(index, node)` |
-| `click_resolve` | CLICK, finds its own landing | `(index)` |
-| `carrier_type` | — | name of what the space door CREATES, where that is a constant, so the drag ghost draws its shape from the same declaration the creator builds from |
+| `click_resolve` | CLICK, finds its own target | `(index)` |
+| `carrier_type` | — | name of the node type the `on_space` method CREATES, where that is a constant, so the drag preview draws its shape from the same declaration the creating method reads |
+| `context` | — | the `childTypeCategory` a network must have to accept this drop; empty for any network |
 
 `sections.MenuEntry`, one row of a menu table:
 
@@ -196,12 +196,12 @@ undeclared.
 | `shown` | the fact deciding whether the row EXISTS at all |
 | `children` | a method returning `((label, payload, icon, live[, checked]), ...)`; the icon is a hex colour, painted as a chip at `amazetheme.MENU_CHIP`, a `ui/` icon name, drawn by `ui_helpers.menu_icon` as the Filter menu's are, or empty. A renderer's icon is named once, in `core/renderers.py` |
 | `count_suffix` | appends ` (N)` on a multi-selection |
-| `checkable` | the fact giving the CURRENT state, making it a tick-box whose verb is handed the state the user asked for |
+| `checkable` | the fact giving the CURRENT state, making it a tick-box whose verb receives the state the user chose |
 
 **The Grid Menu** (2026-08-03) is the same idea for right-click. Every
 context declares `GRID_MENU` — a tuple of `MenuEntry` rows, one per
 entry — and `panel/grid.py` is the ONLY code that turns one into a
-QMenu. A row carries its label (from the UI text register), the NAME of
+QMenu. A row holds its label (from the UI text register), the NAME of
 the Section method that performs it, the fact deciding whether it EXISTS
 (`shown`), what it needs to be LIVE (`needs`), and optionally the method
 building a submenu's children. Names, not callables. The last three rows
@@ -211,57 +211,57 @@ shared by every context and gated on facts it already declares, so
 adding a section adds no copy of them. Dispatch is a dict keyed by
 QAction, never `==` against an action that may be None.
 
-**The Click Door** is where a double-click AND the menu entry
-labelled with the same verb both land — `panel.click_on_row`, one
-precedence, read from the section's own `DROP` / `DROP_BY_KIND`
+`panel.click_on_row` is the one function a double-click AND the menu entry
+labelled with the same verb both call — one
+order of precedence, read from the section's own `DROP` / `DROP_BY_KIND`
 declaration (2026-08-09).
 
 **One READER for that declaration**, `sections.drop_rule(section,
 panel, index)`, beside the declarations themselves (2026-08-10). A
 section declares one `DROP` unless its rows are different THINGS — the
 File section — and then `DROP_BY_KIND`, with the row's `KindRole`
-picking. That sentence was written twice, once in the drag walker and
-again inline in the click walker, which is how two doors end up
-disagreeing about the same tile: the exact bug the Click Door was built
-to end, reintroduced one level down. The drag walker keeps only its
-key-to-class lookup, because a drag arrives carrying a section key and
-a click arrives carrying the section.
+choosing the rule. That lookup was written twice, once in the drag code and
+again inline in the click code, which is how a drag and a click end up
+doing different things to the same tile: the exact bug `panel.click_on_row` was built
+to end, reintroduced one level down. The drag code keeps only its
+key-to-class lookup, because a drag provides a section key and
+a click provides the section.
 
 **One RESOLVER for the verbs a rule names**, `sections.drop_verb(
 section, name)` (2026-08-13, ROADMAP line 24): every named verb — the
 release bodies, the click verbs, the creation rules, the carrier-type
-answer — is a method of the declaring Section, and both doors resolve
-it there. The panel fallback the migration carried is REMOVED; a
-declaration naming a verb its section does not define fails loudly,
-and `test_area_bindings` walks every declaration to keep it that way.
+answer — is a method of the declaring Section, and both drag and click
+look it up there. The panel fallback the migration kept is REMOVED; a
+declaration naming a verb its section does not define raises an error,
+and `test_area_bindings` checks every declaration to keep it that way.
 The panel keeps the shared release plumbing the verbs call
 (`drop_placement.context_under_cursor`,
 `drop_placement.release_position_in`, `drop_placement.create_carrier`,
 `drop_placement.scene_path`, `_node_under_cursor`) — shared because it
-carries no per-type meaning.
+has no per-type behaviour.
 
 **THE SELECTION IS A HINT, NOT A VETO.** One visible selected node is
-offered the payload first; a node that cannot take it FALLS THROUGH to
-the creation walk. Anything other than exactly one visible selected node
-skips straight to that walk. A menu's extra word (Color's ramp basis)
-rides as a `payload` and reaches only verbs that declare they take one.
+tried first; a node that cannot accept the drop FALLS THROUGH to
+the creation step. Anything other than exactly one visible selected node
+skips straight to that step. A menu's extra value (Color's ramp basis)
+is passed as a `payload`, and only to verbs that declare they take one.
 
 **WHICH MODELS A LIBRARY SWITCH REPOINTS is derived, not listed.**
 Each section declares `library_model_attrs` — the panel attributes
 holding data read from `prefs.dir` — and `panel.library_models()`
-walks them for `switch_all_models()`, the ONE route. It was three
+collects them for `switch_all_models()`, the ONE function. It was three
 hand-written lists carrying seven models where there are eight, and
 the missing one was the Colors sidebar, so a library switch left it
 showing the previous library's categories with the new library's
-counts (every row zero). A ninth model joins by declaring itself;
+counts (every row zero). A ninth model is included once declared;
 `test_area_bindings` fails a repointable model no section names.
 
 **EVERY WAY ONTO A LIBRARY IS ONE SEQUENCE**, `panel.open_library()`:
-the newer-library refusal, `actions/library.py`'s `prepare`, the models
+the newer-library check, `actions/library.py`'s `prepare`, the models
 built (`setup`) or switched (`switch_all_models`), `$AMAZELIB`, the
 version update, then the shipped starters. Opening the pane, Reload
 Library, Apply on Preferences ▸ Library and closing Preferences on another
-library all call it, and `test_switch_rereads` pins the order for all four. What stays with the caller: Reload Library saves
+library all call it, and `test_switch_rereads` checks the order for all four. What each caller does itself: Reload Library saves
 first, opening the pane and closing Preferences apply the log and cache
 settings, and Apply asks `takes_library` before it writes anything.
 
@@ -269,7 +269,7 @@ settings, and Apply asks `takes_library` before it writes anything.
 P01). The Library list is settings.json's `libraries`; picking one shows
 its users from its own `DataBase.json` ▸ `users` and preselects by name, then the
 only user. Nothing switches until Apply, which opens the library with
-the picked user and puts both back when it stays closed. A user named
+the picked user and restores both when it fails to open. A user named
 for a library not yet made is created after the library opens. At start
 `open_library(needs_user=True)` stops after `prepare` when no user is
 picked; once the pane has drawn, `ensure_library_user` asks to open
@@ -278,21 +278,21 @@ Preferences on this tab.
 **The Sidebar Menu** is the same table, same builder (2026-08-04):
 `Section.SIDEBAR_MENU`, rendered by the same `panel/grid.py` code that
 renders `GRID_MENU`. Material, Node and Code share ONE table object -
-not three equal copies - and File brings a location's own vocabulary
-(Label instead of Rename, Locate, and two per-location toggles). Taking
-the three sidebar menus needed exactly two additions to the builder: a
+not three equal copies - and File has its own entries for a location
+(Label instead of Rename, Locate, and two per-location toggles). Moving
+the three sidebar menus to tables needed exactly two additions to the builder: a
 `checkable` field, and a per-CHILD enabled state so a submenu row greys
 rather than vanishes.
 
 **The Filter Menu** (the eye button, 2026-08-02) works the same way and
-is the fuller form of the same idea: the Panel owns ONE menu and ONE
-button for every tab, the Section says what it offers (`filter_entries`,
+is the fuller form of the same idea: the Panel holds ONE menu and ONE
+button for every tab, the Section defines what it offers (`filter_entries`,
 plus `FILTER_CHOICES` and `filter_tooltip` as data) and what an entry
-MEANS (`apply_filter`). The Panel carries the label to the Section and
+MEANS (`apply_filter`). The Panel passes the label to the Section and
 the value back **without ever looking inside the value** — which is what
 lets five tabs filter on five unrelated things through one control:
 renderer (Material), palette size (Color), node context (Node), language
-(Code), file kind (File). The three asset sections share one route,
+(Code), file kind (File). The three asset sections share one implementation,
 because all three keep their kind in the same `RendererRole` field. The
 choice is remembered per section in `settings.json` ▸ `section_filters`,
 by LABEL; a remembered entry no longer on offer falls back to All.
@@ -302,10 +302,10 @@ by LABEL; a remembered entry no longer on offer falls back to All.
 ## 4. The Engines — standalone, API-driven
 
 An **Engine** is a FUNCTION of the system, not a piece of code: one
-named responsibility the rest of the code talks to through a small
+named responsibility the rest of the code calls through a small
 stable API. An engine may span several scripts (the Drag & Drop Engine
-lives in core/dragengine.py + the gesture widgets + the panel's release
-handlers) — the file listings below say where each one lives TODAY,
+is in core/dragengine.py + the gesture widgets + the panel's release
+handlers) — the file listings below say where each one is TODAY,
 which is an implementation detail, not the engine's identity. There are
 six mapped here, plus the Drag & Drop Engine (its own
 section below).
@@ -313,8 +313,8 @@ section below).
 ### 4a. The **Thumbnail Engine**
 
 One byte-budgeted image cache + loader for *every* section. Keyed by
-asset identity, never by row, so reloads/reorders can't misroute an
-image.
+asset identity, never by row, so reloads/reorders can't show an image
+on the wrong tile.
 
 - **File:** `core/thumbnails.py` · **Singleton:** `thumbnails.engine`
 - **API:** `request_file(key, path)` · `deposit(key, image)` ·
@@ -325,63 +325,63 @@ image.
   **PAINT** (colors/code — drawn in memory).
 - **RAM budget:** the `ram_cache_mb` pref; evicted images reload from
   disk on demand.
-- **Storage rule (the law):** a LIBRARY-OWNED asset's thumbnail is part
-  of the library — `<library>/img/<id>.png`, travelling with it across
+- **Storage rule (no exceptions):** a LIBRARY-OWNED asset's thumbnail is part
+  of the library — `<library>/img/<id>.png`, copied with it to other
   machines (Material, Node; an online import's preview becomes its
   library thumbnail). A thumbnail for content the library only POINTS
   AT (the File section's folders) is a regenerable local artifact — it
   goes in the OS-Integration Engine's per-OS cache, never synced. A
   CAPTURE, any tile's, is hand-framed and cannot be regenerated, so it
-  lives in the library too: `<library>/captures` (`core/captures.py`).
+  is stored in the library too: `<library>/captures` (`core/captures.py`).
   Color/Code paint their pictures in RAM; a capture is the one picture
   they store.
 
 ### 4b. The **Conversion Engine** {#o/conversion}
 
-One funnel from a file on disk to a thumbnail-sized image, for every
+One code path from a file on disk to a thumbnail-sized image, for every
 section that shows a picture. It returns an image OR a **reason** —
 never a bare None that hides which.
 
 - **File:** `core/conversion.py` · **Entry point:**
   `convert_image(path, size, cancelled) -> Conversion`
 - **Adapter API:** `produce(source, out_path, ctx) -> (wrote_it, why_not)`.
-  An adapter writes a PNG into a scratch file the engine hands it and
-  says whether it worked. It chooses no order, trusts nothing, judges
-  nothing and logs nothing.
+  An adapter writes a PNG into a scratch file the engine gives it and
+  returns whether it worked. It does not set the order, does not verify
+  output and does not log.
 - **Adapters:** Qt-native (in-process, scaled decode), **sips**
   (macOS/ImageIO — registered TWICE, see below), **iconvert**
   (Houdini's own, correct for everything Houdini reads, `.rat`
   included), **Pillow** (in Houdini's own Python, so Windows and Linux
-  have a route).
-- **The engine owns:** the order, the size contract, VERIFICATION of
+  have a converter).
+- **The engine handles:** the order, the size contract, VERIFICATION of
   every adapter's output, the scratch-file lifetime, and one log line
-  naming who answered and why the one before it did not.
-- **No knob.** There was a "Force iconvert only" preference, and a
+  naming which adapter succeeded and why the one before it failed.
+- **No preference.** There was a `Force iconvert only` preference, and a
   second adapter order to serve it; it was the manual workaround for a
   converter that returned a wrong picture and reported success, which
-  is what the verification below now catches by itself. Retired
-  2026-08-03. A control that reorders the adapters is a second route
-  through the engine wearing a preference's clothes.
+  is what the verification below now catches by itself. Removed
+  2026-08-03. A control that reorders the adapters is a second adapter
+  order in the engine, set from a preference.
 
-**DECODE and FIT are two different problems.** **FIT** is an image Qt
+**FORMAT and FIT are two different problems.** **FIT** is an image Qt
 can read whose whole decode would pass its 256MB allocation limit —
-the way out is another process, and it MUST resample while converting,
-because a full-size temp file is refused all over again. **FORMAT** is
+the fix is another process, and it MUST resample while converting,
+because a full-size temp file would pass the same limit again. **FORMAT** is
 an image Qt cannot read at all (exr, hdr, rat) — not oversized, just
-foreign, so any converter answers at any size and the engine scales
+unsupported, so any converter may return any size and the engine scales
 the result. **Which one applies is measured per FILE and is never a
 property of the format**, which is why there is no `.hdr` special case
 anywhere: `sips -Z` on a Radiance .hdr returns exit 0 and a solid
-black picture, and `-Z` belongs to the FIT route only. A foreign
-format that is ALSO oversized gets both halves, by the same
+black picture, and `-Z` is used for FIT only. An unsupported
+format that is ALSO oversized gets both steps, by the same
 measurement applied to the converted temp.
 
-Above a **1GB decoded ceiling** Amaze declines and says so, because
-every route inflates the whole image before shrinking it.
+Above a **1GB decoded ceiling** Amaze does not convert and returns the reason,
+because every converter decodes the whole image before shrinking it.
 
 **AN ENGINE VERIFIES ITS OWN OUTPUT; AN ADAPTER IS NEVER TRUSTED.** A
-uniform result is a SUSPICION, not a verdict: try the next adapter, and
-deliver the uniform one if nothing does better.
+uniform result is treated as possibly wrong, not as a failure: try the next
+adapter, and return the uniform one if no adapter does better.
 
 ### 4c. The **Database Engine**: guard, documents, library_db {#o/keyed-store}
 
@@ -401,15 +401,15 @@ content) and `trash/` (one folder per day, each file under the path it
 had, removed after 30 days). `.amaze-journal` is there only while a
 change of several files is being applied.
 
-- **`core/guard.py`** is the one door to a library's files: a read
-  returns a ticket, a write must present it, and a change of several
+- **`core/guard.py`** is the only module that reads and writes a library's files: a read
+  returns a `Ticket`, a write must pass it back, and a change of several
   files is applied through a journal.
 - **`core/documents.py`** holds each database as keyed sections and
   merges two users' changes per entry and per field.
 - **`core/library_db.py`** keeps one `Library` per open library and
-  holds a save back for the panel's timer.
-- **`core/library_conversion.py`** is the only code that knows an older
-  library; it leaves `policy.json` so an older Amaze stays out.
+  keeps a pending save until the panel's timer writes it.
+- **`core/library_conversion.py`** is the only code that reads an older
+  library; it leaves `policy.json` so an older Amaze does not open it.
 
 - **A location is an id, its path one property**: `files.json` ▸
   `paths` holds id → path, and every per-file key is
@@ -417,17 +417,17 @@ change of several files is being applied.
   inside two nested locations belongs to the innermost
   (`locations.file_ident`).
 - **A user writes only their own stars**: a file move or a location
-  removal moves or retires this user's stars, never another user's.
-- **Check Library never removes a location**: a folder absent from
-  this machine is set aside, the pointer only
-  (`repair.set_aside_folders`), so its files' state waits for it.
+  removal moves or removes this user's stars, never another user's.
+- **Check Library never removes a location's file data**: a folder absent from
+  this machine is removed from this user's `locations` only
+  (`repair.set_aside_folders`), so its per-file keys stay in `files.json`.
 - **`core/library_settings.py`** holds the shared settings and the
   overwrite switch in `DataBase.json` ▸ `settings`;
   **`core/library_policy.py`** the library's version stamp.
 
 ### 4d. The **Material Engine**
 
-The single funnel every Karma material is built through. The engine owns
+The single function every Karma material is built through. The engine handles
 the container, the wiring, activation and verification; each input is an
 **Adapter** that only produces a shader network.
 
@@ -443,9 +443,9 @@ the container, the wiring, activation and verification; each input is an
     (`matx_sources.open_remote_zip`, split archives included).
   - **Redshift Converter** (`render/material_converter.py`) — a Redshift
     material → equivalent Karma nodes.
-  - **Karma → Redshift** (`render/redshift_converter.py`) — the mirror:
+  - **Karma → Redshift** (`render/redshift_converter.py`) — the reverse:
     any Karma container → a Redshift builder (`build_redshift_material`
-    owns the container and its USD terminal), the online sources landing
+    creates the container and its USD terminal), the online sources imported
     as Redshift through `matx_import`'s `renderer` switch.
   - **Values Adapter** (`matx_import._values_to_standard_surface`) —
     PhysicallyBased measured values → a preset shader.
@@ -457,15 +457,15 @@ the container, the wiring, activation and verification; each input is an
   **KARMA_REF** (see §8). Wired via `wire_builder_output()`; verified by
   `surface_terminal_wired()`.
 - **The Material Conversion Engine** (`render/material_conversion/`) — every
-  conversion between renderers, routed through MaterialX, the hub.
-  `engine.py` routes: `targets()` in menu order, `can_convert(source,
+  conversion between renderers, converted through MaterialX as the middle step.
+  `engine.py` provides: `targets()` in menu order, `can_convert(source,
   target)` and `why_not` (a route exists and both plugins are loaded),
-  `convert(container, source, target, parent, name)` answering
+  `convert(container, source, target, parent, name)` returning
   `Converted(builder, shader, wired, report)`, and
   `ready_for_solaris(container, renderer)` for Copy To /stage. Each renderer is one API with the same
   calls - `available()`, `build(parent, name, produce)`,
   `to_materialx(container, builder, report)`, `from_materialx(container,
-  parent, name, report)`, `for_solaris(container)`: `materialx.py` (the hub,
+  parent, name, report)`, `for_solaris(container)`: `materialx.py` (the middle step,
   built by the Material Engine above), `redshift.py` (the Redshift Converter
   and Karma → Redshift), and `octane.py` (MaterialX copied into Octane's own
   builder, which renders MaterialX; the classic container rebuilt for
@@ -474,14 +474,14 @@ the container, the wiring, activation and verification; each input is an
   which names the module, its node types and the order every menu lists it. The callers:
   `MaterialLibrary.convert(index, target)`, the Convert to menu, the online
   import's `matx_import.to_renderer`, and `NodeHandler.load_items_file` on
-  the way into a LOP library. `ConversionReport` lives in `report.py`.
+  the way into a LOP library. `ConversionReport` is in `report.py`.
 
 ### 4e. The **Generator Engine**
 
-Materials from FACTS. A generation is a **spec** — a plain dict of
+Materials from MEASURED DATA. A generation is a **spec** — a plain dict of
 named float/colour values — turned into a material through the
-Material Engine's funnel. The spec is the interface a parametric UI or
-rule system would drive.
+Material Engine's entry point. The spec is the interface a parametric UI or
+rule system would set.
 
 - **File:** `render/generator.py` · **Entry point:**
   `generate_random_material(parent, rng)` → `(builder, spec)`
@@ -495,7 +495,7 @@ rule system would drive.
   - `res/material_specs.json` — 287 **authored** materials, used only
     for the rates at which artists add clearcoat/sheen/emission.
 - **Generation is per CLASS** (`fact_kind`): metals keep their
-  spectrum (colour drifted, or blended toward another measured metal)
+  spectrum (colour shifted, or blended toward another measured metal)
   and take their finish from the measured set; transmissive materials
   copy their IOR exactly; scattering materials keep their measured
   mean free path (cm → scene metres); only opaque dielectrics get a
@@ -508,15 +508,15 @@ rule system would drive.
 Structured session logging, JSON Lines. **Two tiers:**
 
 - **Crash recorder — always on, only a real crash.** An *uncaught*
-  exception (via the hook `install()` arms at panel construction) is
+  exception (via the hook `install()` sets at panel construction) is
   written *even with Debug Mode off* — carrying the environment header
   (Houdini version, renderer plugins loaded). Nothing else is always-on.
   A quiet session writes nothing; a crash starts the log.
 - **The settings snapshot — also always on.** `prefs_snapshot()` writes
-  with Debug Mode OFF, deliberately: it is the recovery route the
-  unreadable-settings dialog points the user at, and the session that
-  needs it is exactly the one nobody had Debug Mode on for. Gating it
-  would destroy that promise silently, which is why it is named here.
+  with Debug Mode OFF, deliberately: it is the recovery file the
+  unreadable-settings dialog names for the user, and the session that
+  needs it is exactly the one nobody had Debug Mode on for. Making it depend
+  on Debug Mode would silently break that dialog, which is why it is named here.
 - **Verbose tier — Debug Mode gated** (Preferences → Debug): `event()` /
   `note()` / handled `exception()`. Debug Off means off. Development
   sessions run with it on.
@@ -531,7 +531,7 @@ Structured session logging, JSON Lines. **Two tiers:**
 - **The log imports neither `hou` nor Qt.** An alert's dialog, a
   refusal's status line and the session header's Houdini facts go
   through what `hand_over` was given: `utils/rc_calls.HoudiniSpeaker`,
-  handed over by `rc_calls.start()`, the first call of the pane, of every
+  passed in by `rc_calls.start()`, the first call of the pane, of every
   shelf tool and of the node menu's Amaze ▸ Save and Convert to entries.
   Until then alerts and refusals print.
 - **`$AMAZE_LOG_DIR` moves the whole log dir, read ONCE at import** so a
@@ -540,39 +540,39 @@ Structured session logging, JSON Lines. **Two tiers:**
   suite that raises on purpose would otherwise fill the user's own log
   with genuine-looking crash records.
 - **One repeating failure cannot flood the file.** Identity is the
-  event kind plus the exception type plus its deepest frame, so a noisy
-  neighbour never suppresses a different failure. The first
+  event kind plus the exception type plus its deepest frame, so one
+  frequent failure never suppresses a different failure. The first
   `FLOOD_VERBATIM` are written in full, then one marker at each power of
   ten and every `FLOOD_MARKER_EVERY` after that; a key quiet for
   `FLOOD_DECAY_SECONDS` counts as a new occurrence rather than a
   continuing flood. An atexit flush writes each key's exact total, so a
-  session that ended mid-flood still says how bad it got.
-- **A new file starts from zero — one blank slate, three doors.**
+  session that ended mid-flood still records the full count.
+- **A new file starts from zero — three functions reset the state.**
   `configure()` with a changed path, `redirect()` and `clear_log()` all
   reset the session id, the record counter, the rotation latch and the
   flood counts, because `n` is a record's place in ITS OWN file and the
   counters are per-file too. The single exception is the alert history:
   a dialog the user dismissed stays dismissed through a move or a Debug
   Mode toggle, and only Clear Log forgets it.
-- **The off-marker is written BEFORE the switch flips.** `configure()`
+- **The off-marker is written BEFORE logging is switched off.** `configure()`
   records *debug mode turned off* while `_enabled` is still true,
   because `event()` drops records the moment it goes false — and a
-  verbose session log that simply stops reads as a crash. The ordering
-  is load-bearing and has no test; reordering those two lines loses the
+  verbose session log that simply stops looks like a crash. The ordering
+  is required and has no test; reordering those two lines loses the
   marker silently.
 - **Two of the snapshots are CONSOLE TOOLS, not wired** (2026-08-05):
   `image_stats` and `texture_snapshot` are called from the thumbnail
-  path and live beside it in `preview/usd_scene.py`, `node_snapshot` and
+  path and are defined beside it in `preview/usd_scene.py`, `node_snapshot` and
   `material_snapshot` by hand from the
   Python shell during a diagnosis — they were written for the
   material/builder questions that keep coming back ("is it actually a
   Karma builder", "is the shader wired", "is the material wrong or
-  only its thumbnail"). Said here because a scan for uncalled names
-  finds them every time and reads them as dead.
+  only its thumbnail"). Noted here because a search for uncalled names
+  finds them every time and reports them as unused.
 
 ### 4g. The **OS-Integration Engine**
 
-Every platform branch lives HERE - nothing else in the codebase may
+Every platform branch is HERE - nothing else in the codebase may
 test `sys.platform` or hardcode an OS path convention.
 
 - **File:** `helpers/hostos.py`
@@ -582,18 +582,18 @@ test `sys.platform` or hardcode an OS path convention.
   `open_path(p)` (system file browser) ·
   `bundled_binary(hfs, name)` (.exe-aware `$HFS/bin` lookup) ·
   `is_macos()/is_windows()/is_linux()`
-- **Filename semantics live here too**, because case-insensitivity is a
+- **Filename rules are here too**, because case-insensitivity is a
   platform fact: `matched_extension(name, extensions)` (the entry a
   filename ends with, LONGEST first so `x.bgeo.sc` is not `.bgeo`; one
   function for geometry, scenes and images, which had two copies and a
   third mechanism between them) and `migrate_legacy_file(dir, old, new)`
   (rename-once, best-effort, same-directory; three copies before).
-- **`rename_exclusive(source, dest)`** — a rename that refuses a taken
-  name in the same call, False when taken: `renamex_np(RENAME_EXCL)` on
+- **`rename_exclusive(source, dest)`** — a rename that checks for an existing
+  name in the same call, False when it exists: `renamex_np(RENAME_EXCL)` on
   macOS, `renameat2(RENAME_NOREPLACE)` on Linux, `os.rename` on Windows.
   It raises `NoExclusiveRename` where the drive has none, as a Mac's
   exFAT, FAT32 and network shares do; `file_moves.place` then tries a
-  hard link, then takes the name with an empty file before renaming
+  hard link, then creates the name as an empty file before renaming
   over it (▸r/no-replace-rename).
 - **`disk_state(path)`** — `(mtime_ns, size)`, or None when the file is
   not there: the cheap stat the content stale-write guard keeps per
@@ -601,23 +601,23 @@ test `sys.platform` or hardcode an OS path convention.
   fingerprints instead, through `file_fingerprint` and `peer_read`.
 - **`why_failed(exc, path)` → `(cause, sentence)`** — the ONE place an
   `OSError` becomes something a user can act on: unreachable /
-  read-only / full / held, from the errno. `database.save()` answered
-  this inline and answered it the same way every time — *the file is
+  read-only / full / held, from the errno. `database.save()` handled
+  this inline and gave the same cause every time — *the file is
   held by another program* — which measured on macOS cannot happen at
   all, so a dropped synced folder was reported as a program holding the
-  library. **An errno it has not measured claims NO cause**; saying
-  nothing specific is the right answer to a cause nobody verified.
-  Which errno means what is a platform fact, which is why it lives
+  library. **An errno it has not measured gets NO cause**; a general
+  message is correct when the cause has not been verified.
+  Which errno means what is a platform fact, which is why it is
   here (2026-08-10).
 
 ### 4h. The **Preview Engine**
 
 The scene a material thumbnail is rendered IN — ball, floor, lights,
 camera, output — built per renderer, used once, destroyed. WHEN a
-thumbnail is made and where the file goes belong to the **Thumbnail
+thumbnail is made and where the file goes are decided by the **Thumbnail
 Engine** and the thumbnail runner (`render/thumbs.py`), its callers.
 
-- **Package:** `preview/` · **Door:** `amaze.preview`
+- **Package:** `preview/` · **Imported only as:** `amaze.preview`
 - **API:** `ocio_from_viewer()` · `safe_set(node, parm, value)` ·
   `build_usd_scaffold(prefs, renderer)` · `write_batch(scaffold, items, out_dir)` ·
   `exr_to_png(exr, png, ocio, id)`
@@ -638,49 +638,49 @@ Engine** and the thumbnail runner (`render/thumbs.py`), its callers.
   husk over it, frame N rendering material N — a pre-frame script binds
   it to the ball, since a binding cannot be animated — and a post-frame
   script names each frame's EXR, which `exr_to_png` turns into the tile's
-  PNG as it lands. husk starts without the Houdini plugins of renderers
+  PNG as it is written. husk starts without the Houdini plugins of renderers
   it does not use; Octane restarts its delegate per frame or keeps the
   first material. Most of a thumbnail was husk starting, once per
   material (▸r/husk-startup). Like the `/obj` scene, it
   writes where the caller says: `png_path` is the caller's, per material.
 - **The background job** (`husk_job.jobs`): one husk at a time, the rest
-  queued; `progressed` drives the panel's thin bar, the Cancel chip calls
+  queued; `progressed` updates the panel's thin bar, the Cancel chip calls
   `jobs.cancel()` (husk is stopped, finished PNGs stay), and
   `thumbnailWritten(asset_id)` repaints that one tile. With no event loop
   (hython, the suite) `render_batch` runs the same husk to the end.
-- **The part that is not Python:** the scene's node carries seven spare
-  parameters the caller drives it through — `mat`, `path`,
+- **The part that is not Python:** the scene's node has seven spare
+  parameters the caller sets — `mat`, `path`,
   `cop_out_img`, `resx`/`resy`, `obj_exclude`, `lights`, `render` — and
-  `safe_set` swallows a missing one, so a replacement spelling one
-  differently produces a thumbnail-shaped no-op rather than an error.
+  `safe_set` ignores a missing one, so a replacement scene spelling one
+  differently produces a wrong thumbnail rather than an error.
 - **The scene's lifetime is the CALLER'S:** `thumbs.py` builds inside
   `hou.undos.disabler()` and destroys in a `finally`.
 
-`tests/test_preview_boundary.py` keeps the door a door.
+`tests/test_preview_boundary.py` checks that other code imports `amaze.preview`, never its submodules.
 
 ### 4i. The **Grid Engine** {#o/grid-engine}
 
 What every grid model shows, and in what order, once: Materials, Nodes,
 Code, Colors, File and Online all run on it. A model writes
-`row_data(row, role)`, what one row answers, and names the lists it keeps
-one entry per row (`GRID_ROWS`). The engine owns `data()`: column 0 is
-the row's answer, and a later column is the row's answer for that
-column's role, asked of `row_data` directly - never a second `data()`
+`row_data(row, role)`, what one row returns, and names the lists it keeps
+one entry per row (`GRID_ROWS`). The engine implements `data()`: column 0 is
+the row's value, and a later column is the row's value for that
+column's role, read from `row_data` directly - never a second `data()`
 through a sibling index.
 
 The engine also SORTS, the way Qt describes a model that sorts itself
-(Model/View Programming ▸ Sorting): a header click reaches the model
+(Model/View Programming ▸ Sorting): a header click is passed to the model
 through `GridProxyModel.sort`, and the model moves its rows with one key
-per row and one Python sort, as a single layout change that carries
+per row and one Python sort, as a single layout change that updates
 every persistent index. The proxies never sort; their `sortColumn()`
-stays -1, so they show the model's order and a filter change brings rows
-back in it. New rows are sorted in at once through the insert door
-(`AssetLibrary._append_record`, which answers the row the record holds
-now); rows another session added are sorted in at once too; a change to
-what the order reads, a rename say, re-sorts on the next event-loop turn;
-a thumbnail landing reads nothing the order uses and costs nothing. Two
+stays -1, so they show the model's order and a filter change shows rows
+again in it. New rows are sorted in at once by
+`AssetLibrary._append_record`, which returns the row the record is at
+now; rows another session added are sorted in at once too; a change to
+a value the order uses, a rename say, re-sorts on the next event-loop turn;
+a new thumbnail changes nothing the order uses and costs nothing. Two
 panels on one library share each tab's order, because they share its
-model (§5, the one model set). Lives in `core/grid_engine.py`.
+model (§5, the one model set). It is in `core/grid_engine.py`.
 
 ---
 
@@ -689,31 +689,31 @@ model (§5, the one model set). Lives in `core/grid_engine.py`.
 | Term | What it is | In code |
 |---|---|---|
 | **Library** | The on-disk folder holding every section's data: the six databases (§4c) + each asset section's folder (`materials/`, `nodes/`) + `backup/`, `trash/` + `matX/` (downloaded MaterialX). Path in `settings.json`. | — |
-| **Library Model** | The Qt model over a **Library**'s JSON. The shared engine is `AssetLibrary` (records, categories, tags, tile icons, saves, deletes, the connector's guards — nothing renderer-shaped); the four section models subclass it over their own JSON. `MaterialLibrary` adds what a MATERIAL is: its USD and shader-type labels, and the repaint when a render lands; saving, updating, converting, loading and rendering one are `actions/materials.py`'s. Colors rides the same engine with its palette payload (`colors`/`ramp`) carried on the record. | `core/library.py` → `AssetLibrary`, `MaterialLibrary`; `cop_library.py`; `code_library.py`; `gradient_library.py` |
+| **Library Model** | The Qt model over a **Library**'s JSON. The shared base class is `AssetLibrary` (records, categories, tags, tile icons, saves, deletes, the connector's guards — nothing renderer-specific); the four section models subclass it over their own JSON. `MaterialLibrary` adds what a MATERIAL is: its USD and shader-type labels, and the repaint when a render finishes; saving, updating, converting, loading and rendering one are `actions/materials.py`'s. Colors uses the same base class with its palette payload (`colors`/`ramp`) stored on the record. | `core/library.py` → `AssetLibrary`, `MaterialLibrary`; `cop_library.py`; `code_library.py`; `gradient_library.py` |
 | **Material** | One asset record (id, name, categories, tags, renderer, date, …). **NOT a favourite and NOT a tile icon**: those are the database's `stars` (per user) and `icons` sections. **One category per asset** — multi-category was removed 2026-07-27; tags are the many-to-many axis. | `core/material.py` |
-| **Tile Icon** | A chosen Feather symbol on a colour, for assets with nothing to render; the section's database ▸ `icons` is the one home, keyed by asset id (a file key in `files.json`). Composed to `<id>_icon.png` BESIDE the render, never over it — except Color, which composes in memory. | `core/tile_icons.py` |
-| **Comment** | A page of text + to-dos per asset (the Comments pane, toggled from the toolbar). Stored in the section's database ▸ `comments`, keyed by asset id or file key; a comment item belongs to its author. WHICH asset the pane points at is the context's own answer — `Section.comment_subject(index)`, one of the four area hooks — because only the context can map an index through its proxy and read its roles; the panel finds the live current index and delegates. `takes_comments` is the separate, selection-free half that the toolbar chip reads. EVERY section takes notes, Color included - a gradient carries a full-uuid4 identity in `id` (from birth, or from the schema-8 migration that mints one for any row arriving without it — a construction-time backfill did this until 2026-08-20; the field was `uid` before 2026-08-09 and the VALUE never changed, so existing keys still resolve), keyed `gradient:<value>`. | `core/notes.py`, `panel/notes_panel.py` |
+| **Tile Icon** | A chosen Feather symbol on a colour, for assets with nothing to render; the section's database ▸ `icons` is the only store, keyed by asset id (a file key in `files.json`). Composed to `<id>_icon.png` BESIDE the render, never over it — except Color, which composes in memory. | `core/tile_icons.py` |
+| **Comment** | A page of text + to-dos per asset (the Comments pane, toggled from the toolbar). Stored in the section's database ▸ `comments`, keyed by asset id or file key; a comment item belongs to its author. WHICH asset the pane shows is decided by the context — `Section.comment_subject(index)`, one of the four area hooks — because only the context can map an index through its proxy and read its roles; the panel finds the live current index and delegates. `takes_comments` is the separate, selection-free half that the toolbar chip reads. EVERY section takes notes, Color included - a gradient carries a full-uuid4 identity in `id` (from creation, or from the schema-8 migration that creates one for any row loaded without it — a construction-time backfill did this until 2026-08-20; the field was `uid` before 2026-08-09 and the VALUE never changed, so existing keys still resolve), keyed `gradient:<value>`. | `core/notes.py`, `panel/notes_panel.py` |
 | **Category Colour** | A colour on a category, painted under every tile in it and down its sidebar row. Stored beside the category names in the same JSON, so the grid reads it from the connector's shared data dict. | `core/category.py` → `Categories.set_color` |
 | **Categories Model** | The Sidebar list for an Asset section. | `core/category.py` → `Categories` |
 | **Sidebar Proxy** | Presents the STORED category order (no sort — the manual order, 2026-08-14) and hides empty categories (renderer-aware). All four category sidebars go through it, Color included; the save dialog's dropdown keeps its own alphabetical sort. | `category.CategoriesSidebarProxy` |
 | **Filter Proxy** | The Grid's search/renderer/favourite/tag filter (Asset sections). | `core/multifilterproxy_model.py` |
 | **Asset Stack** | The four models an Asset section works through — Library Model, Filter Proxy, selection model, Categories Model — as `sections.AssetStack`, whose fields are `model` / `proxy` / `selection` / `categories`. A bare 4-tuple until 2026-08-03: it was unpacked in nine places and read by NUMBER in three more (`st[0]`, `st[3]`), which is where a reorder would have gone unnoticed. | `section.stack()` |
 | **Folders Model / Files Model** | The Folder-archetype pair (registered dirs / files inside). Folders share ONE base — `core/folders.py` `FolderTreeModel` (counts, All row, add/remove/relocate, and each folder's subfolders, read with its count on the same worker once its row shows; a row is keyed by its parent row and its path); each section only names its prefs surface + extension predicate. | `core/folders.py`, `texture_library.py`, `geo_library.py`, `scene_captures.py` |
-| **Online world** | A PARALLEL world, not a view mode over Materials (which is what it was until 2026-08-01). The toolbar's Online button enters it and turns amber — the colour is the whole signal — and the tab strip becomes the SOURCES in source order (Amaze first, then GPUOpen, PolyHaven, SimReady, PhysicallyBased, RGL) from `matx_sources.all_sources()`. The Amaze source browses the `AmazePackages` repository per TILE: folders under `packages/` are categories, every entry in every `.amazepkg` is one record read by ranged requests (a plain-file entry becomes a bare tile), and importing fetches only the chosen tiles' members. No File tab, and `enabled_sections` does not apply, because these are not sections. ONE strip, two lists: `_build_section_tabs` already rebuilt on an `enabled_sections` change, so switching worlds reuses that path. A tab click picks a source. Leaving returns you to the section you left from. `_is_online()` is now just the mode — it used to be `online_mode AND current_section == "material"` — and since 2026-08-15 six panel paths that branched on it ask the CONTEXT instead: this world answers `search_hint`, `filter_text`, `filter_favorites`, `select_category`, `double_click` and an empty `SIDEBAR_MENU` like any section, so the eleven `_is_online()` reads left are all WORLD questions (which tab strip to build, which world a progress bar draws over) rather than section ones. Favourites and Comments are disabled here: an online record has no favourite state, and a comment is written against a library asset. | `panel.py` `enter_online_world` / `leave_online_world`, `core/matx_sources.py` |
-| **Designed dialogs** | Every dialog rides `base_dialog.AssetDialog` and takes its sizes and places from its drawn frame in `amazetheme.DIALOG_LAYOUT`, read through `theme.ui_px` like every other chrome measurement. No sizing path reads a device ratio: Houdini's UI scale is one number fixed at startup and it never rescales when a window moves between monitors, so neither does a dialog. A drawn list (D01, D15) is painted row by row by `library_dialog.ListRows` from the frame's rows. The first designed shell, `ui_helpers.DesignedDialog` (the Versions dialog, 2026-08-02), retired on 2026-10-25 with D01's dropdown. | `dialogs/base_dialog.py`; `helpers/ui_helpers.py` pins each widget to its drawn box (`pin_drawn`) |
-| **Filtering & sorting** | THREE proxies, one base: `core/grid_proxy.py`'s `GridProxyModel`, inherited by `MultiFilterProxyModel` (the asset sections and Online), `TextureFilterProxyModel` (File) and `GradientFilterProxyModel` (Color). They differ in what they FILTER ON; the base owns WHAT IS SHOWN, and the ORDER is the model's (the Grid Engine, §4i) - a proxy's `sortColumn()` stays -1, so rows coming back from a filter come back in the model's order and nothing re-sorts after an insert. `setDynamicSortFilter(False)` also turns off the re-test of a row whose DATA changed (2026-08-03 — un-favouriting a tile with Favourites-only on left it in the grid, star off), so the base puts that back: role-aware (`watched_roles`) and coalesced onto one pass per event-loop turn. | `core/grid_proxy.py`, `core/multifilterproxy_model.py` |
-| **Scrolling** | Both axes go through one handler: per-PIXEL scroll mode and `dragdrop_widgets.wheelEvent`, which reads the dominant axis, converts a classic wheel's 120-unit notches, and applies the `scroll_speed` preference. Horizontal was on Qt's per-ITEM default until 2026-08-01 — one step is a whole row, which reads as wild acceleration — and it went unnoticed because nothing could scroll sideways until list rows grew wider than the panel. | `panel/dragdrop_widgets.py` |
-| **Splitter panes** | THE construction (2026-08-01): sidebar \| grid \| comments, with exactly ONE flexible pane — the grid (stretch 1); both side panes hold (stretch 0), so every redistribution Qt performs lands on the grid. Each side pane OWNS its width: BOTH are `ui_helpers.HeldPane`, which asks for the remembered drag or the design width through `sizeHint`, and `_on_splitter_moved` records both into `sidebar_width` / `notes_panel_width`. Nothing on the panel computes a pane's width: measured 2026-08-03, the splitter has already honoured the hint before any post-show code runs, so the 50 lines that redistributed for the Comments pane were recomputing what was true. Never bookkeeping around Qt's relayout — that shipped once and lost. | `panel.py` `_build_splitter_and_sidebar`, `ui_helpers.HeldPane` |
-| **Prefs** | Settings, one shared instance injected into every model. `settings.json` lives where the OS keeps preferences (`~/Library/Preferences/Amaze` on macOS, `%APPDATA%/Amaze` on Windows, `$XDG_CONFIG_HOME/Amaze` on Linux) — never in the install — and holds bootstrap, this machine's view state and last-known copies; the SHARED settings are the library's own, in `DataBase.json` ▸ `settings` (`core/library_settings.py`), adopted at load and pushed on save. Split in two 2026-08-09: `prefs.py` answers what a setting IS (64 property pairs plus the location, favourite and section-filter accessors), and `prefs/persistence.py` carries it to and from disk — save, load, the field-wise merge between two panes of one session, the migration out of older installs, and the portable path encoding. `_Persistence` is mixed into `Prefs`, so every call site still says `prefs.save()` and the document's shape is untouched. | `prefs/prefs.py` → `Prefs`, from `settings.json` |
+| **Online world** | A PARALLEL world, not a view mode over Materials (which is what it was until 2026-08-01). The toolbar's Online button enters it and turns amber — the colour is the only indication — and the tab strip becomes the SOURCES in source order (Amaze first, then GPUOpen, PolyHaven, SimReady, PhysicallyBased, RGL) from `matx_sources.all_sources()`. The Amaze source browses the `AmazePackages` repository per TILE: folders under `packages/` are categories, every entry in every `.amazepkg` is one record read by ranged requests (a plain-file entry becomes a bare tile), and importing fetches only the chosen tiles' members. No File tab, and `enabled_sections` does not apply, because these are not sections. ONE strip, two lists: `_build_section_tabs` already rebuilt on an `enabled_sections` change, so switching worlds reuses that path. A tab click picks a source. Leaving returns you to the section you left from. `_is_online()` is now just the mode — it used to be `online_mode AND current_section == "material"` — and since 2026-08-15 six panel paths that branched on it call the CONTEXT instead: this world implements `search_hint`, `filter_text`, `filter_favorites`, `select_category`, `double_click` and an empty `SIDEBAR_MENU` like any section, so the eleven `_is_online()` reads left are all WORLD questions (which tab strip to build, which world a progress bar draws over) rather than section ones. Favourites and Comments are disabled here: an online record has no favourite state, and a comment is written against a library asset. | `panel.py` `enter_online_world` / `leave_online_world`, `core/matx_sources.py` |
+| **Designed dialogs** | Every dialog is built on `base_dialog.AssetDialog` and takes its sizes and places from its drawn frame in `amazetheme.DIALOG_LAYOUT`, read through `theme.ui_px` like every other chrome measurement. No sizing path reads a device ratio: Houdini's UI scale is one number fixed at startup and it never rescales when a window moves between monitors, so neither does a dialog. A drawn list (D01, D15) is painted row by row by `library_dialog.ListRows` from the frame's rows. The first designed shell, `ui_helpers.DesignedDialog` (the Versions dialog, 2026-08-02), was removed on 2026-10-25 with D01's dropdown. | `dialogs/base_dialog.py`; `helpers/ui_helpers.py` places each widget at its drawn box (`pin_drawn`) |
+| **Filtering & sorting** | THREE proxies, one base: `core/grid_proxy.py`'s `GridProxyModel`, inherited by `MultiFilterProxyModel` (the asset sections and Online), `TextureFilterProxyModel` (File) and `GradientFilterProxyModel` (Color). They differ in what they FILTER ON; the base decides WHAT IS SHOWN, and the ORDER is the model's (the Grid Engine, §4i) - a proxy's `sortColumn()` stays -1, so rows coming back from a filter come back in the model's order and nothing re-sorts after an insert. `setDynamicSortFilter(False)` also turns off the re-test of a row whose DATA changed (2026-08-03 — un-favouriting a tile with Favourites-only on left it in the grid, star off), so the base restores that: role-aware (`watched_roles`) and coalesced onto one pass per event-loop turn. | `core/grid_proxy.py`, `core/multifilterproxy_model.py` |
+| **Scrolling** | Both axes go through one handler: per-PIXEL scroll mode and `dragdrop_widgets.wheelEvent`, which reads the dominant axis, converts a classic wheel's 120-unit notches, and applies the `scroll_speed` preference. Horizontal was on Qt's per-ITEM default until 2026-08-01 — one step is a whole row, which feels like extreme acceleration — and it went unnoticed because nothing could scroll sideways until list rows grew wider than the panel. | `panel/dragdrop_widgets.py` |
+| **Splitter panes** | THE construction (2026-08-01): sidebar \| grid \| comments, with exactly ONE flexible pane — the grid (stretch 1); both side panes keep their width (stretch 0), so every redistribution Qt performs goes to the grid. Each side pane SETS its own width: BOTH are `ui_helpers.HeldPane`, which requests the remembered drag or the design width through `sizeHint`, and `_on_splitter_moved` records both into `sidebar_width` / `notes_panel_width`. Nothing on the panel computes a pane's width: measured 2026-08-03, the splitter has already applied the hint before any post-show code runs, so the 50 lines that redistributed for the Comments pane were recomputing what was already set. Never keep separate size records around Qt's relayout — that shipped once and failed. | `panel.py` `_build_splitter_and_sidebar`, `ui_helpers.HeldPane` |
+| **Prefs** | Settings, one shared instance injected into every model. `settings.json` is stored where the OS keeps preferences (`~/Library/Preferences/Amaze` on macOS, `%APPDATA%/Amaze` on Windows, `$XDG_CONFIG_HOME/Amaze` on Linux) — never in the install — and holds bootstrap, this machine's view state and last-known copies; the SHARED settings are the library's own, in `DataBase.json` ▸ `settings` (`core/library_settings.py`), read at load and written on save. Split in two 2026-08-09: `prefs.py` defines what a setting IS (64 property pairs plus the location, favourite and section-filter accessors), and `prefs/persistence.py` reads and writes it on disk — save, load, the field-wise merge between two panes of one session, the migration out of older installs, and the portable path encoding. `_Persistence` is mixed into `Prefs`, so every call site still calls `prefs.save()` and the document's shape is untouched. | `prefs/prefs.py` → `Prefs`, from `settings.json` |
 | **Database** | One of the six JSON documents of keyed sections, read and written through the guard (§4c). | `core/guard.py`, `core/documents.py`, `core/library_db.py` |
 
 ### The stamp every library carries
 
 `DataBase.json` ▸ `policy` ▸ `library` ▸ `version` (`library_policy`)
-says what this build may do: a library stamped ahead opens read-only
-and points at the updater. There is no schema chain; an older library
-is converted once by `core/library_conversion.py`, and the creation
-door (`prefs.create_library`) stamps the current version.
+decides what this build may do: a library with a newer version opens read-only
+and directs the user to the updater. There is no schema chain; an older library
+is converted once by `core/library_conversion.py`, and
+`prefs.create_library` writes the current version into a new library.
 
 ---
 
@@ -725,12 +725,12 @@ but they share one house style, so that style is a **base class**, not
 copied per dialog.
 
 - **AssetDialog** — the shared base: a `QFormLayout` with right-aligned
-  labels + fields right, native 5px margins, content-hugging fixed size,
+  labels + fields right, native 5px margins, fixed size fitted to content,
   OK/Cancel. Helpers `add_line` / `add_combo` / `add_row` / `finish`. A
   new dialog is a few `add_*` calls, identical by construction.
   `dialogs/base_dialog.py`.
 - **Section-owned** — a Section provides its own dialog through the
-  Section API's `edit_dialog()` hook, like it owns its menu. Material →
+  Section API's `edit_dialog()` hook, as it defines its menu. Material →
   **Edit Info Dialog**; Code → its editor. File/Node can get
   one the same way when they need it.
 
@@ -745,9 +745,9 @@ copied per dialog.
 | **Versions** | Materials | `dialogs/versions_dialog.py` ✓ AssetDialog — D01: a material's versions, newest first; Select makes the picked one active |
 | **About** | — | a TAB inside `dialogs/prefs_dialog.py`, shared with Debug — there is no separate About dialog |
 
-*Adoption is complete* (R51, 2026-08-21) — every dialog rides AssetDialog,
-and `test_headless_dialogs` pins it: a new QDialog subclass in `dialogs/`
-either rides the base or records its reason in a `HOUSE_STRAY` attribute.
+*Adoption is complete* (R51, 2026-08-21) — every dialog is built on AssetDialog,
+and `test_headless_dialogs` checks it: a new QDialog subclass in `dialogs/`
+either subclasses the base or records its reason in a `HOUSE_STRAY` attribute.
 
 ---
 
@@ -755,7 +755,7 @@ either rides the base or records its reason in a `HOUSE_STRAY` attribute.
 
 **`core/lop_assign.py`** is the USD half of a LOP viewport drop, split
 out of the panel 2026-07-27: what is already bound under a prim,
-rebinding it, naming an assign after the geometry it drives, and
+rebinding it, naming an assign after the geometry it applies to, and
 removing a material nothing references any more. No Qt, no panel — it
 reports reasons rather than showing dialogs, so it is testable
 headlessly (`tests/test_lop_assign.py`). The panel keeps the menu,
@@ -763,47 +763,47 @@ because choosing the prim is UI.
 
 One SELF-MANAGED gesture for every section — no native QDrag, no drop
 hooks. The widgets run press-move-release on the live event loop; the
-engine owns everything spatial and temporal: throttled per-move picking
-(`locateSceneGraphPrim` / `queryNodeAtPixel`), the ghost's target tick
+engine handles everything about position and timing: throttled per-move picking
+(`locateSceneGraphPrim` / `queryNodeAtPixel`), the drag image's target check
 and the rect-tracked pane (`ghost_tick` / `pane_under_cursor_tracked` —
-target questions at the pick cadence, the pane held by its screen rect
-and revalidated slowly, the outline following every move; a full
-per-move resolution saturated the loop at the mouse's own rate,
+target checks at the picking rate, the pane kept by its screen rect
+and checked again slowly, the outline following every move; a full
+per-move lookup kept the event loop fully busy at the mouse's event rate,
 2026-08-23), the hover highlight with
 restore-on-end, release-target resolution (`viewport_release_target`),
 container placement (`first_materiallibrary(connected_to=)`,
 `find_assignmaterial`), Houdini's stock LOP helpers (`stock_lop()`), and
 `keep_editor_focus` — a viewport release never moves the user's editors.
-Sections' release verbs bridge to the import machinery; the panel keeps
+Sections' release verbs call the import code; the panel keeps
 the shared plumbing. The one native drag left is the texture file drag.
-Law: a drop lands where it is dropped; nothing exists before release;
-SOP and LOP worlds never cross-reference; empty viewport space is a
-miss (red X); a menu is its own feedback (no icon).
+Rules: an item is placed where it is dropped; nothing is created before release;
+SOP and LOP contexts never reference each other; empty viewport space is a
+miss (red X); a drop that opens a menu shows no icon.
 
 ## Storage format
 
 An asset is two files in its section's folder: `<id>.mat`, a
 Houdini-native node archive (via `saveItemsToFile`), and `<id>.json`,
 its `metadata` and its `builder` (library format 4, 2026-11-16).
-Recoverable with vanilla Houdini if the plugin dies, but not portable
+Recoverable with vanilla Houdini without the plugin, but not portable
 outside Houdini (not `.mtlx`/`.usda`).
 
 **Format 3 wrote two more**, `.interface` (Python from `asCode()`) and
 `.builder.json`, and kept the metadata in `.stamp.json`. Only
-`core/library_conversion.py` knows them: opening a format 3 library tells
-the user once, then converts all of it before any model reads it - each
+`core/library_conversion.py` reads them: opening a format 3 library shows
+the user a message once, then converts all of it before any model reads it - each
 asset written new, read back and compared, and only then its old files
-removed; an asset that will not convert is set aside, its row taken out
+removed; an asset that fails to convert is set aside, its row removed
 and its old files left untouched, and the user chooses whether they go to
 the trash. The `.interface` is READ for its first `createNode("<type>"`
-there, never executed. Nothing else reads an old shape, and a test greps
-that this stays so.
+there, never executed. Nothing else reads an old format, and a test searches
+the code to keep it so.
 
 Executing `.interface` is what the builder data replaced. `asCode()` output is
 Python whose only documented contract is that it RUNS, so importing a
 material used to run whatever was in a file chosen by an id read
-verbatim out of the database. The sidecar records the one thing the
-executed file uniquely carried - the container's own parameter
+verbatim out of the database. The sidecar records the one thing only the
+executed file held - the container's own parameter
 interface and values - in a form that is parsed. Measured on a real
 548-asset library: with sidecars present, every importable asset
 reproduces byte-identically without executing a line.
@@ -818,8 +818,8 @@ reproduces byte-identically without executing a line.
 
 A directory per asset id, and a file trio per version named for its
 writer and an increasing number. A snippet's version is one text file:
-code goes through the same engine, `core/versions.py` taking the section,
-with the same `versions.json`. Check Library walks every folder,
+code goes through the same module, `core/versions.py` taking the section,
+with the same `versions.json`. Check Library reads every folder,
 `code/` and both `versions/` trees included, and
 `core/library_files.py` names a version file as one whose stem is
 `<writer>-<n>` or `<n>` with a version suffix, in a folder named for an
@@ -827,60 +827,60 @@ alphanumeric id. Only the unlisted asset files of `materials/`, `nodes/`,
 `mat/` while it is there are counted against the lists; a version file is a known
 name and never one of them. Settled ahead of the Versions build so
 that the classifier could be written against a shape that is known
-rather than guessed: without a decided name, the first sweep after
-Versions shipped would have read every version file as an orphan.
+rather than guessed: without a decided name, the first check after
+Versions shipped would have counted every version file as unlisted.
 
 `<writer>` is the artist's own **Library User** — the `library_user`
-preference — never a harvested machine or account name.
+preference — never a machine or account name read from the system.
 
-`library_user` is ONE identity: the name versions are signed with and
-the key everything per-user is filed under. The retired `version_author`
-is ADOPTED on load, so existing `<name>-<n>` stems still match their
-writer. What keeps two writers off one filename is not the name — it is
-stepping past a stem already on disk before writing.
+`library_user` is ONE identity: the name in version file names and
+the key every per-user record is stored under. The removed `version_author`
+is COPIED into it on load, so existing `<name>-<n>` stems still match their
+writer. What prevents two writers using one filename is not the name — it is
+skipping any stem already on disk before writing.
 
 ### The library's policy — `DataBase.json` ▸ `policy`
 
 `allow_overwrite`, default **true**. When false, `update_asset_content`
-(`actions/materials.py`) refuses to replace an existing asset's files,
-and the Save dialog stops offering Overwrite. It is checked in the verb
-every caller goes through. Preferences has a control for it
-(`_cbx_allow_overwrite`), and the value travels with the library, so
-two machines pointed at one library agree. A policy that does not read
-answers no (`library_settings.allow_overwrite`). `library` holds the
+(`actions/materials.py`) does not replace an existing asset's files,
+and the Save dialog no longer offers Overwrite. It is checked in the function
+every caller calls. Preferences has a control for it
+(`_cbx_allow_overwrite`), and the value is stored in the library, so
+two machines using one library have the same value. A policy that cannot be read
+returns False (`library_settings.allow_overwrite`). `library` holds the
 library's version (4, shown as `v2.0`).
 
 ### Housekeeping semantics (settled 2026-07-31)
 
-Behaviour the hardening campaign changed, stated here because these are
-contracts other code and the docs lean on:
+Behaviour the reliability work changed, stated here because these are
+contracts other code and the docs rely on:
 
 - **Check Library never deletes.** Missing-file rows are reported and
   kept. Every move is into the library's `trash/<date>/` through one
   guarded change; a day expires after 30 days (`guard.TRASH_DAYS`), and
-  every check and every open expires it (`guard.expire_trash`). Its
-  judgement of the databases is `guard.health()`; every fix acts
-  through the guard: restore a backup, move to the trash, add orphaned
+  every check and every open removes expired days (`guard.expire_trash`). Its
+  check of the databases is `guard.health()`; every fix goes
+  through `core/guard.py`: restore a backup, move to the trash, add orphaned
   files back, rebuild a lost database from each asset's `<id>.json`.
-- **One engine, two doors.** `repair.survey` walks the library once
+- **One survey, two callers.** `repair.survey` reads the library once
   (`library_files.walk`, one `os.scandir` per folder) and every report,
-  button and count reads that one dict. The panel door is Preferences ▸
-  Library's Databases row:
+  button and count reads that one dict. In the panel it is called from Preferences ▸
+  Library's Databases row (`prefs_dialog._survey_open_library`):
   its button saves every model first (`check.let_go`), surveys, and
   shows `library_check.summary` as three lights; once something can be
   fixed it reads Repair and opens `repair_dialog.repair_found`, whose
   Fix Safe and Fix All act with `guard=False`, read every model again
-  (`check.read_again`) and check again. A part that cannot be judged
+  (`check.read_again`) and check again. A part that cannot be checked
   (a database in use, a folder that cannot be listed) is never fixed.
-  The shelf door (`repair_dialog.run`) acts with `guard=True`,
-  refuses while an Amaze pane is open, and only reports once this
+  The shelf tool's function (`repair_dialog.run`) acts with `guard=True`,
+  stops with a message while an Amaze pane is open, and only reports once this
   session holds a list.
-- **The default Move Aside takes only what Amaze made**: unlisted asset
+- **The default Move Aside moves only files Amaze created**: unlisted asset
   files, scratch past an hour (`repair.SCRATCH_MIN_AGE`), `.pre-adopt`
   backups, and a sync service's duplicate of a backup tier, undo copy or
   preserved copy, or of a live file whose bytes equal the original's. A
-  duplicate that differs, or whose original is absent, is named and
-  left. An unknown file or folder moves only by its own button and its
+  duplicate that differs, or whose original is absent, is listed and
+  left in place. An unknown file or folder moves only by its own button and its
   own confirm.
 - **Stars are per user IN THE LIBRARY**: each section's database holds
   `stars` {user: {id: true}}, `files.json` the File stars; a user writes
@@ -889,67 +889,67 @@ contracts other code and the docs lean on:
   save already read, never of content that does not parse; the newest 3
   and one a day for 30 days are kept.
 - **Shared entries merge per field**: different fields from two users
-  both survive; the same field keeps this session's value and the alert
+  are both kept; the same field keeps this session's value and the alert
   names the other user.
 
 ### What a library directory may contain
 
-**`core/library_files.py` is its one home**: every name below, with
+**`core/library_files.py` is the only module that defines it**: every name below, with
 the exact patterns, is stated there once, and `library_files.classify`
-answers what any path is. The table is the reading guide, not a second
-copy. Anything else is one of four kinds, and the classifier says
-which: **scratch** (a write of ours that died partway: `.writing`,
-`.capturing`, `.tmp`, `.lock` and the other tails in `SCRATCH_TAILS`,
+returns what kind any path is. The table is the reading guide, not a second
+copy. Anything else is one of four kinds, and the classifier returns
+which: **scratch** (a write by Amaze that stopped partway: `.writing`,
+`.capturing`, `.tmp`, `.lock` and the other suffixes in `SCRATCH_TAILS`,
 or an `.amaze_scratch*` name), **pre-adopt** (`mat/<id>.mat.pre-adopt`,
 `mat/<id>.builder.json.pre-adopt`), **duplicate** (a known name with
 ` <n>` before its last suffix, a sync service's second copy) or
 **unknown**. OS noise (`.DS_Store`, `Thumbs.db`, `._*` and the rest of
 `OS_NOISE`) is left alone and not reported. Check Library reports all
 four; `tools/library-audit.py` loads the same module by path and
-reports them too (`--strict` exits non-zero, so it can gate).
+reports them too (`--strict` exits non-zero, so a script can fail on it).
 
 | entry | what it is |
 |---|---|
-| `DataBase.json` | the library's own database: `policy` (`library` version, `allow_overwrite`), `settings` (the shared settings, one `{value}` per key), `users` (a `uuid4` UID per person with a `name`; names unique; nobody made silently), `manifest` (the databases this library has, so a lost one is known lost), `marks` (the starters offered here once) |
+| `DataBase.json` | the library's own database: `policy` (`library` version, `allow_overwrite`), `settings` (the shared settings, one `{value}` per key), `users` (a `uuid4` UID per person with a `name`; names unique; nobody made silently), `manifest` (the databases this library has, so a missing one is detected), `marks` (the starters offered here once) |
 | `materials.json` `nodes.json` `code.json` `colors.json` | each section's database: `assets` {id: row}, `categories` {name: {order, color}}, `comments` {id: {items}}, every item with its `id` and `author`, `icons` {id: face}, `stars` {user: {id: true}}. Named once in `library_files` (`LISTS`, `LABELS`, `NOUNS`) and declared in `guard.DATABASES` |
 | `files.json` | the Files section: `locations` {user: {`loc:<id>`: record}}, `paths` {id: {path}}, the one place a location's path is stored, and `comments`, `icons`, `stars` keyed `loc:<id>/<relative>` |
-| `backup/` | every backup: `<database>.<date>_<time>.bak`, the newest 3 and one a day for 30 days; `.before-restore.bak`, the undo copy a restore keeps; `.unreadable-<hash>`, one copy of a database that would not read |
+| `backup/` | every backup: `<database>.<date>_<time>.bak`, the newest 3 and one a day for 30 days; `.before-restore.bak`, the undo copy a restore keeps; `.unreadable-<hash>`, one copy of a database that could not be read |
 | `trash/<date>/…` | what a delete or Check Library moved, under its library path, removed after 30 days |
 | `.amaze-journal` | there only while a change of several files is applied; finished at the next open |
-| `policy.json` | after a conversion only: the fence `{"library_version": 4}` an older Amaze reads, which leaves the library closed. Nothing in this Amaze reads it |
-| `materials/` `nodes/` | **each asset section's own folder** (library format 4), named once in `library_files.SECTION_FOLDERS` beside the section's database: `materials.json`'s rows own `materials/`, `nodes.json`'s own `nodes/`. Every path to an asset file is built from (section database, id) by `material.payload_path` |
+| `policy.json` | after a conversion only: the file `{"library_version": 4}` an older Amaze reads, so it does not open the library. Nothing in this Amaze reads it |
+| `materials/` `nodes/` | **each asset section's own folder** (library format 4), named once in `library_files.SECTION_FOLDERS` beside the section's database: `materials.json`'s rows use `materials/`, `nodes.json`'s use `nodes/`. Every path to an asset file is built from (section database, id) by `material.payload_path` |
 | `materials/<id>.mat` | the asset's nodes |
 | `materials/<id>.json` | everything else about the asset, through `core/asset_record.py` alone: `metadata` (the row as its database holds it - what a lost database is rebuilt from, an unlisted asset added back by, and the rows a put-back brings up to date) and `builder` (the container's type, its interface as a dialog script, and its changed values - read, never executed). Two writers share it, the save and the background metadata writer, so each replaces only its own section, under one lock |
 | `materials/<id>_cop.mat` | a material's companion COP network |
-| `materials/versions/<id>/<n>.*` + `versions.json` | the version store: each version's `.mat`, its `.json` holding the builder ALONE (so a metadata edit never makes two versions differ), its `.png`, and the ledger. The conversion rewrote every archive made before format 4 the same way. The BASE files are always the active version's - losing this folder costs history, never the material. Deleting the asset takes the folder with it: `asset_directories()` names it and `remove_asset` sweeps it |
+| `materials/versions/<id>/<n>.*` + `versions.json` | the version store: each version's `.mat`, its `.json` holding the builder ALONE (so a metadata edit never makes two versions differ), its `.png`, and the version list. The conversion rewrote every archive made before format 4 the same way. The BASE files are always the active version's - losing this folder loses the history, never the material. Deleting the asset deletes the folder too: `asset_directories()` names it and `remove_asset` removes it |
 | `nodes/…` | the same, for the Nodes section |
-| `mat/` | **format 3's shared asset folder**, every section's files together, with `<id>.interface`, `<id>.builder.json` and `<id>.stamp.json` beside each `.mat`. The conversion (`library_conversion.convert`, from the panel's `open_library`, never by a headless open) moves each id's files and version folder to the folder of the database that names it, a file no database names to `materials/`; an id two databases name stays and is logged. It runs only while every database reads. An empty `mat/` is removed; one with anything unknown left in it stays, and Check Library calls it a leftover. The library stays below library version 3 until the conversion finishes, so a crash resumes it |
-| `code/versions/<id>/<n>.txt` + `versions.json` | a snippet's versions: each one's text, and the same ledger. The snippet's text in `code.json` is always the active version's; deleting the snippet takes the folder with it |
-| `materials/<id>.png` (and `nodes/`, `code/`, `colors/`) | **the asset's one picture**, beside its files: a render or a capture, each replacing the other in place (`tile_icons.thumbnail_path`). The Icon menu's Image face shows it; Generic and Custom are composed for display and write no file. Code and Colors rows paint their own preview and own a picture only once one is captured |
+| `mat/` | **format 3's shared asset folder**, every section's files together, with `<id>.interface`, `<id>.builder.json` and `<id>.stamp.json` beside each `.mat`. The conversion (`library_conversion.convert`, from the panel's `open_library`, never by a headless open) moves each id's files and version folder to the folder of the database that names it, a file no database names to `materials/`; an id two databases name stays and is logged. It runs only while every database can be read. An empty `mat/` is removed; one with anything unknown left in it stays, and Check Library reports it as a leftover. The library stays below library version 3 until the conversion finishes, so after a crash the conversion runs again |
+| `code/versions/<id>/<n>.txt` + `versions.json` | a snippet's versions: each one's text, and the same version list. The snippet's text in `code.json` is always the active version's; deleting the snippet deletes the folder too |
+| `materials/<id>.png` (and `nodes/`, `code/`, `colors/`) | **the asset's only picture**, beside its files: a render or a capture, each replacing the other in place (`tile_icons.thumbnail_path`). The Icon menu's Image face shows it; Generic and Custom are composed for display and write no file. Code and Colors rows paint their own preview and have a picture file only once one is captured |
 | `<section folder>/comments/` | the pictures pasted into that section's comments (`materials/`, `nodes/`, `code/`, `colors/`, `files/`) |
 | `files/<40 hex>.png` | a File row's scene capture, by the SHA-1 of its key |
 | `img/<id>.png` `img/<id>_icon.png` `captures/<id>.png` | format 3's pictures. The conversion keeps the one each tile showed as `<section>/<id>.png` and removes the rest |
 | `matX/<package>/…` | MaterialX packages and their textures; Check Library does not enter it, the audit tool reports scratch there only |
 
-**`backup/` is not clutter.** It is how a damaged database gets back;
+**`backup/` is not clutter.** It is how a damaged database is restored;
 a cleanup that removes it removes the recovery.
 
 **Nothing temporary belongs here.** A surviving `.writing`,
-`.capturing`, `.lock` or `.tmp` is always ours and always means a save
-died partway — reported separately from a merely unknown file, because
+`.capturing`, `.lock` or `.tmp` is always Amaze's and always means a save
+stopped partway — reported separately from a merely unknown file, because
 an unknown file might be the user's and a leftover scratch never is.
-Check Library's default Move Aside takes a scratch once it is an hour
+Check Library's default Move Aside moves a scratch file once it is an hour
 old, so a live write in another session is left alone; an unknown file
 moves only by its own button.
 
 ## 7. The Renderer terms
 
-- **Renderer** — a material's engine label: `Karma`, `Redshift`,
-  `Octane`, `COP`. Drives the Tile subtitle and the Renderer filter.
+- **Renderer** — a material's render-engine label: `Karma`, `Redshift`,
+  `Octane`, `COP`. Sets the Tile subtitle and the Renderer filter.
   `Mantra` was one until 2026-08-14, when it was dropped: SideFX is
   retiring the renderer, and 1.0 had not shipped, so nothing needed
-  carrying. A `materialbuilder` or `principledshader::2.0` now matches
-  no renderer and is refused at save rather than labelled. Online imports are plain Karma materials (their origin lives
+  to be kept. A `materialbuilder` or `principledshader::2.0` now matches
+  no renderer and is rejected at save rather than labelled. Online imports are plain Karma materials (their origin is recorded
   in the About/License credit, not the renderer tag).
 - **Karma-family** — Karma plus the legacy stored labels MaterialX and
   MtlX, treated identically for routing, thumbnails and capability, and
@@ -963,17 +963,17 @@ moves only by its own button.
   rebuilt as, and the user-data mark on its own builder, which save, load
   and import read from the table. A switch turned
   off hides that renderer from the Filter, Convert to and both Import
-  menus and from the Render tab (`renderers.offered`); renaming one is its
-  `label`; the `key` never changes, being data on disk.
-- **USD-builder** — a material that can live in a LOP/Solaris context
+  menus and from the Render tab (`renderers.offered`); renaming one changes its
+  `label`; the `key` never changes, because it is stored on disk.
+- **USD-builder** — a material that can be used in a LOP/Solaris context
   (`rs_usd_material_builder`, `octane_solaris_material_builder`, and all
-  Karma-family). MAT-only otherwise. Its tile reads `USD Redshift` or
+  Karma-family). MAT-only otherwise. Its tile shows `USD Redshift` or
   `USD Octane`.
 - **Octane's own builder** — what Octane 2026.6's Create Material makes:
   a plain `subnet` carrying the user data `octane_material_builder = "1"`,
-  which is how Amaze recognises it (`nodes.is_octane_builder`). It lives
+  which is how Amaze recognises it (`nodes.is_octane_builder`). It works
   in both /mat and LOPs like a Karma builder and saves WHOLE like one, so
-  the marker comes back on import; its tile reads `Octane`, no `USD`.
+  the marker is restored on import; its tile shows `Octane`, no `USD`.
 
 ---
 
@@ -1004,7 +1004,7 @@ panel/online_import.py    The online import: catalogue records into the
                           library or the scene (`panel.online_import`)
 panel/package_import.py   The package import: .amazepkg files and store
                           tiles into the library (`panel.package_import`)
-panel/drop_placement.py   Where a drop or a click lands: the network,
+panel/drop_placement.py   Where a drop or a click creates nodes: the network,
                           the position, the carrier (`panel.drop_placement`)
 panel/tile_capture.py     Capture: the Scene View onto one tile, or the
                           open scene onto its File tile (`panel.tile_capture`)
@@ -1015,24 +1015,24 @@ panel/sections.py         The Sections (node-types) + registry + the
 panel/grid.py             The GRID area - the one right-click menu
                           builder over those tables
 panel/sidebar.py          The SIDEBAR area - what a row means and what
-                          may be dropped on it (the drag-hover cluster)
-panel/empty_state.py      EMPTY STATE ENGINE - which blank an empty
-                          grid is showing, and its words
+                          may be dropped on it (the drag-hover handling)
+panel/empty_state.py      EMPTY STATE ENGINE - which empty state an empty
+                          grid is showing, and its text
 panel/dragdrop_widgets.py Drag-and-drop into the network editor
 core/thumbnails.py        THUMBNAIL ENGINE (cache, budget, loaders)
 core/conversion.py        CONVERSION ENGINE (file -> QImage, verified)
-core/guard.py             DATABASE ENGINE: the one door to a library's files
+core/guard.py             DATABASE ENGINE: the only module that reads and writes a library's files
 core/documents.py         each database as keyed sections, the merge
 core/library_db.py        one Library per open library, the save timer
-core/library_conversion.py  the only code that knows an older library
+core/library_conversion.py  the only code that reads an older library
 render/nodes.py           MATERIAL ENGINE (build_karma_material) + save/import
-render/cop_nodes.py       the Node section's Houdini knowledge: which context
+render/cop_nodes.py       the Node section's contexts and containers: which context
                           a network holds, which container to create, and
                           where saved nodes load inside a wrapper HDA
 core/debug.py             DEBUG ENGINE
 core/workers.py           how every engine stops its QThreads (one shared
-                          window, then terminate, then parked for good) and
-                          hands itself over on a reload; base layer
+                          timeout, then terminate, then kept until exit) and
+                          is replaced on a reload; base layer
 core/grid_engine.py       GRID ENGINE (every grid model's cells and row order)
 core/library.py           Library Model (Materials) + base for Cop/Code;
                           no cleanup of its own - Check Library is
@@ -1048,7 +1048,7 @@ core/matx_usd.py          Adapter: a USD OpenPBR material -> that .mtlx
 render/material_converter.py     Adapter: Redshift -> Karma
 render/redshift_converter.py     Engine + adapter: Karma -> Redshift
 render/material_conversion/engine.py      Material Conversion Engine: every pair via MaterialX
-render/material_conversion/materialx.py   its MaterialX API, the hub
+render/material_conversion/materialx.py   its MaterialX API, the middle step of every pair
 render/material_conversion/redshift.py    its Redshift API, over the two converters above
 render/material_conversion/octane.py      its Octane API: the MaterialX copy, classic -> Solaris
 render/material_conversion/octane_reader.py   Adapter: Octane -> MaterialX
@@ -1057,57 +1057,57 @@ core/matx_sources.py      Online source adapters (GPUOpen/PolyHaven/...)
 core/matx_import.py       Online import orchestration + Values Adapter
 core/matx_library.py      Online Browser model
 core/{gradient,cop,code}_library.py   the other sections' models
-core/file_library.py      File Section models (rows by kind, folder sweep);
+core/file_library.py      File Section models (rows by kind, folder cache cleanup);
                           the kinds themselves are core/locations.py's
 core/users.py             WHO uses this library - a uuid4 UID per
                           person with a name beside it. Everything a
-                          user owns is tagged with the UID, so a rename
-                          relinks the label and moves nothing
+                          user owns is keyed by the UID, so a rename
+                          changes the name and moves nothing
 core/notes.py             comments: each database's `comments` section
 core/packages.py          the .amazepkg container (library packages are
                           format 2): export collectors, guarded writer,
-                          refusing reader
+                          a reader that rejects a malformed package
 core/addons.py            add-on packages (format 4, a Houdini package):
                           the one writer, the reader, the Add-On tab's
                           rows, the store's newest versions, the installer
                           into $AMAZE/addons/<folder> with the package file
                           Amaze.json's package_path reads, the on/off
-                          switch (off/ is not loaded), the updater's carry
+                          switch (off/ is not loaded), the updater's copy
 actions/addons.py         the add-on check and install the Add-On tab
                           runs: which store versions are newer, then
-                          fetching and installing them, each answered
-                          in one sentence
-actions/check.py          Check Library's panel door: `let_go` saves
+                          fetching and installing them, each result
+                          shown in one sentence
+actions/check.py          Check Library in the panel: `let_go` saves
                           every model and the settings before the
                           check acts, `read_again` re-reads the
                           settings and every model after each action
                           (the Reload path without its save)
-actions/code.py           the Code section's Houdini verbs: a Python
+actions/code.py           the Code section's Houdini actions: a Python
                           snippet run as one undo step with a shelf
                           click's kwargs, and a snippet set onto a
                           node's code parm
 actions/files.py          the File section's Houdini side: the geometry
                           render pass, and what the File models are
-                          handed when the panel builds them - $HFS, the
+                          given when the panel builds them - $HFS, the
                           open scene, Write Paths As and the OS icons
-actions/nodes.py          the Node section's Houdini verbs: saving a
+actions/nodes.py          the Node section's Houdini actions: saving a
                           network or a selection as an asset, loading it
                           back, and re-rendering its tile
-actions/materials.py      the Material section's Houdini verbs: saving a
+actions/materials.py      the Material section's Houdini actions: saving a
                           material, updating one in place, converting it
                           to another renderer, loading it and
                           re-rendering its tile in one batch
 actions/library.py        the steps of opening a library that need no
-                          panel: refusing one a newer Amaze updated,
-                          readying its folder, updating it to this
-                          Amaze's version, seeding the shipped starters
+                          panel: rejecting one a newer Amaze updated,
+                          preparing its folder, updating it to this
+                          Amaze's version, adding the shipped starters
 core/texstore.py          the texture store: $AMAZELIB tokens, the
-                          FileReference scan, save-time adoption and
-                          the scene-side resolve
+                          FileReference scan, the save-time copy of
+                          referenced files and the scene-side path expansion
 core/library_settings.py  the SHARED settings: DataBase.json ▸ settings
 core/library_policy.py    the library's version stamp in DataBase.json
 panel/notes_panel.py      the Comments pane (right splitter dock)
-core/{texture,geo}_library.py   per-kind engines: image cache/proxy, geo knowledge
+core/{texture,geo}_library.py   per-kind models: image cache/proxy, geometry handling
 render/thumbs.py          Thumbnail SCENE building (shaderball, flipbook)
 render/husk_job.py        ONE background husk per thumbnail batch:
                           its command, progress, Cancel, each PNG
@@ -1116,16 +1116,16 @@ prefs/settings_store.py   settings.json on this computer: read, merge, write
 prefs/persistence.py      how it is STORED - save/load/merge/migrate,
                           mixed into Prefs, plus the portable paths
 core/folders.py           FolderTreeModel (shared Folder-archetype base, locations and subfolders)
-core/file_moves.py        moves files between folders on a worker, never over a taken
-                          name; a file's star, comment, icon and capture follow it
-core/scene_captures.py    photographs the Scene View + open-scene state
+core/file_moves.py        moves files between folders on a worker, never over an existing
+                          name; a file's star, comment, icon and capture move with it
+core/scene_captures.py    Scene View screenshots as tile thumbnails + open-scene state
 core/scene_files.py       which file names are Houdini scenes (.hip,
                           .hiplc, .hipnc)
-core/material_files.py    what a saved material's files say, read as
+core/material_files.py    what a saved material's files contain, read as
                           text: its builder type and its shader type
 core/captures.py          the capture store: <library>/captures, any tile
 core/repair.py            CHECK LIBRARY's engine: one `survey` from one
-                          walk, the one `report_lines`, and every
+                          folder scan, the one `report_lines`, and every
                           action (add back, put back, `repair_index`,
                           `move_aside`, set aside, uncategorised), each
                           taking `guard`; the only module that opens a
@@ -1140,15 +1140,15 @@ dialogs/repair_dialog.py  the shelf tool's report, buttons, confirms
                           Action), and `repair_found`, the Repair dialog
                           Preferences opens; never imports the pane
 core/updater.py           is a newer Amaze released, and can this one
-                          become it - asked only on request, never at
+                          update to it - checked only on request, never at
                           launch (shelf tool + the About tab button)
 core/asset_files.py       the files one asset owns, by kind - the one
-                          namer the library model and the version store
-                          both ask
-core/asset_record.py      the one reader and writer of `<id>.json`: its
+                          module that names them, used by both the library
+                          model and the version store
+core/asset_record.py      the only module that reads and writes `<id>.json`: its
                           `metadata` and `builder`, a section at a time
 core/library_conversion.py  library format 3 to 4, the ONLY module that
-                          knows the old shapes (`mat/`, `.interface`,
+                          reads the old formats (`mat/`, `.interface`,
                           `.builder.json`, `.stamp.json`, `img/<id>.png`,
                           captures, old faces, old version archives);
                           converts a whole library before the models read
@@ -1156,8 +1156,8 @@ core/library_conversion.py  library format 3 to 4, the ONLY module that
 core/versions.py          the version store of materials and code - the
                           base is always the ACTIVE version's, each
                           version also has an archived copy, and
-                          versions.json is the ledger
-core/library_files.py     the naming convention, its one home: every
+                          versions.json is the version list
+core/library_files.py     the naming convention, defined only here: every
                           name a library file may have, and what
                           anything else is - scratch, a duplicate,
                           unknown - plus `walk`, one scandir per folder
@@ -1168,7 +1168,7 @@ core/bsdf_reader.py       reads the `tensor_file` container the measured
                           EPFL RGL BSDFs ship in
 preview/                  THE PREVIEW ENGINE (below) - the scene a
                           material thumbnail is rendered in. Callers
-                          use `amaze.preview`, never its insides
+                          use `amaze.preview`, never its submodules
 preview/thumbnail_scene.py   what every path shares: safe_set and the
                           viewer's OCIO
 preview/usd_scene.py      every renderer's one USD stage: written once
@@ -1179,35 +1179,32 @@ helpers/wording.py        `and_list`, a sentence's list of names, and
                           layer shares one
 helpers/hostver.py        HOST-CAPABILITY ENGINE - every "does this
                           environment behave differently here?" question
-helpers/bytecode.py       Amaze's compiled files, always hash-checked:
-                          the updater writes them for a release, the
-                          panel fills in what is missing after it paints
 helpers/                  theme, ui widgets, vex syntax, generic helpers
 utils/rc_calls.py         the entry points Houdini itself calls: the
                           OPmenu's Amaze submenu (Convert to Redshift,
                           Convert to Karma, Save), and the shelf's
                           Capture, Updates and Reload, one call each -
                           finds the open panel by its pane-tab label;
-                          `start()` hands the log its Houdini speaker
+                          `start()` gives the log its `HoudiniSpeaker`
 branding.py               the app's DISPLAY name, once
 amazetheme.py             THE DESIGN, in one document: every colour,
-                          size, placement and word the designs fix and
-                          Houdini's theme does not own. Edit a Figma
+                          size, placement and word the designs set and
+                          Houdini's theme does not. Edit a Figma
                           change here and nowhere else; helpers/theme.py
                           holds what FOLLOWS Houdini's live theme
 messages.py               EVERY message Amaze shows in a dialog, in one
                           document - `displayMessage` and `debug.alert`
                           alike. Keyed by NAME, never a line number, so
-                          the Figma register cannot rot against it
+                          the Figma register stays correct when lines move
                           ▸p/messages-need-one-home
 dialogs/                  save / preferences / about / code / gradient dialogs
 dialogs/user_dialog.py    the User list's rows, A to Z then the create
                           row
-dialogs/library_dialog.py the Library list's Manage window: it takes
-                          libraries off the list, never a folder
+dialogs/library_dialog.py the Library list's Manage window: it removes
+                          libraries from the list, never a folder
 dialogs/versions_dialog.py a material's versions as a list; Select
                           makes the picked one active
-dialogs/update_dialog.py  what an update asks and says - Continue or
+dialogs/update_dialog.py  what an update asks and shows - Continue or
                           Cancel when it updates the library, then how
                           the install went; the About tab, the shelf's
                           Updates tool and the panel share it
@@ -1218,8 +1215,8 @@ tests/test_support.py     fixture_panel() - the ONLY way a test builds a
 tests/assets/library/     the fixture library (a copy per test)
 tests/assets/files/       the fixture File-section location, GENERATED by
                           make_file_fixtures.py - one tiny file per KIND
-tests/test_no_live_data.py  the gate: no test may reach the machine's own
-                          files. Source ban + runtime path check.
+tests/test_no_live_data.py  the check: no test may read the machine's own
+                          files. Source text check + runtime path check.
 ```
 
 **A test never touches the machine's own data.** Never construct the
