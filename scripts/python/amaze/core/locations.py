@@ -123,6 +123,11 @@ def location_id(preferences, path: str, mint: bool = False) -> str:
     best = _id_table(preferences).get(path_identity(wanted), "")
     if best or not mint:
         return best
+    if _files(preferences).refresh():    # another session may have added this path since the read
+        _generation += 1
+        best = _id_table(preferences).get(path_identity(wanted), "")
+        if best:
+            return best
     lid = uuid.uuid4().hex
     if not _files(preferences).put(PATHS, lid, {"path": wanted}):
         return ""
@@ -269,7 +274,8 @@ def set_record(preferences, path: str, value) -> bool:
     if not ready(preferences):
         return False
     path = hostos.storage_path_key(path)
-    lid = location_id(preferences, path, mint=bool(value))
+    known = location_id(preferences, path)
+    lid = known or location_id(preferences, path, mint=bool(value))
     if not lid:
         return not value
     held = _files(preferences)
@@ -278,7 +284,38 @@ def set_record(preferences, path: str, value) -> bool:
     saved = library_db.save(preferences, FILES)
     _generation += 1
     _keep_order(preferences)
+    if saved and not known:
+        _rehome_into(preferences, path, lid)
     return bool(saved) or saved.reason == "unchanged"
+
+
+def _rehome_into(preferences, path: str, lid: str) -> None:
+    """A location is new: the keys of files under it, kept under an outer one or by path, follow."""
+    held = _files(preferences)
+    inside = {path_identity(path): lid}
+    moves = {}
+    for key in list(held.table(COMMENTS)) + list(held.table(ICONS)) + list(held.mine(FAVORITES)):
+        full = "" if key.startswith(LOC_PREFIX + lid) else _path_of_key(preferences, key)
+        fresh = _ident_under(inside, path_identity(full)) if full else ""
+        if fresh and fresh != key and fresh != LOC_PREFIX + lid:
+            moves[key] = fresh
+    if moves and files_moved(preferences, moves):
+        _carry_captures(preferences, moves)
+        debug.event("file", "a new location took over the keys of the files under it",
+                    moved=len(moves))
+
+
+def _carry_captures(preferences, moves: dict) -> None:
+    """Each re-keyed file's capture moved to its new key; skipped where Qt is not loaded."""
+    try:
+        from amaze.core import captures
+    except ImportError:
+        return
+    for old, new in moves.items():
+        try:
+            captures.move_file_capture(preferences, old, new)
+        except OSError as exc:
+            debug.event("file", "a capture did not follow its key", key=old, error=str(exc))
 
 
 def register(preferences, path: str) -> bool:
@@ -459,6 +496,8 @@ def rehome_covered(preferences, path: str) -> bool:
     if not moves:
         return True
     landed = files_moved(preferences, moves)
+    if landed:
+        _carry_captures(preferences, moves)
     if moves:
         debug.event("file", "a removed location's keys moved to the one still covering them",
                     moved=len(moves))

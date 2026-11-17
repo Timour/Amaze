@@ -2162,6 +2162,28 @@ class RemovingANestedLocationTest(unittest.TestCase):
             [hostos.canonical_path_key(p) for p in prefs.file_folders],
             "premise: the location is still registered")
 
+    def test_a_location_added_inside_another_keeps_the_comment_star_and_icon(self):
+        prefs = self._nested(self.outer)
+        self._annotate(prefs)
+        self.assertEqual((True, True, "activity"), self._shown(prefs, self.inner),
+                         "premise: the file under the outer location is not annotated")
+        prefs.add_file_folder(self.inner)
+        self.assertEqual(
+            (True, True, "activity"), self._shown(prefs, self.inner),
+            "a file's star, comment or icon was not found once its folder became a location")
+
+    def test_a_second_session_adding_the_same_folder_uses_the_first_one_s_id(self):
+        from amaze.core import documents, library_db
+        prefs = self._nested()
+        library_db.document(prefs, locations_mod.FILES)    # read before the other session saves
+        other = documents.Library(prefs.dir, self.OTHER).document(locations_mod.FILES)
+        other.put(locations_mod.PATHS, "0" * 32, {"path": hostos.storage_path_key(self.inner)})
+        self.assertTrue(other.save())
+        prefs.add_file_folder(self.inner)
+        held = library_db.document(prefs, locations_mod.FILES)
+        self.assertEqual(["0" * 32], sorted(held.table(locations_mod.PATHS)),
+                         "one folder got a second location id")
+
     def test_the_outer_location_keeps_the_comment_star_and_icon(self):
         prefs = self._nested(self.outer, self.inner)
         key = self._annotate(prefs)
