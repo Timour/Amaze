@@ -29,10 +29,10 @@ from amaze.tests import test_support  # noqa: E402 - import redirects the debug 
 
 
 class _LogCase(unittest.TestCase):
-    """A temp debug log; the base of the flood tests, so none of them runs twice."""
+    """A temp debug log for the flood tests; a base class with no tests, so none runs twice."""
 
     def setUp(self):
-        """Point the module at a temp log, and put it back or later records vanish into a deleted dir."""
+        """Point `debug` at a temp log, restored after, or later records go to a deleted dir."""
         self.tmp = tempfile.mkdtemp(prefix="amaze_flood_")
         self.addCleanup(shutil.rmtree, self.tmp, True)
         self.log = os.path.join(self.tmp, "flood.jsonl")
@@ -62,7 +62,7 @@ class TestFloodGuard(_LogCase):
             self._raise_and_record()
         written = [r for r in self._records() if r.get("cat") == "exception"]
         # 5 verbatim + markers at 10/100/1000/2000/3000, not 3000 records.
-        self.assertLess(len(written), 20, "the flood was not contained")
+        self.assertLess(len(written), 20, "the repeated failure was not rate-limited")
         self.assertGreaterEqual(len(written), debug.FLOOD_VERBATIM)
         last = written[-1]
         self.assertEqual(last["data"].get("repeat_count"), 3000)
@@ -86,7 +86,7 @@ class TestFloodGuard(_LogCase):
             "the log understates a 100-occurrence flood as %s" % max(counts))
 
     def test_a_different_failure_is_never_suppressed(self):
-        """A noisy neighbour must not hide an unrelated bug."""
+        """Rate-limiting one repeated failure must not suppress an unrelated one."""
         for _ in range(2000):
             self._raise_and_record(where="noisy")
         before = len(self._records())
@@ -135,7 +135,7 @@ class TestFloodGuard(_LogCase):
 
 
 class TwoThreadsCountEveryOccurrence(_LogCase):
-    """Convert workers and the UI log together, and a flood's final count is promised exact."""
+    """Convert worker threads and the UI thread log at once; a flood's final count must be exact."""
 
     def test_two_threads_logging_one_event_lose_no_count(self):
         import threading
@@ -147,7 +147,7 @@ class TwoThreadsCountEveryOccurrence(_LogCase):
                 debug.event("race", "same message", i=i)
 
         interval = sys.getswitchinterval()
-        sys.setswitchinterval(1e-6)    # the GIL handed over as often as a busy Houdini hands it
+        sys.setswitchinterval(1e-6)    # switch threads as often as a busy Houdini does
         try:
             threads = [threading.Thread(target=log) for _ in range(2)]
             for thread in threads:
@@ -189,7 +189,7 @@ class TestPerPassBudget(_LogCase):
             [20, 20], seen,
             "a second pass did not get its own allowance - that is the "
             "whole difference from the session-wide flood guard, which "
-            "stays dark once spent")
+            "stays silent once spent")
 
     def test_two_passes_do_not_share_an_allowance(self):
         debug.begin_pass("a")
@@ -199,11 +199,11 @@ class TestPerPassBudget(_LogCase):
         self.assertTrue(
             debug.pass_budget("b", 20),
             "spending one pass's budget silenced another's, so a busy "
-            "pass would blind an unrelated one")
+            "pass would silence an unrelated one")
 
 
 class TestOneRecordCarriesTheWholeList(_LogCase):
-    """Cleanup and quarantine name every file they moved - a sample cannot put one back."""
+    """Cleanup and quarantine log every moved file; a sample would not let one be restored."""
 
     def test_one_record_survives_where_per_item_records_would_not(self):
         moved = [["mat/%d.mat" % i, "quarantine/%d.mat" % i]
@@ -220,7 +220,7 @@ class TestOneRecordCarriesTheWholeList(_LogCase):
 
 
 class EverySaveLeavesItsRecord(_LogCase):
-    """A refused database save promises one record per call, however many arrive in a row."""
+    """A failed database save writes one record per call, however many fail in a row."""
 
     def _saves(self):
         return [r for r in self._records()
@@ -301,7 +301,7 @@ class TestLogIsolation(unittest.TestCase):
             records = [json.loads(line) for line in handle if line.strip()]
         self.assertTrue(
             any("slot crash" in str(r.get("msg", "")) for r in records),
-            "the crash landed somewhere other than the redirected file")
+            "the crash record was written somewhere other than the redirected file")
         self.assertFalse(
             any(r.get("cat") == "note" for r in records),
             "a redirect turned verbose logging on")
@@ -363,7 +363,7 @@ class TestLeakCheck(unittest.TestCase):
 
 
 def _slate_fields():
-    """(always, on_request): what `_blank_slate` blanks, read off its own source."""
+    """(always, on_request): the names `_blank_slate` resets, parsed from its source."""
     tree = ast.parse(textwrap.dedent(inspect.getsource(debug._blank_slate)))
 
     def touched(statements):
@@ -385,7 +385,7 @@ def _slate_fields():
 
 
 class TheBlankSlate(unittest.TestCase):
-    """What a switch to a new log file leaves behind, at all three doors. ▸p/log-blank-slate"""
+    """What `configure`, `redirect` and `clear_log` reset and keep. ▸p/log-blank-slate"""
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="amaze_slate_")
@@ -395,7 +395,7 @@ class TheBlankSlate(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.tmp, True)
 
     def _dirty(self):
-        """Every field the slate owns carrying something, whatever its type."""
+        """Set every field `_blank_slate` resets to a non-empty value of its type."""
         always, on_request = _slate_fields()
         for name in always | on_request:
             value = getattr(debug, name)
@@ -434,13 +434,13 @@ class TheBlankSlate(unittest.TestCase):
             "log-check.py shows the file as having zero sessions")
 
     def test_the_whole_slate_is_blanked(self):
-        """Derived from the helper, so a field joining the list is guarded that day."""
+        """Field list read from `_blank_slate`, so a field added there is checked at once."""
         always, _ = _slate_fields()
         self._dirty()
         debug.redirect(os.path.join(self.tmp, "moved.jsonl"))
         left = sorted(name for name in always if getattr(debug, name))
         self.assertEqual(
-            [], left, "%s survived the move to a new file" % ", ".join(left))
+            [], left, "%s was not reset by the switch to a new file" % ", ".join(left))
 
     def test_an_alert_survives_a_move_and_dies_on_a_clear(self):
         """A dismissed dialog is a fact about the USER's session, not about logging."""
@@ -458,7 +458,7 @@ class TheBlankSlate(unittest.TestCase):
 
 
 class TestExcepthookSurvivesReload(unittest.TestCase):
-    """The crash recorder must survive a panel REOPEN without chaining to itself. ▸r/module-reload"""
+    """The excepthook works after a panel REOPEN and never calls itself. ▸r/module-reload"""
 
     def setUp(self):
         self._real_hook = sys.excepthook
@@ -482,10 +482,10 @@ class TestExcepthookSurvivesReload(unittest.TestCase):
         self.assertEqual(
             debug._crash_counts.get("k"), 100,
             "the count reset on reload while its companions persisted - "
-            "the flood accounting disagrees with itself")
+            "the flood counters no longer agree")
 
     def test_a_crash_still_records_after_a_reopen(self):
-        """The sentinel is planted before the first install, or it overwrites the self-reference."""
+        """The sentinel is set before the first install, or it overwrites the self-reference."""
         forwarded = []
         sys.excepthook = lambda *a: forwarded.append(a)
         debug._excepthook_installed = False
@@ -505,7 +505,7 @@ class TestExcepthookSurvivesReload(unittest.TestCase):
             try:
                 sys.excepthook(*info)
             except RecursionError:
-                self.fail("the crash recorder recursed to death after a "
+                self.fail("the excepthook raised RecursionError after a "
                           "panel reopen")
             finally:
                 sys.setrecursionlimit(limit)
@@ -519,7 +519,7 @@ class TestExcepthookSurvivesReload(unittest.TestCase):
         importlib.reload(debug)
         self.assertTrue(
             debug._excepthook_installed,
-            "the reload re-armed the installer; the flags must survive it")
+            "the reload reset `_excepthook_installed`; the flags must survive it")
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-"""The Add-On tab: package rows on the drawn rows, the switch, and the button."""
+"""The Add-On tab: package rows at their `P05` layout positions, the switch, and the button."""
 
 import os
 import shutil
@@ -96,7 +96,7 @@ class TheRowsAreThePackagesOwnTest(_Tab):
         self.assertFalse(rows[0]["add-on picture"].pixmap().isNull(), "the package's picture")
 
     def test_every_row_lands_on_the_drawn_rows(self):
-        """The first row as drawn, the second as drawn, the third one pitch below the second."""
+        """Rows 1 and 2 at their `P05` positions, row 3 one `P05_ROW_PITCH` below row 2."""
         drawn = {}
         for kind, x, y, w, h, _text in amazetheme.DIALOG_LAYOUT["P05"]["nodes"]:
             drawn.setdefault(kind, []).append((x, y, w, h))
@@ -145,7 +145,7 @@ class TheRowsAreThePackagesOwnTest(_Tab):
                                lambda url, root, running=None, **_kw: seen.append(running)):
             self.dialog.install_addons()
         self.assertEqual([hostver.houdini_version()], seen,
-                         "the install was not told which Houdini it must run in")
+                         "`fetch_and_install` got no `running` Houdini version")
 
     def test_nothing_newer_says_every_add_on_is_up_to_date(self):
         with mock.patch.object(addons, "store_versions",
@@ -207,7 +207,7 @@ class NoAddOnInstalledTest(_Tab):
 
 
 class MoreGroupsThanTheFrameHoldsTest(_Tab):
-    """Ten groups: the list scrolls in what the page leaves. ▸r/scroll-area-size-hint"""
+    """Ten groups: the list scrolls in the page's remaining height. ▸r/scroll-area-size-hint"""
 
     NODES = tuple(_node("Node %d" % i, "node%d" % i, "pictures/node.svg", "Does thing %d." % i)
                   for i in range(10))

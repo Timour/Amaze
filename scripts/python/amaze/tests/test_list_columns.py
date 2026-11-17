@@ -1,4 +1,4 @@
-"""List mode: badges become columns, the slider greys; tests paint rows and read the pixels back."""
+"""List mode: badges shown as columns, the slider disabled; tests paint and read back pixels."""
 
 import os
 import unittest
@@ -53,7 +53,7 @@ class ListRowPainting(unittest.TestCase):
         return model.index(0, 0)
 
     def test_the_grid_still_gets_its_badges(self):
-        """The badges left list mode only; deleting the badge painters must turn this red."""
+        """Badges were removed from list mode only; removing the badge painting must fail this."""
         self.view.setViewMode(QtWidgets.QListView.ViewMode.IconMode)
         canvas = QtGui.QPixmap(160, 190)
         canvas.fill(QtCore.Qt.GlobalColor.black)
@@ -95,36 +95,36 @@ class TickIsDrawnNotTyped(unittest.TestCase):
         lit = sum(1 for x in range(24) for y in range(24)
                   if image.pixelColor(x, y).red() > 60)
         self.assertGreater(
-            lit, 6, "the tick drew nothing - a column whose job is to "
-                    "say yes must not depend on a font having the glyph")
+            lit, 6, "the tick drew nothing - a column that shows a yes "
+                    "value must not depend on a font having the glyph")
 
 
 class SliderFollowsTheViewMode(unittest.TestCase):
-    """Grid scales 64-512 with a magnet at 128; a list row does not scale, so the slider greys."""
+    """Grid sizes run 64-512 and snap near 128; list rows are fixed, so the slider is disabled."""
 
     def test_the_magnet_pulls_a_near_miss_onto_128(self):
-        """A magnet that grabs everything is a broken slider - 200 is a size someone chose."""
+        """A snap that catches every value breaks the slider: 200 is a size someone chose."""
         self.assertEqual(
             128, ui_helpers.ClickSlider.DEFAULT_VALUE,
-            "the slider's default and its magnet must be the same "
-            "number, or the default drags itself off the mark")
+            "the slider's default and its snap mark must be the same "
+            "number, or the default value snaps away from itself")
         self.assertIn(
             128, ui_helpers.ClickSlider.SNAP_MARKS,
-            "128 is the magnet - it has to be in the snap marks")
+            "128 is the default - it has to be in the snap marks")
         slider = ui_helpers.ClickSlider()
         slider.setRange(64, 512)
         for start in (128 - ui_helpers.ClickSlider.SNAP_RADIUS + 1,
                       128 + ui_helpers.ClickSlider.SNAP_RADIUS - 1):
             self.assertEqual(
                 128, slider._snap(start),
-                "a drag ending %s did not snap to the 128 magnet"
+                "a drag ending at %s did not snap to 128"
                 % start)
         self.assertEqual(200, slider._snap(200),
-                         "the magnet swallowed a size someone chose")
+                         "the snap changed 200, a size outside the snap radius")
 
 
 class TheRealPanelInListMode(unittest.TestCase):
-    """Against the shipped panel: a view built by the test would pass with the panel broken."""
+    """Uses the real panel: a view built by the test would pass even with the panel broken."""
 
     @classmethod
     def setUpClass(cls):
@@ -142,7 +142,7 @@ class TheRealPanelInListMode(unittest.TestCase):
     HOUSE_FONT = "SideFX Source Sans Pro"
 
     def _wear_the_host_font(self, table):
-        """Wear the host font, PIXEL-sized through `ui_px` ▸p/headless-host-font"""
+        """Set Houdini's font on `table`, PIXEL-sized through `ui_px` ▸p/headless-host-font"""
         if self.HOUSE_FONT not in QtGui.QFontDatabase.families():
             self.skipTest("%s is not installed, so the panel's real font "
                           "cannot be measured here" % self.HOUSE_FONT)
@@ -152,7 +152,7 @@ class TheRealPanelInListMode(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
 
     def test_the_grid_view_never_leaves_icon_mode(self):
-        """List mode is the table: the view wearing the tile delegate stays a grid in both modes."""
+        """List mode uses the table; `thumblist`, with the tile delegate, stays IconMode in both."""
         self.addCleanup(self._mode, "grid")
         for mode in ("list", "grid", "list"):
             self._mode(mode)
@@ -174,8 +174,8 @@ class TheRealPanelInListMode(unittest.TestCase):
         self._mode("list")
         self.assertFalse(
             self.panel.click_slider.isEnabled(),
-            "the slider is still live in list mode, where the row size "
-            "is fixed - it moves a number nothing reads")
+            "the slider is still enabled in list mode, where the row size "
+            "is fixed - it changes a value nothing reads")
         self.addCleanup(self._mode, "grid")
 
     def test_list_rows_stay_at_the_smallest_size(self):
@@ -211,7 +211,7 @@ class TheRealPanelInListMode(unittest.TestCase):
         self._settle(1200)
         wide = self._columns()
         self.assertTrue(any(wide.values()), "no columns at all - "
-                                            "the test is not testing")
+                                            "the test checks nothing")
         self.assertGreater(len(wide), 3, "too few columns to be testing")
         for width in (900, 640, 460, 380):
             self._settle(width)
@@ -289,7 +289,7 @@ class TheRealPanelInListMode(unittest.TestCase):
             "the row is shorter than the text line it paints")
 
     def test_list_mode_shows_the_table_and_grid_mode_the_list(self):
-        """Exactly one of the two views on the model is up; isHidden, as nothing is visible headless."""
+        """One of the two views on the model is shown; isHidden, as nothing is visible headless."""
         self._mode("list")
         self.addCleanup(self._mode, "grid")
         self.assertFalse(self.panel.thumbtable.isHidden(),
@@ -350,7 +350,7 @@ class FilteringNeverUnsortsTheList(unittest.TestCase):
 
 
 class CategoriesIsAButtonNotAMenuItem(unittest.TestCase):
-    """`Show Categories` is a chip, not a View menu row: two controls for one preference drift apart."""
+    """`Show Categories` is a chip, not a View menu row: two controls for one setting can disagree."""
 
     @classmethod
     def setUpClass(cls):
@@ -369,13 +369,13 @@ class CategoriesIsAButtonNotAMenuItem(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
         self.assertEqual(
             not before, panel.cat_wrapper.isVisibleTo(panel),
-            "the button did not move the sidebar")
+            "the button did not show or hide the sidebar")
         self.assertEqual(
             not before, bool(panel.prefs.show_categories),
-            "the preference did not follow the button")
+            "the preference did not change with the button")
 
     def test_the_chip_follows_the_action_too(self):
-        """The action is the owner: whatever toggles it must leave the chip agreeing."""
+        """The action holds the state: whatever toggles it must leave the chip matching it."""
         panel = self.panel
         before = panel.action_catview.isChecked()
         self.addCleanup(panel.action_catview.setChecked, before)
@@ -391,7 +391,7 @@ class CategoriesIsAButtonNotAMenuItem(unittest.TestCase):
 
 
 class EveryChipUsesTheOneEngine(unittest.TestCase):
-    """One engine for every chip: as drawn at rest, lighter on hover, unless colour shows it is on."""
+    """All chips use one painter: as designed at rest, lighter on hover unless colour marks it on."""
 
     LIT = None
 
@@ -429,7 +429,7 @@ class EveryChipUsesTheOneEngine(unittest.TestCase):
 
 
 class TheOnlineWorld(unittest.TestCase):
-    """Online is its own world: its tabs are the sources in order, and the amber button marks it."""
+    """Online mode: its tabs are the online sources in order; the amber button shows it is on."""
 
     @classmethod
     def setUpClass(cls):
@@ -468,7 +468,7 @@ class TheOnlineWorld(unittest.TestCase):
             "clicking an online tab did not change the source")
 
     def test_leaving_puts_you_back_where_you_came_from(self):
-        """The online browser is somewhere you dip into, not a change to what you were working on."""
+        """Leaving online mode returns to the section that was current before entering it."""
         panel = self.panel
         panel.section_tabs.setChecked("gradient")
         QtWidgets.QApplication.processEvents()
@@ -493,13 +493,13 @@ class TheOnlineWorld(unittest.TestCase):
         def _no_network(url, *args, **kwargs):
             raise OSError("network blocked in tests")
 
-        real_request = matx_sources._request  # belt and braces: fixture_panel blocks the network too
+        real_request = matx_sources._request  # also blocked here: fixture_panel blocks the network too
         matx_sources._request = _no_network
         self.addCleanup(setattr, matx_sources, "_request", real_request)
 
         panel = self.panel
 
-        panel.section_tabs.setChecked("gradient")  # one section: its proxy is another class, so a grid left online is unmistakable
+        panel.section_tabs.setChecked("gradient")  # Color: its proxy has its own class, so a grid left on the online model is detectable
         QtWidgets.QApplication.processEvents()
 
         def _restore_the_panel():  # class-scoped panel: a grid left on the online model would fail every later test
@@ -549,10 +549,10 @@ class TheOnlineWorld(unittest.TestCase):
         self.assertIn(
             amber, seen,
             "the online button is not amber when on - the colour IS "
-            "the signal that you are in the other world")
+            "the signal that the panel is in online mode")
 
     def test_a_disabled_chip_is_half_there(self):
-        """The star is off online, and a chip that paints itself gets no dimming from Qt."""
+        """The star is disabled online, and a self-painted chip gets no disabled dimming from Qt."""
         self.assertEqual(
             0.5, ui_helpers.ChipToggleButton.DISABLED_OPACITY)
         panel = self.panel
@@ -561,19 +561,19 @@ class TheOnlineWorld(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
         self.assertFalse(
             panel.cb_favsonly.isEnabled(),
-            "the favourites star is still live online, where no record "
+            "the favourites star is still enabled online, where no record "
             "has a favourite state")
         self.assertFalse(
             panel.btn_notes.isEnabled(),
-            "Comments is still live online - a comment is written "
+            "Comments is still enabled online - a comment is written "
             "against a library asset, which an online result is not")
 
         panel.leave_online_world()
         QtWidgets.QApplication.processEvents()
         self.assertTrue(panel.cb_favsonly.isEnabled(),
-                        "the star did not come back")
+                        "the star was not enabled again")
         self.assertTrue(panel.btn_notes.isEnabled(),
-                        "Comments did not come back")
+                        "Comments was not enabled again")
 
     def test_the_View_menu_is_down_to_the_one_shot_actions(self):
         """The View menu holds only the one-shot actions: a gallery in, packages in and out."""
@@ -597,9 +597,9 @@ class TheOnlineWorld(unittest.TestCase):
 
 
 class TheCategoryColumnPaintsITSOwnColour(unittest.TestCase):
-    """Category alone paints its own colour, the one the grid puts under its tiles; others share ink."""
+    """Only Category uses its own colour, as under grid tiles; other columns use the text colour."""
 
-    CATEGORY_INK = "#ff8800"  # no other part of the row uses it, and light enough to survive the legibility pass recognisably
+    CATEGORY_INK = "#ff8800"  # no other part of the row uses it, and light enough to stay recognisable after the legibility pass
     DARK_INK = "#2a2a2a"  # dark enough that writing it on the row would be unreadable - measured 1.03:1 against #333333
 
     def setUp(self):
@@ -640,7 +640,7 @@ class TheCategoryColumnPaintsITSOwnColour(unittest.TestCase):
         plain = self.view.palette().color(QtGui.QPalette.ColorRole.Text)
         self.assertEqual(
             plain.name(), self._ink(None).name(),
-            "an uncoloured category asked for an ink of its own")
+            "an uncoloured category got a text colour of its own")
 
     def test_a_DARK_category_is_lightened_to_be_readable(self):
         """A dark category colour is lightened as the pen on a dark row; #333333 measured 1.03:1."""
@@ -663,8 +663,8 @@ class TheCategoryColumnPaintsITSOwnColour(unittest.TestCase):
             self.delegate = stock
         self.assertEqual(
             plain.name(), ours.name(),
-            "the category column overrides a selected row's ink again "
-            "- the host owns it")
+            "the category column overrides a selected row's text colour "
+            "- the host stylesheet sets it")
         self.assertTrue(  # the unselected row still gets its colour, or a do-nothing delegate passes
             self._hueish(self._ink(self.CATEGORY_INK)),
             "an unselected category lost its own colour")

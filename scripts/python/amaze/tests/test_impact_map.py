@@ -144,8 +144,8 @@ class AChangePicksTheTestsThatRanIt(unittest.TestCase):
     def test_a_def_picks_the_tests_that_ran_it_and_those_that_read_its_file(self):
         picks = self.pick(CODE + "one.py")
         self.edit(CODE + "one.py", "return 2", "return 22")
-        self.assertEqual([IT, "test_d"], picks(), "a module all of whose tests are picked "
-                                                  "is named whole")
+        self.assertEqual([IT, "test_d"], picks(), "a module whose tests are all selected "
+                                                  "is listed by its module name")
 
     def test_a_comment_picks_only_the_tests_that_read_the_file(self):
         picks = self.pick(CODE + "one.py")

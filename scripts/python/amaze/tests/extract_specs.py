@@ -200,7 +200,7 @@ def main() -> int:
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
         "res", "material_specs.json",
     )
-    # The public repo carries the numbers, never the library's own names.
+    # The public repo stores the numbers, never the library's own material names.
     shipped = []
     for entry in entries:
         if entry.get("source") == "houdini":

@@ -45,7 +45,7 @@ def _overlap(a, b) -> bool:
 
 
 def _cop_node_type() -> str:
-    """Whatever this build calls a simple COP: type names moved with Copernicus, so ask."""
+    """A simple COP type this build has: COP type names changed with Copernicus, so look it up."""
     kinds = hou.copNodeTypeCategory().nodeTypes()
     for wanted in ("ramp", "gradient", "color", "constant", "noise"):
         if wanted in kinds:
@@ -74,12 +74,12 @@ class NodesSectionTest(unittest.TestCase):
         self.assertEqual("Sop", cop_nodes.context_of(geo))
         self.assertEqual("Cop", cop_nodes.context_of(cop))
         self.assertEqual("Lop", cop_nodes.context_of(lop))
-        items = [geo.node("the_box")]    # a selection is described by where it LIVES
+        items = [geo.node("the_box")]    # a selection has the context of the network containing it
         self.assertEqual("Sop", cop_nodes.context_of(items[0], items))
 
 
     def test_the_import_seam_returns_what_it_created(self):
-        """(ok, reason, created): the seam every drop-position behaviour rides; no caller diffs children."""
+        """(ok, reason, created): what every drop-position feature uses; no caller diffs children."""
         from amaze.helpers import helpers
 
         geo = _sop_network("seam_src")
@@ -95,11 +95,11 @@ class NodesSectionTest(unittest.TestCase):
                         "a successful import returned no created nodes")
         spot = hou.Vector2(6.0, -4.0)
         helpers.place_nodes(created, spot)
-        anchor = helpers.centred_on(spot)       # a half-size short: the BODY centres on the drop point, the host's own new-node convention
+        anchor = helpers.centred_on(spot)       # offset by half a node size: the node BODY centres on the drop point, as Houdini places new nodes
         xs = [n.position().x() for n in created]
         ys = [n.position().y() for n in created]
         self.assertAlmostEqual(anchor.x(), sum(xs) / len(xs),
-                               msg="the group centroid missed the spot")
+                               msg="the group centroid is not at the drop point")
         self.assertAlmostEqual(anchor.y(), sum(ys) / len(ys))
 
     def test_notes_boxes_and_dots_travel_with_the_nodes(self):
@@ -124,13 +124,13 @@ class NodesSectionTest(unittest.TestCase):
             self.model, self.model.index(0, 0), context_node=dest)
         self.assertTrue(ok, reason)
         made = [n for n in created if isinstance(n, hou.Node)]
-        self.assertEqual(2, len(made), "the seam's nodes changed: %r" % created)
-        self.assertIsInstance(created[0], hou.Node, "the nodes no longer lead")
+        self.assertEqual(2, len(made), "the import's nodes changed: %r" % created)
+        self.assertIsInstance(created[0], hou.Node, "the nodes are no longer first in `created`")
         note, = dest.stickyNotes()
         frame, = dest.networkBoxes()
         dot, = dest.networkDots()
         self.assertEqual({note, frame, dot}, set(created[len(made):]),
-                         "the seam did not report the notes, boxes and dots it added")
+                         "the import did not report the notes, boxes and dots it added")
 
         def offsets():
             cx = sum(n.position().x() for n in made) / len(made)
@@ -143,16 +143,16 @@ class NodesSectionTest(unittest.TestCase):
         helpers.place_nodes(created, spot)
         anchor = helpers.centred_on(spot)
         self.assertAlmostEqual(anchor.x(), sum(n.position().x() for n in made) / len(made),
-                               msg="the nodes' centroid no longer lands on the spot")
+                               msg="the nodes' centroid is no longer at the drop point")
         self.assertAlmostEqual(anchor.y(), sum(n.position().y() for n in made) / len(made))
         self.assertEqual(held, offsets(),
                          "a note, box or dot stayed at its saved place while the nodes moved")
         self.assertEqual(sorted(made, key=lambda n: n.path()),
                          sorted(helpers.placed_nodes(), key=lambda n: n.path()),
-                         "the wire splice would be handed a note, box or dot")
+                         "the wire splice would get a note, box or dot")
 
     def _saved_arrangement(self, name):
-        """A SOP asset of three nodes spread out by hand, saved; answers their offsets from the box."""
+        """A SOP asset of three nodes spread out by hand, saved; returns their offsets from the box."""
         geo = _sop_network(name)
         spots = {"the_box": (0.0, 0.0), "the_mountain": (5.0, -3.0)}
         geo.createNode("null", "the_null")
@@ -180,7 +180,7 @@ class NodesSectionTest(unittest.TestCase):
         self.assertEqual(saved, self._offsets([n for n in created if isinstance(n, hou.Node)]))
 
     def test_a_load_with_no_drop_point_lands_clear_of_the_nodes_there(self):
-        """A menu import lands beside what is there, arrangement kept, nothing under it."""
+        """A menu import is placed beside existing nodes, arrangement kept, overlapping none."""
         saved = self._saved_arrangement("clear_sop")
         dest = hou.node("/obj").createNode("geo", "clear_dest")
         there = []
@@ -195,10 +195,10 @@ class NodesSectionTest(unittest.TestCase):
         self.assertEqual([(-4.0, 2.0), (0.0, 0.0), (1.0, 1.0), (5.0, -3.0)],
                          sorted(tuple(n.position()) for n in there), "an existing node moved")
         self.assertEqual([], [(a.name(), b.name()) for a in made for b in there
-                              if _overlap(a, b)], "the load landed on the nodes already there")
+                              if _overlap(a, b)], "the loaded nodes overlap the nodes already there")
 
     def test_an_unsafe_id_is_refused_with_a_sentence(self):
-        """An id that cannot be a filename gets a sentence, not a traceback ▸p/nodes-section."""
+        """An id that cannot be a filename gets a message, not a traceback ▸p/nodes-section."""
         geo = _sop_network("unsafe_src")
         self.assertEqual("SOP", node_actions.add_asset(
             self.model, geo, "", "", False, name="unsafe_sop"))
@@ -209,7 +209,7 @@ class NodesSectionTest(unittest.TestCase):
             self.model, self.model.index(0, 0))
         self.assertFalse(ok, "an id that cannot be a filename imported")
         self.assertIn("cannot be imported", reason,
-                      "the refusal did not say what was wrong: %r" % reason)
+                      "the error message does not say what was wrong: %r" % reason)
 
     def test_sop_network_returns_intact(self):
         geo = _sop_network("rt_src")
@@ -230,7 +230,7 @@ class NodesSectionTest(unittest.TestCase):
         self.assertIn("the_mountain", names)
         self.assertEqual(
             "the_box", names["the_mountain"].inputs()[0].name(),
-            "the connection between the saved nodes did not survive")
+            "the connection between the saved nodes was not restored")
 
     def test_selection_of_one_node_returns(self):
         geo = _sop_network("sel_src")
@@ -248,7 +248,7 @@ class NodesSectionTest(unittest.TestCase):
 
 
     def test_it_still_refuses_where_nothing_can_hold_them(self):
-        """The refusal must survive the widening: a matnet has no home for SOPs at any depth."""
+        """The broader placement rules must still refuse: a matnet cannot hold SOPs at any depth."""
         geo = _sop_network("refuse_src")
         node_actions.add_asset(self.model, geo, "", "", False, name="SOPwhole")
         geo.destroy()
@@ -273,7 +273,7 @@ class NodesSectionTest(unittest.TestCase):
         return ok, reason, [c for c in dest.children() if c not in before]
 
     def test_a_network_asset_lands_at_object_level_in_its_container(self):
-        """Every context with a home in /obj gets a container there; building it is the answer."""
+        """Every context that has a container type in /obj gets that container built there."""
         sources = {
             "SOPnet": _sop_network("obj_sop"),
             "COPnet": hou.node("/obj").createNode("copnet", "obj_cop"),
@@ -308,7 +308,7 @@ class NodesSectionTest(unittest.TestCase):
         self.assertEqual({"objA", "objB"}, {n.name() for n in made})
 
     def test_object_nodes_are_refused_inside_a_sop_network(self):
-        """Every context has a `subnet`, but a SOP subnet is no home for object-level nodes."""
+        """Every context has a `subnet`, but a SOP subnet cannot hold object-level nodes."""
         first = hou.node("/obj").createNode("geo", "trapA")
         second = hou.node("/obj").createNode("geo", "trapB")
         node_actions.add_asset(self.model, first, "", "", False,
@@ -350,7 +350,7 @@ class NodesSectionTest(unittest.TestCase):
             ("geo", "Object"): None,
             ("copnet", "Sop"): "sopnet",
             ("lopnet", "Sop"): "sopcreate",
-            ("matnet", "Sop"): None,            # materials are the material section's business
+            ("matnet", "Sop"): None,            # materials belong to the Materials section
             ("matnet", "Cop"): None,
             ("matnet", "Object"): None,
         }
@@ -382,7 +382,7 @@ class NodesSectionTest(unittest.TestCase):
         self.assertEqual(
             "the_box",
             target.node("the_mountain").inputs()[0].name(),
-            "the connection did not survive the trip into Solaris")
+            "the connection was lost on import into Solaris")
 
         self.assertTrue(made[0].matchesCurrentDefinition(),
                         "the SOP Create was unlocked - diving will show "
@@ -517,14 +517,14 @@ class NodesSectionTest(unittest.TestCase):
         self.assertFalse(whole(geo.node("the_box")), "a leaf is not a network")
         self.assertFalse(whole(matnet), "materials are not this section's")
 
-        self.assertTrue(cop_nodes.is_container(empty))     # a DROP TARGET is the looser half: an empty geo has no interior to save but is a fine place to land
+        self.assertTrue(cop_nodes.is_container(empty))     # a DROP TARGET is the looser test: an empty geo has no interior to save but can receive a drop
         self.assertTrue(cop_nodes.is_container(geo))
         self.assertFalse(cop_nodes.is_container(light))
         self.assertFalse(cop_nodes.is_container(matnet))
 
 
 class TheRenderDecisionHasOneHome(unittest.TestCase):
-    """One method decides Cop-or-Sop, and a source scan keeps the deciders from growing back."""
+    """One method decides Cop-or-Sop; a source scan fails if another place decides it again."""
 
     def test_the_create_verbs_are_called_only_inside_thumbs(self):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -568,7 +568,7 @@ class TheRenderDecisionHasOneHome(unittest.TestCase):
                 ("Cop", "wave1", None, ("asset1", "wave1")),
                 ("COP", "wave1", None, ("asset1", "wave1")),
                 ("", "wave1", None, ("asset1", "wave1")),
-                ("Lop", "", None, None)):    # no picture: the caller owns what that means
+                ("Lop", "", None, None)):    # no picture: the caller decides what to do
             with self.subTest(context=context):
                 outcome, sop, cop = self._decide(context, thumb_node)
                 self.assertEqual([mock.call(*sop_args)] if sop_args else [],
@@ -583,7 +583,7 @@ class TheRenderDecisionHasOneHome(unittest.TestCase):
 
 
 class TheWireSpliceReadsThePlacementFunnel(unittest.TestCase):
-    """The splice asks the placement funnel, never a child diff ▸p/nodes-section."""
+    """The wire splice reads `helpers.placed_nodes`, never a child diff ▸p/nodes-section."""
 
     def setUp(self):
         self.net = hou.node("/obj").createNode("geo")
@@ -596,8 +596,8 @@ class TheWireSpliceReadsThePlacementFunnel(unittest.TestCase):
         made = self.net.createNode("box")
         helpers.forget_placed()
         self.assertEqual([], helpers.placed_nodes(),
-                         "the funnel remembered across gestures")
-        helpers.place_nodes([made], hou.Vector2(1.0, 1.0))      # the creation door's form
+                         "placed_nodes kept nodes from an earlier drop")
+        helpers.place_nodes([made], hou.Vector2(1.0, 1.0))      # the call used with a drop position
         self.assertEqual([made], helpers.placed_nodes())
         other = self.net.createNode("sphere")       # and the no-drop-point form every import falls back to
         helpers.auto_place(other)
@@ -605,7 +605,7 @@ class TheWireSpliceReadsThePlacementFunnel(unittest.TestCase):
                          "auto placement did not report what it placed")
 
     def test_the_splice_calls_the_hosts_own_function(self):
-        """`insertItemsIntoWire` is GUI-only, so this pins its contract headless ▸p/nodes-section."""
+        """`insertItemsIntoWire` is GUI-only; this checks its arguments headless ▸p/nodes-section."""
         import sys
         import types
         from unittest import mock
@@ -626,9 +626,9 @@ class TheWireSpliceReadsThePlacementFunnel(unittest.TestCase):
             self.assertTrue(dragengine.splice_into_wire(wire, [fresh]))
         self.assertEqual(wire, seen.get("conn"),
                          "a different wire was spliced than the one "
-                         "under the release")
+                         "under the drop")
         self.assertEqual([fresh], seen.get("chain"),
-                         "the nodes that landed were not the ones "
+                         "the imported nodes were not the ones "
                          "inserted")
         self.assertTrue(seen.get("remove"),
                         "the existing connection was left in place, "
@@ -643,8 +643,8 @@ class TheWireSpliceReadsThePlacementFunnel(unittest.TestCase):
         wire = b.inputConnections()[0]
         helpers.forget_placed()
         self.assertFalse(dragengine.splice_into_wire(wire, []),
-                         "an empty landing still rewired the chain")
-        self.assertEqual(a, b.inputs()[0], "the chain was disturbed")
+                         "an empty import still rewired the chain")
+        self.assertEqual(a, b.inputs()[0], "the chain's input changed")
 
 
 class AutoPlacementLeavesTheSceneAlone(unittest.TestCase):
@@ -691,11 +691,11 @@ class AutoPlacementLeavesTheSceneAlone(unittest.TestCase):
         self.assertEqual(
             ["helpers/helpers.py"], offenders,
             "these call Houdini's rearranging placement directly - "
-            "helpers.auto_place is the one home: %r" % offenders)
+            "helpers.auto_place is the only allowed caller: %r" % offenders)
 
 
 class PlaceNodesTest(unittest.TestCase):
-    """The ONE placement rule: the group's centroid lands at the position, relative layout preserved."""
+    """The ONE placement rule: the group's centroid goes to the position, relative layout kept."""
 
     def test_the_group_moves_preserving_layout(self):
         from amaze.helpers import helpers
@@ -753,7 +753,7 @@ class WhatCountsAsAFailure(unittest.TestCase):
             self.prefs, mat.mat_id, self.prefs.ext, library_files.NODES)
         os.makedirs(os.path.dirname(payload), exist_ok=True)
         source.saveItemsToFile([instance], payload,
-                               save_hda_fallbacks=False)    # with fallbacks the definition rides along and nothing warns
+                               save_hda_fallbacks=False)    # with fallbacks the definition is saved too and nothing warns
         source.destroy()
         hou.hda.uninstallFile(otl)
         return mat
@@ -790,7 +790,7 @@ class WhatCountsAsAFailure(unittest.TestCase):
         self.assertTrue(
             [call for call in recorded.call_args_list
              if "warning" in str(call).lower()],
-            "the warning was swallowed instead of noted through debug.event: "
+            "the warning was dropped instead of logged through debug.event: "
             "%r" % recorded.call_args_list)
 
     def test_the_container_a_warned_load_filled_is_kept(self):
@@ -949,7 +949,7 @@ class ASavedBuilderTypeThisSessionLacks(unittest.TestCase):
         self.mat = material.Material(name="missing_type", renderer="Redshift")
 
     def test_the_renderer_container_arrives_without_its_stock_children(self):
-        """A stock terminal and shader sit first, so the converter read them, not the saved ones."""
+        """A stock terminal and shader are first, so the converter read them, not the saved ones."""
         self.handler.load_interface_other(self.mat, "subnet", self.MISSING)
 
         builder = self.handler.builder_node
@@ -1011,7 +1011,7 @@ class ASelectionImportsAsOneStep(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        if not hou.getenv("OCIO"):    # save_node refuses without one
+        if not hou.getenv("OCIO"):    # save_node fails without one
             hou.putenv("OCIO", "/dev/null")
 
     def setUp(self):
@@ -1021,8 +1021,8 @@ class ASelectionImportsAsOneStep(unittest.TestCase):
         self.said = []
         ui = types.SimpleNamespace(
             displayMessage=lambda text, *a, **k: self.said.append(
-                (text, k["details"]) if k.get("details") else text) or 0,    # a list rides in details
-            paneTabs=lambda *a, **k: ())    # no network editor: the import lands in /obj
+                (text, k["details"]) if k.get("details") else text) or 0,    # a list is passed in `details`
+            paneTabs=lambda *a, **k: ())    # no network editor: the import goes to /obj
         patcher = mock.patch.object(hou, "ui", ui, create=True)
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -1052,7 +1052,7 @@ class ASelectionImportsAsOneStep(unittest.TestCase):
             self.assertTrue(index.isValid(), "premise: the grid does not show the tile")
             selection.select(index, QtCore.QItemSelectionModel.SelectionFlag.Select)
         bad = next(row for row in rows if model.assets[row].name == "one_step_bad")
-        model.assets[bad]._mat_id = "../../../Documents/x"    # its import refuses with a sentence
+        model.assets[bad]._mat_id = "../../../Documents/x"    # its import fails with an error message
         hou.undos.clear()
         return model.index(bad, 0)
 
@@ -1062,7 +1062,7 @@ class ASelectionImportsAsOneStep(unittest.TestCase):
         self.panel.import_cop_assets()
         self.assertEqual(("Amaze Import Nodes Asset",), hou.undos.undoLabels())
         self.assertTrue([node for node in hou.node("/obj").allSubChildren()
-                         if node.name() == "the_box"], "the good tile did not land")
+                         if node.name() == "the_box"], "the good tile was not imported")
         _ok, reason, _created = node_actions.import_asset_to_scene(self.panel.cop_model, bad)
         self.assertEqual([(messages.NODE_ASSETS_IMPORT_FAILURES, reason)], self.said)
 
@@ -1079,7 +1079,7 @@ class ASelectionImportsAsOneStep(unittest.TestCase):
         bad = self._two_tiles("material", model, material_actions.add_asset, network)
         self.panel.import_asset("mat")
         self.assertEqual(("Amaze Import Materials",), hou.undos.undoLabels())
-        self.assertIsNotNone(hou.node("/mat/one_step_good"), "the good tile did not land")
+        self.assertIsNotNone(hou.node("/mat/one_step_good"), "the good tile was not imported")
         _ok, reason, _created = material_actions.import_asset_to_scene(model, bad, "mat")
         self.assertEqual([(messages.MATERIALS_IMPORT_FAILURES, reason)], self.said)
 

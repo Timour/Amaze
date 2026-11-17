@@ -1,4 +1,4 @@
-"""Harvests the online value sources into shipped tables, so a tile paints with no download."""
+"""Downloads the online value sources into shipped tables, so a tile draws with no download."""
 
 import argparse
 import json

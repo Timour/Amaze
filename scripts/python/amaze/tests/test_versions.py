@@ -1,4 +1,4 @@
-"""The version store: the base files are the truth, and losing versions/ costs only history."""
+"""The version store: the base files are the current asset; losing versions/ loses only history."""
 
 import json
 import os
@@ -76,7 +76,7 @@ class PreEditHoldsTheRightFilesTest(_Case):
         with open(held[".mat"], "rb") as fh:
             self.assertEqual(
                 self._base_bytes(), fh.read(),
-                "the held .mat is not the material - the companion won "
+                "the held .mat is not the material - the companion was picked in "
                 "the suffix collision and Version 1 archives the wrong "
                 "bytes")
         base_png = self.base_png
@@ -91,19 +91,19 @@ class PreEditHoldsTheRightFilesTest(_Case):
         else:
             self.assertNotIn(
                 ".png", held,
-                "the icon composite stood in for a render the asset "
+                "the icon composite was used as a render the asset "
                 "does not have")
         self.assertIn(".json", held,
-                      "the builder record never joined the held set")
+                      "the builder record is not in the held set")
         self.assertNotIn(".interface", held,
                          "a converted asset held a format 3 .interface it does not own")
 
 
 class APreEditHoldLeavesNoFolderBehind(_Case):
-    """The hold's temp folder goes when it holds nothing, and when a copy into it fails."""
+    """The hold's temp folder is removed when it holds nothing, and when a copy into it fails."""
 
     def _holding(self, mat_id, copyfile=shutil.copyfile):
-        """What `_hold_pre_edit_files` answered or raised, and what it left in the temp folder."""
+        """What `_hold_pre_edit_files` returned or raised, and what it left in the temp folder."""
         import tempfile
         from unittest import mock
         from amaze.core import library as library_mod
@@ -129,11 +129,11 @@ class APreEditHoldLeavesNoFolderBehind(_Case):
 
         answer, left = self._holding(self.mat_id, refused)
         self.assertEqual((OSError, []), (type(answer), left),
-                         "a failed copy left its temp folder behind, or did not say it failed")
+                         "a failed copy left its temp folder behind, or did not raise OSError")
 
 
 class SwitchRollsBackOnALedgerRefusal(_Case):
-    """The ledger lands with the base files as one unit: a refused ledger moves nothing."""
+    """Ledger and base files are written as one change: a failed ledger write changes nothing."""
 
     def test_the_base_returns_when_the_ledger_will_not_write(self):
         versions.create_version(self.prefs, self.mat_id)          # V1
@@ -148,17 +148,17 @@ class SwitchRollsBackOnALedgerRefusal(_Case):
             "version 2 - the promotion was not rolled back")
         self.assertEqual(
             2, versions.active_version(self.prefs, self.mat_id),
-            "the ledger moved despite the refusal")
+            "the ledger changed although its write failed")
 
 
 class ASwitchPutsTheWholeVersionOnTheBase(_Case):
-    """A version saved without a builder or a render takes the other version's OUT of the base."""
+    """A version saved without a builder or a render removes the other version's from the base."""
 
     def setUp(self):
         super().setUp()
         self.builder = self.base_record
         self.png = self.base_png
-        for path in (self.builder, self.png):    # version 1: an older save, its render not landed
+        for path in (self.builder, self.png):    # version 1: an older save, its render not yet written
             if os.path.exists(path):
                 os.remove(path)
         self.assertEqual(1, versions.create_version(self.prefs, self.mat_id))
@@ -178,13 +178,13 @@ class ASwitchPutsTheWholeVersionOnTheBase(_Case):
     def test_a_kind_the_version_lacks_leaves_the_base(self):
         self.assertTrue(versions.switch_active(self.prefs, self.mat_id, 1))
         self.assertEqual({"builder": False, ".png": False}, self._in_base(),
-                         "version 1 sits beside version 2's builder or picture")
+                         "version 2's builder or picture is still in the base beside version 1")
         self.assertTrue(versions.switch_active(self.prefs, self.mat_id, 2))
         self.assertEqual({"builder": True, ".png": True}, self._in_base())
         self.assertEqual("v2", self._base_builder().get("interface"))
         self.assertTrue(versions.switch_active(self.prefs, self.mat_id, 1))
         self.assertEqual([1, 2], [int(r["n"]) for r in versions.list_versions(
-            self.prefs, self.mat_id)], "a switch back and forth minted a version")
+            self.prefs, self.mat_id)], "a switch back and forth created a version")
 
     def test_a_kind_that_will_not_leave_is_finished_once_it_can(self):
         from unittest import mock
@@ -206,7 +206,7 @@ class ASwitchPutsTheWholeVersionOnTheBase(_Case):
         self.assertEqual(1, versions.active_version(self.prefs, self.mat_id))
 
     def test_a_switch_through_the_model_records_no_picture(self):
-        """Held twice: the switch vacates the picture, the repaint records none (the spy's pin)."""
+        """Checked twice: the switch removes the picture, the repaint records none (the spy)."""
         from unittest import mock
         from amaze.core import library as library_mod
         model = library_mod.MaterialLibrary(preferences=self.prefs)
@@ -256,7 +256,7 @@ class AVersionHoldsTheBuilderAndNeverTheMetadata(_Case):
 
 
 class TheBaseModelSwitchesInItsOwnSection(_Case):
-    """`switch_version` asks the store its model names, as every other version call does."""
+    """`switch_version` uses the section its model names, as every other version call does."""
 
     def test_a_switch_reads_the_section_the_model_names(self):
         from amaze.core import library as library_mod
@@ -305,7 +305,7 @@ class TheArchiveIsEachVersionsDurableThumbnail(_Case):
         versions.create_version(self.prefs, self.mat_id)          # V1
         self._rewrite_base(b"EDITED-STATE")
         versions.create_version(self.prefs, self.mat_id)          # V2
-        # The mint archived V1's picture into V2's slot; the replacing render lands only now.
+        # Creating V2 copied V1's picture into V2's slot; the new render is written only now.
         with open(base, "wb") as fh:
             fh.write(b"V2-RENDER-FRESH")
         self.assertTrue(versions.record_render(self.prefs, self.mat_id))
@@ -333,8 +333,8 @@ class TheArchiveIsEachVersionsDurableThumbnail(_Case):
         self.assertTrue(versions.record_render(self.prefs, self.mat_id))
         self.assertEqual(
             before, os.stat(slot).st_mtime_ns,
-            "identical bytes were rewritten - every switch would churn "
-            "the sync folder")
+            "identical bytes were rewritten - every switch would rewrite "
+            "files in the sync folder")
 
     def test_no_versions_records_nothing(self):
         base, folder = self._png_paths()
@@ -372,7 +372,7 @@ class TheArchiveIsEachVersionsDurableThumbnail(_Case):
             self.assertEqual(
                 b"FRESH-PICTURE", fh.read(),
                 "_add_thumb_paths declared the PNG fresh and the "
-                "active slot did not follow")
+                "active slot was not updated")
 
 
 class TheBaseFilesFollowTheLibrarysExtensions(_Case):
@@ -385,7 +385,7 @@ class TheBaseFilesFollowTheLibrarysExtensions(_Case):
         renamed = self.base_mat[:-len(".mat")] + ".matx"
         os.replace(self.base_mat, renamed)
         self.legacy_mat, self.base_mat = self.base_mat, renamed
-        images = material.section_folder(self.prefs.dir, MATERIALS)    # the one picture's home
+        images = material.section_folder(self.prefs.dir, MATERIALS)    # the folder of the one picture
         self.base_image = os.path.join(images, self.mat_id + ".jpg")
         with open(self.base_image, "wb") as fh:
             fh.write(b"RENDER-AS-JPEG")
@@ -466,8 +466,8 @@ class StoreTest(_Case):
         self.assertEqual(0, versions.version_count(self.prefs, self.mat_id))
         self.assertEqual(before, self._base_bytes(),
                          "the base depended on the archive - it must "
-                         "never; the archive is a copy of the truth, "
-                         "not the truth")
+                         "never; the archive is a copy of the base, "
+                         "not the source")
 
     def test_an_unreadable_ledger_blocks_writes_not_reads(self):
         versions.create_version(self.prefs, self.mat_id)
@@ -478,7 +478,7 @@ class StoreTest(_Case):
             fh.write("{ broken")
         self.assertEqual(0, versions.version_count(self.prefs, self.mat_id))
         self.assertEqual(0, versions.create_version(self.prefs, self.mat_id),
-                         "a create wrote blind over an unreadable ledger")
+                         "a create wrote over an unreadable ledger")
         self.assertFalse(versions.switch_active(self.prefs, self.mat_id, 1))
 
     def test_a_version_saved_with_nobody_picked_is_unsigned(self):
@@ -500,7 +500,7 @@ class VersionFilesAreNamedByIdAndNumberTest(_Case):
         versions.create_version(self.prefs, self.mat_id)
         row = versions.list_versions(self.prefs, self.mat_id)[0]
         self.assertEqual("Crimson", row.get("author"),
-                         "the author did not ride from prefs")
+                         "the author was not taken from prefs")
         self.assertNotIn("file", row)
         self.assertEqual("%s_1" % self.mat_id, versions.file_stem(self.mat_id, 1))
         folder = versions.versions_dir(self.prefs, self.mat_id)
@@ -592,11 +592,11 @@ class VersionFilesAreNamedByIdAndNumberTest(_Case):
             "an asset with no versions folder read the ledger: %s"
             % sorted(set(asked) - {self.mat_id}))
         self.assertTrue(asked, "the versioned asset must still read "
-                        "its ledger - the seed only answers absence")
+                        "its ledger - the listdir only covers assets with no versions")
 
 
 class TheWholeLoopThroughTheModelTest(unittest.TestCase):
-    """A parameter-only save mints versions; a switch rebaselines, so Update Existing is not refused."""
+    """Parameter-only saves create versions; a switch resets the baseline so Update Existing works."""
 
     def setUp(self):
         from amaze.core import library as library_mod
@@ -641,7 +641,7 @@ class TheWholeLoopThroughTheModelTest(unittest.TestCase):
                 scalar.set(scalar.eval() + 0.2)
 
         renderer = material_actions.update_asset_content(self.model, row, imported)
-        self.assertTrue(renderer, "premise: the update itself landed")
+        self.assertTrue(renderer, "premise: the update itself succeeded")
 
         from amaze.core import versions as versions_mod
         count = versions_mod.version_count(self.prefs, mat.mat_id)
@@ -651,7 +651,7 @@ class TheWholeLoopThroughTheModelTest(unittest.TestCase):
                          % count)
         self.assertEqual(count, self.model.data(
             self.model.index(row, 0), self.model.VersionsRole),
-            "the badge role disagrees with the store")
+            "`VersionsRole` differs from the version count")
 
         base = self.model.asset_files(mat.mat_id)["mat"]
         with open(base, "rb") as fh:
@@ -666,7 +666,7 @@ class TheWholeLoopThroughTheModelTest(unittest.TestCase):
         known = self.model._content_state.get(str(mat.mat_id))
         current = self.model._content_stat(mat.mat_id)
         self.assertEqual(known, current,
-                         "switch_version did not rebaseline - the next "
+                         "switch_version did not reset the baseline - the next "
                          "Update Existing will be refused as a conflict")
 
     def test_a_structural_update_does_not_version(self):
@@ -674,12 +674,12 @@ class TheWholeLoopThroughTheModelTest(unittest.TestCase):
         mat = self.model.assets[row]
         fresh = self._build(self.staging, "structural_probe")
         renderer = material_actions.update_asset_content(self.model, row, fresh)
-        self.assertTrue(renderer, "premise: the update landed")
+        self.assertTrue(renderer, "premise: the update succeeded")
         from amaze.core import versions as versions_mod
         self.assertEqual(0, versions_mod.version_count(
             self.prefs, mat.mat_id),
-            "a structural update minted versions - archiving a "
-            "different structure under the same history is the lie the "
+            "a structural update created versions - archiving a "
+            "different structure under the same history is the error the "
             "signature exists to prevent")
 
 
@@ -705,13 +705,13 @@ class DeletingAUser(unittest.TestCase):
 
         self.assertEqual({bo: "Bo"}, users.all_users(self.prefs))
         stars = library_db.document(self.prefs, library_files.FILES).everyones(locations.FAVORITES)
-        self.assertTrue(stars.get(bo), "the deletion took the survivor's stars: %s" % stars)
+        self.assertTrue(stars.get(bo), "the deletion removed the other user's stars: %s" % stars)
         self.assertTrue(stars.get(anna), "the deletion rewrote another user's rows: %s" % stars)
         self.assertTrue(locations.is_favourite(self.prefs, "m-bo"))
         self.assertFalse(locations.is_favourite(self.prefs, "m-anna"),
-                         "the deleted user's star shows for the survivor")
+                         "the deleted user's star shows for the remaining user")
         self.assertFalse(users.delete(self.prefs, "f" * 32),
-                         "deleting a stranger answered success")
+                         "deleting an unknown user returned True")
 
     def test_deleting_yourself_clears_this_machines_pointer(self):
         from amaze.core import users
@@ -722,8 +722,8 @@ class DeletingAUser(unittest.TestCase):
         self.assertEqual("", str(self.prefs.library_user or ""),
                          "the pointer still names the deleted user")
         self.assertIsNone(users.current(self.prefs),
-                          "somebody was adopted silently - the ASK "
-                          "state is the picker's to resolve")
+                          "a user was picked silently - the ASK "
+                          "state is for the picker to resolve")
 
     def test_the_last_deletion_leaves_nobody_and_a_stale_pointer_makes_nobody(self):
         from amaze.core import users
@@ -732,7 +732,7 @@ class DeletingAUser(unittest.TestCase):
         self.assertTrue(users.delete(self.prefs, only))
         self.assertEqual(users.MINT, users.first_run_state(self.prefs))
 
-        self._become(only)    # another machine still pointing at the dead UID
+        self._become(only)    # another machine still pointing at the deleted UID
         self.assertIsNone(users.current(self.prefs))
         self.assertEqual({}, users.all_users(self.prefs), "a stale pointer made a user")
 

@@ -21,7 +21,7 @@ from amaze.tests import test_support  # noqa: E402 - redirects the log
 
 
 class TheWheelIsONEEngineForBothViews(unittest.TestCase):
-    """One scroll path, two views, both axes; bare views fall back to a fixed `SCROLL_SPEED`."""
+    """One wheel handler for both views and axes; a view without prefs uses `SCROLL_SPEED`."""
 
     VIEWS = ("DragDropListView", "DragDropTableView")
 
@@ -66,7 +66,7 @@ class TheWheelIsONEEngineForBothViews(unittest.TestCase):
                 view.wheelEvent(self._wheel(pixel=(0, -40)))
                 self.assertEqual(
                     round(40 * self.SPEED), bar.value(),
-                    "a pixel delta is not the user's speed applied to it")
+                    "a pixel delta did not move the bar by delta times the scroll speed")
                 bar.setValue(0)    # a mouse with no pixel data: 120-unit notches only
                 view.wheelEvent(self._wheel(angle=(0, -120)))
                 self.assertEqual(
@@ -74,13 +74,13 @@ class TheWheelIsONEEngineForBothViews(unittest.TestCase):
                     "one notch is not WHEEL_NOTCH_PX at the user's speed")
 
     def test_a_SIDEWAYS_gesture_never_moves_the_view_DOWN(self):
-        """The axis picks the scrollbar and only that, pinned on both views."""
+        """The gesture's axis decides which scrollbar moves; checked on both views."""
         for name in self.VIEWS:
             with self.subTest(view=name):
                 view = self._view(name)
                 vertical = view.verticalScrollBar()
                 horizontal = view.horizontalScrollBar()
-                if name == "DragDropTableView":    # or the axis case below is never reached
+                if name == "DragDropTableView":    # otherwise the horizontal check below never runs
                     self.assertTrue(horizontal.maximum(),
                                     "the table fixture has no horizontal range")
                 vertical.setValue(0)
@@ -97,14 +97,14 @@ class TheWheelIsONEEngineForBothViews(unittest.TestCase):
 
 
 class SelectingNeverScrollsTheGridTest(unittest.TestCase):
-    """Built against the real panel, so the property pinned is on the shipped thumblist."""
+    """Uses the real panel, so the check runs on the panel's own `thumblist` view."""
 
     @classmethod
     def setUpClass(cls):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))  # an isolated panel, every path in the tempdir
 
     def test_selecting_a_half_cut_tile_leaves_the_view_where_it_was(self):
-        """Current moved onto a half-cut tile in a small viewport leaves the scrollbar where it was."""
+        """A partly visible tile made current in a small viewport does not move the scrollbar."""
         view = self.panel.thumblist
         model = view.model()
         if model is None or model.rowCount() < 2:
@@ -125,7 +125,7 @@ class SelectingNeverScrollsTheGridTest(unittest.TestCase):
                 target = model.index(row, 0)
                 break
         if target is None:
-            self.skipTest("every tile fits - nothing is half-cut")
+            self.skipTest("every tile fits - no tile is partly visible")
 
         bar = view.verticalScrollBar()
         before = bar.value()
@@ -134,10 +134,10 @@ class SelectingNeverScrollsTheGridTest(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
         self.assertEqual(
             target, view.selectionModel().currentIndex(),
-            "the selection did not land - the test is not testing")
+            "the current index was not set - the test checks nothing")
         self.assertEqual(
             before, bar.value(),
-            "the grid moved under the selection - the jump is back")
+            "the scrollbar moved when the current index changed")
 
     def test_the_view_stays_put_through_the_view_mode_switch(self):
         """`setViewMode()` re-applies view state, so both modes must keep the view from self-scrolling."""
@@ -147,11 +147,11 @@ class SelectingNeverScrollsTheGridTest(unittest.TestCase):
         for mode in ("grid", "list"):
             self.panel.prefs.view_mode = mode
             self.panel.apply_view_mode()
-            view = grid.visible_view(self.panel)  # the view that is up; `thumblist` is hidden in list mode
+            view = grid.visible_view(self.panel)  # the visible view; `thumblist` is hidden in list mode
             self.assertFalse(
                 view.hasAutoScroll(),
                 "view mode %r turned autoScroll back on - selecting a "
-                "half-cut tile jumps the grid again" % (mode,))
+                "partly visible tile scrolls the grid again" % (mode,))
 
 
 if __name__ == "__main__":

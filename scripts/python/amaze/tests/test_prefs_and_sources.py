@@ -1,4 +1,4 @@
-"""Prefs, online sources and the long tail; several read the source, by AST rather than by text."""
+"""Prefs, online sources and other small checks; several read the source by AST, not by text."""
 
 import ast
 import builtins
@@ -36,7 +36,7 @@ source_of = test_support.source_of
 
 
 def calls(relative, func_name, callee) -> bool:
-    """Does `func_name` call `callee`? By AST: prose naming a helper is not a call to it."""
+    """Does `func_name` call `callee`? By AST: a comment naming a helper is not a call to it."""
     tree = ast.parse(source_of(relative))
     for node in ast.walk(tree):
         if not (isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
@@ -84,7 +84,7 @@ class TheRendererTableIsWrittenOnce(unittest.TestCase):
                                     "saving a %s material did not switch it on" % stored)
 
     def test_no_other_module_spells_a_renderer_preference(self):
-        """A switch or sample count named outside the table is a second home for a renderer."""
+        """A switch or sample count named outside the table defines a renderer in a second place."""
         spelled = []
         for root, _dirs, files in os.walk(PACKAGE):
             if os.sep + "tests" in root:
@@ -99,7 +99,7 @@ class TheRendererTableIsWrittenOnce(unittest.TestCase):
                     for attr in (renderer.switch, renderer.switch_stored, renderer.icon):
                         if '"%s"' % attr in source or "'%s'" % attr in source:
                             spelled.append("%s: %s" % (os.path.relpath(path, PACKAGE), attr))
-        self.assertEqual([], spelled, "a renderer fact is spelled outside core/renderers.py")
+        self.assertEqual([], spelled, "a renderer preference name is written outside core/renderers.py")
 
 
 class RendererDefaultsAgree(unittest.TestCase):
@@ -150,7 +150,7 @@ class SharedDefaultsLiveInOneTable(unittest.TestCase):
         for stored, (_prop, attr, default) in \
                 persistence.SHARED_KEYS.items():
             self.assertEqual(default, getattr(p, attr),
-                             "%s: __init__ disagrees with the table" % stored)
+                             "%s: __init__ differs from the table" % stored)
 
     def test_load_falls_back_to_every_table_default(self):
         from amaze.prefs import persistence
@@ -166,7 +166,7 @@ class SharedDefaultsLiveInOneTable(unittest.TestCase):
                              "held" % stored)
 
     def test_load_takes_only_a_string_for_the_folder_layout(self):
-        """The adopt refused a non-string for these; load() took it, and paths were built from it."""
+        """Adopting rejected a non-string for these; load() accepted it, and paths were built from it."""
         p = prefs_mod.Prefs()
         p.path = self._settings(
             {"shared_settings": {"img_dir": 5, "extension": None}})
@@ -175,7 +175,7 @@ class SharedDefaultsLiveInOneTable(unittest.TestCase):
                          "a junk folder-layout value loaded raw")
 
     def test_a_library_folder_saved_without_its_slash_loads_with_it(self):
-        """A folder without its slash glued onto file names: `libraryDataBase.json`."""
+        """A folder without its slash, joined to file names, gives `libraryDataBase.json`."""
         library = tempfile.mkdtemp(prefix="amaze_no_slash_").replace("\\", "/")
         self.addCleanup(shutil.rmtree, library, True)
         p = prefs_mod.Prefs()
@@ -236,7 +236,7 @@ class LoadNeverRaisesAndAlwaysValidates(unittest.TestCase):
                          "falling back to its default")
 
     def test_preferences_opens_over_a_poisoned_file(self):
-        """The Render rows hand these straight to spin boxes, which raise on anything but a number."""
+        """The Render rows pass these straight to spin boxes, which raise on anything but a number."""
         from amaze.dialogs import prefs_dialog
         from amaze.tests import test_support
         p = test_support.fixture_prefs(self)
@@ -267,10 +267,10 @@ class LoadNeverRaisesAndAlwaysValidates(unittest.TestCase):
                      "obj_drag_outline"):
             with self.subTest(setting=name, value=None):
                 with self.assertRaises((TypeError, ValueError)):
-                    setattr(p, name, None)    # a raise is how a junk value reaches its default
+                    setattr(p, name, None)    # the raise is what makes load() keep the default
 
     def test_every_spin_row_offers_what_its_setter_keeps(self):
-        """A value past a row's end is kept at that end, so the row can always show what is stored."""
+        """A value past a row's end is clamped to that end, so the row can always show what is stored."""
         from amaze.dialogs import prefs_dialog
         from amaze.tests import test_support
         p = test_support.fixture_prefs(self)
@@ -290,7 +290,7 @@ class LoadNeverRaisesAndAlwaysValidates(unittest.TestCase):
                 with self.subTest(setting=name, value=past):
                     setattr(p, name, past if scale == 1 else past / scale)
                     self.assertEqual(end, round(getattr(p, name) * scale),
-                                     "the setter keeps a value its row "
+                                     "the setter stores a value its row "
                                      "cannot show")
 
     def test_a_hidden_renderer_has_no_samples_row(self):
@@ -313,7 +313,7 @@ class LoadNeverRaisesAndAlwaysValidates(unittest.TestCase):
 
 
 class ThePerUserBlocksRoundTripAndMerge(unittest.TestCase):
-    """Per-UID blocks in settings.json, and the merge two panes of one session put them through."""
+    """Per-UID blocks in settings.json, and the save-time merge of two panes in one session."""
 
     def _prefs_at(self, folder):
         p = prefs_mod.Prefs()
@@ -368,12 +368,12 @@ class ThePerUserBlocksRoundTripAndMerge(unittest.TestCase):
         p = self._prefs_at(folder)
         p.load()
         p._users_blocks["aa11"] = {"thumbsize": 64}
-        # Another pane saved since this one read - its user, its block.
+        # Another pane saved after this one loaded, with its own user's block.
         self._write(folder, {"users": {"bb22": {"view_mode": "list"}}})
         p.save()
         raw = self._read(folder)["users"]
         self.assertEqual({"thumbsize": 64}, raw["aa11"],
-                         "this pane's block was lost to the merge")
+                         "the merge dropped this pane's block")
         self.assertEqual({"view_mode": "list"}, raw["bb22"],
                          "the other pane's user was dropped")
 
@@ -388,13 +388,13 @@ class ThePerUserBlocksRoundTripAndMerge(unittest.TestCase):
         p.save()
         raw = self._read(folder)["users"]["aa11"]
         self.assertEqual(64, raw["thumbsize"],
-                         "the active editor's value lost to the peer")
+                         "the other pane's value replaced this pane's value")
         self.assertEqual("list", raw["view_mode"],
-                         "a key only the peer held was dropped")
+                         "a key only the other pane had was dropped")
 
 
 class APointerMovedInOnePaneStaysMoved(unittest.TestCase):
-    """r6: each pane holds its own Prefs over the one settings.json; B's saves keep A's switch."""
+    """r6: each pane has its own Prefs on one settings.json; B's saves keep A's library switch."""
 
     def test_the_other_panes_second_save_keeps_the_switch(self):
         import json
@@ -428,7 +428,7 @@ class APointerMovedInOnePaneStaysMoved(unittest.TestCase):
 
 
 class TheLibraryIsTheOneTheSettingsName(unittest.TestCase):
-    """There is no second library beside the configured one; old Test Library keys are read by nobody."""
+    """There is no second library beside the configured one; no code reads the old Test Library keys."""
 
     def test_prefs_have_no_test_library(self):
         p = prefs_mod.Prefs()
@@ -463,7 +463,7 @@ class TheLibraryIsTheOneTheSettingsName(unittest.TestCase):
         self.assertEqual(os.path.normpath(real), os.path.normpath(fresh.dir))
 
     def test_the_saved_pointer_takes_one_shape(self):
-        """The saved `directory` is shaped by one helper."""
+        """The saved `directory` is normalised by one helper, `_normalised_dir`."""
         from amaze.prefs import persistence
         for raw, shaped in (("C:\\Lib\\3D", "C:/Lib/3D/"),
                             ("/srv/lib/", "/srv/lib/"),
@@ -474,7 +474,7 @@ class TheLibraryIsTheOneTheSettingsName(unittest.TestCase):
             self.addCleanup(shutil.rmtree, p.path, True)
             p._directory = raw
             p.refresh_data()
-            self.assertEqual(shaped, p.dir, "the saved pointer took another shape")
+            self.assertEqual(shaped, p.dir, "the saved `directory` was normalised differently")
 
 
 class TheHomeLayoutsLiveInHostos(unittest.TestCase):
@@ -487,7 +487,7 @@ class TheHomeLayoutsLiveInHostos(unittest.TestCase):
             "rehome rewrote a path whose target does not exist - the "
             "existence check is the only thing stopping a shared "
             "/home/projects mount being rewritten into this user's home")
-        # And it does answer for something that does exist.
+        # And it does rewrite a path that exists.
         self.assertEqual(
             home + "/", hostos.rehome("/Users/someone-else/"))
         self.assertEqual(
@@ -498,11 +498,11 @@ class TheHomeLayoutsLiveInHostos(unittest.TestCase):
 
 
 class ContainmentAnswersAsRealpathDoes(unittest.TestCase):
-    """`contained_join` builds on the base resolved once and realpaths only what a link could move."""
+    """`contained_join` resolves the base once and calls realpath only where a link could redirect."""
 
     @staticmethod
     def _by_realpath(base, *parts):
-        """The answer every caller relied on: both ends resolved by `os.path.realpath`."""
+        """The result every caller relied on: both paths resolved by `os.path.realpath`."""
         composed = os.path.join(base, *parts)
         real_base, real = os.path.realpath(base), os.path.realpath(composed)
         if real != real_base and not real.startswith(real_base.rstrip(os.sep) + os.sep):
@@ -538,7 +538,7 @@ class ContainmentAnswersAsRealpathDoes(unittest.TestCase):
                         hostos.contained_join(self.base, *parts)
                     continue
                 self.assertEqual(expected, hostos.contained_join(self.base, *parts))
-        self.assertEqual(5, refused, "premise: the shapes no longer hold five escapes")
+        self.assertEqual(5, refused, "premise: the shapes no longer include five escapes")
 
     def test_a_plain_name_under_a_resolved_base_costs_no_realpath(self):
         hostos.contained_join(self.base, "mat", "a.mat")    # resolves the base, once
@@ -548,18 +548,18 @@ class ContainmentAnswersAsRealpathDoes(unittest.TestCase):
             self.assertEqual(0, realpath.call_count, "a plain name was resolved component by component")
             with self.assertRaises(hostos.PathEscape):
                 hostos.contained_join(self.base, "mat", "o.mat")
-            self.assertEqual(1, realpath.call_count, "a link was not handed to realpath")
+            self.assertEqual(1, realpath.call_count, "a link was not passed to realpath")
 
 
 class OnlineDownloadsStayInsideTheLibrary(unittest.TestCase):
 
     def test_no_hand_rolled_containment_is_left(self):
-        """`contained_join` resolves realpaths, so a planted symlink cannot be the hop out."""
+        """`contained_join` resolves realpaths, so a planted symlink cannot lead outside."""
         body = source_of("core/matx_sources.py")
         self.assertNotIn(
             "os.path.normpath(os.path.join(dest_dir", body,
             "a download path is checked by normpath again")
-        tree = ast.parse(body)  # by AST, per target: counting occurrences stayed green with one check removed
+        tree = ast.parse(body)  # by AST, per target: counting occurrences passed with one check removed
         rgl_checked = False
         for node in ast.walk(tree):
             if not (isinstance(node, ast.Call)
@@ -612,10 +612,10 @@ class OnlineDownloadsStayInsideTheLibrary(unittest.TestCase):
                                                        wording.byte_size(1000)),
                          str(caught.exception))
         self.assertEqual([], os.listdir(dest), "a refused package still unpacked")
-        reported.assert_not_called()    # its alert says the rest imported, which a refusal makes untrue
+        reported.assert_not_called()    # its alert states the rest imported, which is false after a refusal
 
     def test_a_failed_package_lookup_is_not_cached(self):
-        """`_packages` returns [] on error, a present key, so caching it would outlive a network blip."""
+        """`_packages` returns [] on error, a present key, so a cached [] would outlast a network error."""
         from amaze.core import matx_sources
 
         for answer, lookups in (([], 2),
@@ -658,12 +658,12 @@ class RefreshDropsEveryCacheASourceKeeps(unittest.TestCase):
         source.refresh()
         self.assertIsNone(
             source._categories,
-            "the category map survived Refresh - a renamed remote "
-            "category files its materials under Uncategorized until "
+            "the category map was kept through Refresh - a renamed remote "
+            "category lists its materials under Uncategorized until "
             "Houdini restarts")
 
     def test_every_source_with_hosted_pictures_drops_their_places(self):
-        """A picture's place is read off the hosted zip once; kept past Refresh it points into the old zip."""
+        """A picture's offset is read from the zip once; kept past Refresh it points into the old zip."""
         from amaze.core import matx_sources
         hosting = [cls for cls in matx_sources.SOURCES if cls.PREVIEWS]
         self.assertTrue(hosting, "no source hosts pictures, so this checks nothing")
@@ -674,7 +674,7 @@ class RefreshDropsEveryCacheASourceKeeps(unittest.TestCase):
             source.refresh()
             if source._previews is not None:
                 kept.append(cls.__name__)
-        self.assertEqual([], kept, "these kept the old pictures' places through Refresh")
+        self.assertEqual([], kept, "these kept the old picture offsets through Refresh")
 
 
 class TheShippedTableIsClosedAfterTheSizeCheck(unittest.TestCase):
@@ -707,7 +707,7 @@ class AFullSourceIsLogged(unittest.TestCase):
         return found
 
     def test_a_source_that_fills_the_cap_says_so(self):
-        """No source fills the cap today; the log says when one starts to."""
+        """No source fills the cap today; the log records when one starts to."""
         from amaze.core import matx_library
         from amaze.tests import test_support
         with test_support.captured_log() as log:
@@ -745,7 +745,7 @@ class TheCatalogueCacheLandsWhole(unittest.TestCase):
             source="GPUOpen", uid="u%d" % n, title="M%d" % n)
             for n in range(3)])
         self.assertEqual(3, len(model._load_cache() or ()),
-                         "premise: the first catalogue did not land")
+                         "premise: the first catalogue was not saved")
 
         def torn(obj, handle, *args, **kwargs):
             handle.write('{"records": [{"sou')
@@ -757,12 +757,12 @@ class TheCatalogueCacheLandsWhole(unittest.TestCase):
                     source="GPUOpen", uid="x", title="X")])
         self.assertEqual(
             3, len(model._load_cache() or ()),
-            "a write that died part-way left a torn catalogue, so the "
+            "a write that failed part-way left a truncated catalogue, so the "
             "next Online open loses the whole cached list")
 
 
 class ARemapOnAColourChainStillRemaps(unittest.TestCase):
-    """A color3 source flips mtlxremap/mtlxclamp to `_color3` parms, so ranges go via `_set_poly_parm`."""
+    """With a color3 source mtlxremap/mtlxclamp use `_color3` parms: ranges go via `_set_poly_parm`."""
 
     def test_the_range_values_reach_the_live_parm_variant(self):
         from amaze.render import material_converter as mc
@@ -813,17 +813,17 @@ class ARemapOnAColourChainStillRemaps(unittest.TestCase):
         remap = next(n for n in dest.children()
                      if n.type().name() == "mtlxremap")
         self.assertEqual("color3", remap.parm("signature").evalAsString(),
-                         "premise: wiring the color3 image flipped the "
+                         "premise: wiring the color3 image changed the "
                          "remap's signature")
         self.assertEqual(
             (0.25, 0.25, 0.25), tuple(remap.parmTuple("inlow_color3").eval()),
-            "old_min never reached the LIVE inlow variant - the remap "
+            "old_min was not set on the LIVE inlow variant - the remap "
             "renders with its identity defaults")
         self.assertEqual("mtlxclamp", out.type().name(),
                          "premise: clamp on appends an mtlxclamp")
         self.assertEqual(
             (0.1, 0.1, 0.1), tuple(out.parmTuple("low_color3").eval()),
-            "new_min never reached the clamp's LIVE low variant")
+            "new_min was not set on the clamp's LIVE low variant")
 
 
 class VendorTransformsAreOpenPBRsAlone(unittest.TestCase):
@@ -875,11 +875,11 @@ class VendorTransformsAreOpenPBRsAlone(unittest.TestCase):
                              "classic-shader conversion")
             mc.convert_openpbr_material(_RS(), dest, report)
             self.assertEqual(1, vendor.call_count,
-                             "the OpenPBR door lost its own transforms")
+                             "`convert_openpbr_material` no longer runs its transforms")
 
 
 class ConvertNodeCarriesTheTargetInput(unittest.TestCase):
-    """`target_input` reaches every converter taking it, so a nested texture keeps its role."""
+    """`target_input` is passed to every converter taking it, so a nested texture keeps its role."""
 
     def test_a_converter_that_accepts_it_receives_it(self):
         from amaze.render import material_converter as mc
@@ -925,13 +925,13 @@ class ConvertNodeCarriesTheTargetInput(unittest.TestCase):
         self.assertEqual(
             "base_color", received.get("takes"),
             "the dispatcher dropped target_input for a converter that "
-            "forwards it - the nested texture reads as data/Raw")
+            "forwards it - the nested texture is treated as data/Raw")
         self.assertTrue(received.get("bare"),
                         "a converter without the parameter broke")
 
 
 class AHalfFetchedPackageIsNotReused(unittest.TestCase):
-    """The fetch is renamed into place only on success, so an occupied destination is complete."""
+    """The fetch is renamed into place only on success, so an existing destination is complete."""
 
     def _record(self):
         class Record:
@@ -981,8 +981,8 @@ class AHalfFetchedPackageIsNotReused(unittest.TestCase):
                                     matx_import.package_dirname(record))
                 self.assertFalse(
                     os.path.isdir(dest) and os.listdir(dest),
-                    "a dead or .mtlx-less fetch occupied the destination - "
-                    "every later import reuses or refuses it")
+                    "a failed or .mtlx-less fetch left files at the destination - "
+                    "every later import reuses or rejects it")
 
     def test_the_retry_fetches_fresh_and_lands_complete(self):
         from amaze.core import matx_import
@@ -1011,14 +1011,14 @@ class AHalfFetchedPackageIsNotReused(unittest.TestCase):
                             matx_import.package_dirname(record))
         self.assertTrue(
             os.path.isfile(os.path.join(dest, "seam.mtlx")),
-            "the completed fetch never landed at the destination")
+            "the completed fetch was never moved to the destination")
         self.assertFalse(
             os.path.isdir(dest + ".downloading"),
-            "the scratch sibling survived a successful fetch")
+            "the `.downloading` folder remains after a successful fetch")
 
 
 class ANoVariantAssetRefusesWithAReason(unittest.TestCase):
-    """`StopIteration` has an empty str(), so an asset with no .mtlx variant names itself."""
+    """`StopIteration` has an empty str(), so a fetch with no .mtlx variant names the asset."""
 
     def test_fetch_with_no_variants_names_the_asset(self):
         from amaze.core import matx_sources
@@ -1064,7 +1064,7 @@ class StagingLeavesNoUndoEntry(unittest.TestCase):
             for func in ast.walk(tree):
                 if not isinstance(func, ast.FunctionDef):
                     continue
-                creates = {}  # every create for a name, not the last, so a guarded sibling cannot vouch for another
+                creates = {}  # every create for a name, not the last, so one guarded create cannot cover another
                 for node in ast.walk(func):
                     if (isinstance(node, ast.Assign)
                             and len(node.targets) == 1
@@ -1102,12 +1102,12 @@ class StagingLeavesNoUndoEntry(unittest.TestCase):
                                 % (rel, lineno, name, half))
         self.assertGreaterEqual(
             pairs, 7,
-            "the scan matched %d staging pairs where the tree holds "
-            "seven - it has gone vacuous, not clean" % pairs)
+            "the scan matched %d staging pairs where the source has "
+            "seven - it finds too few, so passing proves nothing" % pairs)
         self.assertEqual(
             [], offenders,
             "these put half of a staging pair on the LIVE undo stack, "
-            "so one Ctrl+Z resurrects the container with its "
+            "so one Ctrl+Z recreates the container with its "
             "children: %s" % offenders)
 
 
@@ -1126,10 +1126,10 @@ class SettingsAreNotWrittenPerMouseMove(unittest.TestCase):
     def test_close_still_persists(self):
         self.assertTrue(
             calls("dialogs/prefs_dialog.py", "closeEvent", "save"),
-            "nothing persists the dialog's values any more")
+            "nothing saves the dialog's values any more")
 
     def test_the_ram_slider_leaves_persistence_to_close(self):
-        """ClickSlider fires on every mouse move, so saving per tick fsyncs settings.json all drag."""
+        """ClickSlider emits on every mouse move, so saving per tick fsyncs settings.json all drag long."""
         self.assertFalse(
             calls("dialogs/prefs_dialog.py", "set_ram_cache_mb", "save"),
             "the RAM Cache setter saves on every tick again")
@@ -1138,7 +1138,7 @@ class SettingsAreNotWrittenPerMouseMove(unittest.TestCase):
 class TheFileLoaderQueueDoesNotBusySpin(unittest.TestCase):
 
     def test_it_re_arms_on_a_frame_not_immediately(self):
-        """A zero-delay re-arm spins the handler at full event-loop rate on the painting thread."""
+        """A zero-delay re-arm runs the handler at full event-loop rate on the painting thread."""
         tree = ast.parse(source_of("core/thumbnails.py"))
         delays = []    # the RE-ARM only: the first schedule has nothing to wait for
         for node in ast.walk(tree):
@@ -1175,7 +1175,7 @@ class OneRuleForWhatBelongsInAFolder(unittest.TestCase):
 
 
 class TheOsHandOffsNeverRaise(unittest.TestCase):
-    """The log buttons call these unguarded: a refused or missing handler is swallowed inside."""
+    """The log buttons call these without a try: a failing or missing handler is caught inside."""
 
     def test_no_platform_branch_raises_when_every_handler_fails(self):
         def refuse(*_args, **_kwargs):
@@ -1245,10 +1245,10 @@ class RevealGoesThroughHoudiniFirst(unittest.TestCase):
                     callers += ["%s:%d" % (os.path.relpath(path, root), node.lineno)
                                 for node in ast.walk(tree)
                                 if isinstance(node, ast.Attribute) and node.attr == "reveal_path"]
-        self.assertEqual([], callers, "these reach past Houdini's file browser")
+        self.assertEqual([], callers, "these call `reveal_path` instead of Houdini's file browser")
 
 class TheUserRowCreatesAndDeletes(unittest.TestCase):
-    """Preferences > User creates, renames and deletes; deletion sweeps everything tagged theirs."""
+    """Preferences > User creates, renames and deletes; deleting removes all tagged theirs."""
 
     def test_the_user_row_offers_create_and_delete(self):
         from amaze.core import users
@@ -1296,7 +1296,7 @@ class TheUserRowCreatesAndDeletes(unittest.TestCase):
         box.blockSignals(True)
         prefs_dialog._show_quietly(box, False)
         self.assertTrue(box.signalsBlocked(),
-                        "a quiet set unblocked a caller's own block")
+                        "`_show_quietly` unblocked signals the caller had blocked")
 
     def test_a_created_user_is_made_and_switched_to_on_apply(self):
         from amaze.core import users
@@ -1335,7 +1335,7 @@ class TheUserRowCreatesAndDeletes(unittest.TestCase):
         self.assertFalse(dlg._btn_edit_user.isEnabled())
         self.assertFalse(dlg._btn_delete_user.isEnabled())
         self.assertFalse(dlg._btn_apply_library.isEnabled(),
-                         "Apply runs with nobody picked")
+                         "Apply is enabled with no user picked")
 
     def test_the_only_user_left_is_listed_and_not_picked(self):
         from amaze.core import users
@@ -1403,19 +1403,19 @@ class TheCacheWipeCannotBeSuppressed(unittest.TestCase):
         dlg = prefs_dialog.PrefsDialog(p, panel=None)
         self.addCleanup(dlg.deleteLater)
         seen = self._asked_with(dlg)
-        self.assertIn("kwargs", seen, "the wipe never asked at all")
+        self.assertIn("kwargs", seen, "the wipe never showed a confirmation")
         self.assertEqual(messages.CONFIRM_CLEAR_THUMBNAIL_CACHE,
                          seen.get("text"))
         self.assertEqual(
             hou.confirmType.NoConfirmType, seen["kwargs"].get("suppress"),
-            "the cache wipe rides on a SUPPRESSABLE confirmation: with "
+            "the cache wipe uses a SUPPRESSABLE confirmation: with "
             "`suppress` at its default of `hou.confirmType.OverwriteFile`, "
             "one tick of do-not-ask-again anywhere in Houdini deletes every "
             "cached thumbnail with no question asked")
 
 
 class PreferencesSpeakTheDrawnWords(unittest.TestCase):
-    """Three Preferences messages take the drawn wording from `messages.py`, not an inline copy."""
+    """Three Preferences messages use the designed wording in `messages.py`, not an inline copy."""
 
     def _dialog(self):
         from amaze.dialogs import prefs_dialog
@@ -1445,7 +1445,7 @@ class PreferencesSpeakTheDrawnWords(unittest.TestCase):
         self.assertEqual(messages.HELP_MATERIAL_VERSIONS, seen.get("help"))
 
     def _save_log(self, answer=1, **patches):
-        """Save Log through hou.ui, as the rest of Preferences: what was asked and what was said."""
+        """Save Log via hou.ui, as in all of Preferences: (folder, export, messages, reveal)."""
         from amaze.core import debug
         from amaze.tests import test_support
         dlg = self._dialog()
@@ -1599,7 +1599,7 @@ class ThePickersStartInAForwardSlashPath(unittest.TestCase):
 
 
 class APickedRootKeepsItsSlash(unittest.TestCase):
-    """Only a trailing slash that is not the root goes: `D:` is relative to drive D's current folder."""
+    """Only a trailing slash that is not the root is removed: `D:` means drive D's current folder."""
 
     WINDOWS_OS = types.SimpleNamespace(path=ntpath, sep="\\")    # what os.path and os.sep are there
 
@@ -1635,7 +1635,7 @@ class APickedRootKeepsItsSlash(unittest.TestCase):
 
 
 class ALoadOnceAnswerIsKeptUntilCleared(unittest.TestCase):
-    """Each load-once answer is worked out on the first call and kept until `cache_clear()`."""
+    """Each cached result is computed on the first call and kept until `cache_clear()`."""
 
     def _fresh(self, cached):
         """Empties `cached` now and after the test; with no cache to empty, the count fails."""
@@ -1740,11 +1740,11 @@ class ALoadOnceAnswerIsKeptUntilCleared(unittest.TestCase):
             second = theme._read()
             self.assertEqual([None, None], [first, second], "an empty preference read as a theme")
             self.assertEqual(once, asked.call_count,
-                             "the None answer was not kept, so it was asked again")
+                             "the None result was not cached, so the preference was read again")
             theme._read.cache_clear()
             theme._read()
             self.assertEqual(2 * once, asked.call_count,
-                             "after cache_clear() the next call did not ask again")
+                             "after cache_clear() the next call did not read the preference")
 
     def test_pillow_is_imported_once(self):
         from amaze.core import conversion
@@ -1774,7 +1774,7 @@ class ALoadOnceAnswerIsKeptUntilCleared(unittest.TestCase):
                              "after cache_clear() the next call did not load the module")
 
     def test_without_hh_each_call_logs_and_nothing_is_kept(self):
-        """No $HH keeps nothing: each call logs, and the first call once $HH is set loads."""
+        """Without $HH nothing is cached: each call logs; once $HH is set, the next call loads."""
         from amaze.core import debug, dragengine
         self._fresh(dragengine._load_stock_lop)
         env, stub = {"HH": ""}, self._stub_hh()
@@ -1782,12 +1782,12 @@ class ALoadOnceAnswerIsKeptUntilCleared(unittest.TestCase):
                 mock.patch.object(debug, "event") as logged:
             self.assertEqual([None, None], [dragengine.stock_lop(), dragengine.stock_lop()])
             self.assertEqual(["drag", "drag"], [c.args[0] for c in logged.call_args_list],
-                             "a call without $HH went unlogged, so its None was kept")
+                             "a call without $HH was not logged, so its None was cached")
             self.assertEqual(0, specs.call_count, "a load was tried without $HH")
             env["HH"] = stub
             first, second = dragengine.stock_lop(), dragengine.stock_lop()
             self.assertEqual("stub", getattr(first, "LOADED", None),
-                             "the answer from before $HH was set was kept")
+                             "the result from before $HH was set was cached")
             self.assertEqual(1, specs.call_count, "the module did not load exactly once")
             self.assertIs(first, second)
 

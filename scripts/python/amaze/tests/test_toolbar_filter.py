@@ -1,4 +1,4 @@
-"""The toolbar's Filter menu, one engine for every section, and what typing in Search costs."""
+"""The toolbar's Filter menu, shared by all sections, and the filter passes Search typing runs."""
 
 import contextlib
 import json
@@ -25,7 +25,7 @@ from amaze.prefs import prefs as prefs_module  # noqa: E402
 
 
 class FilterMenuEngineTest(unittest.TestCase):
-    """One filter engine for five sections; the panel passes labels and values, never their meaning."""
+    """One Filter menu code path for five sections; the panel passes each value on uninterpreted."""
 
     @classmethod
     def setUpClass(cls):
@@ -35,11 +35,11 @@ class FilterMenuEngineTest(unittest.TestCase):
     def _labels_for(self, key):
         self.panel._on_tab_toggled(key, True)
         self.assertEqual(key, self.panel.current_section,
-                         "the tab switch to %r did not take" % key)
+                         "the tab switch to %r did not happen" % key)
         return [act.text() for act in self.panel.menu_filter.actions() if not act.isSeparator()]
 
     def test_every_section_fills_the_menu_with_its_own_entries(self):
-        """Four sections pin their lists exactly; Materials is prefs-gated, so only its first is fixed."""
+        """Four sections' lists are exact; Materials depends on prefs, so only `All` is fixed."""
         expected = {
             "gradient": ["All", "1 color", "2 colors", "3 colors",
                          "4 colors", "5+ colors"],
@@ -57,18 +57,18 @@ class FilterMenuEngineTest(unittest.TestCase):
                 label, value = values[key]
                 self.assertEqual(
                     value, self.panel.filter_values[label],
-                    "the %s menu no longer carries its value through the "
-                    "panel untouched" % key)
+                    "the %s menu value is no longer passed through the "
+                    "panel unchanged" % key)
         material = self._labels_for("material")
         self.assertEqual("All", material[0],
-                         "Materials lost its everything-entry")
+                         "Materials has no `All` entry first")
         for label in material[1:]:
             self.assertIn(
                 label, ["MaterialX", "Redshift", "Octane"],
                 "Materials offers something that is not a renderer")
 
     def test_rebuilds_leave_one_group_holding_only_the_entries_shown(self):
-        """The menu is rebuilt on every tab switch, so what fills it must not pile up."""
+        """The menu is rebuilt on every tab switch, so old action groups must be deleted."""
         for key in ("code", "cop", "gradient", "code", "material", "code"):
             labels = self._labels_for(key)
         QtWidgets.QApplication.sendPostedEvents(
@@ -80,7 +80,7 @@ class FilterMenuEngineTest(unittest.TestCase):
                          "the group holds actions the menu no longer shows")
 
     def test_a_pick_narrows_the_grid_and_all_puts_it_back(self):
-        """Through the real menu action on countable rows: one language in, everything out."""
+        """Through the real menu action: one language narrows the rows, `All` shows them all."""
         self._labels_for("code")
         model = self.panel.code_model
         total = model.rowCount()
@@ -93,7 +93,7 @@ class FilterMenuEngineTest(unittest.TestCase):
         pick = next((lang for lang in languages
                      if lang in self.panel.filter_actions), "")
         if not pick:
-            self.skipTest("no snippet carries a language the menu offers")
+            self.skipTest("no snippet has a language the menu offers")
         expected = sum(
             1 for row in range(total)
             if pick.lower() in (
@@ -112,20 +112,20 @@ class FilterMenuEngineTest(unittest.TestCase):
             "All does not put every snippet back")
 
     def test_all_stores_no_filter_and_the_sidebar_counts_survive_it(self):
-        """A renderless row is seen only unfiltered; a label `All` once zeroed every sidebar count."""
+        """Rows without a renderer show only unfiltered; storing `All` once zeroed sidebar counts."""
         self._labels_for("material")
         self.panel.filter_actions["All"].setChecked(True)
         self.panel.apply_section_filter()
         stored = getattr(self.panel.material_sorted_model, "_filters", {})
         self.assertNotIn(
             self.panel.material_model.RendererRole, stored,
-            "All still stores a filter - every row pays an "
-            "index.data() on every pass to reach the same yes")
+            "All still stores a filter - every row runs an "
+            "index.data() on every pass that always accepts it")
         if not self.panel.material_model.rowCount():
             self.skipTest("fixture library has no materials")
         self.assertTrue(
             self.panel.category_model.showing_all_renderers(),
-            "All does not read as all to the category model, so the "
+            "the category model does not treat All as all renderers, so the "
             "sidebar hides categories the grid is showing")
         self.assertEqual(
             self.panel.category_model.rowCount(),
@@ -143,12 +143,12 @@ class FilterMenuEngineTest(unittest.TestCase):
         checked = self.panel.filter_action_group.checkedAction()
         self.assertEqual(
             "All", checked.text() if checked is not None else "",
-            "the Code section's choice followed the user into Nodes")
+            "the Code section's choice was applied to Nodes")
         self._labels_for("code")
         checked = self.panel.filter_action_group.checkedAction()
         self.assertEqual(
             "Python", checked.text() if checked is not None else "",
-            "Code did not come back to the language it was left on")
+            "Code did not restore its previously chosen language")
         self.panel.filter_actions["All"].setChecked(True)
         self.panel.filter_menu_changed(self.panel.filter_actions["All"])
 
@@ -162,8 +162,8 @@ class FilterMenuEngineTest(unittest.TestCase):
                         "a Material entry has no icon")
         self._labels_for("code")
         actions = self.panel.menu_filter.actions()
-        self.assertFalse(any(act.isSeparator() for act in actions), "Code grew a separator")
-        self.assertTrue(all(act.icon().isNull() for act in actions), "Code grew icons")
+        self.assertFalse(any(act.isSeparator() for act in actions), "Code has a separator")
+        self.assertTrue(all(act.icon().isNull() for act in actions), "Code has icons")
 
     def test_the_choice_is_saved_by_id_so_its_label_can_change(self):
         """The MaterialX entry saves its id `Karma`, and a saved `Karma` checks it again."""
@@ -187,10 +187,10 @@ class FilterMenuEngineTest(unittest.TestCase):
         self._labels_for("material")
         checked = self.panel.filter_action_group.checkedAction()
         self.assertEqual("MaterialX", checked.text() if checked is not None else "",
-                         "a saved Karma did not bring the MaterialX entry back")
+                         "a saved Karma did not check the MaterialX entry again")
 
     def test_a_choice_no_longer_offered_falls_back_to_all(self):
-        """A renderer switched off in Preferences takes its entry, leaving nothing checked on nothing."""
+        """A renderer disabled in Preferences loses its entry; the menu falls back to `All`."""
         self._labels_for("material")
         if "Redshift" not in self.panel.filter_actions:
             self.skipTest("Redshift not enabled in this fixture")
@@ -280,7 +280,7 @@ class FilterMenuEngineTest(unittest.TestCase):
 
 
 class RememberedFilterSettingsTest(unittest.TestCase):
-    """The settings file is a contract with data on disk: one filter key per section."""
+    """The `settings.json` format on disk: one filter key per section."""
 
     def _prefs(self, settings):
         home = tempfile.mkdtemp(prefix="amaze_filter_settings_")
@@ -302,8 +302,8 @@ class RememberedFilterSettingsTest(unittest.TestCase):
     def test_what_is_set_is_what_is_saved(self):
         p = self._prefs({"library_user": "u1"})
         self.assertEqual("", p.section_filter("gradient"),
-                         "an unvisited section claims a filter it was "
-                         "never given")
+                         "an unvisited section returns a filter that was "
+                         "never set")
         p.set_section_filter("cop", "LOP")
         p.save()
         again = prefs_module.Prefs()
@@ -311,11 +311,11 @@ class RememberedFilterSettingsTest(unittest.TestCase):
         again.load()
         self.assertEqual(
             "LOP", again.section_filter("cop"),
-            "the choice did not survive the round trip to disk")
+            "the choice read back after save and load is different")
 
 
 class TypingCostsOnePassNotOnePerKeystroke(unittest.TestCase):
-    """Debounced box, batched filter pair, counted by `invalidateFilter`. ▸p/filter-pass-cost"""
+    """Debounced search box, batched filters, counted at `invalidateFilter`. ▸p/filter-pass-cost"""
 
     @classmethod
     def setUpClass(cls):
@@ -330,14 +330,14 @@ class TypingCostsOnePassNotOnePerKeystroke(unittest.TestCase):
         _app.processEvents()
 
     def _type(self, word):
-        """A keystroke: the text lands and `textEdited` carries it; Qt emits it only for typed changes."""
+        """A keystroke: set the text, emit `textEdited`; Qt emits it only for typed changes."""
         box = self.panel.line_filter
         for length in range(1, len(word) + 1):
             box.setText(word[:length])
             box.textEdited.emit(word[:length])
 
     def _settle(self):
-        """Run the pending debounce NOW, the way the pause after typing does."""
+        """Run the pending debounced filter now, as the timer does after a pause in typing."""
         timer = self.panel._filter_timer
         self.assertTrue(timer.isActive(),
                         "typing left no pending filter, so nothing "
@@ -349,7 +349,7 @@ class TypingCostsOnePassNotOnePerKeystroke(unittest.TestCase):
     @staticmethod
     @contextlib.contextmanager
     def _passes():
-        """Count the `invalidateFilter` passes a block runs, on the class, where the time goes."""
+        """Count the `invalidateFilter` calls a block makes, patched on `GridProxyModel` itself."""
         from amaze.core import grid_proxy
         real = grid_proxy.GridProxyModel.invalidateFilter
         seen = []
@@ -365,7 +365,7 @@ class TypingCostsOnePassNotOnePerKeystroke(unittest.TestCase):
             grid_proxy.GridProxyModel.invalidateFilter = real
 
     def test_a_typed_word_costs_ONE_pass_and_it_comes_after_the_typing(self):
-        """Five keystrokes queue one pass; the pause runs it."""
+        """Five keystrokes start one pending pass; the timer runs it after the typing."""
         with self._passes() as seen:
             self._type("metal")
             _app.processEvents()
@@ -378,10 +378,10 @@ class TypingCostsOnePassNotOnePerKeystroke(unittest.TestCase):
             "line_filter.textEdited is gone" % while_typing)
         self.assertEqual(
             1, settled,
-            "the settled word cost %d passes, not one" % settled)
+            "the finished word ran %d passes, not one" % settled)
 
     def test_swapping_a_name_search_for_a_tag_search_costs_ONE_pass(self):
-        """A `:` drops the name filter and sets the tag filter, two refilters `one_pass` makes one."""
+        """A `:` clears the name filter and sets the tag filter; `one_pass` merges the two."""
         self._type("metal")
         self._settle()
         with self._passes() as seen:
@@ -390,11 +390,11 @@ class TypingCostsOnePassNotOnePerKeystroke(unittest.TestCase):
             swapped = len(seen)
         self.assertEqual(
             1, swapped,
-            "the swap cost %d passes, not one - the remove/set pair is "
+            "the swap ran %d passes, not one - the remove/set pair is "
             "running outside `one_pass`" % swapped)
 
     def test_a_section_switch_with_every_filter_set_costs_ONE_pass(self):
-        """Category, search, renderer and favourites all standing: coming back is one pass."""
+        """Category, search, renderer and favourites all set: returning to Materials is one pass."""
         panel = self.panel
         panel._on_tab_toggled("material", True)
         panel._stand_on_category("usds")
@@ -414,7 +414,7 @@ class TypingCostsOnePassNotOnePerKeystroke(unittest.TestCase):
             panel._on_tab_toggled("material", True)
         mine = [p for p in seen if p is proxy]
         self.assertEqual(1, len(mine),
-                         "coming back to Material cost %d passes" % len(mine))
+                         "returning to Material ran %d passes" % len(mine))
         self.assertEqual("usds", proxy.filter_value(
             panel.material_model.CategoryRole),
             "the switch did not put the category back")

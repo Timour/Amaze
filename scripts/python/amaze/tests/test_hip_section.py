@@ -26,7 +26,7 @@ from amaze.tests import test_support  # noqa: E402,F401
 
 
 class _Prefs:
-    """Only what the File model's scene rows read; hip rows live in FileFiles."""
+    """Only the prefs the File model's scene rows read; hip rows are handled in FileFiles."""
 
     def __init__(self, folders=(), favorites=(), subfolders=False,
                  dir=""):
@@ -124,7 +124,7 @@ def _library_prefs(testcase, folders=()):
 
 
 def _settled_decoration(model, row, seconds=5.0, key=None):
-    """A row's tile picture once the engine answers, repainting as a view does on `ready`."""
+    """A row's tile image once `thumbnails.engine` has it, re-reading as a view does on `ready`."""
     import time
     from PySide6 import QtCore as _QtCore
     role = _QtCore.Qt.ItemDataRole.DecorationRole
@@ -134,7 +134,7 @@ def _settled_decoration(model, row, seconds=5.0, key=None):
     while (shown is None or thumbnails.engine.is_pending(key)) and time.time() < deadline:
         QtWidgets.QApplication.processEvents()
         time.sleep(0.005)
-        if not thumbnails.engine.is_pending(key):    # answered, or forgotten to be asked again
+        if not thumbnails.engine.is_pending(key):    # loaded, or dropped so the next read requests it again
             shown = model.data(model.index(row, 0), role)
     return shown
 
@@ -203,7 +203,7 @@ class CaptureStoreTest(unittest.TestCase):
 
 
 class CaptureRefusesOutLoudTest(unittest.TestCase):
-    """Headless has no viewport, so the capture fails here, and it must fail loudly."""
+    """Headless has no viewport, so the capture fails here and must raise, not return quietly."""
 
     def setUp(self):
         self.out = os.path.join(_Tmp(self).dir, "captures", "x.png")
@@ -220,7 +220,7 @@ class CaptureRefusesOutLoudTest(unittest.TestCase):
         self.assertTrue(
             any(word in message.lower()
                 for word in ("viewer", "viewport", "husd")),
-            "the refusal did not say what was missing: %s" % message)
+            "the error message does not name what was missing: %s" % message)
 
     def test_a_refusal_is_never_a_quiet_return(self):
         try:
@@ -302,7 +302,7 @@ class ScratchNameKeepsTheImageFormatTest(unittest.TestCase):
         self.assertNotEqual(self.out,
                             self.asked_for[0],
                             "the capture wrote straight over the live "
-                            "thumbnail - the write-aside is gone")
+                            "thumbnail - the scratch-file write is gone")
 
     def test_the_capture_lands_on_the_real_slot(self):
         result = scene_captures.capture_viewport(self.out, viewer=_FakeViewer())
@@ -312,7 +312,7 @@ class ScratchNameKeepsTheImageFormatTest(unittest.TestCase):
                          "the scratch file was left behind")
 
 
-_CAPTURE_ENTRY_POINTS = (    # every name a capture runs through; a new one joins here
+_CAPTURE_ENTRY_POINTS = (    # every function a capture runs through; add new ones here
     "from_toolbar", "onto_tile", "capture_and_report", "tile_capture.run", "self.run(",
     "capture_open_scene", "capture_tile", "capture_viewport")
 
@@ -347,7 +347,7 @@ class NoAutomaticCaptureTest(unittest.TestCase):
         return self._stripped_source("panel.py")
 
     def _sections_source(self):
-        """open_hip_scene lives on FileSection, so the scans that aim at it read sections.py."""
+        """open_hip_scene is a FileSection method, so the scans for it read sections.py."""
         return self._stripped_source("sections.py")
 
     def test_nothing_schedules_a_capture(self):
@@ -385,7 +385,7 @@ class NoAutomaticCaptureTest(unittest.TestCase):
                 % verb)
 
     def test_the_scan_can_actually_see_the_panel(self):
-        """Guards the guard: each file scan must see the function it is aimed at."""
+        """Checks the scan itself: each file scan must find the function it looks for."""
         panel_code = self._panel_source()
         section_code = self._sections_source()
         capture_code = self._stripped_source("tile_capture.py")
@@ -397,7 +397,7 @@ class NoAutomaticCaptureTest(unittest.TestCase):
 
 
 class PlaceholderTest(unittest.TestCase):
-    """A scene with no capture rests on a deliberate placeholder tile, never a blank."""
+    """A scene with no capture shows the placeholder tile image, never a blank."""
 
     def setUp(self):
         self.tmp = _Tmp(self)
@@ -452,7 +452,7 @@ class PlaceholderTest(unittest.TestCase):
 
 
 class RepaintDoesNotStatTheDiskTest(unittest.TestCase):
-    """Qt paints every visible row on every scroll, and a library can sit on a sleeping volume."""
+    """Qt paints every visible row on every scroll, and a library can be on a sleeping volume."""
 
     def setUp(self):
         self.tmp = _Tmp(self)
@@ -487,7 +487,7 @@ class RepaintDoesNotStatTheDiskTest(unittest.TestCase):
                        _QtCore.Qt.ItemDataRole.DecorationRole)
 
     def test_a_repaint_never_stats_the_capture(self):
-        """The engine reads the file off the paint thread and remembers one that is missing."""
+        """`thumbnails.engine` reads the file off the paint thread and caches a missing one."""
         model = self._model()
         calls = self._stats_of(model.capture_path(0))
         self._paint(model, times=5)
@@ -499,7 +499,7 @@ class RepaintDoesNotStatTheDiskTest(unittest.TestCase):
             "times - a sleeping volume stalls the grid" % len(calls))
 
     def test_a_zero_byte_capture_is_no_capture(self):
-        """An empty file in the slot: Customize greys Capture and the tile paints its face."""
+        """An empty capture file: Customize disables Capture; the tile paints its default face."""
         model = self._model()
         _write_png(model.capture_path(0), b"")
         self.assertFalse(model.has_capture(0))
@@ -509,7 +509,7 @@ class RepaintDoesNotStatTheDiskTest(unittest.TestCase):
                          "a zero-byte file was handed to the tile as this scene's capture")
 
     def test_a_landed_capture_forgets_the_remembered_answer(self):
-        """The engine remembers a missing capture; one landing must clear that, or the face stays."""
+        """The engine caches a missing capture; a new capture must clear that, or the face stays."""
         model = self._model()
         _settled_decoration(model, 0)
         key = ("capture", model.capture_path(0))
@@ -518,12 +518,12 @@ class RepaintDoesNotStatTheDiskTest(unittest.TestCase):
         _write_png(model.capture_path(0), _two_tone_png_bytes())
         captures.announce(model.tile_key(0))
         self.assertFalse(thumbnails.engine.is_missing(key),
-                         "the engine still answers missing after a capture landed")
+                         "the engine still reports missing after a capture was written")
         shown = _settled_decoration(model, 0)
-        self.assertIsNotNone(shown, "the landed capture never arrived (engine: %r)"
+        self.assertIsNotNone(shown, "the written capture was never shown (engine: %r)"
                              % (thumbnails.engine._states.get(key),))
         self.assertEqual((4, 4), (shown.width(), shown.height()),
-                         "the tile did not pick up the capture that landed")
+                         "the tile did not show the new capture")
 
 
 class ViewportStateTest(unittest.TestCase):
@@ -584,20 +584,20 @@ def _patch(testcase, owner, name, value):
 
 
 class SlowCapturePromptTest(unittest.TestCase):
-    """What the refusal says and does when the viewport renders, run on capture_open_scene itself."""
+    """The refusal's message and behaviour when the viewport renders, through capture_open_scene."""
 
     def setUp(self):
         self.prefs = _library_prefs(self)
 
     def _blocking(self, debug_on=False):
-        """A viewport rendering through Karma, with capture sabotaged so any attempt fails the test."""
+        """Karma renders the viewport; capture_viewport is replaced to fail the test if called."""
         self.scene = _real_scene(self)
         _patch(self, scene_captures, "current_scene_path", lambda: self.scene)
         _patch(self, scene_captures, "viewport_state",
                lambda *a: {"blocking": True, "renderer": "Karma CPU"})
         _patch(self, scene_captures, "capture_viewport", lambda out, viewer=None: self.fail(
-            "captured through a rendering delegate - the refusal fell "
-            "through into an unbounded stall"))
+            "captured through a rendering delegate - the refusal did "
+            "not stop it, so the capture could stall without limit"))
         original = scene_captures.debug.is_on
         scene_captures.debug.is_on = lambda: debug_on
         self.addCleanup(setattr, scene_captures.debug, "is_on", original)
@@ -611,14 +611,14 @@ class SlowCapturePromptTest(unittest.TestCase):
         self.assertIn("Please stop the viewport render", message)
         self.assertNotIn("The scene view is using", message)
         self.assertNotIn("Karma", message,
-                         "the renderer is named back at the user")
+                         "the message names the renderer to the user")
 
     def test_the_renderer_name_is_debug_mode_only(self):
         self._blocking(debug_on=True)
         with self.assertRaises(scene_captures.CaptureRefused) as caught:
             scene_captures.capture_open_scene(self.prefs, self.scene)
         self.assertIn("Detected: Karma CPU", str(caught.exception),
-                      "in Debug Mode the delegate is the whole point")
+                      "in Debug Mode the message must name the delegate")
 
     def test_the_state_is_read_before_capturing(self):
         """Order, measured: the state is read before the capture, or reading it cannot avoid the stall."""
@@ -633,14 +633,14 @@ class SlowCapturePromptTest(unittest.TestCase):
         self.assertEqual(["state", "capture"], order)
 
     def test_it_refuses_rather_than_offering_to_proceed(self):
-        """No capture-anyway offer: the sabotaged capture_viewport fails the test if it runs."""
+        """No capture-anyway offer: the replaced capture_viewport fails the test if it runs."""
         self._blocking()
         with self.assertRaises(scene_captures.CaptureRefused) as caught:
             scene_captures.capture_open_scene(self.prefs, self.scene)
         self.assertNotIn("anyway", str(caught.exception).lower())
 
     def test_a_tile_capture_is_refused_the_same_way(self):
-        """Every tile's capture photographs the Scene View, so every one reads it first."""
+        """Every tile capture grabs the Scene View, so every one reads its state first."""
         self._blocking()
         landed = []
 
@@ -652,11 +652,11 @@ class SlowCapturePromptTest(unittest.TestCase):
         with self.assertRaises(scene_captures.CaptureRefused):
             scene_captures.capture_tile(tile_icons.thumbnail_path(
                 self.prefs, "abc", "materials.json"), "abc")
-        self.assertEqual([], landed, "a refused capture was announced as landed")
+        self.assertEqual([], landed, "a refused capture still emitted `landed`")
 
 
 class TileCropTest(unittest.TestCase):
-    """A wide capture fills the tile and crops, rather than letterboxing into dead bands."""
+    """A wide capture fills the tile and is cropped, rather than letterboxed with empty bands."""
 
     def _delegate(self):
         from amaze.panel.delegates import AssetItemDelegate
@@ -672,7 +672,7 @@ class TileCropTest(unittest.TestCase):
                          "the capture did not fill the tile height")
 
     def test_contain_leaves_the_short_edge_short(self):
-        """Guards the guard: cover and contain must produce different pixmaps."""
+        """Checks the test itself: cover and contain must produce different pixmaps."""
         from PySide6 import QtGui
         wide = QtGui.QImage(400, 100, QtGui.QImage.Format.Format_ARGB32)
         wide.fill(QtGui.QColor("#336699"))
@@ -709,7 +709,7 @@ class TileCropTest(unittest.TestCase):
             from PySide6 import QtCore
             role = QtCore.Qt.ItemDataRole.DecorationRole
             deadline = time.time() + 5.0
-            while time.time() < deadline and any(    # a paint asks the engine; crop reads its answer
+            while time.time() < deadline and any(    # a paint requests the image from the engine; CropRole reads the result
                     thumbnails.engine.is_pending(("capture", model.capture_path(i)))
                     or model.data(model.index(i, 0), role) is None for i in range(4)):
                 QtWidgets.QApplication.processEvents()
@@ -719,7 +719,7 @@ class TileCropTest(unittest.TestCase):
         self.assertEqual([False, False, False, False], crops(),
                          "a row with no capture crops its square picture")
         _write_png(model.capture_path(0), _two_tone_png_bytes())
-        captures.announce(model.tile_key(0))    # as a capture does: the remembered answer goes
+        captures.announce(model.tile_key(0))    # as a capture does: the cached missing state is cleared
         self.assertEqual([True, False, False, False], crops(),
                          "a scene showing its capture does not fill the tile")
         _write_png(model.capture_path(1), _two_tone_png_bytes())
@@ -732,7 +732,7 @@ class TileCropTest(unittest.TestCase):
 
 
 class OpenSceneBadgeTest(unittest.TestCase):
-    """The tile of the scene on screen carries a marker."""
+    """The tile of the scene open in Houdini shows a badge."""
 
     def setUp(self):
         self.tmp = _Tmp(self)
@@ -762,7 +762,7 @@ class OpenSceneBadgeTest(unittest.TestCase):
         self.assertEqual([False, False], self._flags())
 
     def test_the_badge_follows_the_LIVE_scene_not_what_amaze_opened(self):
-        """A scene opened by File > Open still gets the badge: the mark follows the scene on screen."""
+        """A scene opened by File > Open still gets the badge: it marks the scene open in Houdini."""
         from amaze.helpers import hostos
         scene_captures.current_scene_path = \
             lambda: hostos.canonical_path_key(self.b)
@@ -770,7 +770,7 @@ class OpenSceneBadgeTest(unittest.TestCase):
 
 
 class IconAssetsTest(unittest.TestCase):
-    """Icons are looked up by filename at paint time, so a missing one is a silent no-badge."""
+    """Icons are looked up by filename at paint time, so a missing one silently paints no badge."""
 
     def _ui(self, name):
         return os.path.join(
@@ -790,7 +790,7 @@ class IconAssetsTest(unittest.TestCase):
                     "grid.svg", "list.svg", "favourite.svg", "favourite_on.svg")
 
     def test_button_icons_ship_one_state_only(self):
-        """A toolbar icon carries bare artwork, no ids or hidden state layers; the button draws states."""
+        """A toolbar icon has bare artwork, no ids or hidden state layers; the button draws states."""
         import re
         for name in self.BUTTON_ICONS:
             path = self._ui(name)
@@ -843,7 +843,7 @@ class IconAssetsTest(unittest.TestCase):
                 "the artwork." % (name, fill * 100))
 
     def test_the_scan_covers_icons_that_exist(self):
-        """Guards the guard: a renamed asset would make every assertion above vacuous."""
+        """Checks the test itself: with a renamed asset the assertions above check nothing."""
         present = [n for n in self.BUTTON_ICONS
                    if os.path.isfile(self._ui(n))]
         self.assertGreaterEqual(
@@ -881,7 +881,7 @@ class IconAssetsTest(unittest.TestCase):
         return 0.2126 * r + 0.7152 * g + 0.0722 * b
 
     def test_a_button_badge_is_one_art_at_two_strengths(self):
-        """Every rest art is drawn at the rest strength; the hover strength reaches its icon alone."""
+        """Every rest SVG is drawn at the rest opacity; the hover opacity applies to its icon only."""
         from amaze import amazetheme
         from amaze.helpers import ui_helpers
         from amaze.panel import delegates
@@ -896,7 +896,7 @@ class IconAssetsTest(unittest.TestCase):
             drawn = {float(v) for _k, v in re.findall(
                 r'((?:fill|stroke)-opacity)[=:]"?([0-9.]+)', text)}
             self.assertEqual({amazetheme.BADGE_REST_OPACITY}, drawn,    # exported from the rest frames
-                             "%s is not drawn at the rest strength the code paints" % art)
+                             "%s is not drawn at the rest opacity the code paints" % art)
             rest = ui_helpers.at_opacity(text, amazetheme.BADGE_REST_OPACITY)
             hover = ui_helpers.at_opacity(text, amazetheme.BADGE_HOVER_OPACITY)
             self.assertNotEqual(self._paint_of(rest), self._paint_of(hover),
@@ -906,12 +906,12 @@ class IconAssetsTest(unittest.TestCase):
             alphas = {float(v) for _k, v in re.findall(
                 r'((?:fill|stroke)-opacity)[=:]"?([0-9.]+)', re.sub(backdrop, "", hover, flags=re.S))}
             self.assertEqual({amazetheme.BADGE_HOVER_OPACITY}, alphas,
-                             "%s keeps an icon part the hover strength does not reach" % art)
+                             "%s has an icon part the hover opacity does not change" % art)
         self.assertTrue(self._paths("badge_favourite.svg"),
                         "the favourite state draws nothing")
 
     def test_a_hover_art_keeps_the_ground_and_colours_the_icon(self):
-        """Under the pointer the ground stays at the rest strength and the icon takes its colour."""
+        """On hover the background keeps the rest opacity and the icon gets its colour."""
         from amaze import amazetheme
         from amaze.panel import delegates
         pairs = [(b.off_art, b.off_hover_art) for b in delegates.BADGES if b.off_hover_art]
@@ -921,16 +921,16 @@ class IconAssetsTest(unittest.TestCase):
             with open(self._ui(hover + ".svg"), encoding="utf-8") as fh:
                 text = fh.read()
             ground = re.search(r'<path[^>]*?id="Rounded-Rectangle[^"]*"[^>]*?>', text, re.S)
-            self.assertIsNotNone(ground, "%s has no ground" % hover)
+            self.assertIsNotNone(ground, "%s has no background" % hover)
             self.assertEqual(("#000000", amazetheme.BADGE_REST_OPACITY),
                              self._effective_paint(ground.group(0)),
-                             "%s changed its ground" % hover)
+                             "%s changed its background" % hover)
             inks = {ink.upper() for ink in re.findall(r'stroke="(#[0-9A-Fa-f]{6})"', text)}
             self.assertTrue(inks, "%s draws no icon" % hover)
             self.assertNotIn("#FFFFFF", inks, "%s keeps %s's white icon" % (hover, rest))
 
     def test_the_run_button_keeps_its_shape_and_changes_its_paint(self):
-        """Rest, hover and press draw one shape; only the play mark's paint differs. ▸r/tile-from-frame"""
+        """Rest, hover and press draw one shape; only the play mark's colour differs. ▸r/tile-from-frame"""
         rest = self._paths("badge_execute.svg")
         self.assertTrue(rest, "the run button draws nothing")
         for state in ("badge_execute_hover.svg", "badge_execute_press.svg"):
@@ -945,7 +945,7 @@ class IconAssetsTest(unittest.TestCase):
 
     @staticmethod
     def _effective_paint(tag):
-        """The fill and fill-opacity that paint a tag: style wins. ▸r/svg-style-wins"""
+        """A tag's painted fill and fill-opacity: `style` overrides attributes. ▸r/svg-style-wins"""
         def attribute(name):
             found = re.search(r'\b%s="([^"]*)"' % name, tag)
             return found.group(1) if found else None
@@ -985,7 +985,7 @@ class IconAssetsTest(unittest.TestCase):
         for name, want in expected_alpha.items():
             self.assertAlmostEqual(
                 want, backdrops[name][1], places=2,
-                msg="ui/%s.svg's backdrop opacity left the delivered "
+                msg="ui/%s.svg's backdrop opacity differs from the delivered "
                     "design" % name)
 
     def _paths(self, name):
@@ -1057,17 +1057,17 @@ class CaptureButtonTest(unittest.TestCase):
 
 
 class SectionRegistrationTest(unittest.TestCase):
-    """Scene rows live in the File section since the merge - the registration pins move with them."""
+    """Scene rows are in the File section since the merge; these registration checks cover it."""
 
     def test_the_file_section_is_registered(self):
         keys = [cls.key for cls in sections.SECTION_CLASSES]
         self.assertIn("file", keys)
         self.assertNotIn("hip", keys,
                          "the HIP tab is back beside the File section "
-                         "that absorbed it")
+                         "that replaced it")
 
     def test_it_points_at_models_the_panel_builds(self):
-        """Each attribute name is looked up on the panel at runtime, so a typo hides until clicked."""
+        """Each attribute name is looked up on the panel at runtime, so a typo shows only on click."""
         file_cls = [c for c in sections.SECTION_CLASSES
                     if c.key == "file"][0]
         for attr in ("files_proxy_attr", "selection_attr", "delegate_attr",
@@ -1091,7 +1091,7 @@ class SectionRegistrationTest(unittest.TestCase):
 
 
 class CaptureDecisionPathTest(unittest.TestCase):
-    """capture_open_scene owns every refusal and never touches hou.ui, so these run headless."""
+    """capture_open_scene makes every refusal and never uses hou.ui, so these run headless."""
 
     def setUp(self):
         self.prefs = _library_prefs(self)
@@ -1156,7 +1156,7 @@ class CaptureDecisionPathTest(unittest.TestCase):
         self.assertEqual(expected, out)
 
     def test_no_panel_entry_point_re_decides(self):
-        """Source-derived: every capture entry point delegates the policy; none re-decides."""
+        """Read from source: every capture entry point leaves the checks to scene_captures."""
         path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
             "panel", "tile_capture.py")
@@ -1174,8 +1174,8 @@ class CaptureDecisionPathTest(unittest.TestCase):
             for owned in ("viewport_state(", "displayMessage(", "capture_viewport("):    # unguarded
                 self.assertNotIn(
                     owned, body,
-                    "%s re-decides with %s - that belongs to "
-                    "scene_captures, once" % (name, owned))
+                    "%s repeats a check with %s - that belongs to "
+                    "scene_captures only" % (name, owned))
 
 
 class CaptureRefreshesTheTileTest(unittest.TestCase):
@@ -1217,7 +1217,7 @@ class CaptureRefreshesTheTileTest(unittest.TestCase):
                          "a capture elsewhere repainted this model")
 
     def test_the_capture_path_is_wired_to_the_models(self):
-        """Source-derived: a capture is announced once it lands; both model families listen."""
+        """Read from source: a capture is announced once written; both model classes listen."""
         package = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
         def read(name):
@@ -1230,7 +1230,7 @@ class CaptureRefreshesTheTileTest(unittest.TestCase):
         body = code[start:code.find("\ndef ", start + 10)]
         self.assertIn("captures.announce(", body, "a capture no longer announces itself")
         self.assertGreater(body.find("captures.announce("), body.find("capture_viewport("),
-                           "the capture is announced BEFORE it has landed")
+                           "the capture is announced BEFORE it is written")
         for module in ("file_library.py", "library.py"):
             self.assertIn("captures.signals.landed.connect(", read(module),
                           "%s does not listen for a capture" % module)
@@ -1371,7 +1371,7 @@ class ShelfTest(unittest.TestCase):
                 % (tool.get("name"), icon))
 
     def test_the_pane_tab_wears_the_mark_the_shelf_tool_wears(self):
-        """One mark for Amaze: the pypanel icon is the open-panel tool's file, not the stock Python one."""
+        """One icon for Amaze: the pypanel icon is the open-panel tool's file, not the stock Python one."""
         import xml.etree.ElementTree as ET
         tool = [t for t in self._shelf().findall("tool") if t.get("name") == "amaze_open_panel"][0]
         pypanel = os.path.join(os.path.dirname(self._shelf_path()), "..",
@@ -1424,7 +1424,7 @@ class ShelfTest(unittest.TestCase):
                                 "the shelf calls a function rc_calls does not have")
 
     def test_a_broken_install_says_what_messages_py_says(self):
-        """The shelf's own copy, shown when rc_calls cannot load, is the functions' sentence."""
+        """The shelf's copy of the message, shown when rc_calls cannot load, matches messages.py."""
         from amaze import messages
         for name in self.ONE_CALL:
             with self.subTest(name):
@@ -1519,7 +1519,7 @@ class ShelfTest(unittest.TestCase):
             "an object again")
 
     def test_the_panel_tool_always_opens_a_new_window(self):
-        """Every activation opens a fresh floating panel; no branch fronts an open one instead."""
+        """Every activation opens a new floating panel; no branch raises an open one instead."""
         root = self._shelf()
         tool = [t for t in root.findall("tool")
                 if t.get("name") == "amaze_open_panel"][0]
@@ -1528,8 +1528,8 @@ class ShelfTest(unittest.TestCase):
                          "floatingPanel", "raise_", "activateWindow"):
             self.assertNotIn(
                 spelling, script,
-                "the tool hunts for an open Amaze again (%s) - an "
-                "activation that fronts a window opened none" % spelling)
+                "the tool looks for an open Amaze again (%s) - an "
+                "activation that raises a window opens no new one" % spelling)
         help_text = tool.find("helpText").text or ""
         for promise in ("raises", "already open"):
             self.assertNotIn(
@@ -1544,7 +1544,7 @@ class ShelfTest(unittest.TestCase):
         self.assertNotIn("<hotkey", body.lower())
 
     def _run_reload(self, houdini_spelling):
-        """Run the Reload tool against one package holding one asset; answers it and the calls made."""
+        """Run the Reload tool against one package holding one asset; returns it and the calls made."""
         import types
         from unittest import mock
 
@@ -1596,7 +1596,7 @@ class ShelfTest(unittest.TestCase):
         self.assertEqual(["Amaze: 0 asset files reloaded, 1 new"], self.bar)
 
     def test_sync_install_carries_the_toolbar(self):
-        """The sync carries the toolbar, or that shipped file only ever exists in the repo."""
+        """The sync copies the toolbar folder, or that shipped file only exists in the repo."""
         tools = os.path.join(
             os.path.dirname(os.path.dirname(os.path.dirname(
                 os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))),
@@ -1606,11 +1606,11 @@ class ShelfTest(unittest.TestCase):
         self.assertIn('amaze_mirror "$repo/toolbar"', body,  # the shared resolver copies through amaze_mirror, not rsync
                       "sync-install.sh does not copy the toolbar")
         self.assertIn('diff -rq "$repo/toolbar"', body,
-                      "the sync does not VERIFY the toolbar landed")
+                      "the sync does not VERIFY the toolbar was copied")
 
 
 class LibraryUpdateTest(unittest.TestCase):
-    """Opening a library brings its recorded version to this Amaze's at once; nothing asks."""
+    """Opening a library updates its recorded version to this Amaze's at once, without asking."""
 
     @classmethod
     def setUpClass(cls):
@@ -1795,7 +1795,7 @@ class CaptureFromTheMenuTest(unittest.TestCase):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
     def _select(self, key, rows):
-        """Show section `key` with `rows` selected; answers its context and the selection."""
+        """Show section `key` with `rows` selected; returns its context and the selection."""
         from PySide6 import QtCore as _QtCore
         panel = self.panel
         panel.section_tabs.setChecked(key)
@@ -1863,10 +1863,10 @@ class CaptureFromTheMenuTest(unittest.TestCase):
         self.panel.tile_capture.onto_tile(context, chosen[0])
         self.assertEqual([(model.capture_path(row), model.tile_key(row))], taken)
         self.assertEqual("image", tile_icons.face_for(model, row),
-                         "the tile does not show the picture the capture replaced")
+                         "the tile does not show the captured picture")
 
     def test_every_kind_of_asset_tile_paints_its_capture(self):
-        """Code and Color paint their own pictures in RAM; a capture's file wins over that."""
+        """Code and Color paint their own pictures in RAM; a capture's file takes precedence."""
         for name in ("material_model", "code_model", "gradient_model"):    # the fixture has no Nodes
             with self.subTest(model=name):
                 model = getattr(self.panel, name)
@@ -1945,7 +1945,7 @@ class LoadOnTheGridMenuOpensTheSceneTest(unittest.TestCase):
 
 
 class SectionListIsSingleSourcedTest(unittest.TestCase):
-    """Every list of sections comes from one place, or a toggle drops a section it never learned."""
+    """Every list of sections comes from one place, or a toggle omits a section the list lacks."""
 
     def test_every_registered_section_is_offered(self):
         listed = section_list.keys()
@@ -1977,7 +1977,7 @@ class SectionListIsSingleSourcedTest(unittest.TestCase):
                         r'|\([^()]*"material"[^()]*\)', body, re.S):
                     listed = set(re.findall(r'"([a-z]+)"', match.group()))
                     if "gradient" not in listed and "file" not in listed:
-                        continue            # not a section list: the probe keys on a current non-material key
+                        continue            # not a section list: the check requires another current section key
                     if "deliberately partial" in \
                             body[max(0, match.start() - 400):match.start()]:
                         continue            # a list allowed to be incomplete says so where it is declared
@@ -2045,7 +2045,7 @@ class CheckLibraryConfirmsBeforeChangingTest(unittest.TestCase):
         door = code[start:code.find("\ndef ", start)]
         self.assertTrue(door, "premise: the Repair dialog is gone")
         self.assertEqual(2, door.count("displayMessage("),
-                         "the Repair dialog speaks beyond what it found and what the fix did")
+                         "the Repair dialog shows messages beyond what it found and what the fix did")
 
 
 if __name__ == "__main__":

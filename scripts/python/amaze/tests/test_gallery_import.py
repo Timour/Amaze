@@ -1,4 +1,4 @@
-"""Gallery Import saves each entry through the save its caller hands in. ▸r/gallery-entries"""
+"""Gallery Import saves each entry with the save function its caller passes. ▸r/gallery-entries"""
 
 import os
 import shutil
@@ -25,7 +25,7 @@ from amaze.tests import test_support  # noqa: E402 - redirects the log
 
 
 class EachEntryGoesThroughTheSaveHandedIn(unittest.TestCase):
-    """The caller's `save` takes every entry; a refused save counts as failed, never imported."""
+    """The caller's `save` gets every entry; a save returning `""` counts failed, not imported."""
 
     def test_two_entries_one_refused(self):
         node = mock.Mock()
@@ -45,7 +45,7 @@ class EachEntryGoesThroughTheSaveHandedIn(unittest.TestCase):
 
 
 def _entries(count):
-    """`count` gallery entries, each making its own node stamped `id<n>` once saved."""
+    """`count` mock gallery entries, each creating a node whose user data is `id<n>`."""
     made = []
     for n in range(count):
         node = mock.Mock(name="node%d" % n)
@@ -59,7 +59,7 @@ def _entries(count):
 
 
 class AnInterruptKeepsWhatLanded(unittest.TestCase):
-    """Esc raises out of `progress`; the summary the caller holds keeps what landed."""
+    """Esc raises from `progress`; the caller's summary keeps the entries saved before it."""
 
     def test_the_callers_summary_holds_the_counts_and_categories(self):
         def progress(index, total, name):
@@ -82,7 +82,7 @@ class AnInterruptKeepsWhatLanded(unittest.TestCase):
 
 
 class AGalleryImportRendersOnceAfterItsSaves(unittest.TestCase):
-    """With the library handed in, each save skips its render and one batch follows. ▸r/husk-startup"""
+    """With `library` passed, saves skip their render and one batch follows. ▸r/husk-startup"""
 
     def _import(self, render_on_import, answers):
         from amaze.render import thumbs
@@ -113,7 +113,7 @@ class AGalleryImportRendersOnceAfterItsSaves(unittest.TestCase):
 
 
 class AnEntryWhoseListWasNotSavedIsNamed(unittest.TestCase):
-    """The panel's save answers `ListNotSaved` for a landed entry: imported, and its name kept."""
+    """If the panel's save returns `ListNotSaved`, the entry counts imported, its name kept."""
 
     def test_the_unlisted_entry_counts_imported_and_is_named(self):
         from amaze.actions import materials as material_actions
@@ -129,7 +129,7 @@ class AnEntryWhoseListWasNotSavedIsNamed(unittest.TestCase):
 
 
 class _Escaped:
-    """`hou.InterruptableOperation` whose third progress report is the user's Esc."""
+    """Replaces `hou.InterruptableOperation`; raises `OperationInterrupted` at the third update."""
 
     def __init__(self, *_args, **_kwargs):
         self.reports = 0
@@ -147,11 +147,11 @@ class _Escaped:
 
 
 class GalleryImportInThePanel(unittest.TestCase):
-    """Gallery Import on a fixture panel: real saves, the summary the panel holds, one batch."""
+    """Gallery Import on a fixture panel: real saves, the panel's summary message, one batch."""
 
     @classmethod
     def setUpClass(cls):
-        if not hou.getenv("OCIO"):    # save_node refuses without one
+        if not hou.getenv("OCIO"):    # save_node fails without one
             hou.putenv("OCIO", "/dev/null")
 
     def setUp(self):
@@ -202,13 +202,13 @@ class GalleryImportInThePanel(unittest.TestCase):
         shown = self.panel.category_names_from(self.panel.category_model)
         self.assertEqual([True, True, False],
                          [name in shown for name in ("GalleryEscA", "GalleryEscB", "GalleryEscC")],
-                         "the categories of what landed have no sidebar row")
+                         "the categories of the saved entries have no sidebar row")
         self.assertEqual(messages.GALLERY_IMPORT_INTERRUPTED % (2, 0, 0), self.said[-1])
 
     def test_what_landed_renders_in_one_batch_with_the_setting_left_on(self):
         landed = self._import(["GalleryBatchA", "GalleryBatchB"])
         self.assertEqual(2, len(landed), "premise: the gallery saved nothing")
-        self.assertEqual([landed], self.batches, "not ONE batch of what landed")
+        self.assertEqual([landed], self.batches, "not ONE batch of the saved entries")
         self.assertEqual(1, self.panel.prefs.render_on_import)
         self.assertEqual(messages.GALLERY_IMPORT_FINISHED_RENDERING % (2, 0, 0), self.said[-1])
 
@@ -269,7 +269,7 @@ class AGalleryFileIsReadFromItsOwnInstall(unittest.TestCase):
         with mock.patch.object(hou.galleries, "installGallery", refuse_once):
             self.assertEqual([], self._names(path))
         self.assertTrue(hou.galleries.removeGallery(path),
-                        "a failed read cost the user that gallery for the session")
+                        "a failed read left that gallery uninstalled for the session")
 
 
 if __name__ == "__main__":

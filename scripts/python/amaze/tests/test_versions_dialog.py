@@ -1,4 +1,4 @@
-"""The Versions dialog (D01), held to its frame, and the house pieces it stands on."""
+"""The Versions dialog (D01) checked against its design frame, and the shared widgets it uses."""
 
 import contextlib
 import inspect
@@ -18,7 +18,7 @@ from amaze.dialogs import base_dialog, versions_dialog  # noqa: E402
 from amaze.helpers import theme, ui_helpers  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401
 
-LISTED = [    # the ledger's order: oldest first
+LISTED = [    # the stored version list's order: oldest first
     {"n": 1, "name": "Version 1", "date": "2026-10-21 09:00"},
     {"n": 2, "name": "Look Development test", "date": "2026-10-22 10:30"},
     {"n": 3, "name": "", "date": "2026-10-23 11:45"},
@@ -35,7 +35,7 @@ def _dialog(case, active=2):
 
 
 class _ScreenAt(QtWidgets.QWidget):
-    """A parent stating its screen's ratio; offscreen Qt has one screen at 1.0 ▸r/screen-dpr"""
+    """A parent with a set device pixel ratio; offscreen Qt has one screen at 1.0 ▸r/screen-dpr"""
 
     def __init__(self, ratio) -> None:
         super().__init__()
@@ -71,7 +71,7 @@ class TheIconIsNotClipped(unittest.TestCase):
 
 
 class TheVersionsWindowStandsOnItsFrame(unittest.TestCase):
-    """D01's window, list, buttons and rows land where the frame draws them."""
+    """D01's window, list, buttons and rows have the positions and sizes the design frame gives."""
 
     def setUp(self):
         self.dialog = _dialog(self)
@@ -109,7 +109,7 @@ class TheVersionsWindowStandsOnItsFrame(unittest.TestCase):
 
         selected = QtGui.QColor(amazetheme.D01_SELECTED_INK).name()
         self.assertEqual(selected, ink(px(rows["box_x"]) + 1, top + 1),
-                         "the picked row is not painted where it is drawn")
+                         "the selected row is not painted at its position in the design")
         self.assertNotEqual(selected, ink(px(rows["box_x"]) + 1, top - 1),
                             "the selection fills the gap the frame leaves above the row")
         self.assertNotEqual(selected, ink(px(rows["box_x"]), top),
@@ -117,7 +117,7 @@ class TheVersionsWindowStandsOnItsFrame(unittest.TestCase):
 
 
 class TheDayIsNeverCut(unittest.TestCase):
-    """The day is short and fixed: it takes its full width, wherever the font makes it wider."""
+    """The date has a fixed short format and gets its full width, even when the font is wider."""
 
     def test_every_row_draws_its_whole_date(self):
         dialog = _dialog(self)
@@ -144,7 +144,7 @@ class TheDayIsNeverCut(unittest.TestCase):
 
 
 class TheListIsTheLedger(unittest.TestCase):
-    """Newest first, each row its name and the day it was saved; the active one picked at open."""
+    """Newest first, each row shows name and save date; the active version is selected on open."""
 
     def test_the_rows_are_newest_first_with_the_day_saved(self):
         dialog = _dialog(self)
@@ -161,7 +161,7 @@ class TheListIsTheLedger(unittest.TestCase):
 
 
 class SelectAndCancel(unittest.TestCase):
-    """Select answers the picked version's number; Cancel answers the active one."""
+    """Select sets `chosen` to the selected version's number; Cancel sets it to the active one."""
 
     def test_select_answers_the_picked_version(self):
         dialog = _dialog(self)
@@ -249,7 +249,7 @@ class NothingThatSizesReadsTheScreen(unittest.TestCase):
         for name, source in (("AssetDialog", inspect.getsource(base_dialog.AssetDialog)),
                              ("versions_dialog", inspect.getsource(versions_dialog))):
             with self.subTest(source=name):
-                self.assertIn("class ", source, "premise: the scan reads the shell")
+                self.assertIn("class ", source, "premise: the scanned source holds a class")
                 for spelling in self.SIZING_READS:
                     self.assertNotIn(
                         spelling, source,

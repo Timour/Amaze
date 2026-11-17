@@ -1,4 +1,4 @@
-"""Panel, thumbnail renderer and drag engine reach host dialogs through a guard ▸r/status-bar"""
+"""Panel, thumbnail renderer and drag engine use `hou.ui` only through a guard ▸r/status-bar"""
 
 import ast
 import os
@@ -28,7 +28,7 @@ GUARDED = ("panel/panel.py", "render/thumbs.py", "core/dragengine.py",
 
 
 def raw_reaches(relpath):
-    """(line, call) for every host dialog spelled straight into `relpath`; `getattr` does not match."""
+    """(line, name) for every direct `hou.ui.<name>` use in `relpath`; `getattr` is not matched."""
     path = os.path.join(_PACKAGE, relpath)
     with open(path, encoding="utf-8") as handle:
         tree = ast.parse(handle.read(), filename=path)
@@ -45,18 +45,18 @@ def raw_reaches(relpath):
 
 
 class TheseFilesNeverSpellTheHostDialogTest(unittest.TestCase):
-    """Red when a new raw reach is written into either file. ▸p/refusal-sink"""
+    """Fails when a direct `hou.ui` access is added to any file in GUARDED. ▸p/refusal-sink"""
 
     def test_no_guarded_file_reaches_the_host_dialogs_directly(self):
         self.assertTrue(raw_reaches("dialogs/repair_dialog.py"),    # ▸p/vacuous-register
-                        "the reader finds no reach even in the repair tool, "
-                        "so its empty answers below mean nothing")
+                        "the scan finds no `hou.ui` access even in repair_dialog.py, "
+                        "so its empty results below mean nothing")
         for relpath in GUARDED:
             with self.subTest(relpath):
                 raw = raw_reaches(relpath)
                 self.assertEqual(
                     [], raw,
-                    "%s reaches the host dialogs without the getattr guard "
+                    "%s uses `hou.ui` without the getattr guard "
                     "at %s" % (relpath,
                                ", ".join("%d:%s" % one for one in raw)))
 
@@ -72,7 +72,7 @@ class TheGuardedPanelRefusesHeadlessTest(unittest.TestCase):
     def test_every_guarded_door_refuses_instead_of_crashing(self):
         """No library, no editor, no selected folder: each returns early. No network reads None."""
         panel = self.panel
-        geo = hou.node("/obj").createNode("geo", "headless_convert_geo")    # no conversion route: the refusal is said
+        geo = hou.node("/obj").createNode("geo", "headless_convert_geo")    # no conversion route: the error message is shown
         self.addCleanup(geo.destroy)
         doors = (("open_usdlib_folder", lambda: panel.open_usdlib_folder()),
                  ("_active_network_pwd", lambda: self.assertIsNone(panel._active_network_pwd())),
@@ -86,11 +86,11 @@ class TheGuardedPanelRefusesHeadlessTest(unittest.TestCase):
                 try:
                     call()
                 except AttributeError as crash:
-                    self.fail("%s reached the host dialog and crashed: %s" % (name, crash))
+                    self.fail("%s called a host dialog and crashed: %s" % (name, crash))
 
 
 class TheGuardStillOpensTheDialogTest(unittest.TestCase):
-    """The accept path: the guard fires only when there is no screen."""
+    """The positive case: the guard returns early only when there is no `hou.ui`."""
 
     def setUp(self):
         self.shown = []
@@ -116,8 +116,8 @@ class TheGuardStillOpensTheDialogTest(unittest.TestCase):
         with mock.patch.object(hou, "ui", self._ui(), create=True):
             self.panel.open_usdlib_folder()
         self.assertEqual(1, len(self.shown),
-                         "the guard swallowed the dialog in a session that "
-                         "HAS a ui, which a headless-only test cannot see")
+                         "the guard skipped the dialog in a session that "
+                         "HAS a ui, which a headless-only test cannot detect")
         self.assertIn("library", self.shown[0].lower())
 
     def test_the_active_network_still_reads_the_pane_tabs(self):
@@ -136,7 +136,7 @@ class TheGuardStillOpensTheDialogTest(unittest.TestCase):
 
 
 class EveryDoorFindsTheSameVisibleNetworkEditor(unittest.TestCase):
-    """The current tab first, then any; the panel's two doors and the node handler agree."""
+    """Current tab first, then any; the panel's two lookups and `NodeHandler` agree."""
 
     def test_the_three_readers_agree(self):
         panel = test_support.fixture_panel(self)
@@ -159,7 +159,7 @@ class EveryDoorFindsTheSameVisibleNetworkEditor(unittest.TestCase):
 
 
 class TheCheckReportHeadingIsTrueOfEveryLine(unittest.TestCase):
-    """The report reads before anything changes, so it may not open by calling anything removed."""
+    """The report shows before any change, so its heading must not say anything was removed."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -180,7 +180,7 @@ class TheCheckReportHeadingIsTrueOfEveryLine(unittest.TestCase):
             repair_dialog.check_failed_library(self.panel.prefs.dir, self.panel.prefs)
         report = self.shown[-1]
         self.assertIn("LEFTOVERHERE1.mat", report, "premise: the report did not name the file")
-        self.assertTrue(os.path.exists(left), "the report moved what it names")
+        self.assertTrue(os.path.exists(left), "the report moved the file it lists")
         heading = report.split("\n", 1)[0].lower()
         for claim in ("removed", "deleted", "finished"):
             self.assertNotIn(claim, heading,
@@ -189,7 +189,7 @@ class TheCheckReportHeadingIsTrueOfEveryLine(unittest.TestCase):
 
 
 class TheThumbnailRefusalNeedsNoScreenTest(unittest.TestCase):
-    """`create_thumbnail` refuses an asset that will not import, inside a headless batch render."""
+    """`create_thumbnail` stops on an asset that fails to import, inside a headless batch render."""
 
     def setUp(self):
         self.assertFalse(hasattr(hou, "ui"))
@@ -212,7 +212,7 @@ class TheThumbnailRefusalNeedsNoScreenTest(unittest.TestCase):
             try:
                 self._renderer().create_thumbnail()
             except AttributeError as crash:
-                self.fail("the render's refusal became a crash: %s" % crash)
+                self.fail("the failed import crashed the render: %s" % crash)
 
     def test_the_refusal_is_still_shown_when_there_is_a_screen(self):
         shown = []
@@ -226,14 +226,14 @@ class TheThumbnailRefusalNeedsNoScreenTest(unittest.TestCase):
 
 
 class TheCursorLookupRefusesHeadlessTest(unittest.TestCase):
-    """The picking door answers None headless instead of crashing in its fallback."""
+    """`pane_tab_under_cursor` returns None headless instead of crashing in its fallback."""
 
     def setUp(self):
         self.assertFalse(hasattr(hou, "ui"),
                          "this host HAS a ui, so nothing here is tested")
 
     def test_the_lookup_and_the_release_target_are_none_without_a_screen(self):
-        """None is what all five callers read as no tab; the release pick catches nothing itself."""
+        """Five callers read None as no tab; `viewport_release_target` catches no error itself."""
         for name, call in (("pane_tab_under_cursor", dragengine.pane_tab_under_cursor),
                            ("viewport_release_target",
                             lambda: dragengine.viewport_release_target(None))):
@@ -241,12 +241,12 @@ class TheCursorLookupRefusesHeadlessTest(unittest.TestCase):
                 try:
                     answer = call()
                 except AttributeError as crash:
-                    self.fail("%s became a crash: %s" % (name, crash))
+                    self.fail("%s crashed: %s" % (name, crash))
                 self.assertIsNone(answer)
 
 
 class TheCursorLookupStillReadsTheScreenTest(unittest.TestCase):
-    """The accept path: with a ui the lookup still answers, or every drop breaks silently."""
+    """Positive case: with `hou.ui` the lookup still returns a tab, or every drop fails silently."""
 
     def test_the_stock_hit_test_answers_first(self):
         tab = object()
@@ -256,7 +256,7 @@ class TheCursorLookupStillReadsTheScreenTest(unittest.TestCase):
             self.assertIs(tab, dragengine.pane_tab_under_cursor())
 
     def test_the_geometric_fallback_still_reads_the_pane_tabs(self):
-        """The fallback holds the reach the guard covers, so a session that has a ui must still enter it."""
+        """The fallback has the guarded `hou.ui` call; a session with a ui must still run it."""
         reads = []
 
         def pane_tabs():
@@ -273,7 +273,7 @@ class TheCursorLookupStillReadsTheScreenTest(unittest.TestCase):
 
 
 class ThePanelLookupRefusesHeadlessTest(unittest.TestCase):
-    """The right-click entry points answer None headless; the four callers already skip on None."""
+    """The right-click entry points return None headless; the four callers already skip on None."""
 
     def setUp(self):
         self.assertFalse(hasattr(hou, "ui"),
@@ -283,18 +283,18 @@ class ThePanelLookupRefusesHeadlessTest(unittest.TestCase):
         try:
             answer = rc_calls._find_panel()
         except AttributeError as crash:
-            self.fail("the panel lookup became a crash: %s" % crash)
+            self.fail("the panel lookup crashed: %s" % crash)
         self.assertIsNone(answer)
 
     def test_a_right_click_save_stops_instead_of_crashing(self):
         try:
             rc_calls.save()
         except AttributeError as crash:
-            self.fail("the right-click save became a crash: %s" % crash)
+            self.fail("the right-click save crashed: %s" % crash)
 
 
 class ThePanelLookupStillReadsTheScreenTest(unittest.TestCase):
-    """The accept path: with a screen the lookup still reads, or every right-click save breaks."""
+    """Positive case: with a screen the lookup still reads pane tabs, or right-click Save fails."""
 
     def test_the_pane_tabs_are_still_read_when_there_is_a_screen(self):
         reads = []
@@ -336,12 +336,12 @@ class AddRefusesHeadlessTest(unittest.TestCase):
         try:
             dialog.add_library()
         except AttributeError as crash:
-            self.fail("Add became a crash without a screen: %s" % crash)
+            self.fail("Add crashed without a screen: %s" % crash)
         self.assertEqual(before, dialog._picked_library())
 
 
 class AddOpensTheChooserTest(unittest.TestCase):
-    """The click on Add is the consent: the chooser opens first, carrying its own title."""
+    """Clicking Add is the confirmation: the folder chooser opens first, with its own title."""
 
     def test_the_chooser_opens_directly_with_its_title(self):
         said, titles = [], []
@@ -357,7 +357,7 @@ class AddOpensTheChooserTest(unittest.TestCase):
         with mock.patch.object(hou, "ui", fake, create=True):
             dialog.add_library()
         self.assertEqual([], said,
-                         "a message interrupted on the way to the folder chooser")
+                         "a message was shown before the folder chooser")
         self.assertEqual([messages.TITLE_CHOOSE_LIBRARY_FOLDER], titles,
                          "the chooser opened without its title")
 
@@ -375,14 +375,14 @@ class TheRootOfADiskIsNoLibraryTest(unittest.TestCase):
         with mock.patch.object(hou, "ui", fake, create=True):
             dialog.add_library()
         self.assertEqual([messages.LIBRARY_PATH_INVALID], said,
-                         "the root was taken without a word")
+                         "the root was accepted without a message")
         self.assertEqual(before, dialog._picked_library(),
                          "the root of the disk is shown as a library")
         self.assertEqual(before, prefs.dir, "a refused pick moved the library")
 
 
 class EveryDialogRidesTheHouseShellTest(unittest.TestCase):
-    """One shell owner: every dialogs/ QDialog rides AssetDialog or names a HOUSE_STRAY reason."""
+    """Every QDialog in dialogs/ subclasses AssetDialog or gives a reason in HOUSE_STRAY."""
 
     def test_every_dialog_class_is_based_or_excused(self):
         import importlib
@@ -411,13 +411,13 @@ class EveryDialogRidesTheHouseShellTest(unittest.TestCase):
                      "not scanning the package it thinks it is")
         self.assertEqual(
             [], strays,
-            "these dialogs neither ride AssetDialog nor record a reason "
+            "these dialogs neither subclass AssetDialog nor record a reason "
             "in HOUSE_STRAY, so the next style or sizing fix silently "
             "misses them: %s" % strays)
 
 
 class TheMaterialDoorFollowsTheClickTest(unittest.TestCase):
-    """Right-click Save on a material saves the clicked node, bridged into the selection."""
+    """Right-click Save on a material saves the clicked node, which is made the selection."""
 
     def setUp(self):
         mat = hou.node("/mat")
@@ -435,11 +435,11 @@ class TheMaterialDoorFollowsTheClickTest(unittest.TestCase):
         self.b.setSelected(True, clear_all_selected=True)   # the premise set explicitly: createNode selects what it creates
         rc_calls.save(self.a)
         self.assertTrue(self.a.isSelected(),
-                        "the clicked node never entered the selection")
+                        "the clicked node was not selected")
         self.assertFalse(
             self.b.isSelected(),
             "the save would have followed the selection, not the click - "
-            "the bug this door exists to prevent")
+            "the bug rc_calls.save exists to prevent")
         self.panel.save_from_node.assert_called_once_with(self.a)
 
     def test_a_click_inside_a_multi_selection_keeps_it(self):
@@ -503,7 +503,7 @@ class EveryDialogKnowsWhichWindowOpenedIt(unittest.TestCase):
         self.assertGreaterEqual(    # ▸p/vacuous-register
             len(found), 8,
             "the dialog scan found %d construction sites - it has stopped "
-            "matching, so its silence means nothing" % len(found))
+            "matching, so its empty result means nothing" % len(found))
         offenders = [
             "%s:%d %s" % (path, line, name)
             for path, line, name, parented in found
@@ -542,7 +542,7 @@ class EveryDialogKnowsWhichWindowOpenedIt(unittest.TestCase):
 
 
 class TheSaveDialogIsTheOneSaveEngine(unittest.TestCase):
-    """Every section saves through one dialog; a multi-selection greys the Name row, never drops it."""
+    """Every section uses SaveDialog; a multi-selection disables the Name row, never removes it."""
 
     def _dialog(self, **kwargs):
         from amaze.dialogs import save_dialog
@@ -554,7 +554,7 @@ class TheSaveDialogIsTheOneSaveEngine(unittest.TestCase):
         dialog = self._dialog()
         self.assertIsNotNone(
             dialog.line_name,
-            "the dialog dropped its Name row, so this section saves "
+            "the dialog has no Name row, so this section saves "
             "through a different form than its siblings")
         self.assertEqual("", dialog.line_name.text())
         self.assertTrue(dialog.line_name.isEnabled())
@@ -564,15 +564,15 @@ class TheSaveDialogIsTheOneSaveEngine(unittest.TestCase):
         dialog = self._dialog(name="", name_enabled=False)
         self.assertIsNotNone(
             dialog.line_name,
-            "the greyed form dropped the row, so the dialog changes "
+            "the disabled form has no Name row, so the dialog changes "
             "SHAPE between one material and several")
         self.assertFalse(
             dialog.line_name.isEnabled(),
-            "the Name field is live for a multi-selection, where one "
+            "the Name field is enabled for a multi-selection, where one "
             "name cannot serve several assets")
 
     def test_only_a_live_name_is_harvested(self):
-        """A greyed field's text would rename a whole multi-selection to one string."""
+        """A disabled field's text would rename a whole multi-selection to one string."""
         for enabled, typed, harvested in ((False, "typed anyway", ""), (True, "renamed", "renamed")):
             with self.subTest(enabled=enabled):
                 dialog = self._dialog(name="" if not enabled else "rocks1", name_enabled=enabled)
@@ -581,11 +581,11 @@ class TheSaveDialogIsTheOneSaveEngine(unittest.TestCase):
                 self.assertEqual(harvested, dialog.name)
 
     def test_the_category_is_picked_never_typed(self):
-        """A plain dropdown everywhere, like the Language combo: the sidebar's Add mints categories."""
+        """A non-editable dropdown, like Language: new categories come from the sidebar's Add."""
         self.assertFalse(
             self._dialog().combo_cats.isEditable(),
-            "the category combo accepts typing, and the app's one door "
-            "for a new category is the sidebar's Add")
+            "the category combo accepts typing, and the app's only place "
+            "to create a category is the sidebar's Add")
 
     def test_the_title_is_the_house_one_unless_a_caller_says_otherwise(self):
         from amaze import branding
@@ -652,7 +652,7 @@ class TheSaveFamilyIsTheDrawnWidth(unittest.TestCase):
         self.addCleanup(code.hide)
         self.assertGreaterEqual(
             code.width(), theme.ui_px(amazetheme.D11_FORM_WIDTH),
-            "the code dialog opens narrower than its drawn floor")
+            "the code dialog opens narrower than the design's minimum width")
         self.assertLess(    # the drawn 2x2: the editor spans the full width, left of the indented Name field
             code._editor.mapTo(code, QtCore.QPoint(0, 0)).x(),
             code._line_name.mapTo(code, QtCore.QPoint(0, 0)).x(),
@@ -669,7 +669,7 @@ class TheSaveFamilyIsTheDrawnWidth(unittest.TestCase):
             "a caption is drawn on the editor; the design has none")
 
     def test_only_the_drawn_ones_wear_a_header_band(self):
-        """D11 carries the drawn strip; D01, D02, D15, the save family and Preferences do not."""
+        """D11 has a header band; D01, D02, D15, the save dialogs and Preferences do not."""
         from amaze.dialogs import (code_dialog, gradient_dialog, icon_dialog,
                                    library_dialog, prefs_dialog, save_dialog)
         from amaze.prefs import prefs as prefs_mod
@@ -770,7 +770,7 @@ class TheSaveFamilyIsTheDrawnWidth(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
         self.assertEqual(
             want, dialog.width(),
-            "the width held on show and then collapsed to %d on the next "
+            "the width was right on show and then shrank to %d on the next "
             "layout pass" % dialog.width())
 
 
@@ -825,7 +825,7 @@ class AnAnsweredDialogLeavesNothingBehind(unittest.TestCase):
         self._answer(dialog, dialog._on_accept)
         _app.sendPostedEvents(None, QtCore.QEvent.Type.DeferredDelete)
         self.assertEqual((False, "Sienna"), (dialog.canceled, dialog.name),
-                         "the typed answer went with the widgets")
+                         "the typed name was lost when the widgets were deleted")
 
 
 if __name__ == "__main__":

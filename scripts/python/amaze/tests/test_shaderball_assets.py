@@ -1,4 +1,4 @@
-"""The shader-ball scene must compose: one broken reference silently kills every Karma thumbnail."""
+"""The shader-ball scene must compose: one broken reference silently breaks every Karma tile."""
 
 import os
 import re
@@ -18,11 +18,11 @@ class ShaderBallAssetsTest(unittest.TestCase):
     RES = os.path.join(PKG, "res", "usd")
     ENGINE = os.path.join(PKG, "preview", "usd_scene.py")
 
-    #: What the engine loads; every other file is reached through it.
+    #: What usd_scene.py loads; every other file is referenced from it.
     ENTRY = "shaderBallScene_Simple.usd"
 
     def _addressed_paths(self):
-        """Every scene prim path the engine names, derived not listed: a missing one renders nothing."""
+        """Every scene prim path usd_scene.py names, found not listed: a missing one renders nothing."""
         with open(self.ENGINE, encoding="utf-8") as handle:
             source = handle.read()
         found = sorted(set(re.findall(r'"(/shaderBallScene[^"]*)"', source)))
@@ -30,7 +30,7 @@ class ShaderBallAssetsTest(unittest.TestCase):
             found,
             "no /shaderBallScene paths found in usd_scene.py - either the "
             "engine stopped addressing the scene by prim path, or this "
-            "test's search has gone stale. Do not delete the search; find "
+            "test's search no longer matches. Do not delete the search; find "
             "out which.")
         return found
 
@@ -59,7 +59,7 @@ class ShaderBallAssetsTest(unittest.TestCase):
             "the render camera is not a Camera prim - husk exits with 'no "
             "cameras found' and no EXR is written")
 
-        for label, root in (("ball", "/shaderBallScene/geo/ball"),    # the halves fail apart, alike on a tile
+        for label, root in (("ball", "/shaderBallScene/geo/ball"),    # checked apart: either one missing looks plausible on a tile
                             ("floor", "/shaderBallScene/geo/plane")):
             prim = stage.GetPrimAtPath(root)
             self.assertTrue(prim, "%s prim %s is missing" % (label, root))

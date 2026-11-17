@@ -36,7 +36,7 @@ def library_materials(library_dir: str) -> list:
 
 
 class _Prefs:
-    """The least the import and convert paths read; nowhere to write."""
+    """Minimal preferences: only the fields the import and conversion code read; no save method."""
 
     def __init__(self, library_dir):
         self.dir = library_dir
@@ -52,7 +52,7 @@ class _Prefs:
 
 
 def check_material(record, prefs, staging) -> dict:
-    """Convert one material through the real path and return its verdict."""
+    """Convert one material with the production converter and return the result dict."""
     result = {"name": record.get("name"), "id": record.get("id"),
               "renderer": record.get("renderer"), "stage": "convert",
               "ok": False, "detail": "", "notes": 0}

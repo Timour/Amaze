@@ -1,4 +1,4 @@
-"""The `.mtlx` to VOP translator: names are graph-scoped, so two graphs may each keep an `image1`."""
+"""The `.mtlx` to VOP translator: names are graph-scoped, so two graphs may each have an `image1`."""
 
 import functools
 import os
@@ -81,7 +81,7 @@ TINTED = """<?xml version="1.0"?>
 
 
 def _file_of(vop):
-    """The texture a translated mtlximage carries, basename only."""
+    """The texture file set on a translated mtlximage, basename only."""
     for parm_name in ("file", "filename"):
         parm = vop.parm(parm_name)
         if parm is not None:
@@ -107,7 +107,7 @@ class TwoNodegraphsKeepTheirOwnNodes(unittest.TestCase):
             self.path, self.builder, "two_graphs")
 
     def test_each_surface_input_wires_to_its_own_graph(self):
-        """Two surface inputs must not land on one node; paths compared, as `hou.Node` wrappers are fresh."""
+        """Two surface inputs must not wire to one node; paths compared, as `hou.Node` wrappers are new."""
         self.assertIsNotNone(self.shader, "no surface shader was built")
         base = self.shader.input(self.shader.inputIndex("base_color"))
         spec = self.shader.input(self.shader.inputIndex("specular_color"))
@@ -117,9 +117,9 @@ class TwoNodegraphsKeepTheirOwnNodes(unittest.TestCase):
             base.path(), spec.path(),
             "base_color and specular_color both wired to %s" % base.path())
         self.assertEqual(_file_of(base), "a_diffuse.png",
-                         "base_color must carry graph_a's texture")
+                         "base_color must use graph_a's texture")
         self.assertEqual(_file_of(spec), "b_specular.png",
-                         "specular_color must carry graph_b's texture")
+                         "specular_color must use graph_b's texture")
 
 
 class AColourConstantKeepsItsColour(unittest.TestCase):
@@ -202,7 +202,7 @@ class OnlyHttpsIsFetched(unittest.TestCase):
                 self.assertEqual(kept, matx_sources._checked_url(given))
 
     def test_a_redirect_may_not_downgrade_the_scheme(self):
-        """The stock handler redirects to http and ftp from any scheme; a real request drives the guard."""
+        """The stock handler redirects to http and ftp from any scheme; a real Request tests the check."""
         import email.message
         import urllib.request
         from amaze.core import matx_sources
@@ -288,14 +288,14 @@ class BothOnlineDestinationsRunOneSequence(unittest.TestCase):
                          "the credit was written onto the row as a retired field")
 
     def test_an_import_to_the_library_adds_no_undo_entry(self):
-        """Build, convert and save all happen in scratch: the artist's next Ctrl+Z is theirs."""
+        """Build, convert and save happen in scratch: the artist's next Ctrl+Z undoes their own."""
         hou.undos.clear()
         self.addCleanup(hou.undos.clear)
         self._into_library()
         self.assertEqual((), hou.undos.undoLabels())
 
     def test_one_undo_takes_an_import_to_scene_back_whole(self):
-        """The panel's one group around the build: Ctrl+Z and redo each one whole step."""
+        """The panel wraps the build in one undo group: Ctrl+Z and redo each act as one step."""
         from amaze.core import matx_import
         destination = hou.node("/mat")
         mat_before = sorted(child.name() for child in destination.children())
@@ -316,15 +316,15 @@ class BothOnlineDestinationsRunOneSequence(unittest.TestCase):
         redone = destination.node(name)
         self.assertIsNotNone(redone, "redo did not bring the material back")
         self.assertIn("mtlxstandard_surface", [c.type().name() for c in redone.children()])
-        self.assertEqual(obj_before, self._obj(), "redo brought the staging back")
+        self.assertEqual(obj_before, self._obj(), "redo recreated the staging network in /obj")
 
     def test_nothing_is_staged_in_obj_while_the_download_runs(self):
         before = self._obj()
         self._into_library()
         self._into_scene()
         self.assertEqual([before, before], self.seen,
-                         "a staging network sat in /obj during a download")
-        self.assertEqual(before, self._obj(), "the staging was left behind")
+                         "a staging network was in /obj during a download")
+        self.assertEqual(before, self._obj(), "the staging network was not removed")
 
     def test_an_unwired_output_is_reported_in_one_sentence(self):
         from amaze.core import matx_import
@@ -343,7 +343,7 @@ class BothOnlineDestinationsRunOneSequence(unittest.TestCase):
         said = log.matching("surface output is not wired")
         self.assertEqual(2, len(said), said)
         self.assertEqual(said[0], said[1],
-                         "the two destinations word one warning two ways")
+                         "the two destinations log one warning with two texts")
 
 
 class HostedPictureImportTest(unittest.TestCase):
@@ -400,7 +400,7 @@ class HostedPictureImportTest(unittest.TestCase):
         self.assertEqual("#3366cc", thumb.pixelColor(12, 12).name())
 
     def test_an_import_asked_not_to_render_renders_nothing(self):
-        """`import_record(render=False)`: the loop renders its rows in one batch afterwards."""
+        """`import_record(render=False)`: the caller renders its rows in one batch afterwards."""
         from amaze.core import library as library_mod, matx_import
         from amaze.render import thumbs
         model = library_mod.MaterialLibrary(preferences=self.prefs)
@@ -423,7 +423,7 @@ class HostedPictureImportTest(unittest.TestCase):
 
 
 class TheCreditCommentClaimsNoRequirement(unittest.TestCase):
-    """The credit comment names the declared licence and demands nothing ▸r/online-source-licences"""
+    """The credit comment names the declared licence and no requirement ▸r/online-source-licences"""
 
     def setUp(self):
         test_support.pin_env(self, "OCIO", "/dev/null")

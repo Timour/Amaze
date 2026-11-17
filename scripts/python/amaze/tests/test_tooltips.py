@@ -1,4 +1,4 @@
-"""Every hover text lives in `tooltips.py`, so a rewording is one edit. ▸p/messages-need-one-home"""
+"""Every hover text is in `tooltips.py`, so a rewording is one edit. ▸p/messages-need-one-home"""
 
 import ast
 import os
@@ -22,7 +22,7 @@ def _sources():
 
 
 def _spelled_out(node):
-    """The literals a call hands the helper, through conditionals and format templates."""
+    """The string literals in a call argument, including conditionals and format templates."""
     if isinstance(node, ast.Constant):
         return [node.value] if isinstance(node.value, str) else []
     if isinstance(node, ast.IfExp):
@@ -31,11 +31,11 @@ def _spelled_out(node):
         return [t for part in node.values for t in _spelled_out(part)]
     if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Mod, ast.Add)):
         return _spelled_out(node.left) + _spelled_out(node.right)
-    return []    # a name, an attribute or a call - the words are not written here
+    return []    # a name, an attribute or a call - the text is not a literal in this call
 
 
 def _offenders():
-    """file:line and words for every hover text still spelled at its control."""
+    """`file:line` and text of every literal passed to `setToolTip` or `tooltip_text`."""
     found = []
     for path in _sources():
         with open(path, encoding="utf-8") as handle:
@@ -58,7 +58,7 @@ def _offenders():
 
 
 class NoControlSpellsItsOwnHoverText(unittest.TestCase):
-    """A tooltip written at the control is a second home for words the design owns."""
+    """A tooltip literal in widget code is a second copy of text that belongs in `tooltips.py`."""
 
     def test_no_hover_literal_survives_at_a_call_site(self):
         """The scan reads both arms of a conditional and leaves a computed string alone."""
@@ -75,7 +75,7 @@ class NoControlSpellsItsOwnHoverText(unittest.TestCase):
         offenders = _offenders()
         self.assertEqual(
             [], offenders,
-            "a control spells its own hover text instead of taking one "
+            "a widget passes a tooltip literal instead of a name "
             "from tooltips.py:\n  " + "\n  ".join(offenders))
 
 

@@ -1,4 +1,4 @@
-"""Build the committed fixtures under `USER=amaze hython`; exits 1 if one carries an identity."""
+"""Build the committed fixtures under `USER=amaze hython`; exits 1 if one contains an identity."""
 import os
 import re
 import shutil
@@ -88,7 +88,7 @@ def neutral_scene_vars(scratch: str) -> None:
 
 
 def neutral_scratch(name: str) -> str:
-    """A build directory whose path names nobody, as a saved scene records it. ▸r/author-stamp"""
+    """A build folder whose path has no user name, as a saved scene records it. ▸r/author-stamp"""
     path = os.path.join(SCRATCH_ROOT, name)
     shutil.rmtree(path, ignore_errors=True)
     os.makedirs(path)
@@ -191,7 +191,7 @@ PLACEHOLDERS = ("/someone", "/someone-else", "/projects")
 
 
 def complaints(path: str) -> list:
-    """What in `path` must not publish, judged by patterns of its own, never the redactor's."""
+    """What in `path` must not be published, found by its own patterns, not `identity_pattern`'s."""
     home = re.compile(rb"(?:/Users/|/home/|[A-Za-z]:[\\/]Users[\\/])"   # both Windows slash styles, any case: Houdini writes C:/Users/<name> forward-slashed
                       rb"[A-Za-z0-9_.-]+"
                       rb"|/var/folders/[A-Za-z0-9_+-]{2}/[A-Za-z0-9_+-]{10,}",

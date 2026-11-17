@@ -1,4 +1,4 @@
-"""The family's Qt role numbers are one declaration read off the class, pinned by value."""
+"""The family's Qt role numbers: declared once on the class, checked by value."""
 
 import inspect
 import re
@@ -51,22 +51,22 @@ FAMILY_MODULES = (
 
 
 class TheRolesLiveOnTheClass(unittest.TestCase):
-    """Reading a role off the class is the anti-shadowing contract."""
+    """Roles are declared on the class, so no instance attribute hides a subclass's role."""
 
     def test_the_engine_declares_every_family_role_on_the_class(self):
         for name, number in FAMILY_ROLES.items():
             value = getattr(library.MaterialLibrary, name, None)
             self.assertIsNotNone(
                 value,
-                "MaterialLibrary does not answer %s on the CLASS - an "
-                "instance-only role is one a subclass shadows" % name)
+                "MaterialLibrary has no %s on the CLASS - an "
+                "instance-only role hides a subclass's own" % name)
             self.assertEqual(
                 int(value), number,
-                "MaterialLibrary.%s is %s, the family says %s"
+                "MaterialLibrary.%s is %s, the family number is %s"
                 % (name, int(value), number))
 
     def test_every_family_model_agrees_by_number(self):
-        """A model may declare a subset, but each family name it answers carries the family's number."""
+        """A model may declare a subset, but each family role it declares has the family's number."""
         for model in FAMILY_MODELS:
             for name, number in FAMILY_ROLES.items():
                 value = getattr(model, name, None)
@@ -74,13 +74,13 @@ class TheRolesLiveOnTheClass(unittest.TestCase):
                     continue
                 self.assertEqual(
                     int(value), number,
-                    "%s.%s is %s, the family says %s - the proxy and "
+                    "%s.%s is %s, the family number is %s - the proxy and "
                     "delegate read NUMBERS, so this row filters or "
                     "paints wrongly with nothing raised"
                     % (model.__name__, name, int(value), number))
 
     def test_a_models_own_roles_stay_off_the_family_numbers(self):
-        """A section's private role must not sit on a family number."""
+        """A section's private role must not use a family number."""
         family_numbers = set(FAMILY_ROLES.values())
         for model in FAMILY_MODELS:
             for name in dir(model):
@@ -95,7 +95,7 @@ class TheRolesLiveOnTheClass(unittest.TestCase):
                     % (model.__name__, name, int(value)))
 
     def test_no_family_module_assigns_a_role_on_the_instance(self):
-        """An instance role assignment in any family module is refused: it recreates the shadowing."""
+        """An instance role assignment in any family module fails: it would hide a subclass's role."""
         pattern = re.compile(r"self\.\w*Role\s*=[^=]")
         for module in FAMILY_MODULES:
             source = inspect.getsource(module)

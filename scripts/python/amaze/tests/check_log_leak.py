@@ -9,7 +9,7 @@ HEADLESS = ("hython", "hbatch", "hescape")
 
 
 def real_log_path() -> str:
-    """The log this machine's Amaze writes, via the app's own engine, never a copy of the OS rule."""
+    """The debug log path Amaze uses on this machine, taken from `hostos` and `debug`."""
     here = os.path.dirname(os.path.abspath(__file__))
     package_root = os.path.dirname(os.path.dirname(here))   # tests/ -> amaze/ -> python/
     sys.path.insert(0, package_root)
@@ -48,7 +48,7 @@ def leaked_sessions(path: str, offset: int):
 
 
 def main() -> int:
-    # --path: the runner needs the size before the run without duplicating this.
+    # --path prints the log path, so the test runner can read its size before the run.
     if len(sys.argv) == 2 and sys.argv[1] == "--path":
         try:
             print(real_log_path())

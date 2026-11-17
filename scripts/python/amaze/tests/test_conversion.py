@@ -1,4 +1,4 @@
-"""Conversion: only FIT resamples, as `sips -Z` blacks out a Radiance .hdr; output is verified."""
+"""Conversion: only FIT resamples, as `sips -Z` turns a Radiance .hdr black; output is verified."""
 
 import inspect
 import os
@@ -25,7 +25,7 @@ from amaze.tests import test_support  # noqa: E402
 
 
 def write_radiance_hdr(path, width=256, height=128):
-    """A readable uncompressed RGBE Radiance .hdr with a gradient, so a flat failure shows."""
+    """A readable uncompressed RGBE Radiance .hdr with a gradient, so a flat result is detected."""
     import math
 
     def rgbe(r, g, b):
@@ -101,7 +101,7 @@ class _StubSignal:
 
 
 class _StubProcess:
-    """A scripted killed child: dies inside the reap, or defers SIGKILL as blocked disk I/O does."""
+    """A stub killed child: exits in `waitForFinished`, or outlives SIGKILL like stuck disk I/O."""
 
     def __init__(self, reaps=True, running=True):
         self._reaps = reaps
@@ -139,7 +139,7 @@ class _StubProcess:
 
 
 class TheGraveyardBoundsTheStall(unittest.TestCase):
-    """A child deferring SIGKILL costs half a second, not thirty: the graveyard collects it later."""
+    """A child outliving SIGKILL costs half a second, not thirty: it waits in `_ABANDONED`."""
 
     def tearDown(self):
         conversion._ABANDONED.clear()
@@ -159,15 +159,15 @@ class TheGraveyardBoundsTheStall(unittest.TestCase):
         self.assertFalse(conversion._reap_or_abandon(child))
         self.assertIn(child, conversion._ABANDONED)
         self.assertTrue(child.finished.slots,
-                        "nothing collects the corpse later")
-        child._running = False  # released: the slot removes it from the graveyard and deletes the Qt object
+                        "no `finished` slot deletes the process later")
+        child._running = False  # exited: the slot removes it from `_ABANDONED` and deletes the Qt object
         child.finished.slots[0]()
         self.assertNotIn(child, conversion._ABANDONED)
         self.assertTrue(child.deleted)
 
     def test_a_child_dying_during_the_handover_is_still_collected(self):
         child = _StubProcess(reaps=False)
-        original_wait = child.waitForFinished  # dead before the post-connect check: finished has fired and never comes again
+        original_wait = child.waitForFinished  # exits before the post-connect check: `finished` was emitted and is not emitted again
 
         def wait_then_die(ms):
             result = original_wait(ms)
@@ -181,7 +181,7 @@ class TheGraveyardBoundsTheStall(unittest.TestCase):
 
 
 class ACompletionReapedElsewhere(unittest.TestCase):
-    """Qt hears exits via SIGCHLD; a gone pid while Running means reaped elsewhere, so stop waiting."""
+    """Qt sees exits via SIGCHLD; a missing pid while Running means reaped elsewhere: stop waiting."""
 
     @unittest.skipUnless(os.name == "posix", "SIGCHLD is POSIX-only")
     def test_a_reaped_child_returns_within_the_watchdog(self):
@@ -211,11 +211,11 @@ class ACompletionReapedElsewhere(unittest.TestCase):
                 "failure: %r" % err)
         self.assertLess(
             elapsed, 3.0,
-            "the wait burned its timeout on a child that had already "
+            "the wait used its whole timeout on a child that had already "
             "exited (%.2fs)" % elapsed)
         self.assertEqual(
             parked_before, len(conversion._ABANDONED),
-            "a phantom was parked in the graveyard - its destruction "
+            "an exited child was added to `_ABANDONED` - deleting it "
             "will stall shutdown")
 
 
@@ -230,7 +230,7 @@ def _parked_since(before) -> list:
 
 
 def _collect(parked, seconds=5.0) -> list:
-    """Run the main loop until `parked` are collected; answers those left, released unawaited."""
+    """Process events until `parked` leave `_ABANDONED`; returns those left, removed unawaited."""
     import time
     deadline = time.monotonic() + seconds
     while (any(p in conversion._ABANDONED for p in parked)
@@ -238,7 +238,7 @@ def _collect(parked, seconds=5.0) -> list:
         _app.processEvents()
         time.sleep(0.01)
     left = [p for p in parked if p in conversion._ABANDONED]
-    for process in left:    # its death went unheard; marked, its destructor does not wait 30 s
+    for process in left:    # its exit was not detected; once marked, its destructor does not wait 30 s
         process.mark_reaped_elsewhere()
         conversion._ABANDONED.remove(process)
     return left
@@ -246,7 +246,7 @@ def _collect(parked, seconds=5.0) -> list:
 
 @unittest.skipUnless(os.name == "posix", "the stand-in children are /bin/sleep and /bin/sh")
 class AChildParkedByAWorkerIsStillCollected(unittest.TestCase):
-    """A worker has no event loop once run() returns; its last parked child is the main loop's."""
+    """A worker has no event loop after run(), so the main loop reaps its last abandoned child."""
 
     def test_a_child_parked_from_a_worker_thread_is_reaped_on_the_main_loop(self):
         before = list(conversion._ABANDONED)
@@ -258,16 +258,16 @@ class AChildParkedByAWorkerIsStillCollected(unittest.TestCase):
         with _sigkill_deferred():
             worker = Worker()
             worker.start()
-            self.assertTrue(worker.wait(10000), "the worker never came back")
+            self.assertTrue(worker.wait(10000), "the worker thread did not finish within 10 s")
         parked = _parked_since(before)
-        self.assertEqual(1, len(parked), "premise: the killed child was not parked")
+        self.assertEqual(1, len(parked), "premise: the killed child was not added to `_ABANDONED`")
         self.assertEqual([], _collect(parked),
-                         "a child parked by a finished worker is never collected")
+                         "a child abandoned by a finished worker stays in `_ABANDONED`")
 
 
 @unittest.skipUnless(os.name == "posix", "the stand-in children are /bin/sleep and /bin/sh")
 class AStuckChildEndsItsFilesChain(unittest.TestCase):
-    """A child that outlives its kill is stuck in its file's reads: no second converter starts."""
+    """A child running after its kill, on a file whose reads stall: no second converter starts."""
 
     def setUp(self):
         self.dir = tempfile.mkdtemp(prefix="amaze_stuck_")
@@ -299,12 +299,12 @@ class AStuckChildEndsItsFilesChain(unittest.TestCase):
         self.assertEqual(conversion.REASON_STALLED, result.reason)
 
     def test_an_abandoned_child_on_a_readable_file_lets_the_next_run(self):
-        """One tool hanging is not the file hanging: a file that reads goes on to the next adapter."""
+        """A converter hangs but the file reads promptly: the next adapter still runs on it."""
         adapters = (("stuck", self._stuck), ("next", self._next))
         with _sigkill_deferred(), mock.patch.object(conversion, "_FORMAT_ADAPTERS", adapters):
             result = conversion.convert_image(self.source, 64)
         self.assertEqual(["stuck", "next"], self.started,
-                         "a converter that hung on a readable file ended its chain")
+                         "a converter that hung on a readable file kept the next one from running")
         self.assertNotEqual(conversion.REASON_STALLED, result.reason)
 
     def test_the_timeout_and_graveyard_records_name_the_file(self):
@@ -322,7 +322,7 @@ class AStuckChildEndsItsFilesChain(unittest.TestCase):
 
 @unittest.skipUnless(hasattr(os, "mkfifo"), "the stalled read is a FIFO with no writer")
 class TheReadProbeMeasuresTheFile(unittest.TestCase):
-    """The stall verdict is a bounded raw read of the file, not one converter's hang."""
+    """`_reads_promptly` times a raw read of the file; a converter's hang alone is no stall."""
 
     def setUp(self):
         self.dir = tempfile.mkdtemp(prefix="amaze_probe_")
@@ -336,9 +336,9 @@ class TheReadProbeMeasuresTheFile(unittest.TestCase):
 
     def test_a_read_that_never_returns_is_a_stall(self):
         fifo = os.path.join(self.dir, "stuck")
-        os.mkfifo(fifo)    # opening it for reading blocks until a writer comes: a real stalled read
+        os.mkfifo(fifo)    # opening it for reading blocks until a writer opens it: a real stalled read
 
-        def _release():    # the probe's thread is still blocked; a writer opening and closing frees it
+        def _release():    # the probe's thread is still blocked; a writer opening and closing unblocks it
             try:
                 os.close(os.open(fifo, os.O_WRONLY | os.O_NONBLOCK))
             except OSError:
@@ -380,7 +380,7 @@ class SipsGetsOnlyTheFormatsItReads(unittest.TestCase):
         for name, head in self.ALLOWED.items():
             with self.subTest(name):
                 self.assertTrue(conversion._sips_reads(self._file(name, head)),
-                                "a format sips reads was kept from it")
+                                "`_sips_reads` returned False for a format sips reads")
 
     def test_a_tga_is_known_by_its_footer(self):
         footer = b"\0" * 8 + b"TRUEVISION-XFILE.\0"
@@ -431,7 +431,7 @@ def _houdini_made(hfs, tool, args):
 
 
 def _spy_programs(seen, sips_answer=None):
-    """Record every converter program; `sips_answer` stands in for what sips says, else it runs."""
+    """Record every converter program; `sips_answer` replaces sips's result, else sips runs."""
     real = conversion._run_process
 
     def spy(program, args, **kw):
@@ -444,7 +444,7 @@ def _spy_programs(seen, sips_answer=None):
 
 
 class AHoudiniTextureGetsHoudinisConverters(unittest.TestCase):
-    """A `.rat` never meets sips; a `.tx` sips refuses or hangs on still reaches iconvert."""
+    """A `.rat` never goes to sips; a `.tx` that sips fails or hangs on still reaches iconvert."""
 
     def setUp(self):
         self.dir = tempfile.mkdtemp(prefix="amaze_houdini_tex_")
@@ -466,7 +466,7 @@ class AHoudiniTextureGetsHoudinisConverters(unittest.TestCase):
             self.assertEqual(b"fbtH", handle.read(4), "premise: iconvert wrote no Houdini .rat")
         return rat
 
-    def _tx(self):    # maketx's default, a tiled TIFF: sips's header
+    def _tx(self):    # maketx's default, a tiled TIFF: a header sips reads
         tx = self._made("imaketx", [self.png, os.path.join(self.dir, "tex.tx")])
         with open(tx, "rb") as handle:
             self.assertEqual(b"II*\x00", handle.read(4), "premise: not a TIFF inside")
@@ -503,7 +503,7 @@ class AHoudiniTextureGetsHoudinisConverters(unittest.TestCase):
         seen = []
         result = self._convert(self._tx(), seen, pillow=False,
                                sips_answer=(False, "exit 13: Error 13"))
-        self.assertEqual("sips", seen[0], "a .tx's header is measured to go to sips first: %s" % seen)
+        self.assertEqual("sips", seen[0], "a .tx's header should send it to sips first: %s" % seen)
         self.assertTrue(result, "a .tx sips refused got no thumbnail: %s" % (result.attempts,))
         self.assertEqual("iconvert", result.via)
 
@@ -513,7 +513,7 @@ class AHoudiniTextureGetsHoudinisConverters(unittest.TestCase):
         result = self._convert(self._tx(), seen, pillow=False,
                                sips_answer=(False, conversion.ABANDONED))
         self.assertEqual("sips", seen[0])
-        self.assertTrue(result, "a sips hang ended the chain on a file that reads: %s"
+        self.assertTrue(result, "a sips hang stopped the other converters on a file that reads: %s"
                         % (result.attempts,))
         self.assertEqual("iconvert", result.via)
 
@@ -550,7 +550,7 @@ class ConversionCase(unittest.TestCase):
 class TheDecodeFitSplit(ConversionCase):
 
     def test_a_radiance_hdr_keeps_its_picture(self):
-        """The outcome: a Radiance .hdr keeps its picture, held up by both the split and the guard."""
+        """A Radiance .hdr keeps its picture, kept so by both the FORMAT/FIT split and `_uniform`."""
         if not hostos.is_macos():
             self.skipTest("sips is macOS-only; the FORMAT route here is "
                           "iconvert, which never had this failure")
@@ -561,12 +561,12 @@ class TheDecodeFitSplit(ConversionCase):
                     % (result.reason,))
         self.assertFalse(
             uniform(result.image),
-            "the .hdr converted to a single flat colour - this is the "
-            "black-tile failure, back")
+            "the .hdr converted to a single flat colour - the "
+            "black-tile failure has returned")
         self.assertFalse(result.uniform)
 
     def test_the_FORMAT_route_converts_and_does_not_resample(self):
-        """The split, read off the command line: the FORMAT route never passes `-Z`; Qt scales it."""
+        """Checked on sips's arguments: the FORMAT route never passes `-Z`; Qt scales the result."""
         if not hostos.is_macos():
             self.skipTest("sips is macOS-only")
         hdr = write_radiance_hdr(self.path("sky.hdr"), 1024, 512)
@@ -588,7 +588,7 @@ class TheDecodeFitSplit(ConversionCase):
             "one thing that turns a Radiance .hdr black: %s" % (sips[0],))
 
     def test_the_FIT_route_does_resample(self):
-        """The FIT route passes `-Z`, or Qt refuses the full-size temp all over again."""
+        """The FIT route passes `-Z`, or Qt cannot read the full-size temp file either."""
         if not hostos.is_macos():
             self.skipTest("sips is macOS-only")
         png = write_png(self.path("big.png"), 1200, 1200)
@@ -609,7 +609,7 @@ class TheDecodeFitSplit(ConversionCase):
         self.assertIn(
             "-Z", sips[0],
             "the FIT route converted at full size - the temp file is "
-            "then refused by Qt exactly like the source was: %s"
+            "then too large for Qt, exactly like the source: %s"
             % (sips[0],))
 
     def test_iconvert_is_not_offered_where_it_cannot_help(self):
@@ -626,11 +626,11 @@ class TheDecodeFitSplit(ConversionCase):
                          "timeout first")
 
     def test_a_foreign_format_that_is_ALSO_oversized_gets_both_halves(self):
-        """A FORMAT temp too big for Qt is measured by the same rule and handed to the FIT route."""
+        """A FORMAT temp too big for Qt is measured by the same rule and passed to the FIT route."""
         if not hostos.is_macos():
             self.skipTest("sips is macOS-only")
         hdr = write_radiance_hdr(self.path("big_sky.hdr"), 1024, 512)  # decodes to 2.1MB, past the 1MB limit below
-        with qt_refuses(hdr, only_first=True):  # Qt reads no Radiance; only the converted temp is staged as oversized
+        with qt_refuses(hdr, only_first=True):  # Qt reads no Radiance; only the converted temp is faked as oversized
             result = self.convert(hdr)
         self.assertTrue(
             result, "an oversized foreign format got nothing: %s"
@@ -638,7 +638,7 @@ class TheDecodeFitSplit(ConversionCase):
         self.assertFalse(uniform(result.image))
         self.assertIn(
             "->", result.via,
-            "the log does not say both adapters answered, so a reader "
+            "`result.via` does not name both adapters, so a reader "
             "cannot tell this case from an ordinary conversion: %s"
             % (result.via,))
 
@@ -662,30 +662,30 @@ class TheEngineVerifiesItsOwnOutput(ConversionCase):
 
     def setUp(self):
         super().setUp()
-        self.foreign = self.path("thing.xyz")  # a file Qt cannot read, so the FORMAT order runs; fake adapters answer
+        self.foreign = self.path("thing.xyz")  # a file Qt cannot read, so the FORMAT adapters run; here they are fakes
         with open(self.foreign, "wb") as fh:
             fh.write(b"not an image Qt knows")
 
     def test_a_converter_that_returns_a_blank_is_not_believed(self):
-        """The guard: exit 0 with a blank picture is not believed."""
+        """The uniform check: exit 0 with a blank picture does not end the search."""
         with mock.patch.object(conversion, "_FORMAT_ADAPTERS", (
                 ("liar", _adapter_writing("#000000")),
                 ("honest", _adapter_writing_a_picture()),
         )):
             result = self.convert(self.foreign)
-        self.assertTrue(result, "nothing was delivered at all")
+        self.assertTrue(result, "no image was returned at all")
         self.assertEqual(
             "honest", result.via,
             "a solid black image was accepted from the first converter "
             "that returned exit 0")
         self.assertFalse(uniform(result.image))
         refusals = dict(result.attempts)
-        self.assertIn("liar", refusals, "the trail does not say why the "
-                      "first converter was refused")
+        self.assertIn("liar", refusals, "`result.attempts` does not say why the "
+                      "first converter was rejected")
         self.assertIn("identical", refusals["liar"])
 
     def test_a_genuinely_flat_image_is_still_DELIVERED(self):
-        """A uniform answer is a suspicion, still delivered when nothing does better: black exists."""
+        """A uniform result is suspect, still returned when nothing does better: black exists."""
         with mock.patch.object(conversion, "_FORMAT_ADAPTERS", (
                 ("first", _adapter_writing("#000000")),
                 ("second", _adapter_writing("#000000")),
@@ -693,15 +693,15 @@ class TheEngineVerifiesItsOwnOutput(ConversionCase):
             result = self.convert(self.foreign)
         self.assertTrue(
             result,
-            "every converter agreed the image is flat and it was thrown "
-            "away anyway - that is a missing tile for a black texture")
+            "every converter returned the same flat image and it was "
+            "discarded anyway - that is a missing tile for a black texture")
         self.assertTrue(
             result.uniform,
-            "delivered without recording that it is one flat colour, so "
+            "returned without recording that it is one flat colour, so "
             "the log cannot tell this from a normal conversion")
 
     def test_a_flat_image_Qt_ITSELF_read_is_not_second_guessed(self):
-        """Only converter output is judged: a Qt read of a format Qt supports is ground truth."""
+        """Only converter output is checked: a flat image Qt read itself is accepted as it is."""
         flat = write_png(self.path("flat.png"), 300, 300, flat="#101010")
         calls = []
 
@@ -771,7 +771,7 @@ class ItAnswersWithAReasonNeverABareNone(ConversionCase):
             "texture is 4GB of allocation in a live Houdini")
 
     def test_an_ordinary_oversized_image_is_still_converted(self):
-        """Guards the ceiling from below: 268MB is an 8K displacement map, an ordinary texture."""
+        """The ceiling's lower bound: 268MB is an 8K displacement map, an ordinary texture."""
         self.assertGreater(
             conversion.MAX_RESCUE_MEGABYTES, 268,
             "the shipped ceiling is below an 8K displacement map")
@@ -779,13 +779,13 @@ class ItAnswersWithAReasonNeverABareNone(ConversionCase):
         with qt_refuses(png):
             result = self.convert(png)
         self.assertTrue(result, "an ordinary oversized image was declined "
-                                "- the ceiling is doing more than it should")
+                                "- `MAX_RESCUE_MEGABYTES` is set too low")
         self.assertLessEqual(max(result.image.width(),
                                  result.image.height()), 256)
 
 
 class AnEXRIsMeasuredFromItsOwnHeader(ConversionCase):
-    """Qt declares no size for an EXR, so the decoded ceiling reads its header's data window."""
+    """Qt reports no size for an EXR, so the size ceiling uses its header's data window."""
 
     def _converters_started(self, width, height):
         path = self.path("plate.exr")
@@ -817,7 +817,7 @@ class AnEXRIsMeasuredFromItsOwnHeader(ConversionCase):
 class TheSizeContract(ConversionCase):
 
     def test_nothing_leaves_the_engine_larger_than_asked_for(self):
-        """A FORMAT temp is full-size; the engine scales it, in one place, for every adapter."""
+        """A FORMAT temp is full-size; `convert_image` alone scales it, for every adapter."""
         with mock.patch.object(conversion, "_FORMAT_ADAPTERS", (
                 ("big", lambda src, out, ctx: (
                     write_png(out, 900, 900) and (True, "")),),
@@ -849,7 +849,7 @@ class TheSizeContract(ConversionCase):
 class TheTempFileLifetimeIsTheEngines(ConversionCase):
 
     def test_every_scratch_file_is_removed(self):
-        """The engine owns every scratch file, for every converter."""
+        """`convert_image` removes every scratch file, for every converter."""
         made = []
         real = tempfile.mkstemp
 
@@ -866,7 +866,7 @@ class TheTempFileLifetimeIsTheEngines(ConversionCase):
 
         self.assertTrue(made, "no converter ran - this test proves nothing")
         left = [p for p in made if os.path.exists(p)]
-        self.assertEqual([], left, "scratch files survived the conversion: "
+        self.assertEqual([], left, "scratch files remain after the conversion: "
                                    "%s" % left)
 
     def test_a_failed_conversion_does_not_re_enter_the_converters(self):
@@ -911,8 +911,8 @@ class TheCancelCallbackReachesEveryConverter(ConversionCase):
         self.assertTrue(
             all(callable(c) for c in seen),
             "a converter ran with no cancel callback, so its 100ms "
-            "watchdog was never armed: %s" % seen)
-        # and it must be this conversion answer, not a stand-in
+            "watchdog was never started: %s" % seen)
+        # and it must be the caller's callback, not a substitute
         answers = []
         with mock.patch.object(
                 conversion, "_run_process",
@@ -920,12 +920,12 @@ class TheCancelCallbackReachesEveryConverter(ConversionCase):
                     answers.append(kw["cancelled"]()), (False, "no"))[1]):
             self.convert(foreign, cancelled=lambda: True)
         self.assertTrue(all(answers),
-                        "the callback reaching the subprocess does not "
-                        "report what the caller says: %s" % answers)
+                        "the callback passed to the subprocess does not "
+                        "return the caller's value: %s" % answers)
 
 
 class TwoPillowConversionsLeaveTheBombGuardAlone(ConversionCase):
-    """Pillow's `MAX_IMAGE_PIXELS` is process-global and up to eight converter threads lift it."""
+    """Pillow's `MAX_IMAGE_PIXELS` is process-global and up to eight converter threads raise it."""
 
     def _convert_in(self, name, source):
         out = self.path(name + ".png")
@@ -957,7 +957,7 @@ class TwoPillowConversionsLeaveTheBombGuardAlone(ConversionCase):
             first = self._convert_in("first", source)
             self.assertTrue(inside["first"].wait(5), "premise: no open ran")
             second = self._convert_in("second", source)
-            inside["second"].wait(0.5)    # inside the lift unless a lock holds it out
+            inside["second"].wait(0.5)    # runs while the limit is raised unless a lock blocks it
             go["first"].set()
             first.join(10)
             go["second"].set()
@@ -970,7 +970,7 @@ class TwoPillowConversionsLeaveTheBombGuardAlone(ConversionCase):
 
 
 class OneLogLine(ConversionCase):
-    """Naming who answered and why the one before it did not."""
+    """One log line naming the converter that succeeded and why the one before it failed."""
 
     def events(self, *args, **kw):
         seen = []
@@ -980,7 +980,7 @@ class OneLogLine(ConversionCase):
         return result, seen
 
     def test_an_ordinary_image_writes_nothing(self):
-        """A line per tile would flood the log rather than inform it."""
+        """A line per tile would make the log too long to read."""
         png = write_png(self.path("ordinary.png"), 300, 300)
         _result, seen = self.events(png)
         self.assertEqual([], seen, "an ordinary PNG wrote to the log: %s"
@@ -1032,7 +1032,7 @@ class OneLogLine(ConversionCase):
                                       "file")
         self.assertNotIn(
             "allocation limit", whys,
-            "a damaged file was blamed on the allocation limit: %s" % whys)
+            "a damaged file was logged as an allocation-limit failure: %s" % whys)
 
     def test_and_says_the_allocation_limit_when_that_IS_the_cause(self):
         """The other half: when the limit is the cause, the line says so."""
@@ -1046,7 +1046,7 @@ class OneLogLine(ConversionCase):
                       % whys)
 
     def test_the_trail_stays_one_readable_line(self):
-        """A converter's stderr can be four lines of libpng chatter."""
+        """A converter's stderr can be four lines of libpng output."""
         def noisy(source, out_path, ctx):
             return False, "libpng error\n" * 60
 
@@ -1094,7 +1094,7 @@ class TheWatchdogNeverSignalsOnWindows(unittest.TestCase):
         guard = head.rindex("if (pid")
         self.assertLess(
             guard, gate,
-            "os.kill is reached without asking the platform first, so on "
+            "os.kill is reached without checking the platform first, so on "
             "Windows the watchdog terminates the process it is checking")
 
 

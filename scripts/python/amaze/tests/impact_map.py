@@ -10,7 +10,7 @@ import unittest
 
 MAP_VAR = "AMAZE_IMPACT_MAP"
 FORMAT = 3
-LOADING = "_load"    # imports before the first test: what runs or opens here reaches every test
+LOADING = "_load"    # imports before the first test: what runs or opens here counts for every test
 EFFECTS = ""    # the module-level statements that do more than bind a name
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
 
@@ -152,7 +152,7 @@ class Code:
 
 
 def _incidental(frame) -> bool:
-    """A read no test depends on: an import's, PySide's `__feature__` look, a traceback's lines."""
+    """A read no test needs: an import's, PySide's `__feature__` lookup, a traceback's lines."""
     if frame.f_code.co_filename.startswith("<frozen importlib"):
         return True
     cached = inspected = False
@@ -164,7 +164,7 @@ def _incidental(frame) -> bool:
         if frame.f_code.co_filename.endswith("linecache.py"):
             cached = True
         elif cached and frame.f_code.co_name in ("getsource", "getsourcelines"):
-            inspected = True    # code read as text, unless PySide is the reader
+            inspected = True    # source read by `inspect`, unless PySide made the call
         frame = frame.f_back
     return cached and not inspected
 
@@ -206,7 +206,7 @@ def _bound_at(spans, line) -> list:
 
 
 class Recorder:
-    """sys.monitoring sees each def once per test; an audit hook sees what is read."""
+    """sys.monitoring logs each def once per test; an audit hook logs the files opened or listed."""
 
     def __init__(self, root=ROOT, tool=None):
         self.root = os.path.join(os.path.abspath(root), "")
@@ -266,7 +266,7 @@ class Recorder:
         if self.current != LOADING or not name:
             return sys.monitoring.DISABLE
         self._anchor((rel, name))
-        return None    # every call while loading, each from its own statement
+        return None    # keep the event on while loading: each call may come from another statement
 
     def _audit(self, event, args) -> None:
         if not (self.running and event in ("open", "os.listdir", "os.scandir") and args
@@ -300,14 +300,14 @@ class Recorder:
         return True
 
     def stop(self) -> None:
-        """Stop charging anything; an audit hook cannot be removed, so it goes quiet."""
+        """Stop recording; an audit hook cannot be removed, so `_audit` now returns early."""
         self._charge_time()
         self.running = False
         sys.monitoring.set_events(self.tool, 0)
         sys.monitoring.free_tool_id(self.tool)
 
     def build(self, files, tests_run) -> dict:
-        """The map: who ran each def and opened each file, beside the files' hashes."""
+        """The map: which tests ran each def and opened each file, with the files' hashes."""
         keys = sorted(set(self.ran) | set(self.opened) | set(self.listed))
         index = {key: number for number, key in enumerate(keys)}
         for key, by_file in self.ran.items():
@@ -318,7 +318,7 @@ class Recorder:
         for key, paths in self.opened.items():
             for rel in paths & files.keys():
                 files[rel].setdefault("opened", []).append(index[key])
-        for (rel, name), spots in self.anchors.items():    # what loading built: who to ask instead of all
+        for (rel, name), spots in self.anchors.items():    # run or read on load: the names that caused it
             bound = sorted({(at, bound) for at, line in spots if at in files
                             for bound in _bound_at(files[at].get("spans", ()), line)})
             if rel and rel in files:
@@ -337,9 +337,9 @@ class Recorder:
                 "seconds": {key: round(spent, 3) for key, spent in self.seconds.items()}}
 
     def save(self, path, tests_run) -> None:
-        """Write the map whole, through a scratch file, so a reader never sees half of one."""
+        """Write the map to `<path>.writing`, then rename it, so no reader sees a partial map."""
         if self.running:
-            self.stop()    # the map's own reads are no module's
+            self.stop()    # the map's own file reads are not recorded
         found = self.build(snapshot(self.root, repository_files(self.root)), tests_run)
         with open(path + ".writing", "w", encoding="utf-8") as handle:
             json.dump(found, handle, sort_keys=True)
@@ -380,7 +380,7 @@ def follow_tests(recorder) -> None:
 
 
 def recorder(path):
-    """A started Recorder when `path` asks for a map and this Python can record one, else None."""
+    """A started Recorder when `path` is set and this Python can record one, else None."""
     if not path:
         return None
     found = Recorder()
