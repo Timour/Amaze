@@ -1117,7 +1117,7 @@ def _recover_sentence(findings: dict, found: dict) -> str:
                                             for one in ids]) if few else ""
         parts.append("%s%s in the %s database"
                      % (_counted(len(ids), filename), names, naming.section_label(filename)))
-    return ("Recover puts %s: each goes by the folder its files are in."
+    return ("Recover puts %s. Each goes to the section whose folder holds its files."
             % wording.and_list(parts))
 
 

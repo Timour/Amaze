@@ -159,7 +159,7 @@ def capture_viewport(out: str, viewer=None) -> str:
     if viewer is None:
         raise CaptureRefused(
             "No scene viewer is open - the capture needs a visible "
-            "viewport to photograph.")
+            "viewport to capture.")
     try:
         width, height = viewer.curViewport().resolutionInPixels()
     except Exception as exc:                             # noqa: BLE001

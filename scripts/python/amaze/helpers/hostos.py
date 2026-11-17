@@ -792,12 +792,12 @@ def why_failed(exc: OSError, path: str = "") -> tuple:
         sentence = ("the file is read-only" + (":\n" + path if path else "")
                     + "\n\nClear Read-only in its Properties and save again.")
     elif cause == FAILED_UNREACHABLE:
-        sentence = ("the folder it lives in cannot be reached right now"
+        sentence = ("its folder cannot be reached right now"
                     + (":\n" + where if where else "")
                     + "\n\nIf it is in a synced or network folder, it "
-                      "will work again once that folder is back.")
+                      "will work again once that folder is available.")
     elif cause == FAILED_READ_ONLY:
-        sentence = ("the folder it lives in is read-only"
+        sentence = ("its folder is read-only"
                     + (":\n" + where if where else "")
                     + "\n\nThe file itself being read-only would not "
                       "stop this - it is the folder's permissions.")

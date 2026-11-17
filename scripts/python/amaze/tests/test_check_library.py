@@ -398,8 +398,8 @@ class EverySentenceOfTheReportTest(_Library):
         _make(os.path.join(self.materials, "LONE1.png"))
         text = self.text()
         self.assertIn("Recover puts 2 materials (Slate and NODE1) in the Materials database "
-                      "and 1 node (Rig) in the Nodes database: each goes by the folder its "
-                      "files are in.", text)
+                      "and 1 node (Rig) in the Nodes database. Each goes to the section whose "
+                      "folder holds its files.", text)
         self.assertIn("The rest are halves of an asset whose other file is not in the folder, "
                       "so they can only be moved to the trash.", text)
         self.assertIn("Moving files to the trash leaves 6 files where they are: the metadata "

@@ -754,10 +754,10 @@ class MaterialSection(AssetSection):
     def delete_prompt(count: int, name: str = "") -> str:
         if count == 1:
             return ("Delete this material? Its saved files and "
-                    "thumbnails go for good. Materials already used in "
+                    "thumbnails are deleted permanently. Materials already used in "
                     "a scene are not affected.")
         return ("Delete %d materials? Their saved files and thumbnails "
-                "go for good. Materials already used in a scene are "
+                "are deleted permanently. Materials already used in a scene are "
                 "not affected." % count)
 
     GRID_MENU = (    # the section's entries, a divider, then GRID_MENU_TAIL, as in the C01/C01b frames
@@ -948,10 +948,10 @@ class CopSection(AssetSection):
     def delete_prompt(count: int, name: str = "") -> str:
         if count == 1:
             return ("Delete this node asset? Its saved files and "
-                    "thumbnail go for good. Networks already built in "
+                    "thumbnail are deleted permanently. Networks already built in "
                     "a scene are not affected.")
         return ("Delete %d node assets? Their saved files and "
-                "thumbnails go for good. Networks already built in a "
+                "thumbnails are deleted permanently. Networks already built in a "
                 "scene are not affected." % count)
 
     key = "cop"
@@ -1087,9 +1087,9 @@ class CodeSection(AssetSection):
     @staticmethod
     def delete_prompt(count: int, name: str = "") -> str:
         if count == 1:
-            return ("Delete this snippet? It goes for good. Code "
+            return ("Delete this snippet? It is deleted permanently. Code "
                     "already applied to a node is not affected.")
-        return ("Delete %d snippets? They go for good. Code already "
+        return ("Delete %d snippets? They are deleted permanently. Code already "
                 "applied to a node is not affected." % count)
 
     key = "code"
@@ -2184,10 +2184,10 @@ class GradientSection(AssetSection):
     @staticmethod
     def delete_prompt(count: int, name: str = "") -> str:
         if count == 1:    # the only section whose prompt names the item
-            return ('Delete "%s"? The gradient goes for good. Ramps '
+            return ('Delete "%s"? The gradient is deleted permanently. Ramps '
                     "already applied to a node are not affected."
                     % (name or "this palette"))
-        return ("Delete %d gradients? They go for good. Ramps already "
+        return ("Delete %d gradients? They are deleted permanently. Ramps already "
                 "applied to a node are not affected." % count)
 
     key = "gradient"

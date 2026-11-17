@@ -132,7 +132,7 @@ class DeleteIsONEShapeWithFourSetsOfWORDS(unittest.TestCase):
         """A palette is picked by its label; the others take the name and leave it out."""
         prompt = sections.GradientSection.delete_prompt(1, "Sunset")
         self.assertIn('"Sunset"', prompt)
-        self.assertIn("gradient goes for good", prompt)
+        self.assertIn("gradient is deleted permanently", prompt)
         for name in ("MaterialSection", "CopSection", "CodeSection"):
             with self.subTest(context=name):
                 context = getattr(sections, name)
