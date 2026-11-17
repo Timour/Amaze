@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.34.9
+
+- The library format shown in Preferences counts every format change: 2.1, 2.2 and so on.
+
 ## 1.34.8
 
 - Fix All lists what it moves to the trash before it does, with `Skip These`.
