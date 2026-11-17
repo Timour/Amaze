@@ -392,8 +392,8 @@ every section a table keyed by id or key:
 | File | Sections |
 |---|---|
 | `DataBase.json` | `policy`, `settings` (shared settings), `users`, `manifest`, `marks` |
-| `materials.json`, `nodes.json`, `code.json`, `colors.json` | `assets`, `categories`, `comments`, `icons`, `stars` (per user) |
-| `files.json` | `locations` (per user), `paths`, `comments`, `icons`, `stars` (per user) |
+| `materials.json`, `nodes.json`, `code.json`, `colors.json` | `assets`, `categories`, `comments`, `icons`, `favorites` (per user) |
+| `files.json` | `locations` (per user), `paths`, `comments`, `icons`, `favorites` (per user) |
 
 Beside them: `backup/` (every backup, named by database, date and time;
 the newest 3 and one a day for 30 days; an unreadable copy once per
@@ -690,7 +690,7 @@ model (§5, the one model set). It is in `core/grid_engine.py`.
 |---|---|---|
 | **Library** | The on-disk folder holding every section's data: the six databases (§4c) + each asset section's folder (`materials/`, `nodes/`) + `backup/`, `trash/` + `matX/` (downloaded MaterialX). Path in `settings.json`. | — |
 | **Library Model** | The Qt model over a **Library**'s JSON. The shared base class is `AssetLibrary` (records, categories, tags, tile icons, saves, deletes, the connector's guards — nothing renderer-specific); the four section models subclass it over their own JSON. `MaterialLibrary` adds what a MATERIAL is: its USD and shader-type labels, and the repaint when a render finishes; saving, updating, converting, loading and rendering one are `actions/materials.py`'s. Colors uses the same base class with its palette payload (`colors`/`ramp`) stored on the record. | `core/library.py` → `AssetLibrary`, `MaterialLibrary`; `cop_library.py`; `code_library.py`; `gradient_library.py` |
-| **Material** | One asset record (id, name, categories, tags, renderer, date, …). **NOT a favourite and NOT a tile icon**: those are the database's `stars` (per user) and `icons` sections. **One category per asset** — multi-category was removed 2026-07-27; tags are the many-to-many axis. | `core/material.py` |
+| **Material** | One asset record (id, name, categories, tags, renderer, date, …). **NOT a favourite and NOT a tile icon**: those are the database's `favorites` (per user) and `icons` sections. **One category per asset** — multi-category was removed 2026-07-27; tags are the many-to-many axis. | `core/material.py` |
 | **Tile Icon** | A chosen Feather symbol on a colour, for assets with nothing to render; the section's database ▸ `icons` is the only store, keyed by asset id (a file key in `files.json`). Composed to `<id>_icon.png` BESIDE the render, never over it — except Color, which composes in memory. | `core/tile_icons.py` |
 | **Comment** | A page of text + to-dos per asset (the Comments pane, toggled from the toolbar). Stored in the section's database ▸ `comments`, keyed by asset id or file key; a comment item belongs to its author. WHICH asset the pane shows is decided by the context — `Section.comment_subject(index)`, one of the four area hooks — because only the context can map an index through its proxy and read its roles; the panel finds the live current index and delegates. `takes_comments` is the separate, selection-free half that the toolbar chip reads. EVERY section takes notes, Color included - a gradient carries a full-uuid4 identity in `id` (from creation, or from the schema-8 migration that creates one for any row loaded without it — a construction-time backfill did this until 2026-08-20; the field was `uid` before 2026-08-09 and the VALUE never changed, so existing keys still resolve), keyed `gradient:<value>`. | `core/notes.py`, `panel/notes_panel.py` |
 | **Category Colour** | A colour on a category, painted under every tile in it and down its sidebar row. Stored beside the category names in the same JSON, so the grid reads it from the connector's shared data dict. | `core/category.py` → `Categories.set_color` |
@@ -883,7 +883,7 @@ contracts other code and the docs rely on:
   left in place. An unknown file or folder moves only by its own button and its
   own confirm.
 - **Stars are per user IN THE LIBRARY**: each section's database holds
-  `stars` {user: {id: true}}, `files.json` the File stars; a user writes
+  `favorites` {user: {id: true}}, `files.json` the File stars; a user writes
   only their own (`locations.set_favourites`).
 - **Backups**: a new one at most every 30 minutes, from the bytes the
   save already read, never of content that does not parse; the newest 3
@@ -911,8 +911,8 @@ reports them too (`--strict` exits non-zero, so a script can fail on it).
 | entry | what it is |
 |---|---|
 | `DataBase.json` | the library's own database: `policy` (`library` version, `allow_overwrite`), `settings` (the shared settings, one `{value}` per key), `users` (a `uuid4` UID per person with a `name`; names unique; nobody made silently), `manifest` (the databases this library has, so a missing one is detected), `marks` (the starters offered here once) |
-| `materials.json` `nodes.json` `code.json` `colors.json` | each section's database: `assets` {id: row}, `categories` {name: {order, color}}, `comments` {id: {items}}, every item with its `id` and `author`, `icons` {id: face}, `stars` {user: {id: true}}. Named once in `library_files` (`LISTS`, `LABELS`, `NOUNS`) and declared in `guard.DATABASES` |
-| `files.json` | the Files section: `locations` {user: {`loc:<id>`: record}}, `paths` {id: {path}}, the one place a location's path is stored, and `comments`, `icons`, `stars` keyed `loc:<id>/<relative>` |
+| `materials.json` `nodes.json` `code.json` `colors.json` | each section's database: `assets` {id: row}, `categories` {name: {order, color}}, `comments` {id: {items}}, every item with its `id` and `author`, `icons` {id: face}, `favorites` {user: {id: true}}. Named once in `library_files` (`LISTS`, `LABELS`, `NOUNS`) and declared in `guard.DATABASES` |
+| `files.json` | the Files section: `locations` {user: {`loc:<id>`: record}}, `paths` {id: {path}}, the one place a location's path is stored, and `comments`, `icons`, `favorites` keyed `loc:<id>/<relative>` |
 | `backup/` | every backup: `<database>.<date>_<time>.bak`, the newest 3 and one a day for 30 days; `.before-restore.bak`, the undo copy a restore keeps; `.unreadable-<hash>`, one copy of a database that could not be read |
 | `trash/<date>/…` | what a delete or Check Library moved, under its library path, removed after 30 days |
 | `.amaze-journal` | there only while a change of several files is applied; finished at the next open |

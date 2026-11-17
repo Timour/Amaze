@@ -61,7 +61,7 @@ def versions_dir(preferences, mat_id: str, section: Section = MATERIAL) -> str:
         return material.owned_path(preferences, section.database, library_files.VERSIONS,
                                    str(mat_id))
     return hostos.contained_join(
-        preferences.dir, *section.folder(preferences), str(mat_id))
+        os.path.join(preferences.dir, *section.folder(preferences)), str(mat_id))
 
 
 def store_root(preferences, section: Section = MATERIAL) -> str:
