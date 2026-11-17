@@ -191,12 +191,12 @@ class TheDatabasesRowShowsOneCheck(unittest.TestCase):
         self.assertTrue(info, "the row says nothing about what it found")
         self.assertEqual("Repair", button)
         sheet = self.dialog._btn_check.styleSheet()
-        self.assertIn(amazetheme.P01_LIGHT_FOUND, sheet)
+        self.assertIn(amazetheme.P01_REPAIR_FILL, sheet)
         self.assertIn(amazetheme.P01_REPAIR_INK, sheet)
         self.assertIn("border:", sheet, "Qt paints no background on a button whose rule sets no border")
         self.dialog._btn_check.resize(75, 22)
         middle = self.dialog._btn_check.grab().toImage().pixelColor(6, 11).name()
-        self.assertEqual(amazetheme.P01_LIGHT_FOUND, middle, "the Repair button is not drawn red")
+        self.assertEqual(amazetheme.P01_REPAIR_FILL, middle, "the Repair button is not drawn red")
 
     def test_repair_opens_the_dialog_and_checks_again_after_the_fix(self):
         star = self.dead_favorite()

@@ -773,7 +773,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._btn_check.setText(amazetheme.BTN_REPAIR if fixable else amazetheme.BTN_CHECK)
         self._btn_check.setStyleSheet(
             "QPushButton { background-color: %s; color: %s; border: none; border-radius: %dpx; }"
-            % (amazetheme.P01_LIGHT_FOUND, amazetheme.P01_REPAIR_INK,
+            % (amazetheme.P01_REPAIR_FILL, amazetheme.P01_REPAIR_INK,
                amazetheme.P01_REPAIR_RADIUS) if fixable else "")
 
     def _show_check(self, findings: dict) -> None:
