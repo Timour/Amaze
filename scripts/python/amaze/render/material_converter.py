@@ -1,4 +1,4 @@
-"""Redshift -> Karma/MaterialX conversion; anything unmapped goes in the report. ▸r/rs-conversion"""
+"""Redshift -> Karma/MaterialX conversion; anything unmapped is in the report. ▸r/rs-conversion"""
 
 import inspect
 
@@ -12,7 +12,7 @@ from amaze.core import texstore
 
 from amaze.helpers import wording
 from amaze.render import nodes
-from amaze.render.material_conversion.report import ConversionReport    # the one home
+from amaze.render.material_conversion.report import ConversionReport    # defined only in report.py
 
 
 REDSHIFT_CONTAINERS = (renderers.REDSHIFT.classic_container,    # read, and written
@@ -72,7 +72,7 @@ STANDARD_MATERIAL_PARM_MAP = [    # redshift::StandardMaterial -> mtlxstandard_s
     ("coat_ior", "coat_IOR"),
     ("coat_aniso", "coat_anisotropy"),
     ("coat_aniso_rotation", "coat_rotation"),
-    ("emission_color", "emission_color"),    # thin film handled separately (gate + unit) by _convert_thin_film
+    ("emission_color", "emission_color"),    # thin film handled separately (enable rule + unit) by _convert_thin_film
     ("emission_weight", "emission"),
     ("opacity_color", "opacity"),
 ]
@@ -107,7 +107,7 @@ OPENPBR_MATERIAL_PARM_MAP = [    # redshift::OpenPBRMaterial -> mtlxstandard_sur
     ("coat_roughness", "coat_roughness"),
     ("coat_ior", "coat_IOR"),
     ("coat_roughness_anisotropy", "coat_anisotropy"),
-    ("emission_color", "emission_color"),    # thin film handled separately (gate + unit) by _convert_thin_film
+    ("emission_color", "emission_color"),    # thin film handled separately (enable rule + unit) by _convert_thin_film
     ("emission_luminance", "emission"),    # nits copied onto a 0-1 weight; right when non-emissive
     ("geometry_opacity", "opacity"),
 ]
@@ -166,7 +166,7 @@ _OPENPBR_HANDLED_INPUTS = {
 }
 
 def _convert_thin_film(rs_node: hou.Node, mtlx: hou.Node, report) -> None:
-    """Copy Redshift thin film onto `mtlx`, honouring each shader's gate and thickness unit."""
+    """Copy Redshift thin film onto `mtlx`, per each shader's enable rule and thickness unit."""
     def _v(name):
         p = rs_node.parm(name)
         try:
@@ -182,7 +182,7 @@ def _convert_thin_film(rs_node: hou.Node, mtlx: hou.Node, report) -> None:
             except hou.Error:
                 pass
 
-    weight = _v("thin_film_weight")          # OpenPBR only: thin film is gated by weight
+    weight = _v("thin_film_weight")          # OpenPBR only: thin film is enabled by weight
     if weight is not None:                    # -> this is an OpenPBR shader
         if weight > 1e-6:
             _put("thin_film_thickness", (_v("thin_film_thickness") or 0.0) * 1000.0)    # um to nm
@@ -190,7 +190,7 @@ def _convert_thin_film(rs_node: hou.Node, mtlx: hou.Node, report) -> None:
             if ior is not None:
                 _put("thin_film_IOR", ior)
         return
-    thickness_nm = _v("thinfilm_thickness")   # StandardMaterial: thickness > 0 is the gate, in nm
+    thickness_nm = _v("thinfilm_thickness")   # StandardMaterial: thickness > 0 enables it, in nm
     if thickness_nm is not None and thickness_nm > 1e-6:
         _put("thin_film_thickness", thickness_nm)
         ior = _v("thinfilm_ior")
@@ -238,7 +238,7 @@ def _named_inputs(node: hou.Node) -> dict:
 
 
 def _effective_signature(node: hou.Node) -> str:
-    """The node's current signature; wiring flips it, so read it after the connections."""
+    """The node's current signature; wiring changes it, so read it after the connections."""
     parm = node.parm("signature")
     if parm is None:
         return "default"
@@ -320,7 +320,7 @@ _COLOUR_INPUTS = frozenset({    # standard-surface inputs read as sRGB colour; t
 def _apply_image_colorspace(
     image_node: hou.Node, role: str, report: ConversionReport, label: str
 ) -> None:
-    """The image's signature by role: colour reads sRGB, float and vector3 read untransformed."""
+    """Set the image's signature by role: colour as sRGB, float and vector3 untransformed."""
     if "image" not in image_node.type().name():
         return
     signature, colorspace = {
@@ -569,7 +569,7 @@ def convert_ramp(
         )
         return None
 
-    is_color = True    # colour ramps live on "vramp", float ramps on "framp"
+    is_color = True    # colour ramps use `vramp`, float ramps use `framp`
     if ramp is not None:
         try:
             values = ramp.values()
@@ -598,7 +598,7 @@ def convert_ramp(
         except (hou.Error, AttributeError):
             pass
 
-    src_in = _named_inputs(rs_node).get("input")    # a wired input converts; else the UV driver
+    src_in = _named_inputs(rs_node).get("input")    # a wired input is converted; else the UV driver is built
     driver = None
     if src_in is not None:
         converted = convert_node(src_in, dest_parent, report)
@@ -822,7 +822,7 @@ def convert_fresnel(
             )
 
     mix = dest_parent.createNode("mtlxmix")
-    mix.setNamedInput("fg", perp_node, 0)    # at grazing (term -> 1) the perpendicular colour wins
+    mix.setNamedInput("fg", perp_node, 0)    # at grazing (term -> 1) the result is the perpendicular colour
     mix.setNamedInput("bg", facing_node, 0)
     mix.setNamedInput("mix", term, 0)
     debug.event("convert", "fresnel", node=rs_node.path(),
@@ -841,7 +841,7 @@ def convert_math_range(
         ("new_min", "outlow"), ("new_max", "outhigh"),
     )
     inputs = _named_inputs(rs_node)
-    for rs_name, mtlx_name in pairs:    # wiring first: it flips the signature the values land on
+    for rs_name, mtlx_name in pairs:    # wiring first: it changes the signature whose parms get the values
         src = inputs.get(rs_name)
         if src is None:
             continue
@@ -893,7 +893,7 @@ def convert_node(
     report: ConversionReport,
     target_input: str = "",
 ) -> hou.Node | None:
-    """Convert one input node, or report it and answer None; `target_input` passes to takers."""
+    """Convert one input node, or report it and return None; `target_input` is passed on."""
     conv = NODE_CONVERTERS.get(rs_node.type().name())
     if conv is None:
         report.skip(
@@ -1169,7 +1169,7 @@ def convert_particle_attribute(
     rs_node: hou.Node, dest_parent: hou.Node, report: ConversionReport,
     target_input: str = "",
 ) -> hou.Node | None:
-    """redshift::ParticleAttributeLookup -> mtlxgeompropvalue, the attribute name carried across."""
+    """redshift::ParticleAttributeLookup -> mtlxgeompropvalue, with the same attribute name."""
     attribute = rs_node.parm("attribute")
     name = str(attribute.eval()).strip() if attribute is not None else ""
     if not name:
@@ -1375,7 +1375,7 @@ def convert_redshift_material(
         )
         return None, None, report
 
-    with hou.undos.disabler():    # off the undo stack at BOTH ends (#278)
+    with hou.undos.disabler():    # off the undo stack at BOTH creation and deletion (#278)
         scratch = hou.node("/obj").createNode("matnet")
     try:
         vopnet = node_handler.rebuild_saved(source_mat, scratch)
@@ -1408,9 +1408,9 @@ def convert_redshift_container(vopnet, prefs_dir_parent, report):
     if mtlx is None:    # a blend with no convertible base; the reason is in the report
         return None, None
 
-    out_node = material.redshift_terminal(vopnet)    # bump and displacement live on the terminal
+    out_node = material.redshift_terminal(vopnet)    # bump and displacement are inputs of the terminal
     out_inputs = _named_inputs(out_node) if out_node is not None else {}
-    shader_inputs = _named_inputs(shader)    # bump: the shader's own input wins over the terminal's
+    shader_inputs = _named_inputs(shader)    # bump: the shader's own input takes precedence over the terminal's
     bump_src = (
         shader_inputs.get("geometry_normal")
         or shader_inputs.get("bump_input")

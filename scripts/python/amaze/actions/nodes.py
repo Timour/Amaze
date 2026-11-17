@@ -18,11 +18,11 @@ def add_asset(model, node: hou.Node, cats: str, tags: str, fav: bool,
     new_mat.set_data(name.strip() or node.name(), cats, tags, fav, label)
     new_mat.node_color = nodes.custom_node_color(node)
 
-    handler.staging = []    # the files wait to land with the row, as one unit
+    handler.staging = []    # the files are committed together with the row, as one change
     if not handler.save_node_cop(node, new_mat.mat_id, items=items):
         asset_record.discard(handler.staging)
         return ""
-    new_mat.cop_net = handler.cop_info    # carries `thumb_node`, read off the live display flag
+    new_mat.cop_net = handler.cop_info    # holds `thumb_node`, read from the node's current display flag
     if not model.add_saved(new_mat, handler.staging):
         debug.event("save", "node setup not saved - its database took neither row nor files",
                     name=new_mat.name, mat_id=new_mat.mat_id)
@@ -33,7 +33,7 @@ def add_asset(model, node: hou.Node, cats: str, tags: str, fav: bool,
     if handler.after_landing:
         row = model.find_asset_row_by_id(new_mat.mat_id)
         if row >= 0:
-            model._add_thumb_paths(row)    # the picture rendered after the tile showed
+            model._add_thumb_paths(row)    # the thumbnail was rendered after the tile appeared
     try:
         node.setUserData("assetlib_id", str(new_mat.mat_id))
     except hou.OperationFailed:
@@ -50,7 +50,7 @@ def import_asset_to_scene(model, index, context_node=None):
 
 
 def render_thumbnail(model, row: int) -> None:
-    """Re-render one asset's tile from its saved files; a context with no picture says so instead."""
+    """Re-render one asset's tile from saved files; a context with no image shows a note instead."""
     try:
         asset = model.assets[row]
         info = asset.cop_net or {}

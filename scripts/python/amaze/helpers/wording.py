@@ -1,10 +1,10 @@
-"""Names as a sentence joins them, sizes as a message says them, names as USD accepts them."""
+"""Text helpers for messages: joined lists of names, byte sizes, and names valid in USD."""
 
 import re
 
 
 def and_list(words) -> str:
-    """`a`, `a and b`, `a, b and c` - the user's punctuation, one owner for every message."""
+    """`a`, `a and b`, `a, b and c` - the list punctuation every message uses, defined only here."""
     words = list(words)
     if len(words) <= 1:
         return "".join(words)
@@ -12,7 +12,7 @@ def and_list(words) -> str:
 
 
 def byte_size(count: int) -> str:
-    """`16 GB`, `1.5 MB`, `4 KB`, `900 bytes`: a size as a message says it, one decimal at most."""
+    """`16 GB`, `1.5 MB`, `4 KB`, `900 bytes`: a size as messages show it, one decimal at most."""
     for unit, scale in (("GB", 1024 ** 3), ("MB", 1024 ** 2), ("KB", 1024)):
         if count >= scale:
             return "%s %s" % (("%.1f" % (count / scale)).rstrip("0").rstrip("."), unit)

@@ -12,7 +12,7 @@ from amaze.helpers import helpers
 
 
 class HoudiniSpeaker:
-    """The log's dialogs and status line through Houdini, and what it records about Houdini."""
+    """Shows the log's dialogs and status line in Houdini, and records Houdini's details."""
 
     @staticmethod
     def dialog(text: str) -> None:
@@ -27,7 +27,7 @@ class HoudiniSpeaker:
 
     @staticmethod
     def status(text: str) -> None:
-        """Houdini's status line, which says who is speaking. ▸r/status-bar"""
+        """Set Houdini's status line, prefixed with `Amaze:` as the sender. ▸r/status-bar"""
         ui = getattr(hou, "ui", None)
         if ui is None:
             raise AttributeError("no hou.ui in this session")
@@ -73,7 +73,7 @@ class HoudiniSpeaker:
 
 
 def start() -> None:
-    """The first call of the pane and of every shelf tool: the log speaks through Houdini."""
+    """The first call of the pane and every shelf tool: the log shows its messages in Houdini."""
     debug.hand_over(HoudiniSpeaker)
 
 
@@ -99,11 +99,11 @@ def _find_panel():
 def save(node=None) -> None:
     """Right-click `Save to Amaze`. ▸p/save-section-row"""
     start()
-    panel = _find_panel()   # first: a refused save must not cost the selection
+    panel = _find_panel()   # first: a refused save must not change the selection
     if not panel:
         return
     door = getattr(panel, "save_from_node", None)
-    if door is None:    # the menu reloads from disk, the panel does not: an update awaits a restart
+    if door is None:    # the menu is reloaded from disk, the panel is not: an update needs a restart
         ui = getattr(hou, "ui", None)
         if ui is not None:
             ui.displayMessage(messages.RESTART_TO_FINISH_UPDATE,
@@ -115,7 +115,7 @@ def save(node=None) -> None:
 
 
 def node_renderer(node) -> str:
-    """The renderer a scene node's type implies, "" for none, by the save door's own detector."""
+    """The renderer of a scene node's type, `""` for none, detected as Save to Amaze does."""
     if node is None:
         return ""
     from amaze.render import nodes
@@ -132,13 +132,13 @@ def convertible(node, target) -> bool:
 
 
 def _chosen(node) -> list:
-    """The selection when `node` is in it, else `node` alone: the save door's rule."""
+    """The selection when `node` is in it, else `node` alone: the rule Save to Amaze uses."""
     selected = list(hou.selectedNodes())
     return selected if node in selected else [node]
 
 
 def _refusal(node, renderer, target) -> str:
-    """Why `node` cannot become `target`, or "" when it can."""
+    """Why `node` cannot be converted to `target`, or `""` when it can."""
     from amaze.render.material_conversion import engine
     if not renderer:
         return messages.NODE_NOT_A_MATERIAL % node.name()
@@ -146,18 +146,18 @@ def _refusal(node, renderer, target) -> str:
 
 
 def _convert_one(node, renderer, target, word, swap, report):
-    """One node's twin beside it, or with `swap` in its place, current and selected."""
+    """One node's converted copy beside it, or with `swap` in its place, current and selected."""
     from amaze.render.material_conversion import engine
     old_name, old_position = node.name(), node.position()    # read before a swap destroys the node
     made = engine.convert(node, renderer, target, node.parent(),
                           "%s_%s" % (old_name, word.lower()), report)
     if made.builder is not None:
-        made.builder.setPosition(old_position)    # a scripted createNode lands at the origin
-        helpers.auto_place(made.builder)    # to a free tile beside it, moving no other node
-        swapped = swap and made.shader is not None    # no shader: the old node stays, as a plain convert leaves it
+        made.builder.setPosition(old_position)    # a scripted createNode is placed at the origin
+        helpers.auto_place(made.builder)    # to a free position beside it, moving no other node
+        swapped = swap and made.shader is not None    # no shader: the old node is kept, as a plain convert keeps it
         if swapped:
             node.destroy()
-            made.builder.setName(old_name)    # exact: references by path reach the twin; a refusal undoes the whole step
+            made.builder.setName(old_name)    # exact: path references now find the copy; a refusal undoes the whole step
             made.builder.setPosition(old_position)
         made.builder.setCurrent(True, True)    # current and selected, as a node from the Tab menu is
     return made
@@ -173,7 +173,7 @@ def convert(node, target, swap=False) -> None:
     from amaze.render.material_conversion.report import ConversionReport
     ui = getattr(hou, "ui", None)
     chosen = _chosen(node)
-    word = renderers.get(target).engine    # the menu item's own word, Karma, where the library label says MaterialX
+    word = renderers.get(target).engine    # the menu item's name, Karma, where the library label shows MaterialX
     label = ("Convert and Swap to %s" if swap else "Convert to %s") % word
     skipped, reports, sources, twins = [], [], set(), []
     with hou.undos.group(label):    # one undo step per menu command, as Houdini's own; it covers the destroys
@@ -191,11 +191,11 @@ def convert(node, target, swap=False) -> None:
             if made.builder is not None:
                 twins.append(made.builder)
         for twin in twins:
-            twin.setSelected(True)    # setCurrent(True, True) cleared the twins made before it
-    if ui is None:    # no screen to say it on: the twins are the answer
+            twin.setSelected(True)    # setCurrent(True, True) cleared the copies made before it
+    if ui is None:    # no UI to show a message in: the converted nodes are the result
         return
     made_count = sum(1 for made, _report in reports if made.shader is not None)
-    if len(chosen) == 1 and skipped:    # one node refused: its sentence is the whole answer
+    if len(chosen) == 1 and skipped:    # one node refused: its reason is the only message
         ui.displayMessage(_refusal(node, node_renderer(node), target),
                           title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
     elif not skipped and made_count == len(chosen) \
@@ -204,7 +204,7 @@ def convert(node, target, swap=False) -> None:
             HoudiniSpeaker.status(messages.NODES_SWAPPED % (made_count, word) if swap
                                   else messages.NODES_CONVERTED % (made_count, word))
         else:
-            name = reports[0][1].mat_name    # the source's name, which a swapped twin now holds
+            name = reports[0][1].mat_name    # the source's name, which a swapped copy now has
             HoudiniSpeaker.status(messages.NODE_SWAPPED % (name, word) if swap
                                   else messages.NODE_CONVERTED % (name, word))
     else:
@@ -223,11 +223,11 @@ def _shelf_tool(*names):
     """A shelf tool's prologue: (ui, each of `names` imported), or None when it must stop there."""
     start()
     ui = getattr(hou, "ui", None)
-    if ui is None:    # a shelf tool runs where there is a screen to answer on
+    if ui is None:    # a shelf tool runs only where there is a UI to show messages
         return None
     try:
         for name in names:
-            __import__(name)    # the import statement's own door, so a broken install is said
+            __import__(name)    # what the import statement calls, so a broken install shows a message
     except ImportError as exc:
         ui.displayMessage(messages.AMAZE_NOT_IMPORTABLE % exc,
                           title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
@@ -236,7 +236,7 @@ def _shelf_tool(*names):
 
 
 def capture() -> None:
-    """The shelf's Capture: the panel button's own capture, a refusal shown in a dialog."""
+    """The shelf's Capture: the same capture as the panel button, a refusal shown in a dialog."""
     tool = _shelf_tool("amaze.core.scene_captures", "amaze.prefs.prefs")
     if tool is None:
         return
@@ -253,14 +253,14 @@ def capture() -> None:
 
 
 def check_for_updates() -> None:
-    """The shelf's Updates: the About tab's verdict and questions, in Houdini's message box."""
+    """The shelf's Updates: the About tab's result and confirmations, in Houdini's message box."""
     tool = _shelf_tool("amaze.core.updater", "amaze.dialogs.update_dialog")
     if tool is None:
         return
     ui, updater, update_dialog = tool
     found = updater.check()
     library = updater.configured_library()
-    if not found:    # up to date, no release, or unreachable: the sentence is the whole answer
+    if not found:    # up to date, no release, or unreachable: that message is all that is shown
         ui.displayMessage(found.sentence, title=messages.TITLE_AMAZE,
                           severity=(hou.severityType.Warning
                                     if found.verdict == updater.UNREACHABLE
@@ -280,7 +280,7 @@ def reload_asset_files() -> None:
         return
     _ui, hostos = tool
     hfs = os.path.realpath(hou.getenv("HFS") or "")
-    loaded = {hostos.comparable_path(p): p for p in hou.hda.loadedFiles()}    # one spelling each
+    loaded = {hostos.comparable_path(p): p for p in hou.hda.loadedFiles()}    # one path form per file
     new, again = [], []
     for root in hou.houdiniPath():
         if hfs and os.path.realpath(root).startswith(hfs):

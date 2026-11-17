@@ -18,7 +18,7 @@ __all__ = list(_DOOR) + ["reload_engine"]
 
 
 def _bind() -> None:
-    """Point every name in `_DOOR` at what its module holds NOW. ▸p/preview-door"""
+    """Rebind every name in `_DOOR` to its module's CURRENT attribute. ▸p/preview-door"""
     globals().update({name: getattr(module, name)
                       for name, module in _DOOR.items()})
 

@@ -18,7 +18,7 @@ from amaze.render import cop_nodes
 
 
 def make_karma_builder(parent: hou.Node, name: str) -> hou.Node:
-    """The mtlx builder, starters gone, connectors KEPT for wiring."""
+    """Make the mtlx builder: default shader nodes removed, connectors KEPT for wiring."""
     import voptoolutils
     builder = parent.createNode("subnet")
     builder.setName(wording.sanitize_usd_path(name) or "material", unique_name=True)
@@ -68,14 +68,14 @@ def wire_builder_output(builder, surface_node, displacement_node=None):
             if displacement_node is not None:
                 suboutput.setInput(1, displacement_node)
             return surface_node is not None
-    except hou.Error as exc:      # InvalidInput is a sibling ▸r/hou-errors
+    except hou.Error as exc:      # InvalidInput is not an OperationFailed ▸r/hou-errors
         debug.event("karma", "could not wire builder output", error=str(exc))
         debug.note("could not wire builder output: %s" % exc)
     return False
 
 
 def _plumbing_role(node):
-    """What a connector or subnet input/output is for: equal roles answer the same output."""
+    """What a connector or subnet input/output is for: equal roles mean the same output."""
     tname = node.type().name()
     if tname == "subnetconnector":
         kind, name = node.parm("connectorkind"), node.parm("parmname")
@@ -99,13 +99,13 @@ def replace_stock_plumbing(builder, loaded) -> int:
             continue
         name = stock.name()
         stock.destroy()
-        keeper.setName(name)    # the stock name: the network reads as a fresh builder
+        keeper.setName(name)    # the stock name, so the network looks like a new builder
         replaced += 1
     return replaced
 
 
 def place_plumbing_beside(plumbing, saved, gap: float = 1.0) -> None:
-    """Amaze's own connectors beside the saved nodes, which stay put: inputs left, outputs right."""
+    """Amaze's own connectors beside the saved nodes, left in place: inputs left, outputs right."""
     from amaze.helpers import helpers
     around = helpers.bounds(saved)
     if around is None:
@@ -154,7 +154,7 @@ CONNECTORS = ("subnetconnector", "suboutput")    # a container's plumbing, not t
 
 
 def is_marked_builder(node, renderer) -> bool:
-    """`renderer`'s own builder: a plain subnet carrying its mark, tested as the renderer tests it."""
+    """`renderer`'s own builder: a plain subnet with its mark, tested as the renderer tests it."""
     try:
         return (bool(renderer.builder_mark) and node.type().name() == "subnet"
                 and node.userData(renderer.builder_mark) == "1")
@@ -218,7 +218,7 @@ MATERIALS, NODES = library_files.MATERIALS, library_files.NODES    # the two sec
 
 
 def ensure_asset_folder(preferences, path: str) -> None:
-    """Make `path`'s folder if it is inside the library; refuse if it is not. ▸p/library-creation-doors"""
+    """Make `path`'s folder if inside the library; raise if not. ▸p/library-creation-doors"""
     folder = os.path.dirname(path)
     if not folder:
         return
@@ -227,7 +227,7 @@ def ensure_asset_folder(preferences, path: str) -> None:
         inside = os.path.relpath(folder, root)
     except ValueError:  # another drive, a UNC share or an empty path: never inside ▸r/relpath-valueerror
         raise hostos.PathEscape("%r does not stay inside %r" % (folder, root))
-    hostos.contained_join(root, inside)  # also answers for a library folder not created yet
+    hostos.contained_join(root, inside)  # also checks a library folder not created yet
     os.makedirs(folder, exist_ok=True)
 
 
@@ -250,7 +250,7 @@ def capture_builder(node) -> dict:
         try:
             expression = parm.expression()
             language = parm.expressionLanguage().name()
-        except hou.Error:      # no expression; family matters ▸r/hou-errors
+        except hou.Error:      # no expression; the exception class matters ▸r/hou-errors
             expression = None
         if expression is not None:
             values[parm.name()] = {"expr": expression, "lang": language}
@@ -314,7 +314,7 @@ def apply_builder(node, data: dict) -> None:
             if "keys" in spec:
                 _restore_keys(parm, spec["keys"])
             elif "expr" in spec:
-                language = getattr(hou.exprLanguage, spec.get("lang") or "", None)    # none before the field
+                language = getattr(hou.exprLanguage, spec.get("lang") or "", None)    # absent in records saved before the field existed
                 parm.setExpression(spec["expr"], language=language)
             elif "str" in spec:
                 parm.set(spec["str"])
@@ -327,7 +327,7 @@ def apply_builder(node, data: dict) -> None:
 
 def structure_signature(node) -> str:
     """A digest of a network's SHAPE. ▸p/structure-signature"""
-    while True:      # a lone wrapping container is transparent
+    while True:      # a lone wrapping container is skipped
         children = node.children()
         if len(children) == 1 and children[0].children():
             node = children[0]
@@ -361,7 +361,7 @@ def structure_signature(node) -> str:
 
 def staged_asset(preferences, mat, loader) -> "object":
     """Load a saved asset into staging for loader(); always destroyed."""
-    with hou.undos.disabler():      # else undo resurrects it ▸r/undo-groups
+    with hou.undos.disabler():      # else undo brings it back ▸r/undo-groups
         staging = hou.node("/obj").createNode("matnet")
         try:
             saved = asset_record.saved_builder(preferences, mat.mat_id, MATERIALS)
@@ -411,7 +411,7 @@ def clear_inherited_stamps(container: hou.Node, include_self=False) -> int:
                 continue
             item.destroyUserData("assetlib_id")
         except (AttributeError, hou.OperationFailed, hou.ObjectWasDeleted):
-            continue    # a dot or box carries no userData at all, and a vanished node has nothing left to clear
+            continue    # a dot or box carries no userData at all, and a deleted node has nothing left to clear
         cleared += 1
     return cleared
 
@@ -428,7 +428,7 @@ def empty_file_reason(file_name: str) -> str:
 
 
 def nothing_loaded(name: str, file_name: str) -> str:
-    """The refusal for a load that raised nothing and added no node. ▸r/node-items"""
+    """The error text for a load that raised nothing and added no node. ▸r/node-items"""
     return ('nothing could be loaded for "%s" - its .mat file looks '
             "corrupt or empty (%s)" % (name, file_name))
 
@@ -450,7 +450,7 @@ def load_items_strict(node: hou.Node, file_name: str) -> str:
         return ("its material file could not be loaded (%s) - %s"
                 % (file_name, str(failure).strip()
                    or "Houdini gave no reason"))
-    clear_inherited_stamps(node)    # the file's inner nodes carry stale stamps ▸r/inherited-stamps
+    clear_inherited_stamps(node)    # the file's inner nodes have stale stamps ▸r/inherited-stamps
     return ""
 
 
@@ -472,7 +472,7 @@ def copy_with_dots(nodes, parent) -> tuple:
 
 
 def node_type_available(type_name: str) -> bool:
-    """Is this type instantiable here? EVERY category - they span."""
+    """Is this type instantiable here? EVERY category is searched, as types span several."""
     if not type_name:
         return True
     try:
@@ -485,7 +485,7 @@ def node_type_available(type_name: str) -> bool:
 
 
 def register_in_materiallibrary(library, builder) -> bool:
-    """Cover `builder` with ONE entry. True when covered. ▸r/matlib-entries"""
+    """Make ONE library entry match `builder`; True when one does. ▸r/matlib-entries"""
     from amaze.helpers import helpers
     if library is None or builder is None:
         return False
@@ -638,7 +638,7 @@ def ocio_set() -> bool:
 
 
 class NodeHandler:
-    """Save, import and convert, against the user's live scene."""
+    """Save, import and convert, in the user's open scene."""
 
     def save_asset_pair(self, mat_path, write_mat, builder_node=None, asset_id="",
                         section=MATERIALS) -> None:
@@ -666,7 +666,7 @@ class NodeHandler:
                 raise hou.OperationFailed(
                     "the material file was not written (%s)" % mat_path
                 )
-            staged = []    # (target, a file written whole) and (record, its sections): one unit
+            staged = []    # (target, a completely written file) and (record, its sections): one change
             pending = getattr(self, "_pending_cop_promote", None)
             if pending:
                 staged.append((asset_record.TAKE, pending[1], pending[0]))
@@ -675,7 +675,7 @@ class NodeHandler:
             if record_path:    # read-replace-write: the metadata beside it is kept
                 staged.append((asset_record.RECORD, record_path, {asset_record.BUILDER: builder}))
             if getattr(self, "staging", None) is not None:
-                self.staging.extend(staged)    # the caller lands them with the row
+                self.staging.extend(staged)    # the caller commits them with the row
             elif preferences is not None:
                 asset_record.land(preferences, staged)
             else:
@@ -709,7 +709,7 @@ class NodeHandler:
                        "registered without one." % label)
 
     def _supply_thumbnail(self, asset_id, section=MATERIALS) -> bool:
-        """The hosted picture an import brought, saved as the asset's thumbnail; False if not."""
+        """The hosted image an import supplied, saved as the asset's thumbnail; False if not."""
         from PySide6 import QtGui
         from amaze.core import tile_icons
         image = QtGui.QImage(self.supplied_thumbnail)
@@ -722,9 +722,9 @@ class NodeHandler:
 
     def __init__(self, preferences: prefs.Prefs) -> None:
         self._preferences = preferences
-        self.staging = None    # a list: an asset's files wait there for the caller to land with its row
-        self.after_landing = []    # what reads the staged files, run by the caller once they landed
-        self.supplied_thumbnail = ""    # a picture an import brought, saved instead of a render
+        self.staging = None    # a list: an asset's files stay there until the caller commits them with its row
+        self.after_landing = []    # callables that read the staged files, run by the caller after the commit
+        self.supplied_thumbnail = ""    # an image an import supplied, saved instead of a render
         self.render_after_save = True    # False: a new save skips its render, a batch follows
         self._builder_node = None
         self._renderer = ""
@@ -753,7 +753,7 @@ class NodeHandler:
         return editors[0] if editors else None
 
     def get_current_network_node(self) -> None | hou.Node:
-        """The displayed network: an explicit override wins, else pwd()."""
+        """The displayed network: an explicit override if set, else pwd()."""
         if self._context_override is not None:
             return self._context_override
         editor = self.get_active_network_editor()
@@ -770,7 +770,7 @@ class NodeHandler:
         return self._renderer
 
     def get_renderer_from_node(self, node: hou.Node) -> str:
-        """The renderer a node's type implies, or the refusal answer."""
+        """The renderer a node's type implies, else `_renderer` unchanged: `""` on a new handler."""
         kind = node.type().name()
         for each in renderers.ALL:    # before the MaterialX walk: a marked builder may hold MaterialX
             if ((each.classic_container and kind == each.classic_container)
@@ -790,7 +790,7 @@ class NodeHandler:
         return self._renderer
 
     def import_targets(self, mat: material.Material, saved_type=None) -> set:
-        """Which of {"mat", "lop"} this material can be imported into; `saved_type` spares a read."""
+        """Which of {"mat", "lop"} this material can be imported into; `saved_type` saves a read."""
         if renderers.is_karma(mat.renderer):
             return {"mat", "lop"}
         if saved_type is None:
@@ -800,12 +800,12 @@ class NodeHandler:
         found = renderers.get(mat.renderer)
         if found is None:
             return {"mat"}
-        if saved_as_own_builder(found, saved_type):    # lives in both, as Karma's does
+        if saved_as_own_builder(found, saved_type):    # works in both, as Karma's does
             return {"mat", "lop"}
         return {"mat"}
 
     def _payload_or_refusal(self, mat, section=MATERIALS) -> tuple:
-        """(path, "") or ("", sentence) - ONE door. ▸p/material-import-door"""
+        """(path, `""`) or (`""`, message): the ONLY check. ▸p/material-import-door"""
         if not material.is_safe_asset_id(mat.mat_id):
             debug.event("import", "refused unsafe asset id",
                         material=mat.name, mat_id=str(mat.mat_id)[:120])
@@ -831,7 +831,7 @@ class NodeHandler:
         target: str = "auto",
         context_node: hou.Node | None = None,
     ):
-        """The import seam: (ok, reason, created); [] on refusal."""
+        """The import entry point: (ok, reason, created); [] on refusal."""
         self._builder_node = None
         self._context_override = context_node    # the network the target is read from, this import only
         self._held_builder = {}    # the builder is read once for this import, and only for it
@@ -845,7 +845,7 @@ class NodeHandler:
         return ok, reason, created
 
     def _import_asset_to_scene_inner(self, mat: material.Material, target: str = "auto"):
-        """Import to `auto`, `mat`, `lop` or the seam's network: (ok, why) ▸p/material-import-door"""
+        """Import to `auto`, `mat`, `lop` or `context_node`: (ok, why) ▸p/material-import-door"""
         from amaze.helpers import helpers
         payload, refusal = self._payload_or_refusal(mat)
         if refusal:
@@ -953,7 +953,7 @@ class NodeHandler:
         return (True, "")
 
     def _drop_created_container(self) -> None:
-        """Take back the library or matnet THIS import made, only while it is still empty."""
+        """Delete the library or matnet THIS import made, only while it is still empty."""
         container = self._import_path
         if container is None or self._use_existing_node:
             return
@@ -1004,11 +1004,11 @@ class NodeHandler:
                         error=str(exc))
 
     def cleanup(self):
-        """Remove what THIS import created, its COP companion too; a context node is never ours."""
+        """Remove what THIS import created, its COP companion too; never a context node."""
         try:
             self._remove_import_target()
         finally:
-            self._undo_cop_companion()    # one already in the scene is shared by name and stays
+            self._undo_cop_companion()    # one already in the scene is shared by name and is kept
 
     def _remove_import_target(self) -> None:
         """Destroy the builder, or the container this import made - never a context node."""
@@ -1051,7 +1051,7 @@ class NodeHandler:
                 + "context. Use Load Asset to /mat instead.",
             )
 
-        self._use_existing_node = False    # each branch says whether it reused, for THIS import
+        self._use_existing_node = False    # each branch sets whether it reused a node, for THIS import
         if world == "lop":
             refusal = self._set_lop_import_path()
             if refusal:
@@ -1091,7 +1091,7 @@ class NodeHandler:
         return curr
 
     def _set_lop_import_path(self) -> str:
-        """The Material Library the editor is in, else a refusal and nothing made."""
+        """The Material Library the editor is in, else the refusal text, creating nothing."""
         from amaze import messages
         curr = self.get_current_network_node()
         if curr is not None and is_material_library(curr):
@@ -1119,9 +1119,9 @@ class NodeHandler:
             self._use_existing_node = True
 
     def _saved_builder(self, mat: material.Material) -> dict:
-        """A material's `builder`, `<id>.json` first; held only while one import or rebuild runs."""
+        """A material's `builder`, `<id>.json` first; cached only during one import or rebuild."""
         held = getattr(self, "_held_builder", None)
-        if held is None:    # outside an import nothing is held, so nothing can go stale
+        if held is None:    # outside an import nothing is cached, so nothing can be stale
             return asset_record.saved_builder(self._preferences, mat.mat_id, MATERIALS)
         key = str(mat.mat_id)
         if key not in held:
@@ -1141,7 +1141,7 @@ class NodeHandler:
             self.load_interface_mtlx(mat)
             self.load_items_file_mtlx(mat)
             return (True, "")
-        if found.builder_mark and saved_type is None:    # only a renderer with its own builder asks
+        if found.builder_mark and saved_type is None:    # only a renderer with its own builder needs it
             saved_type = self._saved_builder(mat).get("type", "")
         if saved_as_own_builder(found, saved_type):
             self.load_own_builder(mat)
@@ -1151,7 +1151,7 @@ class NodeHandler:
         return (True, "")
 
     def rebuild_saved(self, mat: material.Material, scratch: hou.Node) -> hou.Node:
-        """A saved asset rebuilt inside `scratch` for reading, never placed; answers its builder."""
+        """Rebuild a saved asset inside `scratch` for reading, never placed; returns its builder."""
         self._hou_parent = scratch
         self._import_path = scratch
         self._use_existing_node = True
@@ -1304,7 +1304,7 @@ class NodeHandler:
             [c for c in self._builder_node.children() if c not in kept], kept)
         helpers.auto_place(self._builder_node)
 
-    COP_LIB_ROOT = "/obj/Amaze"    # the token saved files carry; the import maps it to the companion
+    COP_LIB_ROOT = "/obj/Amaze"    # the token written in saved files; the import maps it to the companion
 
     @property
     def cop_info(self) -> dict:
@@ -1359,7 +1359,7 @@ class NodeHandler:
         if not refs:
             return {}
 
-        net_name = wording.sanitize_usd_path(net_name, digit_may_lead=True)    # the token libraries already hold
+        net_name = wording.sanitize_usd_path(net_name, digit_may_lead=True)    # the token existing libraries already contain
         containers = []
         for _parm, _target, container in refs:
             if container not in containers:
@@ -1472,7 +1472,7 @@ class NodeHandler:
         return obj
 
     def companion_ref_map(self, mat) -> dict:
-        """The token path saved files carry, mapped to where this import put the COP network."""
+        """The token path in saved files, mapped to where this import put the COP network."""
         info = getattr(mat, "cop_net", {}) or {}
         landed = getattr(self, "_cop_companion_path", None)
         if not info.get("name") or not landed:
@@ -1486,7 +1486,7 @@ class NodeHandler:
         info = getattr(mat, "cop_net", {}) or {}
         if not info or not info.get("name"):
             return
-        file_name = material.payload_path(      # the writer's own call
+        file_name = material.payload_path(      # the same call the writer uses
             self._preferences, mat.mat_id, "_cop" + self._preferences.ext, MATERIALS)
         if not os.path.exists(file_name):
             debug.note("COP companion file missing for " + mat.name + " - skipped")
@@ -1512,7 +1512,7 @@ class NodeHandler:
             pass
         try:
             copnet.loadItemsFromFile(file_name)
-        except hou.LoadWarning as warning:    # a load that SUCCEEDED: destroying it would dangle the refs
+        except hou.LoadWarning as warning:    # a load that SUCCEEDED: destroying it would break the references
             debug.event("import", "cop companion load warning (non-fatal)",
                         material=mat.name, node=copnet.path(),
                         warning=str(warning)[:300])
@@ -1568,7 +1568,7 @@ class NodeHandler:
         )
 
         self._cop_info = {}
-        source = helpers.pick_cop_display_child(      # by NAME, read LIVE
+        source = helpers.pick_cop_display_child(      # by NAME, read NOW from the scene
             net, children=selection_nodes)
         if source is not None:
             self._cop_info = {"thumb_node": source.name()}
@@ -1579,7 +1579,7 @@ class NodeHandler:
         context = cop_nodes.context_of(node, items)
         thumb_node = self._cop_info.get("thumb_node", "")
 
-        def render_later():    # a SOP picture is read from the saved archive, so it waits for the landing
+        def render_later():    # a SOP thumbnail is rendered from the saved archive, so it runs after the commit
             self.after_save_thumbnail(
                 update, "Network", asset_id, node.path(),
                 lambda: thumbs.ThumbNailRenderer(self._preferences).render_network_thumbnail(
@@ -1609,7 +1609,7 @@ class NodeHandler:
         mat: material.Material,
         context_node: hou.Node | None = None,
     ):
-        """Rebuild a COP asset: direct into a matching context, else boxed."""
+        """Rebuild a COP asset: directly into a matching context, else in a new container."""
         from amaze.helpers import helpers
         file_name, refusal = self._payload_or_refusal(mat, NODES)
         if refusal:
@@ -1657,7 +1657,7 @@ class NodeHandler:
                 new_children = [
                     c for c in dest.children() if c not in before
                 ]
-                if not new_children:    # the load added no node, whatever it said ▸r/node-items
+                if not new_children:    # the load added no node, whatever its messages ▸r/node-items
                     for item in dest.allItems():
                         if item.path() not in held:
                             try:
@@ -1728,7 +1728,7 @@ class NodeHandler:
                     % (mat.name, exc)),
             )
         if not [child for child in target.children() if child not in held]:
-            container.destroy()    # ours, and empty: never left stamped in the scene
+            container.destroy()    # created here and empty: never left in the scene with a stamp
             return (False, debug.Damage(nothing_loaded(mat.name, file_name)))
         clear_inherited_stamps(container)    # before the container's own stamp below ▸r/inherited-stamps
         helpers.auto_place(container)
@@ -1765,7 +1765,7 @@ class NodeHandler:
                         open_interrupt_dialog=True):
                 return self._save_copy(node, asset_id, update, renderer)    # all scratch work ▸r/undo-groups
         finally:
-            self._discard_pending_cop_promote()    # a save that never reached the pair keeps no companion
+            self._discard_pending_cop_promote()    # a save that never reached `save_asset_pair` keeps no companion
 
     def _save_copy(self, node: hou.Node, asset_id: str, update: bool, renderer) -> bool:
         """Every material save: a scratch copy, its textures adopted, the pair written, a render."""
@@ -1777,7 +1777,7 @@ class NodeHandler:
             kind == "collect" or any(surface in kind for surface in KARMA_SURFACES))
         whole = not loose and (renderer is renderers.KARMA or is_marked_builder(node, renderer))
         sources = ([n for n in helpers.get_connected_nodes(node) if n.type().name() not in CONNECTORS]
-                   if loose else [node])    # a list stays a list: the thumbnail stage reads it so
+                   if loose else [node])    # kept as a list: the thumbnail stage reads it as one
         file_name = material.payload_path(
             self._preferences, asset_id, self._preferences.ext, MATERIALS)
         path_map = self.prepare_cop_companion(tuple(sources), asset_id, node.name())

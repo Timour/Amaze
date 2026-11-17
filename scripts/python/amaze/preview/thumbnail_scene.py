@@ -1,4 +1,4 @@
-"""What every thumbnail path shares: a forgiving parm set, and the Scene Viewer's OCIO."""
+"""Shared by every thumbnail path: a parm set that skips failures, and the Scene Viewer's OCIO."""
 
 import hou
 from amaze.core import debug

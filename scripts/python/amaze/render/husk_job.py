@@ -17,7 +17,7 @@ DELEGATES = {"Karma": "BRAY_HdKarma", "Octane": "HdOctaneRendererPlugin",
              "Redshift": "HdRedshiftRendererPlugin"}    # ▸r/redshift-thumbnail-paths
 RESTART_EVERY = {"Octane": 1}    # Octane keeps frame 1's material unless restarted
 KILL_AFTER = 5.0    # seconds a husk may outlive its terminate ▸r/redshift-thumbnail-paths
-STALL_SECONDS = 600    # quiet this long, a husk is killed; done tiles stay ▸r/redshift-thumbnail-stall
+STALL_SECONDS = 600    # silent this long, a husk is killed; finished tiles are kept ▸r/redshift-thumbnail-stall
 LOCAL_DATA = {"Redshift": "REDSHIFT_LOCALDATAPATH"}    # a renderer whose husk keeps its own cache and log
 PROGRESS = "ALF_PROGRESS"
 DONE = "AMAZE_FRAME_DONE"
@@ -106,7 +106,7 @@ class HuskJob(QtCore.QObject):
         env = {key: live.value(key) for key in live.keys()}
         variable = LOCAL_DATA.get(self.renderer)
         if variable:
-            env[variable] = local_data_path(self.renderer)    # apart from the session's own
+            env[variable] = local_data_path(self.renderer)    # separate from the session's own
         return env
 
     def _write_scripts(self) -> None:
@@ -164,11 +164,11 @@ class HuskJob(QtCore.QObject):
             self._terminated_at = time.monotonic()
 
     def _watch(self) -> bool:
-        """Kill a husk that ignored its terminate, or that went quiet; True once it is over."""
+        """Kill a husk that ignored its terminate, or went silent; True once it has ended."""
         if self._proc is None or self._finished:
             return self._finished
         now = time.monotonic()
-        if self._killed_at is not None:    # its pipe may stay open past its death: give up reading
+        if self._killed_at is not None:    # its pipe may stay open after it exits: stop reading
             return now - self._killed_at > KILL_AFTER
         if self._proc.poll() is not None:
             return False
@@ -226,12 +226,12 @@ class HuskJob(QtCore.QObject):
             self.frameDone.emit(frame)
 
     def _finish(self) -> None:
-        """Every frame back is done, whatever the exit: 22.0.482's husk exits 139 after its last."""
+        """All frames done is success, any exit code: 22.0.482's husk exits 139 after the last."""
         if self._finished:
             return
         self._finished = True
         try:
-            code = self._proc.wait(timeout=KILL_AFTER)    # a killed husk is dead; its pipe may not be
+            code = self._proc.wait(timeout=KILL_AFTER)    # a killed husk has exited; its pipe may still be open
         except subprocess.TimeoutExpired:
             code = -1
         if self._cancelled:
@@ -263,13 +263,13 @@ class HuskJob(QtCore.QObject):
                 debug.event("thumb", "husk killed at stop", pid=self._proc.pid)
                 try:
                     self._proc.wait(timeout=timeout)
-                except subprocess.TimeoutExpired:    # its files may still be open: the folder stays
+                except subprocess.TimeoutExpired:    # its files may still be open: the folder is kept
                     debug.event("thumb", "husk outlived its stop", pid=self._proc.pid)
         self.discard()
 
 
 class Jobs(QtCore.QObject):
-    """The one queue of thumbnail husks, run one at a time."""
+    """The single queue of thumbnail husk jobs, run one at a time."""
 
     activeChanged = QtCore.Signal(bool)
     progressed = QtCore.Signal(int, int)
@@ -317,7 +317,7 @@ class Jobs(QtCore.QObject):
         self.activeChanged.emit(True)
         try:
             self._running.start()
-        except OSError as exc:    # no husk to start: say so, and go on to the next
+        except OSError as exc:    # no husk to start: log a note, and start the next
             debug.event("thumb", "husk did not start", error=str(exc))
             debug.note("thumbnail render did not start: %s" % exc)
             self._running.discard()
@@ -331,7 +331,7 @@ class Jobs(QtCore.QObject):
         from amaze import preview
         if os.path.exists(exr) and preview.exr_to_png(exr, png, job.batch["ocio"], asset_id):
             self.thumbnailWritten.emit(asset_id)
-        else:    # the tile keeps its old picture: this line is the only trace
+        else:    # the tile keeps its old image: this log record is the only one
             debug.event("thumb", "frame done without a picture", asset_id=asset_id,
                         frame=frame, exr_found=os.path.exists(exr), renderer=job.renderer)
         try:
@@ -345,7 +345,7 @@ class Jobs(QtCore.QObject):
             self._next()
 
     def stop_now(self) -> None:
-        """At Houdini's exit: no husk outlives the session, and no job leaves its folder."""
+        """At Houdini's exit: no husk keeps running after it, and no job folder is left."""
         waiting, self._waiting = self._waiting, []
         for job in waiting:
             job.discard()

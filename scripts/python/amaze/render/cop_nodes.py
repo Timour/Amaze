@@ -1,8 +1,8 @@
-"""Contexts and containers for the Node section: where saved nodes land. ▸archive/cop_nodes.py"""
+"""Contexts and containers for the Node section: where saved nodes go. ▸archive/cop_nodes.py"""
 
 import hou
 
-CONTAINER_FOR = {    # child-type category -> the container type to create; the saved type wins
+CONTAINER_FOR = {    # child-type category -> the container type to create; the saved type comes first
     "Cop": "copnet",
     "Sop": "geo",
     "Dop": "dopnet",
@@ -26,7 +26,7 @@ NATIVE_HOST = {    # (destination category, asset context) -> the node Houdini i
 
 
 def accepts_context(node, context: str) -> bool:
-    """Whether `node`'s interior holds `context` children: the one creation gate ▸r/node-graph."""
+    """Whether `node`'s interior holds `context` children: the one creation check ▸r/node-graph."""
     try:
         return node.childTypeCategory().name() == context
     except (AttributeError, hou.OperationFailed):
@@ -38,7 +38,7 @@ def load_target_in(container: hou.Node, context: str) -> hou.Node:
     if accepts_context(container, context):
         return container
 
-    for section in ("EditableNodes", "DiveTarget"):    # what the wrapper says about itself, in preference order
+    for section in ("EditableNodes", "DiveTarget"):    # the network the HDA declares in its sections, in preference order
         try:
             definition = container.type().definition()
             path = definition.sections()[section].contents().strip()
@@ -96,7 +96,7 @@ def container_type_in(dest: hou.Node, context: str,
         if _holds(candidate):
             return candidate
 
-    return None    # stop here: a registry scan answers hosts nobody knows ▸p/nodes-section
+    return None    # stop here: a scan of all node types would return unknown containers ▸p/nodes-section
 
 
 def is_container(node: hou.Node) -> bool:

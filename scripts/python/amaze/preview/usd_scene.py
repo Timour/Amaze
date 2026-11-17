@@ -1,4 +1,4 @@
-"""The USD preview scene, every renderer's: one stage per batch, written for husk to render."""
+"""The USD preview scene for every renderer: one stage per batch, written for husk to render."""
 import datetime
 import os
 
@@ -23,7 +23,7 @@ COPIED_WHOLE = ("subnet",) + USD_BUILDERS + (renderers.REDSHIFT.classic_containe
 
 
 def _karma_settings(net, preferences) -> tuple:
-    """Karma CPU's render properties and ROP: (settings, rop); husk's `-o` names the picture."""
+    """Karma CPU's render properties and ROP: (settings, rop); husk's `-o` names the image."""
     render_props = net.createNode("karmarenderproperties")
     render_props.parm("camera").set(RENDER_CAMERA)
     render_props.parm("res_mode").set("manual")
@@ -33,7 +33,7 @@ def _karma_settings(net, preferences) -> tuple:
     render_props.parm("resolutiony").set(preferences.rendersize)
     render_props.parm("engine").set("cpu")    # CPU, not XPU ▸r/karma-thumbnail-cost
     render_props.parm("engine").pressButton()
-    render_props.parm("samplesperpixel").set(    # the CPU dial; `pathtracedsamples` is XPU's
+    render_props.parm("samplesperpixel").set(    # the CPU sample count; `pathtracedsamples` is XPU's
         preferences.karma_rendersamples)
     render_props.parm("enabledof").set(0)
     render_props.parm("enablemblur").set(0)
@@ -145,7 +145,7 @@ def build_usd_scaffold(preferences, renderer="Karma"):
 
             render_props, rop = RENDER_SETTINGS[renderer](net, preferences)
         except Exception:
-            net.destroy()    # a half-built scaffold is never handed back
+            net.destroy()    # a half-built scaffold is never returned
             raise
     return {
         "renderer": renderer,
@@ -160,7 +160,7 @@ def build_usd_scaffold(preferences, renderer="Karma"):
 
 
 def _stage_material(lib, node, asset_id, prim_path: str) -> str:
-    """One material copied into `lib` as its one entry at `prim_path`; the path, "" with none."""
+    """Copy one material into `lib` as its only entry at `prim_path`; the path, `""` with none."""
     curr_items = node
     if not isinstance(node, list):
         if curr_items.type().name() in COPIED_WHOLE:
@@ -235,7 +235,7 @@ def _stage_material(lib, node, asset_id, prim_path: str) -> str:
 
 
 def write_batch(scaffold, items, out_dir: str) -> dict:
-    """Every (asset_id, node) into ONE USD file for husk, a material prim each. ▸r/husk-startup"""
+    """Write each (asset_id, node) to ONE USD file for husk, a prim each. ▸r/husk-startup"""
     net = scaffold["net"]
     render_props = scaffold["render_props"]
     rop = scaffold["rop"]
@@ -270,10 +270,10 @@ def write_batch(scaffold, items, out_dir: str) -> dict:
 
 
 def exr_to_png(exr_path: str, png_path: str, ocio, asset_id: str = "") -> bool:
-    """husk's ACEScg EXR as the tile's PNG, through the viewer's OCIO display and view."""
+    """Convert husk's ACEScg EXR to the tile's PNG, through the viewer's OCIO display and view."""
     display, view, space = ocio
     copnet = None
-    with hou.undos.disabler():    # a create/destroy pair on the live stack returns on Ctrl+Z
+    with hou.undos.disabler():    # a create/destroy pair on the undo stack comes back on Ctrl+Z
         try:
             if hostver.has_new_cops():
                 copnet = hou.node("/obj").createNode("copnet")
@@ -315,14 +315,14 @@ def exr_to_png(exr_path: str, png_path: str, ocio, asset_id: str = "") -> bool:
         debug.event("thumb", "karma thumbnail written",    # a black, empty or stale PNG look alike
                     asset_id=str(asset_id), **image_stats(png_path))
     if not os.path.exists(png_path) or os.path.getsize(png_path) == 0:
-        debug.event("thumb", "karma produced no PNG",    # checked, never assumed: the old one stays
+        debug.event("thumb", "karma produced no PNG",    # checked, never assumed: the previous PNG is kept
                     asset_id=str(asset_id), path=png_path)
         return False
     return True
 
 
 def image_stats(path: str) -> dict:
-    """A rendered image measured, so a black-looking tile reads as all black, transparent or content."""
+    """Measure a rendered image: is a black-looking tile all black, transparent or content."""
     info = {"path": path}
     try:
         info["exists"] = os.path.exists(path)

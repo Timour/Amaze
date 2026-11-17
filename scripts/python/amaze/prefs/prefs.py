@@ -1,4 +1,4 @@
-"""What a setting is; reading and writing the document is `persistence.py`'s."""
+"""The Prefs class and its settings; persistence.py reads and writes the document."""
 
 import os
 
@@ -18,11 +18,11 @@ RAM_CACHE_RANGE = (64, 4096)
 CONVERSIONS_RANGE = (1, 8)
 DOWNLOADS_RANGE = (1, 16)
 SCROLL_SPEED_RANGE = (0.1, 3.0)  # a factor; its row shows it as a percent
-LIBRARY_LIST_LIMIT = 20  # Add stops here; only Manage takes a library off the list
+LIBRARY_LIST_LIMIT = 20  # Add stops here; only Manage removes a library from the list
 
 
 def _clamped(value, bounds) -> int:
-    """`value` as an int inside `bounds`; junk raises, so `_through_setter` uses the default."""
+    """`value` as an int in `bounds`; bad input raises, so `_through_setter` uses the default."""
     low, high = bounds
     return max(low, min(high, int(value)))
 
@@ -36,7 +36,7 @@ def can_hold_a_library(folder: str) -> bool:
 
 
 def create_library(lib_dir: str) -> bool:
-    """A new library: its `DataBase.json`, version in it; True once there. ▸p/library-creation-doors"""
+    """Create `DataBase.json` with its version; True once it exists. ▸p/library-creation-doors"""
     from amaze.core import documents, guard, library_policy, library_settings
     held = guard.Guard(lib_dir)
     reading = held.read(library_files.MASTER)
@@ -52,7 +52,7 @@ def create_library(lib_dir: str) -> bool:
 
 
 def _renderer_settings(cls):
-    """Each renderer's Show/Hide switch and sample count, as properties, from the one table."""
+    """Each renderer's Show/Hide switch and sample count, as properties, from renderers.ALL."""
     for renderer in renderers.ALL:
         switch, samples = "_" + renderer.switch, "_" + renderer.samples
         setattr(cls, renderer.switch, property(
@@ -76,13 +76,13 @@ class Prefs(_Persistence):
         self.data = {}
         for _prop, attr, default in SHARED_KEYS.values():  # load() reads the same table
             setattr(self, attr, default)
-        self._shared_seen: dict = {}  # stored key -> the value last adopted from or pushed to the library
+        self._shared_seen: dict = {}  # stored key -> the value last read from or written to the library
         self._show_categories = True
         self._section_filters: dict = {}  # the Filter menu's choice per section key, as the entry's id
         self._view_mode = "grid"
         self._thumbsize = 128  # the grid view; `_thumbsize_list` is the list view. Both match ClickSlider.DEFAULT_VALUE
         self._thumbsize_list = 128
-        self._library_user = ""  # who this is; blank = nobody picked yet, never backfilled ▸p/identity-is-chosen
+        self._library_user = ""  # who this is; blank = no user chosen yet, never filled in automatically ▸p/identity-is-chosen
         self._file_folders: list[str] = []  # the File section's one folder/favourite/last quartet, and since 2026-08-12 the only one
         self._file_favorites: list[str] = []
         self._last_file_folder = ""
@@ -90,7 +90,7 @@ class Prefs(_Persistence):
         self._file_location_records: dict = {}  # last-known copy of the library's location records, path -> record
         self._show_notes = False
         self._notes_panel_width = 0  # 0 = never dragged, so the 450px launch width applies
-        self._sidebar_width = 0  # same contract, 220px design width
+        self._sidebar_width = 0  # same rule, 220px design width
         self._icon_line_weight = "template"  # "template" (thin 10px stroke) or "feather" (the icon set's default)
         self._sidebar_counts = True  # entry counts on INDIVIDUAL categories/folders; "All" always shows its total regardless
         self._cache_dir = ""  # "" = this OS's own convention via hostos.cache_root()
@@ -98,11 +98,11 @@ class Prefs(_Persistence):
         self._hide_empty_categories = True  # for Materials, "empty" respects the active renderer filter
         self._enabled_sections = _default_sections()
         self._accent_color = "#5d7abd"  # size slider / progress bar; matches ClickSlider.LEFT_COLOR
-        self._scroll_speed = 0.75  # wheel factor for the grid/list, settled by live tuning and shown as a percent in Preferences
-        self._step_size = True  # the toolbar size slider rests only on its marks
+        self._scroll_speed = 0.75  # wheel factor for the grid/list, chosen by testing live and shown as a percent in Preferences
+        self._step_size = True  # the toolbar size slider stops only on its marks
         self._debug_mode = False
         self._addon_betas = False  # Check for Updates on the Add-On tab takes each add-on's newest beta
-        self._users_blocks: dict = {}  # uid -> the keys that are one user's on THIS machine
+        self._users_blocks: dict = {}  # uid -> that user's keys on THIS machine
 
     @property
     def dir(self) -> str:
@@ -112,12 +112,12 @@ class Prefs(_Persistence):
     @dir.setter
     def dir(self, val: str) -> None:
         self._directory = val
-        self._adopt_shared()  # take the library's answers before this machine's defaults are saved
+        self._adopt_shared()  # read the library's values before this machine's defaults are saved
 
     @property
     def libraries(self) -> list[str]:
         """The Library list, the most recently opened first - a copy."""
-        return list(getattr(self, "_libraries", ()))    # a Prefs built through __new__ answers too
+        return list(getattr(self, "_libraries", ()))    # also for a Prefs built through __new__
 
     def note_library_opened(self, folder: str) -> bool:
         """Put `folder` first in the Library list; True when the list changed."""
@@ -133,7 +133,7 @@ class Prefs(_Persistence):
         return True
 
     def remove_libraries(self, folders) -> bool:
-        """Take `folders` off the Library list, leaving the folders as they are; True when any went."""
+        """Take `folders` off the Library list, the folders untouched; True when any was removed."""
         gone = {hostos.comparable_path(folder) for folder in folders if folder}
         kept = [known for known in self.libraries
                 if hostos.comparable_path(known) not in gone]
@@ -289,7 +289,7 @@ class Prefs(_Persistence):
         locations.unregister(self, path)
 
     def relocate_file_folder(self, old: str, new: str) -> bool:
-        """Re-point one registered location, KEEPING ITS ROW - its name, colour and Show ▸ ticks travel."""
+        """Change a location's path, KEEPING ITS ROW: its name, colour and Show ▸ ticks stay."""
         from amaze.core import locations
         if not old or not new or old == new:
             return False
@@ -310,7 +310,7 @@ class Prefs(_Persistence):
 
     def add_file_favorite(self, path: str) -> None:
         from amaze.core import locations
-        locations.set_favourite(self, path, True)  # remove's symmetric half
+        locations.set_favourite(self, path, True)  # the counterpart of remove_file_favorite
 
     def remove_file_favorite(self, path: str) -> None:
         from amaze.core import locations
@@ -416,7 +416,7 @@ class Prefs(_Persistence):
 
     @property
     def path_style(self) -> str:
-        """How Amaze writes paths: home, job or hip pin one variable; absolute writes the literal."""
+        """How Amaze writes paths: home, job or hip use that variable; absolute, the full path."""
         return self._path_style
 
     @path_style.setter

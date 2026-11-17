@@ -1,4 +1,4 @@
-"""This computer's `settings.json`: one read, another pane's save folded in, written whole."""
+"""This computer's `settings.json`: read once, merged with another pane's save, written whole."""
 
 from __future__ import annotations
 
@@ -9,12 +9,12 @@ import os
 from amaze.core import debug
 from amaze.helpers import hostos
 
-FILENAME = "settings.json"    # machine-local: it POINTS at the library, and never travels
+FILENAME = "settings.json"    # machine-local: it holds the library's path and is never copied to another machine
 
-READ, FRESH, BLIND = "read", "fresh", "blind"    # parsed; absent; there and unreadable: no writes
+READ, FRESH, BLIND = "read", "fresh", "blind"    # parsed; missing; present but unreadable: no writes
 
-COMBINE, FIELDS = "combine", "fields"    # a list: ours, then theirs; a table: field by field
-RULES = {    # another pane's save, folded per key; a key no rule names keeps ours where both moved
+COMBINE, FIELDS = "combine", "fields"    # a list: this pane's, then the other's; a table: field by field
+RULES = {    # merge of another pane's save per key; a key with no rule keeps ours if both changed it
     "users/*/file_folders": COMBINE,
     "users/*/file_favorites": COMBINE,
     "users/*/file_location_records": FIELDS,
@@ -43,7 +43,7 @@ def _deeper(path: tuple) -> bool:
 
 
 def _fold(rule: str, ours, theirs, path: tuple = ()):
-    """Ours with what the other pane added folded in, or None when it adds nothing."""
+    """This pane's value with the other pane's additions merged in; None when there are none."""
     if rule == COMBINE:
         if not (isinstance(ours, list) and isinstance(theirs, list)):
             return None
@@ -73,7 +73,7 @@ def _fold(rule: str, ours, theirs, path: tuple = ()):
 
 
 class SettingsFile:
-    """One holder's copy of `settings.json`, with the base its next save merges against."""
+    """One Prefs object's copy of `settings.json`, with the base its next save merges against."""
 
     def __init__(self, path: str) -> None:
         self.path = path
@@ -106,7 +106,7 @@ class SettingsFile:
         return copy.deepcopy(self._table)
 
     def _theirs(self):
-        """What is on disk now, when another holder saved since our read; None otherwise."""
+        """What is on disk now, when another SettingsFile saved since our read; None otherwise."""
         try:
             with open(self.path, "rb") as handle:
                 raw = handle.read()
@@ -127,7 +127,7 @@ class SettingsFile:
             moved = not based or value != base[key]
             if key not in staged:
                 if moved:
-                    staged[key] = value    # their addition, or their edit to what we dropped
+                    staged[key] = value    # the other pane's addition, or its edit to a key we removed
                 continue
             if staged[key] == value:
                 continue
@@ -138,13 +138,13 @@ class SettingsFile:
                     staged[key] = folded
                 continue
             if moved and based and staged[key] == base[key]:
-                staged[key] = value    # only they moved it
+                staged[key] = value    # only the other pane changed it
         for key in list(staged):
             if key not in theirs and key in base and staged[key] == base[key]:
-                staged.pop(key)    # their delete of what we left alone
+                staged.pop(key)    # the other pane deleted a key we did not change
 
     def replace(self, document: dict, settle=None) -> bool:
-        """Write a whole document, another pane's save folded in; False when it was refused."""
+        """Write a whole document, merged with another pane's save; False when not written."""
         if not self.writable:
             return False
         staged = {str(key): value for key, value in document.items()}

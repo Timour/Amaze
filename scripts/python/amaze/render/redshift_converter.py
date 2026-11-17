@@ -38,10 +38,10 @@ class RedshiftMaterial(NamedTuple):
 
 def make_redshift_builder(parent: hou.Node, name: str) -> hou.Node:
     """An `rs_usd_material_builder` holding one `redshift_usd_material` terminal. ▸r/redshift-nodes"""
-    builder = parent.createNode(renderers.REDSHIFT.usd_builder)    # a classic one is refused by the LOP import door
+    builder = parent.createNode(renderers.REDSHIFT.usd_builder)    # a classic one is refused by the LOP import
     builder.setName(wording.sanitize_usd_path(name), unique_name=True)
     for child in list(builder.children()):
-        if child.type().name() not in material.REDSHIFT_TERMINALS + ("suboutput",):    # the stock terminal and the suboutput it feeds stay; the stock shader goes
+        if child.type().name() not in material.REDSHIFT_TERMINALS + ("suboutput",):    # the stock terminal and the suboutput it feeds are kept; the stock shader is removed
             child.destroy()
     if material.redshift_terminal(builder) is None:
         builder.createNode("redshift_usd_material")
@@ -49,7 +49,7 @@ def make_redshift_builder(parent: hou.Node, name: str) -> hou.Node:
 
 
 def wire_redshift_output(builder, shader, displacement=None) -> bool:
-    """Surface and Displacement onto the terminal, by role; answers whether the surface landed."""
+    """Wire Surface and Displacement into the terminal, by role; whether the surface was wired."""
     terminal = material.redshift_terminal(builder)
     if terminal is None:
         return False
@@ -63,7 +63,7 @@ def wire_redshift_output(builder, shader, displacement=None) -> bool:
                 try:
                     terminal.setNamedInput(spelling, node, 0)
                     landed = landed or role == "surface"
-                except hou.Error as exc:    # InvalidInput is a sibling ▸r/hou-errors
+                except hou.Error as exc:    # InvalidInput is not an OperationFailed ▸r/hou-errors
                     debug.event("redshift", "could not wire the terminal",
                                 role=role, error=str(exc))
                 break
@@ -71,7 +71,7 @@ def wire_redshift_output(builder, shader, displacement=None) -> bool:
 
 
 def build_redshift_material(parent, name, produce) -> RedshiftMaterial:
-    """The Redshift engine: `produce(builder)` answers (shader, displacement); this owns the rest."""
+    """Redshift engine: `produce(builder)` returns (shader, displacement); this does the rest."""
     builder = make_redshift_builder(parent, name)
     result = produce(builder)
     if isinstance(result, tuple):
@@ -146,7 +146,7 @@ def convert_karma_network(source: hou.Node, builder: hou.Node, report: Conversio
 
     wired_inputs = _named_inputs(src)
     for rs_name, mtlx_name in pairs:
-        _copy_constant_parm(src, mtlx_name, rs, rs_name)    # the value crosses whether or not a texture rides the input
+        _copy_constant_parm(src, mtlx_name, rs, rs_name)    # the value is copied whether or not a texture is wired to the input
         feeding = wired_inputs.get(mtlx_name)
         if feeding is None:
             continue
@@ -155,7 +155,7 @@ def convert_karma_network(source: hou.Node, builder: hou.Node, report: Conversio
 
     mapped = ({mtlx_name for _rs_name, mtlx_name in pairs} | {karma for karma, _rs in normals}
               | {"displacement", "tangent", "coat_normal"})
-    for mtlx_name, feeding in wired_inputs.items():    # a texture on an input the table does not carry is reported, not dropped
+    for mtlx_name, feeding in wired_inputs.items():    # a texture on an input the table does not map is reported, not dropped
         if mtlx_name not in mapped and feeding is not None:
             report.skip('"%s" feeds %s, which the Redshift shader has no matching input for'
                         % (feeding.name(), mtlx_name))
@@ -184,7 +184,7 @@ def convert_karma_network(source: hou.Node, builder: hou.Node, report: Conversio
 
 
 def _constant_behind(node) -> hou.Node | None:
-    """The mtlxconstant a wire carries, seen through mtlxdot pass-throughs; None for anything else."""
+    """The mtlxconstant feeding a wire, through mtlxdot pass-throughs; None for anything else."""
     for _hop in range(8):
         if node is None:
             return None
@@ -233,8 +233,8 @@ def _uv_scale(image: hou.Node) -> tuple:
 
 
 def _pair(node: hou.Node, name: str, default: tuple) -> tuple:
-    """A (u, v) input's value: a wired constant's when one feeds it, else the node's live slot."""
-    constant = _constant_behind(_named_inputs(node).get(name))    # a wired constant outranks the parm
+    """A (u, v) input's value: a wired constant's when one feeds it, else the node's own parm."""
+    constant = _constant_behind(_named_inputs(node).get(name))    # a wired constant takes precedence over the parm
     source, names = ((constant, _signature_slots(constant, "value"))
                      if constant is not None
                      else (node, _signature_slots(node, name)))
@@ -263,7 +263,7 @@ def convert_image(node: hou.Node, builder: hou.Node, report: ConversionReport, r
 
 
 def convert_tiledimage(node: hou.Node, builder: hou.Node, report: ConversionReport, role: str):
-    """mtlxtiledimage -> its image's sampler, the tiling and offset composed in. ▸r/rs-sampler-uv"""
+    """mtlxtiledimage -> its image's sampler, the tiling and offset combined in. ▸r/rs-sampler-uv"""
     sampler = convert_image(node, builder, report, role)
     tiling = _pair(node, "uvtiling", (1.0, 1.0))
     scale = tuple(c * t for c, t in zip(_uv_scale(node), tiling))
@@ -288,7 +288,7 @@ def convert_normalmap(node: hou.Node, builder: hou.Node, report: ConversionRepor
 
 
 def convert_displacement(node: hou.Node, builder: hou.Node, report: ConversionReport, role: str = "data"):
-    """mtlxdisplacement -> RS Displacement as a height field, `scale` across. ▸r/redshift-nodes"""
+    """mtlxdisplacement -> RS Displacement as a height field, `scale` copied. ▸r/redshift-nodes"""
     disp = builder.createNode("redshift::Displacement")
     disp.setName(wording.sanitize_usd_path(node.name()), unique_name=True)
     if _effective_signature(node) == "vector3":    # a tangent-space vector (encoding 0, space 2), not a height ▸r/redshift-nodes
@@ -421,12 +421,12 @@ def convert_dot(node: hou.Node, builder: hou.Node, report: ConversionReport, rol
 
 
 def convert_constant(node: hou.Node, builder: hou.Node, report: ConversionReport, role: str):
-    """A constant has no Redshift node: copies its value and answers None, so nothing is wired."""
+    """A constant has no Redshift node: None, so `_connect` copies its value and wires nothing."""
     return None
 
 
 def _signature_slots(node: hou.Node, name: str) -> tuple:
-    """The parm names for one MaterialX input, live slot first. ▸r/mtlx-vop-tuple-parms"""
+    """The parm names for one MaterialX input, current signature's first. ▸r/mtlx-vop-tuple-parms"""
     return ("%s_%s" % (name, _effective_signature(node)), name)
 
 
@@ -455,7 +455,7 @@ NODE_CONVERTERS = {    # MaterialX node type, version stripped -> converter; any
 NODE_CONVERTERS.update({category: convert_math for category in TWO_INPUT_MATH})
 
 
-CLASSIC_TERMINAL = material.REDSHIFT_TERMINALS[0]    # `redshift_material`, the OBJ-only output the upgrade leaves behind
+CLASSIC_TERMINAL = material.REDSHIFT_TERMINALS[0]    # `redshift_material`, the OBJ-only output the upgrade does not keep
 
 
 def _bypass_dots(builder: hou.Node) -> None:
@@ -474,7 +474,7 @@ def upgrade_to_usd_builder(builder: hou.Node) -> hou.Node:
     name = builder.name()
     terminals = [c for c in builder.children()
                  if c.type().name() in material.REDSHIFT_TERMINALS]    # a legacy container may hold the classic output, a USD one, or both
-    feeds = {}    # USD terminal input -> (source node name, output index); its own feeds win
+    feeds = {}    # USD terminal input -> (source node name, output index); the USD terminal's own take precedence
     for terminal in sorted(terminals, key=lambda t: t.type().name() == CLASSIC_TERMINAL, reverse=True):
         for conn in terminal.inputConnections():
             if conn.inputNode() is None:    # an empty slot below a wired one is listed as a connection to nothing ▸r/redshift-nodes
@@ -484,7 +484,7 @@ def upgrade_to_usd_builder(builder: hou.Node) -> hou.Node:
     movers = [c for c in builder.children()
               if c.type().name() not in material.REDSHIFT_TERMINALS]
     fresh = make_redshift_builder(builder.parent(), name + "_usd")
-    try:    # the container's colour and user data, which carries the row's id
+    try:    # the container's colour and user data, which holds the row's id
         fresh.setColor(builder.color())
         fresh.setPosition(builder.position())
         for key, value in builder.userDataDict().items():
@@ -495,7 +495,7 @@ def upgrade_to_usd_builder(builder: hou.Node) -> hou.Node:
         nodes.apply_builder(fresh, nodes.capture_builder(builder))
     except Exception as exc:                          # noqa: BLE001
         debug.event("redshift", "container interface not carried", error=str(exc))
-    _bypass_dots(builder)    # moveNodesTo takes nodes only, so a wire through a network dot would die with the old container
+    _bypass_dots(builder)    # moveNodesTo takes nodes only, so a wire through a network dot would be lost with the old container
     if movers:
         hou.moveNodesTo(movers, fresh)
     terminal = material.redshift_terminal(fresh)

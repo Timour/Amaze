@@ -7,7 +7,7 @@ from amaze.render import nodes
 
 
 class Rebuilder:
-    """What `library_conversion.convert` asks about and hands the classic Materials to."""
+    """The object `library_conversion.convert` queries and passes the classic Materials to."""
 
     def __init__(self, preferences, ask) -> None:
         self._preferences = preferences

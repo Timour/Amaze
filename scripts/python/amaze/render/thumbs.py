@@ -21,7 +21,7 @@ from amaze.helpers import helpers, hostos
 
 
 def _undo_free(method):
-    """`method` run whole inside one undo disabler: its staged work is nobody's Ctrl+Z."""
+    """Run `method` entirely inside one undo disabler: its temporary nodes never reach Ctrl+Z."""
     @functools.wraps(method)
     def run(*args, **kwargs):
         with hou.undos.disabler():    # nests safely in a caller's ▸r/undo-groups
@@ -54,8 +54,8 @@ class ThumbNailRenderer:
         if not items:
             return False
         try:
-            scaffold = preview.build_usd_scaffold(preferences, renderer)    # one stage, the batch's
-        except hou.Error as exc:    # a renderer this Houdini lacks refuses its settings node
+            scaffold = preview.build_usd_scaffold(preferences, renderer)    # one stage for the whole batch
+        except hou.Error as exc:    # a renderer this Houdini lacks cannot create its settings node
             debug.exception("thumbnail stage", exc, renderer=renderer, materials=len(items))
             return False
         if scaffold is None:    # no Scene Viewer to read OCIO from
@@ -69,7 +69,7 @@ class ThumbNailRenderer:
             shutil.rmtree(job_dir, ignore_errors=True)
             return False
         except BaseException:
-            shutil.rmtree(job_dir, ignore_errors=True)    # not ours to answer, but the folder is
+            shutil.rmtree(job_dir, ignore_errors=True)    # not handled here, but the folder is still removed
             raise
         finally:
             with hou.undos.disabler():    # a bare destroy brings the scaffold back on Ctrl+Z
@@ -86,7 +86,7 @@ class ThumbNailRenderer:
 
     @staticmethod
     def render_assets(preferences, mats) -> None:
-        """Re-render library materials: each renderer's in ONE husk; one with no husk is named."""
+        """Re-render library materials: each renderer's in ONE husk; one with no husk is listed."""
         groups = {}
         refused = []
         for mat in mats:
@@ -112,7 +112,7 @@ class ThumbNailRenderer:
 
     @staticmethod
     def _render_group(preferences, renderer: str, mats) -> None:
-        """Import each into /mat, write the batch from them, and clear them away again."""
+        """Import each into /mat, write the batch from them, then delete them."""
         handlers = []
         items = []
         refused = []
@@ -244,10 +244,10 @@ class ThumbNailRenderer:
             try:
                 with hou.undos.disabler():
                     candidate = hou.node("/out").createNode("flipbook")  # renders with the viewport's configured renderer
-                if candidate.parm("camera") is not None:  # no camera parm: destroyed below, and the Karma CPU fallback takes over
+                if candidate.parm("camera") is not None:  # no camera parm: destroyed below, and the Karma CPU ROP is used instead
                     rop = candidate
                     renderer_used = "flipbook ROP (viewport renderer)"
-                    preview.safe_set(cam, "orthowidth", ortho_width * 2.0)  # quadrant compensation, flipbook only; never gate on device scale ▸r/platform-files
+                    preview.safe_set(cam, "orthowidth", ortho_width * 2.0)  # quadrant compensation, flipbook only; never conditional on device scale ▸r/platform-files
                     preview.safe_set(cam, "tx", world_center[0] + ortho_width * 0.5)  # half the intended span, not the doubled one
                     preview.safe_set(cam, "ty", world_center[1] + ortho_width * 0.5)
                     preview.safe_set(rop, "vobjects", geo.path())  # scoped to our nodes, not the user's whole /obj scene and lights
@@ -372,13 +372,13 @@ class ThumbNailRenderer:
                 return False
             picture_parm.set(out_path)
             rop.render()
-            if not os.path.exists(out_path):  # an ESC lands here too: an interrupted flipbook returns without raising
+            if not os.path.exists(out_path):  # an ESC also ends up here: an interrupted flipbook returns without raising
                 debug.note("geometry thumbnail - render ended without "
                     "an image for " + base + " (interrupted mid-"
                     "render, or the renderer declined the file)")
                 return False
             return True
-        finally:  # both ends off the undo stack, like create_thumb_sop ▸r/undo-groups
+        finally:  # creation and deletion both off the undo stack, like create_thumb_sop ▸r/undo-groups
             with hou.undos.disabler():
                 for node in (rop, light, cam, geo):
                     if node is not None:
@@ -389,7 +389,7 @@ class ThumbNailRenderer:
 
     def render_network_thumbnail(self, context, asset_id: str,
                                  thumb_node: str = "") -> bool | None:
-        """The one Cop-or-Sop thumbnail resolver: None when the context has no picture, else success."""
+        """Render a Cop or Sop thumbnail: None when the context has no image, else success."""
         ctx = str(context or "").strip().lower()
         if ctx not in ("sop", "cop", ""):
             return None
@@ -474,7 +474,7 @@ class ThumbNailRenderer:
             temp.loadItemsFromFile(file_name, ignore_load_warnings=True)
 
             out = None
-            if source_name:  # the name recorded at save time wins over the fallback picker
+            if source_name:  # the name recorded at save time is tried before the fallback picker
                 out = temp.node(source_name)
                 if out is None:
                     debug.note("COP thumbnail - recorded source node '"
@@ -533,5 +533,5 @@ class ThumbNailRenderer:
             return True
         finally:
             if temp is not None:
-                with hou.undos.disabler():  # off the stack at BOTH ends, like create_thumb_sop
+                with hou.undos.disabler():  # off the undo stack at BOTH creation and deletion, like create_thumb_sop
                     temp.destroy()

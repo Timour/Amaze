@@ -21,7 +21,7 @@ def _read_ui_scale() -> float:
         return 1.0
     if factor <= 0:
         return 1.0
-    return factor    # H22 reports Global UI Size alone; Qt's dpr does the screen
+    return factor    # H22 reports Global UI Size alone; Qt's dpr handles the screen
 
 
 def screen_ratio(widget=None) -> float:
@@ -35,7 +35,7 @@ def screen_ratio(widget=None) -> float:
         return 1.0
 
 
-UI_SCALE = _read_ui_scale()      # the no-widget verdict, kept for chrome built before any window exists
+UI_SCALE = _read_ui_scale()      # the scale read without a widget, for chrome built before any window exists
 
 
 def ui_px(value):
@@ -54,14 +54,14 @@ MIN_UI_POINTS = 12   # the smallest readable size before the UI scale ▸r/font-
 FONT_ROLES = {       # a role is a scale and a weight, never a literal size ▸r/font-sizing
     "comments_title": {"scale": 1.0, "bold": True},    # the Comments subject name, beside its type
     "empty_headline": {"scale": 1.25, "bold": True},   # the empty grid's headline, over its one explaining sentence
-    "empty_quote": {"scale": 1.0, "italic": True},     # the first-run blank's quotation and its attribution, drawn at the sentence's size
+    "empty_quote": {"scale": 1.0, "italic": True},     # the empty first-run grid's quotation and its attribution, drawn at the sentence's size
 }
 
 
 def point_size(source, scale: float = 1.0):
     """`scale` times `source`'s point size, or None when it has none to scale. ▸r/font-sizing"""
     points = source.pointSizeF()
-    return points * scale if points > 0 else None   # `> 0` because a font sized in PIXELS answers -1, and Qt refuses any size at or below zero
+    return points * scale if points > 0 else None   # `> 0` because a font sized in PIXELS returns -1, and Qt rejects any size at or below zero
 
 
 def ui_font(source=None) -> QtGui.QFont:
@@ -125,7 +125,7 @@ _derived = {}
 
 @functools.cache
 def _read():
-    """The active theme's three roles as QColors, read once a session: a live switch is not followed."""
+    """The active theme's three roles as QColors, read once a session; later changes are ignored."""
     try:
         values = _theme_values()
         if values:
@@ -222,7 +222,7 @@ def color_hex(name: str) -> str:
 
 
 def houdini_color(name: str, fallback: str) -> QtGui.QColor:
-    """Houdini's own colour `name` from the active scheme; `fallback` with no UI to ask."""
+    """Houdini's own colour `name` from the active scheme, else `fallback`."""
     qt = getattr(hou, "qt", None)    # absent in hython ▸r/houdini-code-look
     if qt is not None:
         try:
@@ -233,11 +233,11 @@ def houdini_color(name: str, fallback: str) -> QtGui.QColor:
 
 
 def syntax_inks() -> dict:
-    """Houdini's syntax colours by kind; its dark scheme's when the live ones suit a light ground."""
+    """Houdini's syntax colours by kind; its dark scheme's when the current ones are for light."""
     from amaze import amazetheme
     live = {kind: houdini_color(name, fallback)
             for kind, (name, fallback) in amazetheme.CODE_SYNTAX.items()}
-    if live["plain"].lightnessF() < 0.5:    # Houdini's light scheme: unreadable on Amaze's ground
+    if live["plain"].lightnessF() < 0.5:    # Houdini's light scheme: unreadable on Amaze's dark background
         live = {kind: QtGui.QColor(fallback)
                 for kind, (_name, fallback) in amazetheme.CODE_SYNTAX.items()}
     return live
@@ -248,7 +248,7 @@ def list_ground() -> QtGui.QColor:
     from amaze import amazetheme
     name, fallback = amazetheme.LIST_GROUND
     ground = houdini_color(name, fallback)
-    return ground if ground.lightnessF() < 0.5 else QtGui.QColor(fallback)    # Amaze's ink is light
+    return ground if ground.lightnessF() < 0.5 else QtGui.QColor(fallback)    # Amaze's text is light
 
 
 def _derive(theme, name):

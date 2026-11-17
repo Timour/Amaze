@@ -20,7 +20,7 @@ _ONLINE_TABLES = (    # the shipped online tables: (source name, file)
     ("RGL", "rgl_materials.json"),
 )
 
-_RGL_CLASSES = (    # keyword classes for RGL, first match wins, so order matters ▸r/generator-facts
+_RGL_CLASSES = (    # keyword classes for RGL, the first match is used, so order matters ▸r/generator-facts
     ("Film", ("vinyl", "wrap", "wrapping", "film")),
     ("Paint", ("paint", "lacquer", "coating", "varnish", "primer")),
     ("Fabric", ("felt", "silk", "satin", "velvet", "wool", "cotton",
@@ -157,7 +157,7 @@ def _own_roughness(fact):
     roughness = fact.get("roughness")
     if roughness is None or roughness <= 0.0:
         return None
-    if roughness >= 0.99 and fact_kind(fact) == "metal":    # the same saturated-fit ceiling the borrow pool excludes - a fully diffuse metal is not a thing
+    if roughness >= 0.99 and fact_kind(fact) == "metal":    # the saturated-fit limit `_measured_roughness` also excludes - no real metal is fully diffuse
         return None
     return float(roughness)
 
@@ -172,13 +172,13 @@ def _measured_roughness(facts, kind, rng, fallback):
 
 
 def _drift(color, rng, amount=0.04):
-    """A colour nudged per channel by up to `amount` of itself."""
+    """A colour scaled per channel by up to `amount` of itself."""
     return [_clamp(c * rng.uniform(1.0 - amount, 1.0 + amount))
             for c in color]
 
 
 def _recolour(color, rng, hue_shift=1.0):
-    """A recoloured pigment: hue free at hue_shift 1.0, else within it; saturation and value nudged."""
+    """A recoloured pigment: any hue at hue_shift 1.0, else within it; saturation, value varied."""
     hue, sat, val = colorsys.rgb_to_hsv(*[_clamp(float(c)) for c in color])
     if hue_shift >= 1.0:
         hue = rng.random()
@@ -362,7 +362,7 @@ def vary_spec(spec: dict, rng=None) -> dict:
         elif isinstance(value, (int, float)):
             number = float(value)
             if key in keep_state and (number <= 0.0 or number >= 1.0):
-                out[key] = number          # a state, not a dial
+                out[key] = number          # an on/off state, not a value to vary
             elif "roughness" in key:
                 out[key] = _clamp(number * rng.uniform(0.6, 1.5))
             elif key.endswith("IOR"):

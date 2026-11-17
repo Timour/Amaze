@@ -45,7 +45,7 @@ _UNC_RE = re.compile(r"^[\\/]{2}[^\\/]")    # a Windows share, `\\server` or `//
 
 
 def foreign_path(path: str) -> bool:
-    """Whether `path` is spelled for another platform; `os.path` answers nonsense about one."""
+    """Whether `path` is in another platform's form; `os.path` gives wrong results for one."""
     raw = str(path or "")
     if not raw:
         return False
@@ -58,7 +58,7 @@ def foreign_path(path: str) -> bool:
 def volume_unreachable(path: str) -> bool:
     """The path's volume is not mounted, which `os.path.isdir` cannot tell from a deleted folder."""
     if foreign_path(path):
-        return True    # the other platform's spelling cannot be judged here, so it is never gone
+        return True    # another platform's path cannot be checked here: unreachable, never deleted
     path = os.path.abspath(path)
     if is_windows():
         drive = os.path.splitdrive(path)[0]
@@ -71,7 +71,7 @@ def volume_unreachable(path: str) -> bool:
 
 
 def rehome(path: str) -> str:
-    """A foreign absolute path moved under this machine's home, or unchanged if that is not here."""
+    """A foreign absolute path rebased onto this machine's home; unchanged if that is missing."""
     clean = (path or "").replace("\\", "/")
     match = _HOME_PREFIX_RE.match(clean)  # only homes under /Users or /home are recognised
     home = os.path.expanduser("~").replace("\\", "/").rstrip("/")
@@ -84,7 +84,7 @@ def rehome(path: str) -> str:
 
 
 def _ensure_dir(new_dir: str) -> str:
-    """`new_dir`, made if missing; a failed write surfaces at the write site, not here."""
+    """`new_dir`, created if missing; a failure raises at the later write, not here."""
     check_sandbox(new_dir)
     try:
         os.makedirs(new_dir, exist_ok=True)
@@ -95,14 +95,14 @@ def _ensure_dir(new_dir: str) -> str:
 
 _cache_override = globals().get("_cache_override", "")  # user-chosen cache root, "" for the OS default; survives a reload
 
-CACHE_DIR_ENV = "AMAZE_CACHE_DIR"  # environment override; beats a cleared user preference
+CACHE_DIR_ENV = "AMAZE_CACHE_DIR"  # environment override; used when the user preference is empty
 
 
-_cache_generation = globals().get("_cache_generation", 0)  # bumped when the cache root moves; re-resolve a memo on change
+_cache_generation = globals().get("_cache_generation", 0)  # incremented when the cache root changes; cached paths recompute on change
 
 
 def cache_generation() -> int:
-    """How many times the cache root has been repointed this session."""
+    """How many times the cache root has been changed this session."""
     return _cache_generation
 
 
@@ -140,12 +140,12 @@ def _real_cache_root() -> str:
 
 
 def config_root() -> str:
-    """The per-user settings folder: the sandbox's stand-in when armed, else this OS's own."""
+    """The per-user settings folder: inside sandbox_home() when sandboxed, else this OS's own."""
     return _ensure_dir(_sandboxed_root("config") or real_config_root())
 
 
 def log_root() -> str:
-    """The per-user log folder: the sandbox's stand-in when armed, else this OS's own."""
+    """The per-user log folder: inside sandbox_home() when sandboxed, else this OS's own."""
     return _ensure_dir(_sandboxed_root("logs") or real_log_root())
 
 
@@ -200,7 +200,7 @@ def machine_name() -> str:
             break
     raw = raw.split(".")[0]
     cleaned = re.sub(r"[^A-Za-z0-9_-]+", "-", raw).strip("-")
-    return cleaned[:32] or os_tag()  # the OS tag when nothing survives
+    return cleaned[:32] or os_tag()  # the OS tag when no character is left
 
 
 def open_path(path: str) -> None:
@@ -218,7 +218,7 @@ def open_path(path: str) -> None:
             reveal_path(path)
 
 
-FOLDER_ICON_FILE = "Icon\r"    # macOS: the file inside a folder that carries the folder's own icon
+FOLDER_ICON_FILE = "Icon\r"    # macOS: the file inside a folder that holds the folder's own icon
 _SET_FOLDER_ICON = (    # NSWorkspace writes that file and marks the folder, through the system's own JavaScript
     'ObjC.import("AppKit"); function run(argv) { return $.NSWorkspace.sharedWorkspace'
     ".setIconForFileOptions($.NSImage.alloc.initWithContentsOfFile(argv[0]), argv[1], 0); }")
@@ -230,7 +230,7 @@ _READONLY, _HIDDEN, _SYSTEM = 0x1, 0x2, 0x4    # Windows file attributes
 
 
 def _add_attributes(path: str, attributes: int) -> bool:
-    """Windows: `attributes` added to what `path` carries; whether they were set."""
+    """Windows: add `attributes` to those `path` has; whether they were set."""
     import ctypes
     kernel = ctypes.windll.kernel32    # type: ignore[attr-defined]
     kernel.GetFileAttributesW.restype = ctypes.c_uint32
@@ -241,7 +241,7 @@ def _add_attributes(path: str, attributes: int) -> bool:
 
 
 def _give_windows_folder_icon(folder: str, ico: str) -> bool:
-    """The icon and a `desktop.ini` naming it, both hidden in `folder`; an ini there is left alone."""
+    """Copy in the icon and a `desktop.ini` naming it, both hidden; not when `folder` has an ini."""
     ini = os.path.join(folder, WINDOWS_FOLDER_INI)
     if not os.path.isfile(ico) or os.path.lexists(ini):
         return False
@@ -252,13 +252,13 @@ def _give_windows_folder_icon(folder: str, ico: str) -> bool:
             handle.write("[.ShellClassInfo]\nIconResource=%s,0\n" % WINDOWS_FOLDER_ICON)
         _add_attributes(icon, _HIDDEN)
         _add_attributes(ini, _HIDDEN | _SYSTEM)
-        return _add_attributes(folder, _READONLY)    # Explorer reads the ini of a folder marked so
+        return _add_attributes(folder, _READONLY)    # Explorer reads the ini of a read-only folder
     except (OSError, AttributeError):
         return False
 
 
 def give_folder_icon(folder: str, artwork: str) -> bool:
-    """`folder` shown with `artwork`.icns on macOS or `artwork`.ico on Windows, unless it carries one."""
+    """Give `folder` `artwork`.icns on macOS or `artwork`.ico on Windows, unless it has an icon."""
     if not os.path.isdir(folder):
         return False
     if is_windows():
@@ -338,7 +338,7 @@ def preserve_unreadable(path: str, why: str = "") -> str:
 
 
 def _record(kind: str, message: str, **data) -> None:
-    """`debug.event` that cannot take the caller down with it."""
+    """`debug.event` that never raises to the caller."""
     try:
         from amaze.core import debug  # imported here: debug imports hostos
         debug.event(kind, message, **data)
@@ -347,7 +347,7 @@ def _record(kind: str, message: str, **data) -> None:
 
 
 def parses_as_json(raw: bytes) -> bool:
-    """Whether `raw` is a document this package could load - the health test the backup tiers gate on."""
+    """Whether `raw` is a document this package could load - the check the backup tiers use."""
     try:
         json.loads(raw.decode("utf-8-sig"))  # utf-8-sig, as every reader of a library JSON file
     except (UnicodeDecodeError, ValueError):
@@ -358,8 +358,8 @@ def parses_as_json(raw: bytes) -> bool:
 PEER_ABSENT = "absent"          # nothing there to merge with
 PEER_UNCHANGED = "unchanged"    # the same bytes this caller last saw
 PEER_CHANGED = "changed"        # `document` holds what is on disk now
-PEER_UNREADABLE = "unreadable"  # it is there and will not parse - REFUSE, never write over it
-PEER_HELD = "held"              # it is there and would not open just now - keep what you hold
+PEER_UNREADABLE = "unreadable"  # it exists and does not parse - never write over it
+PEER_HELD = "held"              # it exists and could not be opened now - keep the copy in memory
 
 
 class PeerFile(typing.NamedTuple):
@@ -370,7 +370,7 @@ class PeerFile(typing.NamedTuple):
 
 
 def file_fingerprint(raw: bytes) -> tuple:
-    """`(size, sha256)` of these bytes - the ONE identity every merge path compares. ▸r/peer-read"""
+    """`(size, sha256)` of these bytes - the one value every merge path compares. ▸r/peer-read"""
     return (len(raw), hashlib.sha256(raw).hexdigest())
 
 
@@ -487,7 +487,7 @@ def replace_file(src: str, dst: str) -> None:
 
 
 class NoExclusiveRename(OSError):
-    """This drive has no rename that refuses a taken name. ▸r/no-replace-rename"""
+    """This drive has no rename that fails when the destination exists. ▸r/no-replace-rename"""
 
 
 _RENAME_EXCL = 0x4    # macOS sys/stdio.h, for renamex_np
@@ -503,7 +503,7 @@ def _libc():
 
 
 def _flagged_rename(source: bytes, dest: bytes) -> int:
-    """0 when the rename that refuses a taken name renamed, else its errno. ▸r/no-replace-rename"""
+    """0 when the no-replace rename succeeded, else its errno. ▸r/no-replace-rename"""
     import ctypes
     try:
         if is_macos():
@@ -519,10 +519,10 @@ def _flagged_rename(source: bytes, dest: bytes) -> int:
 
 
 def rename_exclusive(source: str, dest: str) -> bool:
-    """Rename in one call that refuses a taken name, False when taken. ▸r/no-replace-rename"""
+    """Rename in one call that never replaces; False when `dest` exists. ▸r/no-replace-rename"""
     if is_windows():
         try:
-            os.rename(source, dest)    # Windows refuses a taken name itself
+            os.rename(source, dest)    # on Windows os.rename itself fails when `dest` exists
         except FileExistsError:
             return False
         return True
@@ -556,7 +556,7 @@ def unique_scratch(path: str, suffix: str = ".writing",
         dir=directory, prefix=os.path.basename(path) + ".", suffix=suffix)  # `suffix` goes last, so it sets the extension
     os.close(handle)
     if not create:
-        discard_scratch(scratch)  # the name only, for a writer that cannot be handed an existing file
+        discard_scratch(scratch)  # keep only the name, for a writer that cannot write to an existing file
     return scratch
 
 
@@ -567,11 +567,11 @@ def render_scratch(path: str, tag: str = "rendering") -> str:
 
 
 def promote_scratch(scratch: str, path: str) -> None:
-    """fsync `scratch`, set the destination's mode and swap it into place; may raise. ▸r/atomic-writes"""
+    """fsync `scratch`, then rename it over `path` with its mode; may raise. ▸r/atomic-writes"""
     check_sandbox(path)
     handle = os.open(scratch, os.O_RDWR)  # on Windows `os.fsync` needs a writable handle
     try:
-        os.fsync(handle)  # before the swap, so the rename never points at a partial file
+        os.fsync(handle)  # before the rename, so `path` never names a partial file
     finally:
         os.close(handle)
     mode = _DEFAULT_FILE_MODE
@@ -623,7 +623,7 @@ def check_deletable(path: str) -> None:
     delete, share_all, open_existing = 0x00010000, 0x7, 3
     handle = kernel32.CreateFileW(os.path.abspath(path), delete, share_all, None,
                                   open_existing, 0, None)
-    if handle in (None, wintypes.HANDLE(-1).value):    # a holder that did not share delete: Python's own open() is one
+    if handle in (None, wintypes.HANDLE(-1).value):    # opened by a program without delete sharing: Python's own open() is one
         code = ctypes.get_last_error()
         raise OSError(errno.EACCES, ctypes.FormatError(code).strip(), path, code)
     kernel32.CloseHandle(handle)
@@ -668,31 +668,31 @@ def scratch_beside(path: str, suffix: str = ".writing"):
         yield scratch
         promote_scratch(scratch, path)
     finally:
-        discard_scratch(scratch)  # several files promoted as one unit use the primitives instead
+        discard_scratch(scratch)  # saving several files as one change uses unique_scratch and promote_scratch instead
 
 
-SANDBOX_VAR = "AMAZE_SANDBOX"  # the environment variable that arms the sandbox, below
+SANDBOX_VAR = "AMAZE_SANDBOX"  # the environment variable that turns on the sandbox below
 
 
 class SandboxRefused(RuntimeError):
-    """A write that would have left the sandbox; raised only while the sandbox is armed."""
+    """Raised for a write outside the temp folder, only while the sandbox is on."""
 
 
 def sandboxed() -> bool:
     return os.environ.get(SANDBOX_VAR, "") in ("1", "true", "yes")
 
 
-SANDBOX_HOME_VAR = "AMAZE_SANDBOX_HOME"  # read only while armed; the suite points it into its temp dir
+SANDBOX_HOME_VAR = "AMAZE_SANDBOX_HOME"  # read only while sandboxed; the test suite sets it to a folder in its temp dir
 
 
 def sandbox_home() -> str:
-    """The temp folder standing in for the user's own while armed, made on first ask; "" unarmed."""
+    """The temp folder used as home while sandboxed, created on first call; `""` otherwise."""
     if not sandboxed():
         return ""
     home = os.environ.get(SANDBOX_HOME_VAR, "").strip()
     if not home:
         home = tempfile.mkdtemp(prefix="amaze_sandbox_home_")
-        os.environ[SANDBOX_HOME_VAR] = home  # the environment, so a reload and a child find the same one
+        os.environ[SANDBOX_HOME_VAR] = home  # set in the environment, so a reload and a child process use the same one
         atexit.register(shutil.rmtree, home, True)
     return home
 
@@ -703,7 +703,7 @@ def _sandboxed_root(kind: str) -> str:
 
 
 def check_sandbox(path: str) -> None:
-    """Raise `SandboxRefused` for a write outside temp while armed. ▸p/hand-run-script-is-unguarded"""
+    """Sandboxed: raise SandboxRefused for writes outside temp. ▸p/hand-run-script-is-unguarded"""
     if not sandboxed():
         return
     resolved = os.path.realpath(path)
@@ -730,7 +730,7 @@ class _Recorded:
 
 def write_json_atomic(path: str, data, indent: int = 4,
                       sort_keys: bool = False, serialised=None) -> tuple:
-    """The JSON front door, never half-done; `serialised` is the caller's utf-8 dumps of `data`."""
+    """Write JSON atomically; `serialised`, when given, is the caller's utf-8 dumps of `data`."""
     check_sandbox(path)
     with scratch_beside(path) as scratch:
         if serialised is not None:
@@ -784,7 +784,7 @@ def why_failed(exc: OSError, path: str = "") -> tuple:
     cause = _FAILURE_CAUSES.get(getattr(exc, "errno", None),
                                 FAILED_UNKNOWN)
     if getattr(exc, "winerror", None) in _HELD_WINERRORS:
-        cause = FAILED_HELD  # the native code outranks the errno, which reads a held file as EACCES
+        cause = FAILED_HELD  # the native code takes precedence over the errno, which is EACCES for a file in use
     target = _windows_refusing_file(path) if cause == FAILED_READ_ONLY else None
     cause = FAILED_HELD if target == FAILED_HELD else cause
     where = os.path.dirname(path) or path
@@ -832,7 +832,7 @@ def comparable_path(path: str) -> str:
 
 
 def _home_root() -> str:
-    """Home in canonical spelling, its own function so a test can pin it."""
+    """Home in canonical form, its own function so a test can patch it."""
     return canonical_path_key(os.path.expanduser("~"))
 
 
@@ -842,7 +842,7 @@ def storage_path_key(path: str) -> str:
         return ""  # empty stays empty, never "."
     trailing = "/" if str(path).endswith(("/", "\\")) else ""  # a trailing separator is kept
     path = canonical_path_key(path)
-    amaze = os.environ.get("AMAZE", "")  # a Houdini package's `env` entries land in `os.environ`, so $AMAZE resolves here without `hou`
+    amaze = os.environ.get("AMAZE", "")  # a Houdini package's `env` entries are set in `os.environ`, so $AMAZE resolves here without `hou`
     for var, root in (("$AMAZE", canonical_path_key(amaze) if amaze else ""),  # $AMAZE first: the install may live under home
                       ("~", _home_root())):  # Python's home, not Houdini's $HOME ▸p/home-spelling-unproven
         if not root or root in ("/", "."):
@@ -884,7 +884,7 @@ def matched_extension(name: str, extensions) -> str:
     for ext in extensions:
         ext = ext.lower()
         if lowered.endswith(ext) and len(ext) > len(best):
-            best = ext  # the longest match wins, so `x.bgeo.sc` gives `.bgeo.sc`
+            best = ext  # the longest match is used, so `x.bgeo.sc` gives `.bgeo.sc`
     return best
 
 
@@ -895,7 +895,7 @@ def has_extension(name: str, extensions) -> bool:
     """`matched_extension` as a yes or no, in one C call: for a per-file loop."""
     try:
         endings = _endings.get(extensions)
-    except TypeError:    # a list: nothing to remember it by
+    except TypeError:    # a list is unhashable, so it is not cached
         return bool(matched_extension(name, extensions))
     if endings is None:
         endings = _endings[extensions] = tuple(ext.lower() for ext in extensions if ext)
@@ -903,17 +903,17 @@ def has_extension(name: str, extensions) -> bool:
 
 
 class PathEscape(ValueError):
-    """A composed path landed outside the directory it had to stay in."""
+    """A joined path resolved outside the directory it must stay inside."""
 
 
 @functools.lru_cache(maxsize=64)
 def _real_base(base: str) -> str:
-    """`base` with its links resolved, once: a base retargeted later only refuses joins."""
+    """`base` with its links resolved, cached: if `base` later points elsewhere, joins only fail."""
     return os.path.realpath(base)
 
 
 def _under_real_base(real_base: str, parts):
-    """realpath(join(base, *parts)) built on the resolved base, a lstat a name; None: ask realpath."""
+    """realpath(join(base, *parts)) from the real base, one lstat per name; None: use realpath."""
     names = []
     for part in parts:
         if os.path.isabs(part) or os.path.splitdrive(part)[0]:
@@ -930,7 +930,7 @@ def _under_real_base(real_base: str, parts):
             return os.path.join(current, *names[index + 1:])    # realpath appends what it cannot stat
         if (stat.S_ISLNK(st.st_mode)
                 or getattr(st, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT):
-            return None    # a link or a junction: only realpath knows where it lands
+            return None    # a link or a junction: only realpath can resolve its target
     return current
 
 
@@ -954,7 +954,7 @@ _WIN_RESERVED_NAMES = re.compile(
 def safe_filename(name: str, fallback: str = "unnamed") -> str:
     """A string made safe as a file or directory name on every OS, else `fallback`."""
     cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", str(name))  # the characters Windows forbids
-    cleaned = cleaned.rstrip(". ")  # Windows silently DROPS a trailing dot or space, which changes the name behind the caller's back
+    cleaned = cleaned.rstrip(". ")  # Windows silently DROPS a trailing dot or space, which changes the name without telling the caller
     if not cleaned:
         return fallback
     if _WIN_RESERVED_NAMES.match(cleaned.split(".")[0]):

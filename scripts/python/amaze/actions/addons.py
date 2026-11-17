@@ -6,7 +6,7 @@ from amaze.helpers import hostver
 
 
 def check(betas: bool) -> tuple:
-    """What the store has newer than what is installed, as (name, version, url), and the sentence."""
+    """What the store has newer than what is installed, as (name, version, url), and the message."""
     try:
         store = addons.store_versions(betas)
     except (OSError, ValueError) as exc:
@@ -20,13 +20,13 @@ def check(betas: bool) -> tuple:
 
 
 def install(found, root: str) -> str:
-    """Install what `check` found into the Amaze at `root`; the sentence saying what happened."""
+    """Install what `check` found into the Amaze at `root`; the message that reports it."""
     import functools
     import hou
     from amaze.helpers import helpers
     done = []
     running = hostver.houdini_version()
-    temp_dir = hou.getenv("HOUDINI_TEMP_DIR")    # Houdini's scratch, as the thumbnail jobs use
+    temp_dir = hou.getenv("HOUDINI_TEMP_DIR")    # Houdini's temp folder, which the thumbnail jobs also use
     downloading = functools.partial(helpers.download_operation, messages.DOWNLOADING_ADDONS)
     try:
         for name, version, url in found:
@@ -36,5 +36,5 @@ def install(found, root: str) -> str:
         if not done:
             return str(exc)
         rest = messages.ADDONS_REST_STOPPED if str(exc) == messages.DOWNLOAD_STOPPED else str(exc)
-        return "%s %s" % (messages.ADDONS_INSTALLED % ", ".join(done), rest)    # what landed is said
+        return "%s %s" % (messages.ADDONS_INSTALLED % ", ".join(done), rest)    # the add-ons installed before the error are named
     return messages.ADDONS_INSTALLED % ", ".join(done)

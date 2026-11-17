@@ -10,14 +10,14 @@ from amaze.prefs import prefs as prefs_mod
 
 
 def index_unreadable(lib_dir: str) -> bool:
-    """The Materials database is there and does not read: Repair can restore or rebuild it."""
+    """Whether the Materials database exists but cannot be read: Repair can restore or rebuild."""
     if not lib_dir or not os.path.isdir(lib_dir):
         return False
     return guard.Guard(lib_dir).read(library_files.MATERIALS).verdict == guard.CORRUPT
 
 
 def index_unopenable(lib_dir: str) -> str:
-    """Why the library will not OPEN here, "" when it opens or is absent; never one for Repair."""
+    """Why the library cannot OPEN here, `""` when it opens or is absent; never one for Repair."""
     if not lib_dir:
         return ""
     path = os.path.join(lib_dir, library_files.MASTER)
@@ -25,10 +25,10 @@ def index_unopenable(lib_dir: str) -> str:
         with open(path, "rb"):
             return ""
     except (FileNotFoundError, NotADirectoryError):
-        return ""    # absent: `index_present` answers that
+        return ""    # absent: `index_present` checks that
     except OSError as exc:
         cause, why = hostos.why_failed(exc, path)
-        if cause == hostos.FAILED_READ_ONLY:    # its sentence is a WRITE's; a refused read is permissions
+        if cause == hostos.FAILED_READ_ONLY:    # its message is for a WRITE; a denied read is a permissions problem
             return messages.LIBRARY_INDEX_READ_NOT_PERMITTED % path
         return why
 
@@ -39,20 +39,20 @@ def index_present(lib_dir: str) -> bool:
 
 
 def list_not_arrived(lib_dir: str) -> bool:
-    """A folder that is no library and is not empty: a new library is made in an empty one alone."""
+    """Whether the folder holds no library and is not empty: a new library needs an empty folder."""
     return (prefs_mod.can_hold_a_library(lib_dir) and not index_present(lib_dir)
             and bool(starter_would_overwrite(lib_dir)))
 
 
 def newer_version(preferences) -> int:
-    """The version of a library a newer Amaze wrote, which this one leaves closed; else 0."""
+    """The library's version if a newer Amaze wrote it, so this one does not open it; else 0."""
     library_dir = str(preferences.dir or "")
     found = library_settings.library_version(library_dir) if library_dir else 0
     return found if found > library_policy.LIBRARY_VERSION else 0
 
 
 def starter_would_overwrite(lib_dir: str) -> list:
-    """What `lib_dir` holds besides the system's own files, or []; `prepare` asks before seeding."""
+    """The files in `lib_dir` other than OS files, or []; `prepare` checks before creating one."""
     try:
         return sorted(name for name in os.listdir(lib_dir)
                       if not library_files.is_os_noise(name))
@@ -61,14 +61,14 @@ def starter_would_overwrite(lib_dir: str) -> list:
 
 
 def prepare(preferences) -> None:
-    """The library folder ready to open: `DataBase.json` in an empty one, each section's folder."""
+    """Prepare the library folder: `DataBase.json` in an empty one, and each section's folder."""
     lib_dir = preferences.dir
     if not prefs_mod.can_hold_a_library(lib_dir):
         debug.event("session", "no library directory set", dir=lib_dir)
         return
     new_folder = False
     if not index_present(lib_dir):
-        held = starter_would_overwrite(lib_dir)    # a new library takes an empty folder alone
+        held = starter_would_overwrite(lib_dir)    # a new library is created only in an empty folder
         if held:
             debug.event("session", "library NOT created - the folder is not empty",
                         dir=lib_dir, evidence=held[:10])
@@ -83,7 +83,7 @@ def prepare(preferences) -> None:
 
 
 def ensure_library_dirs(preferences) -> bool:
-    """Each asset section's folder made, each asked on its own; True if one was made."""
+    """Create each asset section's folder, each checked separately; True if one was created."""
     made = False
     for folder in [material.section_folder(preferences.dir, section)
                    for section in library_files.ASSET_SECTIONS]:
@@ -94,7 +94,7 @@ def ensure_library_dirs(preferences) -> bool:
 
 
 def update(preferences) -> bool:
-    """The library at this Amaze's version, its old trash expired; True once its version moved."""
+    """Expire the old trash, stamp this Amaze's library version; True when the version changed."""
     library_dir = str(preferences.dir or "")
     if not library_dir or not os.path.isdir(library_dir):
         return False
@@ -107,7 +107,7 @@ def update(preferences) -> bool:
 
 
 def seed_starters(code_model, code_categories, gradient_model, gradient_categories) -> None:
-    """The shipped starters, once per library: the Code section's Examples, the Colors palettes."""
+    """Add shipped starters once per library: the Code section's Examples, the Colors palettes."""
     if code_model is not None:
         code_model.seed_starter_snippets(code_categories)
     if gradient_model is not None:

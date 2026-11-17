@@ -6,24 +6,24 @@ from amaze.core import debug, locations, renderers, section_list, users
 from amaze.helpers import hostos
 from amaze.prefs import settings_store
 
-LIBRARY_FIELD = "library"    # in a `users.<uid>` block: the stored spelling of that user's library
+LIBRARY_FIELD = "library"    # in a `users.<uid>` block: the stored form of that user's library path
 
 
 def _encode_path(path):
-    """Spell a path the way settings.json stores it - one encoder, shared with every other store."""
+    """Encode a path as settings.json stores it, with the encoder every other store uses."""
     if not isinstance(path, str) or not path:
         return path
     return hostos.storage_path_key(path)
 
 
 def _decode_path(path):
-    """A stored spelling back to this machine's path, re-homing a foreign absolute that is gone."""
+    """A stored path decoded for this machine; a missing foreign absolute is rebased onto home."""
     if not isinstance(path, str) or not path:
         return path
     if path.startswith("$AMAZE") or path.startswith("~"):
-        return hostos.expand_storage_path(path)    # the one grammar every reader shares
+        return hostos.expand_storage_path(path)    # the same decoding every reader uses
     clean = path.replace("\\", "/")
-    rehomed = hostos.rehome(clean)  # asks the disk only for a path under some home folder
+    rehomed = hostos.rehome(clean)  # checks the disk only for a path under a home folder
     if rehomed != clean and not os.path.exists(clean):
         debug.event("prefs", "path re-homed from another machine",
                     stored=path, resolved=rehomed)
@@ -32,14 +32,14 @@ def _decode_path(path):
 
 
 def _decode_paths(paths):
-    """Decode a list of stored paths: a non-list answers [] and non-strings are dropped."""
+    """Decode a list of stored paths: a non-list gives [] and non-strings are dropped."""
     if not isinstance(paths, (list, tuple)):
         return []
     return [_decode_path(p) for p in paths if isinstance(p, str)]
 
 
 def _decode_records(records) -> dict:
-    """Decode a stored records copy's keys: a non-dict answers {}, and a non-dict record is dropped."""
+    """Decode a stored records copy's keys: a non-dict gives {}; a non-dict record is dropped."""
     if not isinstance(records, dict):
         return {}
     return {_decode_path(key): dict(value) for key, value in records.items()
@@ -51,7 +51,7 @@ def _encode_paths(paths):
 
 
 def _listed_libraries(stored) -> list:
-    """The stored Library list as folders, each once and in its order; junk reads as an empty list."""
+    """The stored Library list as folders, each once and in its order; a non-list gives []."""
     out, seen = [], set()
     for folder in _decode_paths(stored):
         folder = _normalised_dir(folder)
@@ -71,7 +71,7 @@ def _normalised_dir(path) -> str:
 
 
 def _default_sections() -> list:
-    """Every section key, in tab order, from the one list."""
+    """Every section key, in tab order, from section_list."""
     return section_list.keys()
 
 
@@ -87,11 +87,11 @@ def _through_setter(target, name, value, default):
 
 RENDERER_DEFAULTS = {"_" + r.switch: True for r in renderers.ALL}  # every renderer offered at first
 
-RENDERER_KEYS = {"_" + r.switch: r.switch_stored for r in renderers.ALL}  # data on disk, never tidied
+RENDERER_KEYS = {"_" + r.switch: r.switch_stored for r in renderers.ALL}  # keys in files on disk: never rename them
 
 IMG_SUBDIR = "img/"  # with each asset section's folder, what a library needs ▸p/library-creation-doors
 
-_UNSEEN = object()  # a shared key this session never adopted nor pushed: the next push carries it
+_UNSEEN = object()  # a shared key this session never read from nor wrote to the library: the next push writes it
 
 POINTERS = (  # settings.json's own scalars as (stored key, setter, decode)
     ("library_user", "library_user", lambda value: str(value or "")),
@@ -99,7 +99,7 @@ POINTERS = (  # settings.json's own scalars as (stored key, setter, decode)
     ("directory", "dir", lambda value: _normalised_dir(_decode_path(value))),
 )
 
-SHARED_KEYS = {  # truth in the library's shared settings: stored key -> (property or None, attr, default)
+SHARED_KEYS = {  # stored in the library's shared settings: stored key -> (property or None, attr, default)
     "extension": (None, "_ext", ".mat"),
     "img_extension": (None, "_img_ext", ".png"),
     "img_dir": (None, "_img_dir", IMG_SUBDIR),
@@ -119,7 +119,7 @@ SHARED_KEYS = {  # truth in the library's shared settings: stored key -> (proper
     "geometry_bg": ("geometry_bg", "_geometry_bg", "black"),
     "path_style": ("path_style", "_path_style", "home"),
 }
-SHARED_KEYS.update({  # every walker and __init__ read this one table ▸p/prefs-defaults
+SHARED_KEYS.update({  # every loop over the keys and __init__ read this table ▸p/prefs-defaults
     stored: (attr[1:], attr, RENDERER_DEFAULTS[attr])
     for attr, stored in RENDERER_KEYS.items()})
 SHARED_KEYS.update({r.samples: (r.samples, "_" + r.samples, r.samples_default)
@@ -144,21 +144,21 @@ USER_KEYS = {  # per-user view state under `users.<uid>`: stored key -> (propert
         ("file_show_unknown", "_file_show_unknown", True),
     "debug_mode": ("debug_mode", "_debug_mode", False),
     "addon_betas": ("addon_betas", "_addon_betas", False),
-}  # five more per-user keys are handled by hand beside every walk of this table
+}  # five more per-user keys are handled separately beside every loop over this table
 
-LAYOUT = {  # settings.json's top-level keys and the type each must have; a wrong one: no settings
+LAYOUT = {  # settings.json's top-level keys and the type each must have; a wrong type: settings unused
     "directory": str, "libraries": list, "shared_settings": dict, "library_user": str,
     "cache_dir": str, "users": dict,
 }
 
 
 def usable(data: dict) -> bool:
-    """Whether a settings document is in the one layout: each key of `LAYOUT` it holds, its type."""
+    """Whether a settings document matches `LAYOUT`: each `LAYOUT` key present has its type."""
     return all(isinstance(data[key], kind) for key, kind in LAYOUT.items() if key in data)
 
 
 class _Persistence:
-    """The save/load half of `Prefs`, mixed in; stateless, and for `Prefs` alone."""
+    """The save and load methods of `Prefs`, as a mixin without state, used only by `Prefs`."""
 
     def _settings_store(self, reread: bool = False):
         """This machine's settings, through the store - THIS object's own handle, never the shared cache."""
@@ -166,7 +166,7 @@ class _Persistence:
         path = str(getattr(self, "path", "") or "")
         if not path:
             raise ValueError("this Prefs cannot say where its configuration lives")
-        if store is None or store.path != os.path.join(  # a handle minted for another configuration directory is re-minted
+        if store is None or store.path != os.path.join(  # a handle made for another configuration directory is replaced
                 path, settings_store.FILENAME):
             store = settings_store.SettingsFile(os.path.join(path, settings_store.FILENAME))
             self._settings_handle = store
@@ -176,27 +176,27 @@ class _Persistence:
 
     @property
     def _load_failed(self) -> bool:
-        """The store's write latch, derived rather than kept, so a repaired settings.json saves again."""
+        """True while the store is unwritable; computed, so a repaired settings.json saves again."""
         try:
             return not self._settings_store().writable
         except (ValueError, AttributeError):
-            return False  # a Prefs that cannot say where its configuration lives has no store to ask, so nothing is latched
+            return False  # a Prefs without a configuration path has no store, so it never counts as failed
 
     def save(self) -> None:
-        """Sanitize and save the preferences as json; refuses when the store could not read the file."""
+        """Sanitize and save the preferences as json; skipped if the store could not read it."""
         store = self._settings_store()
         if not store.writable:
             debug.event("prefs", "save refused - settings.json could not "
                         "be read this session", path=self.path)
-            return  # asked before the push, so pure defaults never reach the library's settings
-        self._push_shared()  # the shared keys go to the LIBRARY first, so the document composed below only ever carries the copy
+            return  # checked before _push_shared, so unloaded defaults are never written to the library
+        self._push_shared()  # the shared keys are written to the LIBRARY first; the document built below holds a copy
         self.refresh_data()
         composed = self.data    # the commit may merge another pane's values over it
         if store.replace(composed, settle=self._drop_departed_merged):
             self._absorb_committed(store, composed)
 
     def _absorb_committed(self, store, composed=None) -> None:
-        """The committed document back into the attributes, which the panel paints from."""
+        """Copy the committed document back into the attributes the panel draws from."""
         self.data = store.everyones()
         stored = self.data.get("users")
         self._users_blocks = {
@@ -213,32 +213,32 @@ class _Persistence:
         records = block.get("file_location_records")
         if isinstance(records, dict):
             self._file_location_records = _decode_records(records)
-        if isinstance(self.data.get("libraries"), list):    # another pane's list, when only it moved
+        if isinstance(self.data.get("libraries"), list):    # another pane's list, when only that pane changed it
             self._libraries = _listed_libraries(self.data["libraries"])
         if composed is None:
             return
         for key, setter, decode in POINTERS:
-            if key in self.data and self.data[key] != composed.get(key):    # the merge took theirs
+            if key in self.data and self.data[key] != composed.get(key):    # the merge kept the other pane's value
                 setattr(self, setter, decode(self.data[key]))
 
     def _adopt_shared(self, follow: bool = False) -> None:
-        """Fold the library's shared settings over the attributes; `follow`: keys left alone here only."""
+        """Apply the library's shared settings to attributes; `follow`: only keys unchanged here."""
         if not follow or not hasattr(self, "_shared_seen"):
-            self._shared_seen = {}    # a load or another library: nothing pushed there yet
-        directory = self.dir  # every setter that moves `dir` adopts, so save unsaved edits before moving it
+            self._shared_seen = {}    # a load or another library: nothing written there yet
+        directory = self.dir  # every setter that changes `dir` calls this, so save unsaved edits before changing it
         if not directory or not os.path.isdir(directory):
             return
         from amaze.core import library_settings
-        values = library_settings.all_values(self)    # fresh, latched or empty: the copy holds
+        values = library_settings.all_values(self)    # fresh, unreadable or empty: a key not in it keeps the local copy
         seen = self._shared_seen
         for stored, (prop, attr, _default) in SHARED_KEYS.items():
             if stored not in values:
                 continue
             if follow and getattr(self, attr) != seen.get(stored, _UNSEEN):
-                continue    # changed here since adopted or pushed: the next push carries it
+                continue    # changed here since last read or written: the next push writes it
             value = values[stored]
             if prop is None:
-                if isinstance(value, str):  # the layout quartet takes strings only
+                if isinstance(value, str):  # the three layout keys take strings only
                     setattr(self, attr, value)
             else:
                 _through_setter(self, prop, value,
@@ -246,25 +246,25 @@ class _Persistence:
             seen[stored] = getattr(self, attr)
 
     def follow_shared(self) -> None:
-        """After a door re-read the library's stores: what peers changed, for keys left alone here."""
+        """After a library store re-read: apply other sessions' changes to keys unchanged here."""
         self._adopt_shared(follow=True)
 
     def _push_shared(self) -> None:
-        """The shared keys THIS session changed, into the library's store in ONE write."""
+        """Write the shared keys THIS session changed to the library's store in ONE write."""
         directory = self.dir
         if not directory or not os.path.isdir(directory):
             return  # no library directory: write nothing, never a relative path
         from amaze.core import library_settings
         if not library_settings.takes_writes(self):
             return
-        self._adopt_shared(follow=True)    # first what peers wrote, for each key left alone here
+        self._adopt_shared(follow=True)    # first read what other sessions wrote, for each key unchanged here
         seen = self._shared_seen
         changed = {stored: getattr(self, attr)
                    for stored, (_prop, attr, _default) in SHARED_KEYS.items()
                    if getattr(self, attr) != seen.get(stored, _UNSEEN)}
-        if changed and library_settings.set_values(self, changed):    # refused: retried next save
+        if changed and library_settings.set_values(self, changed):    # on failure: retried at the next save
             seen.update(changed)
-            self._adopt_shared(follow=True)    # the commit may have merged a peer's keys in
+            self._adopt_shared(follow=True)    # the commit may have merged in another session's keys
 
     def _user_state_document(self) -> dict:
         """The current per-user state as its stored keys."""
@@ -290,7 +290,7 @@ class _Persistence:
         for stored, (prop, _attr, default) in USER_KEYS.items():
             _through_setter(self, prop, stored_value(stored, default),
                             default)
-        try:  # the 64-512 clamp holds on every apply
+        try:  # the 64-512 clamp applies every time
             self._thumbsize = max(64, min(512, int(
                 stored_value("thumbsize", 128) or 128)))
         except (TypeError, ValueError):
@@ -308,7 +308,7 @@ class _Persistence:
             stored_value("file_folders", []))
         self._file_favorites = _decode_paths(
             stored_value("file_favorites", []))
-        self._file_location_records = _decode_records(    # the copy served while the library is out of reach
+        self._file_location_records = _decode_records(    # the copy used while the library is unreachable
             stored_value("file_location_records", None))
         stored = stored_value("enabled_sections", None)
         self._enabled_sections = (  # a list, or the default for any other stored type
@@ -325,19 +325,19 @@ class _Persistence:
             return
         block = self._users_blocks.get(new)
         if block is None:
-            return  # a user with no block on this machine inherits what is on screen
+            return  # a user with no block on this machine keeps the current view state
         self._apply_user_block(dict(block))
 
     def forget_user(self, uid) -> None:
-        """Drop one deleted user's block and save, clearing the pointer first when it names them."""
+        """Drop one deleted user's block and save, first clearing library_user if it is them."""
         uid = str(uid)
         if self._library_user == uid:
-            self.library_user = ""    # the switch files their state under their uid, popped next
+            self.library_user = ""    # the switch stores their state under their uid, removed next
         self._users_blocks.pop(uid, None)
         self.save()
 
     def _departed(self, blocks: dict, roster=None) -> list:
-        """The uids in `blocks` the prune drops, logged; `roster` is read here only when one could go."""
+        """The uids in `blocks` to remove, logged; reads `roster` only when a uid is a candidate."""
         library = _encode_path(str(self.dir or ""))
         if not library:
             return []
@@ -351,7 +351,7 @@ class _Persistence:
         if candidates and roster is None:
             roster = users.roster(self)
         if not roster:
-            return []    # unread, unreadable or empty: never a roster to prune against
+            return []    # unread, unreadable or empty: no roster to compare against
         doomed = [uid for uid in candidates if uid not in roster]
         for uid in doomed:
             debug.event("prefs", "a user the library no longer lists "
@@ -359,7 +359,7 @@ class _Persistence:
         return doomed
 
     def _settle_user_blocks(self) -> None:
-        """Mark the open library's blocks and drop those whose user its read roster no longer lists."""
+        """Record the open library in its users' blocks; drop users the roster no longer lists."""
         library = _encode_path(str(self.dir or ""))
         roster = users.roster(self) if library else set()
         for uid in roster.intersection(self._users_blocks):
@@ -371,7 +371,7 @@ class _Persistence:
             del self._users_blocks[uid]
 
     def _drop_departed_merged(self, document: dict) -> None:
-        """The same prune over blocks a save's merge took in from disk, because a merge only adds."""
+        """The same removal for blocks a save's merge added from disk, because a merge only adds."""
         blocks = document.get("users")
         if not isinstance(blocks, dict):
             return
@@ -392,7 +392,7 @@ class _Persistence:
             for stored, (_prop, attr, _default) in SHARED_KEYS.items()}
         self.data["library_user"] = self._library_user
         self.data["cache_dir"] = _encode_path(self._cache_dir)
-        if self._library_user:  # a user's block is the one home of view state; nobody picked: memory only
+        if self._library_user:  # view state is stored only in a user's block; with no user chosen, only in memory
             block = dict(self._users_blocks.get(self._library_user, {}))
             block.update(self._user_state_document())
             self._users_blocks[self._library_user] = block
@@ -403,40 +403,40 @@ class _Persistence:
 
     def load(self) -> bool:
         """Load the preferences from disk; False when nothing is usable, and it never raises."""
-        store = self._settings_store(reread=True)  # re-read, so the answer is what is on disk now
+        store = self._settings_store(reread=True)  # re-read, so the result matches the disk now
         if store.state == settings_store.FRESH:
             debug.event("prefs", "no settings.json yet - opening "
                         "unconfigured", path=self.path)
-            return False  # absent is a fresh install, not broken: no latch
+            return False  # a missing file is a fresh install, not a failure: writes stay allowed
         if not store.writable:
             debug.event("prefs", "settings unreadable - opening without a "
                         "library", path=self.path)
-            return False  # the store kept the `.unreadable` copy; writes are refused for the session
+            return False  # the store kept the `.unreadable` copy; writes are blocked for the session
         data = store.everyones()
         self.data = dict(data)  # a copy: refresh_data() mutates it, and the store's document must not change
         if not usable(data):
             debug.event("prefs", "settings.json is in no layout this Amaze reads - "
                         "opening as on a first run", path=self.path)
-            return False  # the defaults stand; a key it does not know stays in the file
+            return False  # the defaults are kept; an unknown key stays in the file
         shared = data.get("shared_settings", {})
-        self._library_user = data.get("library_user", "").strip()  # WHO, before any per-user read: the identity picks which `users.<uid>` block they load from
+        self._library_user = data.get("library_user", "").strip()  # the user, before any per-user read: it selects which `users.<uid>` block is loaded
         self._users_blocks = {
             uid: dict(block) for uid, block in data.get("users", {}).items()
             if isinstance(uid, str) and isinstance(block, dict)
         }
-        if self._library_user:    # nobody picked: what is on screen is the only copy, and it stays
+        if self._library_user:    # no user chosen: the current view state is the only copy and is kept
             self._apply_user_block(self._users_blocks.get(self._library_user, {}))
         self._directory = _decode_path(data.get("directory", ""))
         for stored, (prop, attr, default) in SHARED_KEYS.items():
             value = shared.get(stored, default)
-            if prop is None:    # the folder layout: paths are built from it, so only a string lands
+            if prop is None:    # the folder layout: paths are built from it, so only a string is set
                 setattr(self, attr,
                         value if isinstance(value, str) else default)
             else:
                 _through_setter(self, prop, value, default)
         self._cache_dir = _decode_path(data.get("cache_dir", ""))
         self._libraries = _listed_libraries(data.get("libraries"))
-        self._directory = _normalised_dir(self._directory)    # a folder saved without its slash glues onto file names
+        self._directory = _normalised_dir(self._directory)    # a folder saved without its slash runs into the file names joined to it
         self._settle_user_blocks()
         self._adopt_shared()  # a pure read: load() never writes the library
         library = self.dir

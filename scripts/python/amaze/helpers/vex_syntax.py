@@ -10,7 +10,7 @@ _INKS = {}
 
 
 def use_inks(inks: dict) -> None:
-    """Paint with `inks` by kind from now on; the panel hands in Houdini's. ▸r/houdini-code-look"""
+    """Use `inks` (colours by kind) from now; the panel passes Houdini's. ▸r/houdini-code-look"""
     global DEFAULT, COMMENT, STRING, NUMBER, TYPE, KEYWORD, FUNCTION, ATTRIB
     _INKS.clear()
     _INKS.update(inks)
@@ -18,7 +18,7 @@ def use_inks(inks: dict) -> None:
     TYPE, KEYWORD, FUNCTION, ATTRIB = (inks[k] for k in ("type", "keyword", "function", "attrib"))
 
 
-use_inks({kind: QtGui.QColor(fallback)    # Houdini's dark scheme, until the panel says otherwise
+use_inks({kind: QtGui.QColor(fallback)    # Houdini's dark scheme, until the panel calls use_inks
           for kind, (_name, fallback) in amazetheme.CODE_SYNTAX.items()})
 
 KEYWORDS = {
@@ -72,7 +72,7 @@ def open_comment_at(line: str):
 
 
 def _open_comment(line: str, runs):
-    """`open_comment_at` over the runs `_runs` already made for `line`: masked by KIND, not ink."""
+    """`open_comment_at` over the runs `_runs` made for `line`: masked by KIND, not colour."""
     masked = set()
     for start, length, kind, _color in runs:
         if kind in ("string", "comment"):
@@ -89,7 +89,7 @@ _FORMATS = {}    # one shared QTextCharFormat per colour, keyed on `rgba()`, bui
 
 
 class VexHighlighter(QtGui.QSyntaxHighlighter):
-    """The shared palette on a QPlainTextEdit, `/*` blocks across lines. ▸p/vex-block-comments"""
+    """These colours on a QPlainTextEdit, with `/*` blocks across lines. ▸p/vex-block-comments"""
 
     IN_BLOCK_COMMENT = 1
 

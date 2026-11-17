@@ -1,4 +1,4 @@
-"""Host capabilities: ask for the answer here, never compare versions. ▸p/host-opinions"""
+"""Host capabilities: call these functions instead of comparing versions. ▸p/host-opinions"""
 
 import hou
 
@@ -6,7 +6,7 @@ from amaze.helpers import hostos
 
 
 class Env(object):
-    """The environment an opinion is judged against; pass the `scale` you will apply."""
+    """The environment an Opinion's conditions are tested in; pass the `scale` you will apply."""
 
     def __init__(self, houdini=None, macos=None, windows=None,
                  linux=None, scale=None):
@@ -100,7 +100,7 @@ _SCALED = ("a scaled display (dpr != 1)",
            lambda env: bool(env.scale) and env.scale != 1.0)
 
 
-OBJ_PICK_DEVICE_PIXELS = Capability(  # whether queryNodeAtPixel wants device pixels, not logical points
+OBJ_PICK_DEVICE_PIXELS = Capability(  # whether queryNodeAtPixel expects device pixels, not logical points
     base=False,
     base_evidence=(
         "The documented behaviour and what SideFX ships today: the "
@@ -168,7 +168,7 @@ NEW_COPS = Capability(  # whether EXR->PNG can use the new COPs (copnet) with fu
 
 
 def houdini_version():
-    """(major, minor, build), or () if hou cannot be asked."""
+    """(major, minor, build), or () if hou.applicationVersion fails."""
     try:
         return tuple(int(v) for v in hou.applicationVersion()[:3])
     except Exception:                                    # noqa: BLE001
@@ -176,12 +176,12 @@ def houdini_version():
 
 
 def obj_pick_wants_device_pixels(device_scale):
-    """Whether queryNodeAtPixel wants the point multiplied by the device pixel ratio."""
+    """Whether queryNodeAtPixel expects the point multiplied by the device pixel ratio."""
     return OBJ_PICK_DEVICE_PIXELS.resolve(Env(scale=device_scale))
 
 
 def explain_pick(device_scale):
-    """The composition, resolved and itemised, for the debug log."""
+    """OBJ_PICK_DEVICE_PIXELS's base, opinions and resolved value, for the debug log."""
     return OBJ_PICK_DEVICE_PIXELS.explain(Env(scale=device_scale))
 
 

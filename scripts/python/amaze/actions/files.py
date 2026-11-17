@@ -1,4 +1,4 @@
-"""What the File models need from Houdini, and their geometry render. ▸archive/actions/files.py"""
+"""Houdini calls the File models use, and their geometry render. ▸archive/actions/files.py"""
 
 import os
 
@@ -15,7 +15,7 @@ GEO_PASS_LOG_BUDGET = 20
 
 
 def connect(files_model, folders_model, os_icon=None) -> None:
-    """Hand the File models $HFS, the open scene, Write Paths As, the geometry render and icons."""
+    """Give the File models $HFS, the open scene, Write Paths As, the geometry render and icons."""
     files_model.hfs = hou.text.expandString("$HFS")
     files_model.open_scene = lambda: scene_captures.current_scene_path()
     files_model.render_geo = lambda misses: render_geo_misses(files_model, misses)
@@ -32,7 +32,7 @@ def scene_saved() -> bool:
 
 
 def scene_folder() -> str:
-    """`$HIP` with the pointer's slash; "" until the scene is saved. ▸r/hip-and-scene-events"""
+    """`$HIP` with a trailing slash; `""` until the scene is saved. ▸r/hip-and-scene-events"""
     if not scene_saved():
         return ""
     hip = hou.getenv("HIP") or ""
@@ -43,10 +43,10 @@ def scene_folder() -> str:
 
 
 def watch_scene(folders_model):
-    """The sidebar's scene row follows Save, Open and New; answers the callback to remove."""
+    """Update the sidebar's scene row on Save, Open and New; returns the callback to remove."""
     folders_model.set_scene_folder(scene_folder())
     moves = (hou.hipFileEventType.AfterSave, hou.hipFileEventType.AfterLoad,
-             hou.hipFileEventType.AfterClear)    # the three that move $HIP ▸r/hip-and-scene-events
+             hou.hipFileEventType.AfterClear)    # the three events that change $HIP ▸r/hip-and-scene-events
 
     @debug.guarded("files.watch_scene")
     def on_scene_event(event_type, **_kwargs):
@@ -57,15 +57,15 @@ def watch_scene(folders_model):
 
 
 def unwatch_scene(callback, *_destroyed) -> None:
-    """Take a `watch_scene` callback back; one already gone is no error."""
+    """Remove a `watch_scene` callback; one already removed is no error."""
     try:
         hou.hipFile.removeEventCallback(callback)
-    except hou.OperationFailed:    # the manual's answer for a callback not registered
+    except hou.OperationFailed:    # the manual: raised for a callback that is not registered
         pass
 
 
 def _show_missing(model, key, full: str) -> None:
-    """Every row of a render that made no picture shows the missing face, found by key not row."""
+    """Mark every row of a render that made no image as missing, found by key, not row number."""
     for row in list(model._key_rows.get(key) or ()):
         if 0 <= row < len(model._row_specs) and model._row_specs[row][0] == key:
             model._row_specs[row] = (key, "missing", full)
@@ -73,8 +73,8 @@ def _show_missing(model, key, full: str) -> None:
 
 
 def render_geo_misses(model, misses: list) -> None:
-    """Render `model`'s missing geometry thumbnails now: blocking, Esc stops it, each lands at once."""
-    misses = [pair for pair in misses  # a CACHE file gets no thumbnail unasked
+    """Render `model`'s missing geometry thumbnails: blocking, Esc stops it, each shown at once."""
+    misses = [pair for pair in misses  # a CACHE file gets no thumbnail unless requested
               if not geo_library.is_cache(pair[1])]
     if not misses:
         return
@@ -86,7 +86,7 @@ def render_geo_misses(model, misses: list) -> None:
     total = len(misses)
     done = 0
     failed = []
-    debug.begin_pass(GEO_PASS_LOG)  # a fresh allowance for this pass's per-item records
+    debug.begin_pass(GEO_PASS_LOG)  # reset the limit on per-item records for this pass
     debug.begin_pass(GEO_PASS_FAIL_LOG)
     model.progress_changed.emit(0, total)
     tmp_path = ""    # bound before the try: an interrupt on the first tick reaches the finally
@@ -123,18 +123,18 @@ def render_geo_misses(model, misses: list) -> None:
                             thumbnails.engine.deposit(
                                 ("geo", full, cache.cache_dir), image)
                             pictured = True
-                finally:  # gone before the next item, so no later render inherits it
+                finally:  # deleted before the next item, so no later render reads it
                     try:
                         os.remove(tmp_path)
                     except OSError:
                         pass
                 if not pictured:
-                    operation.updateProgress(done / total)    # an Esc'd render ends imageless too; this raises
+                    operation.updateProgress(done / total)    # a render stopped by Esc has no image either; this raises
                     cache.remember_failure(full)
                     _show_missing(model, ("geo", full, cache.cache_dir), full)
                 done += 1
                 model.progress_changed.emit(done, total)
-                QtCore.QCoreApplication.processEvents(  # paints only, so no input re-enters the panel
+                QtCore.QCoreApplication.processEvents(  # repaint only: user input is skipped, so the panel is not re-entered
                     QtCore.QEventLoop.ProcessEventsFlag
                     .ExcludeUserInputEvents
                 )
@@ -144,7 +144,7 @@ def render_geo_misses(model, misses: list) -> None:
     finally:
         debug.event("file", "geo pass done", done=done, total=total,  # one record per pass, always
                     failed=len(failed), files=failed)
-        if not model._progress_keys:  # the image batch still owns the bar while it runs
+        if not model._progress_keys:  # the image batch still uses the progress bar while it runs
             model.progress_changed.emit(0, 0)
         cache.save()
         try:

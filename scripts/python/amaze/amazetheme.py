@@ -1,13 +1,13 @@
-"""The design's fixed values; sizes are halved, `theme.ui_px` at the call. ▸p/one-design-document"""
+"""The design's fixed values; sizes are halved, scaled by `theme.ui_px`. ▸p/one-design-document"""
 
 from __future__ import annotations
 
-HEADER_BAND_H = 30       # ▸ THE DRAWN HEADER: the strip D11 wears; fill and ink follow Houdini
+HEADER_BAND_H = 30       # ▸ THE DRAWN HEADER: the strip D11 shows; fill and text colour follow Houdini
 HEADER_BAND_INSET = 18   # where the name starts
 HEADER_BAND_TEXT_PX = 12
 HEADER_BAND_TEXT_BOLD = True    # the drawn weight on D11
 
-HOUSE_MARGIN = 5         # ▸ the content margin every compact form dialog wears
+HOUSE_MARGIN = 5         # ▸ the content margin every compact form dialog uses
 
 D01_SELECTED_INK = "#755400"   # ▸ D01 Versions: the picked version's row
 
@@ -43,7 +43,7 @@ CODE_RADIUS = 3                    # the editor's corners, the current line's, t
 CODE_LINE_NUMBER_INK = "#b0b0b0"
 CODE_BAND = "#272727"              # ▸ D11's band, and an unselected version tab on it
 CODE_TAB = "#383838"               # the selected version tab
-CODE_GROUND = "#383838"            # the window behind the form and the editor, which the front tab meets
+CODE_GROUND = "#383838"            # the window behind the form and the editor, which the selected tab joins
 CODE_TAB_INK = "#dddddd"           # a tab's name
 CODE_TAB_MAX_W = 200               # a tab is as wide as its name and its ×, up to this
 CODE_SYNTAX = {    # ▸ token kind: Houdini's own colour name, and its value in UIDark.hcs headless
@@ -81,13 +81,13 @@ P05_ROW_PITCH = 101    # ▸ P05: a following row's divider to the next one's, a
 P05_LIST_TO_BUTTON = 10    # ▸ P05: the list's bottom to the button's top, as drawn (738 to 748)
 P05_DIM_INK = "#7d7d7d"    # ▸ P05: the version and author lines under each picture
 P05_TEXT_INK = "#a6a6a6"   # ▸ P05: each row's short description
-P01_WARNING_INK = UPDATE_WARNING_FILL    # ▸ P01: the Format line and the line beside Apply, warning
+P01_WARNING_INK = UPDATE_WARNING_FILL    # ▸ P01: the Format line and the line beside Apply, as a warning
 P01_FORMAT_INK = "#80dddddd"    # the Format line otherwise: text at half opacity, as #AARRGGBB
 P01_DIM_INK = "#6f6f6f"         # ▸ P01's Databases row: its headings, counts and info line
 P01_LIGHT_IDLE = "#787878"      # a light before a check: filled, no stroke in any state
 P01_LIGHT_CLEAN = "#3fc28a"     # a part the check found nothing in
 P01_LIGHT_FOUND = "#ff3600"     # a part with findings
-P01_LIGHT_UNJUDGED = "#ffae00"  # a part that could not be judged now
+P01_LIGHT_UNJUDGED = "#ffae00"  # a part that could not be checked now
 P01_REPAIR_FILL = "#f15b42"     # the Repair button's background
 P01_REPAIR_HOVER = "#f36f59"    # the Repair button under the pointer
 P01_REPAIR_PRESSED = "#d4503a"  # the Repair button while held down
@@ -97,9 +97,9 @@ P01_LIGHT_COUNT_GAP = 6         # a light to its count, as drawn for two of the 
 D15_SELECTED_INK = UPDATE_WARNING_FILL   # ▸ D15 Manage Libraries: a row picked for removal
 D15_DIM_INK = "#787878"        # a library that cannot be reached: its name and `not connected`
 D15_DIM_PATH_INK = "#646464"   # and its path
-LIST_GROUND = ("ListBG", "#272727")    # ▸ D01's and D15's list: Houdini's list colour, UIDark's headless
+LIST_GROUND = ("ListBG", "#272727")    # ▸ D01's and D15's list: Houdini's list colour, UIDark's value headless
 LIST_RADIUS = 3                # its corners, and a picked row's
-GRID_GROUND = "#2d2d2d"        # ▸ T01: the grid's ground as drawn, which list mode's ink reads
+GRID_GROUND = "#2d2d2d"        # ▸ T01: the grid's background as drawn; list text contrast is computed against it
 PREFS_DIVIDER_ABOVE = 8  # inside the divider's own row box
 PREFS_DIVIDER_BELOW = 6  # so a divider costs ROW_GAP + ABOVE + H + BELOW + ROW_GAP = 27
 
@@ -120,22 +120,22 @@ COMMENT_HEADER_BG = "#272727"
 COMMENT_PAGE_BG = "#2d2d2d"
 COMMENT_DIM_NAME = "Nothing Selected"   # ▸ nothing selected (N01B): the header's two labels,
 COMMENT_DIM_TYPE = "Type"
-COMMENT_DIM_TEXT_OPACITY = 0.5          # drawn at half their usual ink
+COMMENT_DIM_TEXT_OPACITY = 0.5          # drawn at half their usual opacity
 COMMENT_DIM_ICON_OPACITY = 0.25         # the speech bubble,
 COMMENT_DIM_ICON_INK = "#ffffff"        # in white
 COMMENT_DIM_ADD_INK = "#565656"         # the + art; Houdini's menu triangle keeps its colour
 
-LIST_HEADER_BG = "#2a2a2a"       # ▸ list mode's header strip: a QHeaderView picks up none of these, so the strip states them
+LIST_HEADER_BG = "#2a2a2a"       # ▸ list mode's header strip: a QHeaderView picks up none of these, so the strip sets them
 LIST_HEADER_DIVIDER = "#454545"
 
 TILE_TEXT = "#cdc8bc"           # ▸ the tile and list delegates
 TILE_SUBTITLE = "#5d7abd"       # the sidebar's drag highlight until the panel applies the accent
 CODE_TEXT_OPACITY = 0.5         # T05B: a code tile's text at half strength, under its run button
-CODE_TILE_GROUND = "#1b1b1b"    # and the ground under it, the one the default tile faces have
+CODE_TILE_GROUND = "#1b1b1b"    # and the background under it, the same as the default tile faces
 BADGE_REST_OPACITY = 0.75       # every button badge's icon at rest; the backdrop stays as drawn
 BADGE_HOVER_OPACITY = 1.0       # and the icon under the pointer
 MENU_ICON = 16                  # ▸ C13: a menu entry's icon box, the size Houdini draws it ▸r/menu-checked-look
-LIST_INK = "#d8d6d4"            # a table is read down its columns, so every column paints in this except Category
+LIST_INK = "#d8d6d4"            # a table is read down its columns, so every column is drawn in this except Category
 LIST_SELECTED_TEXT = "#000000"  # every column of a selected row
 BAND_TEXT_DARK = "#262626"      # text on a coloured band; a category colour can be any lightness at all
 BAND_TEXT_LIGHT = "#f0eeee"
@@ -163,7 +163,7 @@ SIDEBAR_PICKER_START = "#4af2a1"    # the colour picker's starting colour for a 
 SIDEBAR_ARROW_GAP = 3               # colour bar to arrow in a folder row; not in G01 yet ▸r/tree-views
 SIDEBAR_ARROW_BOX = 11              # the box Houdini's chevron is drawn centred in
 SIDEBAR_INDENT = 16                 # one subfolder level
-LINK_COLOR = "#8e8a85"              # About-tab links, a step darker than body text so they read as secondary
+LINK_COLOR = "#8e8a85"              # About-tab links, a step darker than body text so they look secondary
 
 BTN_APPLY = "Apply"                 # ▸ THE WORDS, from here down. Buttons first
 BTN_CANCEL = "Cancel"
@@ -190,21 +190,21 @@ LABEL_CONVERT_OLD_LIBRARY = "Convert pre-1.40"    # About: an older library, pic
 LABEL_UPGRADES_LIBRARY ="Apply/Accept will upgrade your library to v%s"   # beside Apply
 LABEL_LIBRARY_TOO_NEW = "You need to update Amaze to use this library"
 LABEL_LIBRARY_UNREACHABLE = "Amaze cannot reach this library"
-LABEL_PICK_USER = "Pick or create a user"    # the User list with nobody picked
+LABEL_PICK_USER = "Pick or create a user"    # the User list with no user chosen
 LABEL_DATABASES = "Databases"       # ▸ P01's check row, and the three lights' headings
 LABEL_CHECK_PARTS = ("Errors", "Files", "Ref")
-LABEL_UNJUDGED = "-"                # a light's count when its part could not be judged
+LABEL_UNJUDGED = "-"                # a light's count when its part could not be checked
 BTN_CHECK = "Check"                 # the row's button, until a check finds what can be fixed
 BTN_REPAIR = "Repair"
 BTN_DELETE_CACHE = "Delete"         # beside the Cache Path's Default
 
-TITLE_TILE_ICON = "Tile Icon"    # what D02 says when the selection has no ONE name to show
+TITLE_TILE_ICON = "Tile Icon"    # what D02 shows when the selection has no ONE name to show
 TITLE_MANAGE_LIBRARIES = "Manage Libraries"
-BAND_UNTITLED = "Untitled"       # what D11's band says for a snippet that has no name yet
+BAND_UNTITLED = "Untitled"       # what D11's band shows for a snippet that has no name yet
 MENU_NEW_VERSION = "New Version"    # D11's + menu, above the snippet's versions
 LABEL_VERSIONS = "Versions"         # P01's switch: versions of materials and of code
 
-EMPTY_SHARED = {    # ▸ E06 E08 E09, the blanks every section shares, read by `empty_state.words_for`
+EMPTY_SHARED = {    # ▸ E06 E08 E09, the empty states every section shares, read by `empty_state.words_for`
     "nothing-matches": (
         'Nothing matches "%s"',
         "No saved %s has that in its name, tags or category.",
@@ -219,7 +219,7 @@ EMPTY_SHARED = {    # ▸ E06 E08 E09, the blanks every section shares, read by 
         BTN_LOCATE, "locate_unreadable_folder"),
 }
 
-EMPTY_MATERIAL = {    # ▸ E01-E05, each section's FIRST-RUN blank, and the quotation drawn under it
+EMPTY_MATERIAL = {    # ▸ E01-E05, each section's FIRST-RUN empty state, and the quotation drawn under it
     "nothing-yet": (
         "No materials saved yet",
         "Right-click a material in the network editor and choose "
@@ -597,7 +597,7 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("ToggleSwitch ▸ text", 179, 374, 107, 15, "Add-On beta versions"),
         ),
     },
-    "D09": {   # Save to Amaze - the Section row picks where the save lands
+    "D09": {   # Save to Amaze - the Section row picks the section saved to
         "frame": (293, 185),
         "nodes": (
             ("QComboBox", 67, 14, 218, 22, None),
@@ -907,7 +907,7 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("glyph ▸ 3 ▸ check-circle.svg", 16, 95, 14, 14, None),
         ),
     },
-    "N01B": {   # the same pane with nothing selected - its labels and arts dim, nothing moves
+    "N01B": {   # the same pane with nothing selected - its labels and icons dim, nothing moves
         "frame": (450, 210),
         "nodes": (
             ("header", 0, 0, 450, 30, None),
@@ -945,11 +945,11 @@ def drawn_boxes(frame_key: str) -> dict:
     nodes = (DIALOG_LAYOUT.get(frame_key) or {}).get("nodes", ())
     rects: dict = {}
     for kind, x, y, w, h, text in nodes:
-        if text is None and _NODE_MARK not in kind:   # PLAIN, so a `QWidget ▸ group divider` or a tab chip is not a box anything pins from
+        if text is None and _NODE_MARK not in kind:   # PLAIN, so a `QWidget ▸ group divider` or a tab chip is not a box any widget is sized from
             rects.setdefault(kind, []).append((x, y, w, h))
     boxes = {(kind, None): tuple(found) for kind, found in rects.items()}
     for kind, x, y, w, h, text in nodes:
-        if text is not None and _NODE_MARK not in kind:   # a drawn QLabel: nothing encloses it, so its own rect is what a widget pins from
+        if text is not None and _NODE_MARK not in kind:   # a drawn QLabel: nothing encloses it, so its own rect is what a widget is sized from
             boxes.setdefault((kind, text), (x, y, w, h))
     repeats: dict = {}
     for kind, x, y, w, h, text in nodes:
@@ -984,7 +984,7 @@ def drawn_repeats(frame_key: str, kind: str, text) -> tuple:
 
 
 def forget_drawn_boxes() -> None:
-    """Drop the derived-box cache; the test seam."""
+    """Clear the derived-box cache, for tests."""
     _DRAWN_BOXES.clear()
     _DRAWN_REPEATS.clear()
 
@@ -995,7 +995,7 @@ def drawn_name(node) -> list:
 
 
 def drawn_nodes(frame_key: str, kind: str, owner=None) -> list:
-    """A frame's `kind` nodes in drawn order, or only `owner`'s - THE lookup every reader shares."""
+    """A frame's `kind` nodes in drawn order, or only `owner`'s - the lookup every reader uses."""
     return [n for n in DIALOG_LAYOUT[frame_key]["nodes"]
             if drawn_name(n)[0] == kind and (owner is None or drawn_name(n)[1:2] == [owner])]
 
@@ -1006,7 +1006,7 @@ def drawn_node(frame_key: str, kind: str, owner=None) -> tuple:
 
 
 def drawn_by_owner(frame_key: str, kind: str) -> dict:
-    """{owner: node} for a frame's `kind` nodes; a later drawing of one owner wins."""
+    """{owner: node} for a frame's `kind` nodes; for an owner drawn twice, the later node."""
     return {drawn_name(n)[1]: n for n in drawn_nodes(frame_key, kind)}
 
 
@@ -1067,7 +1067,7 @@ def drawn_tile(frame_key: str = "T01") -> dict:
 
 
 def drawn_badges() -> dict:
-    """{badge: (edge x, inset x, edge y, inset y, side)} off every T frame; a badge drawn twice agrees."""
+    """{badge: (edge x, inset x, edge y, inset y, side)} off every T frame; repeats must match."""
     out = {}
     for key, layout in DIALOG_LAYOUT.items():
         if not key.startswith("T"):
@@ -1112,7 +1112,7 @@ def drawn_list(frame_key: str = "L01") -> dict:
 
 
 def drawn_band(frame_key: str) -> tuple:
-    """(height, text inset) of the frame's header band; the house band's for a frame without one."""
+    """(height, text inset) of the frame's header band; HEADER_BAND_H and _INSET without one."""
     nodes = (DIALOG_LAYOUT.get(frame_key) or {}).get("nodes", ())
     band = next((n for n in nodes if n[0] == "header band"), None)
     if band is None:
@@ -1122,7 +1122,7 @@ def drawn_band(frame_key: str) -> tuple:
 
 
 def drawn_code_dialog(frame_key: str = "D11") -> dict:
-    """The code dialog's margins and gaps, its two label columns, and the editor's own figures."""
+    """The code dialog's margins and gaps, its two label columns, and the editor's own sizes."""
     layout = DIALOG_LAYOUT[frame_key]
     width, height = layout["frame"]
     nodes = layout["nodes"]
@@ -1188,7 +1188,7 @@ def drawn_list_rows(frame_key: str = "D15") -> dict:
     pitch = names[1][2] - names[0][2]
     width, height = layout["frame"]
     return {
-        "margins": (view[1], view[2],                    # left, top: neither list wears a band
+        "margins": (view[1], view[2],                    # left, top: neither list has a header band
                     width - (view[1] + view[3]),         # right, bottom
                     height - (buttons[0][2] + buttons[0][4])),
         "view": (view[3], view[4]),

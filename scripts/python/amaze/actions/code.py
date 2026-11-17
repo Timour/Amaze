@@ -1,4 +1,4 @@
-"""The Code section's verbs that need Houdini: run a snippet, set one onto a node. ▸m/layer-plan"""
+"""The Code section's actions that need Houdini: run a snippet, set one on a node. ▸m/layer-plan"""
 
 import traceback
 
@@ -42,7 +42,7 @@ def run_python(name: str, code: str) -> str:
 
 
 def apply_to_node(model, row: int, node) -> tuple:
-    """The snippet in `row` onto `node`'s code parm: (ok, reason), the reason saying what is missing."""
+    """Set `row`'s snippet on `node`'s code parm: (ok, reason), the reason naming what's missing."""
     if not 0 <= row < len(model.assets):
         return (False, "No snippet selected.")
     if node is None:
@@ -55,6 +55,6 @@ def apply_to_node(model, row: int, node) -> tuple:
         )
     try:
         parm.set(model.assets[row].code)
-    except hou.Error as exc:    # a locked parm raises PermissionError, a sibling ▸r/hou-errors
+    except hou.Error as exc:    # a locked parm raises PermissionError, not OperationFailed ▸r/hou-errors
         return (False, "Could not set the parameter: %s" % exc)
     return (True, "")

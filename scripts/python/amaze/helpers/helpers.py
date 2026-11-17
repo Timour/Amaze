@@ -11,7 +11,7 @@ from amaze.helpers import hostos
 
 PATH_STYLES = ("absolute", "hip", "job", "home")  # Write Paths As: one variable or absolute; home by default
 _STYLE_VARS = {"hip": "$HIP", "job": "$JOB", "home": "$HOME"}
-_open_blocks = 0    # preserving blocks open right now; only the outermost arms the deferred put-back
+_open_blocks = 0    # open preserving_selection_and_current blocks; only the outermost defers a restore
 _RETRY_MS = 100
 
 
@@ -264,7 +264,7 @@ def get_connected_output_nodes(
 
 @contextlib.contextmanager
 def preserving_selection_and_current():
-    """Puts back the selection and the Network Editors after Amaze's own scratch copies took them."""
+    """Restore the selection and the Network Editors after Amaze's temporary nodes changed them."""
     try:
         before = list(hou.selectedNodes())
     except hou.Error:
@@ -302,9 +302,9 @@ def preserving_selection_and_current():
                 except (hou.OperationFailed, hou.ObjectWasDeleted):
                     pass
             _put_editors_back(editors, "immediate")
-        if not _open_blocks:    # an inner block's pass would run last and win with a mid-operation state
+        if not _open_blocks:    # an inner block's restore would run last and apply a mid-operation state
             run_at_top_of_loop(functools.partial(_put_editors_back, editors, "deferred"),
-                               "editor put-back")    # Houdini's own dive follows the first pass ▸r/editor-put-back
+                               "editor put-back")    # Houdini's posted dive runs after the first restore ▸r/editor-put-back
 
 
 @contextlib.contextmanager
@@ -329,7 +329,7 @@ def run_at_top_of_loop(fn, what: str) -> None:
 
 
 def _run_when_idle(fn, what: str, waited: int) -> None:
-    """Run `fn` with no Amaze block open and no Amaze frame below; otherwise re-arm at 100 ms."""
+    """Run `fn` with no Amaze block open and no Amaze frame below; otherwise retry in 100 ms."""
     if _open_blocks or inside_amaze_work(sys._getframe(0).f_back):
         if not waited:
             from amaze.core import debug
@@ -342,7 +342,7 @@ def _run_when_idle(fn, what: str, waited: int) -> None:
 
 
 def inside_amaze_work(frame) -> bool:
-    """True while an Amaze frame but a test's is below `frame`: an event pump inside our own work."""
+    """True when a non-test Amaze frame is below `frame`: Qt events running inside Amaze code."""
     while frame is not None:
         name = frame.f_globals.get("__name__", "")
         if name.startswith("amaze.") and not name.startswith("amaze.tests"):
@@ -378,16 +378,16 @@ def _put_editors_back(editors, pass_name: str) -> None:
                     pass_name=pass_name, moves=moved)
 
 
-_last_placed: list = []  # what the last place_nodes or auto_place put down
+_last_placed: list = []  # the nodes the last place_nodes or auto_place call positioned
 
 
 def placed_nodes() -> list:
-    """The nodes the most recent placement landed."""
+    """The nodes the most recent place_nodes or auto_place call positioned."""
     return [n for n in _last_placed if n is not None]
 
 
 def forget_placed() -> None:
-    """Start a gesture with nothing remembered."""
+    """Clear the list of placed nodes before a new user action."""
     del _last_placed[:]
 
 
@@ -444,7 +444,7 @@ def shift_items(items, shift) -> None:
     boxes = sorted((pair for pair in targets if isinstance(pair[0], hou.NetworkBox)),
                    key=lambda pair: _box_depth(pair[0]))
     rest = [pair for pair in targets if not isinstance(pair[0], hou.NetworkBox)]
-    for item, target in boxes + rest:    # a box carries what it holds, so all land absolute
+    for item, target in boxes + rest:    # a box moves its contents, so each item gets its absolute target
         try:
             item.setPosition(target)
         except (hou.OperationFailed, hou.ObjectWasDeleted):
@@ -467,7 +467,7 @@ def bounds(items):
 
 
 def clear_of(items, others, gap: float = 1.0) -> None:
-    """Move `items` as one group beside `others`, top-aligned, when their outline lands on one."""
+    """Move `items` as one group beside `others`, top-aligned, when their bounds overlap one."""
     group = bounds(items)
     there = [bounds((other,)) for other in others]
     if group is None or not any(
@@ -480,7 +480,7 @@ def clear_of(items, others, gap: float = 1.0) -> None:
 
 
 def place_nodes(nodes, position) -> None:
-    """Move created items so the NODES' centroid lands at `position`; notes, boxes, dots ride along."""
+    """Move created items so the NODES' centroid is at `position`; notes, boxes, dots move too."""
     from amaze.core import debug
     items = [item for item in nodes if item is not None]
     nodes = [item for item in items if isinstance(item, hou.Node)]
@@ -496,7 +496,7 @@ def place_nodes(nodes, position) -> None:
     centroid_y = sum(n.position().y() for n in nodes) / len(nodes)
     shift_items(items, hou.Vector2(position.x() - centroid_x, position.y() - centroid_y))
     try:
-        after_x = sum(n.position().x() for n in nodes) / len(nodes)  # the achieved centroid, logged beside the asked one
+        after_x = sum(n.position().x() for n in nodes) / len(nodes)  # the resulting centroid, logged beside the requested one
         after_y = sum(n.position().y() for n in nodes) / len(nodes)
     except hou.ObjectWasDeleted:
         return

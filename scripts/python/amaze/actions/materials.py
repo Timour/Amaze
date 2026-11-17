@@ -12,7 +12,7 @@ from amaze.render import husk_job, nodes
 
 
 def connect(model) -> None:
-    """Repaint `model`'s tile when a background render lands: once per model, for every panel."""
+    """Repaint `model`'s tile when a background render is done: once per model, for every panel."""
     if not getattr(model, "_renders_connected", False):
         husk_job.jobs.thumbnailWritten.connect(model._on_thumbnail_written)    # a bound method
         model._renders_connected = True
@@ -30,7 +30,7 @@ def add_asset(model, node: hou.Node, cats: str, tags: str, fav: bool,
     new_mat.set_data(name or node.name(), cats, tags, fav, renderer)
     new_mat.node_color = nodes.custom_node_color(node)
 
-    handler.staging = []    # the files wait to land with the row, as one unit
+    handler.staging = []    # the files are committed together with the row, as one change
     saved = handler.save_node(node, new_mat.mat_id, False)
     debug.event(
         "save", "save_node result",
@@ -42,14 +42,14 @@ def add_asset(model, node: hou.Node, cats: str, tags: str, fav: bool,
     if saved:
         new_mat.cop_net = handler.cop_info
         inventory = handler.texture_inventory
-        if isinstance(inventory, (list, tuple)) and inventory:    # rides _extra like the curated tag - old builds ignore it, get_as_dict carries it
+        if isinstance(inventory, (list, tuple)) and inventory:    # kept in _extra like the curated tag - old builds ignore it, get_as_dict writes it
             new_mat._extra["textures"] = list(inventory)
-        if not model.add_saved(new_mat, handler.staging):    # per row, so each tile shows as it lands
+        if not model.add_saved(new_mat, handler.staging):    # per row, so each tile appears as soon as it is saved
             debug.event("save", "material not saved - its database took neither row nor files",
                         name=new_mat.name, mat_id=new_mat.mat_id)
             debug.refuse(messages.ASSET_NOT_SAVED_DATABASE_REFUSED % new_mat.name)
             return ""
-        try:  # the node carries its id, so a later save can offer Update Existing
+        try:  # the node stores its id, so a later save can offer Update Existing
             node.setUserData("assetlib_id", str(new_mat.mat_id))
         except (hou.OperationFailed, hou.ObjectWasDeleted):    # the save succeeded ▸r/node-vanished
             pass
@@ -62,17 +62,17 @@ def add_asset(model, node: hou.Node, cats: str, tags: str, fav: bool,
 
 
 def adding_into(model, unlisted: list):
-    """`add_asset` into `model`; each save whose list did not land appends its name to `unlisted`."""
+    """`add_asset` into `model`; each save whose list was not saved adds its name to `unlisted`."""
     def save(node, *args, **kwargs):
         answer = add_asset(model, node, *args, **kwargs)
         if isinstance(answer, library.ListNotSaved):
-            unlisted.append(kwargs.get("name") or node.name())    # the name the add gave it
+            unlisted.append(kwargs.get("name") or node.name())    # the name `add_asset` saved it under
         return answer
     return save
 
 
 class UpdateRefused(Exception):
-    """Why an update wrote nothing: a sentence for the one message after the save."""
+    """Raised when an update wrote nothing; its text goes in the one message after the save."""
 
 
 def update_asset_content(model, row: int, node: hou.Node) -> str:
@@ -81,12 +81,12 @@ def update_asset_content(model, row: int, node: hou.Node) -> str:
     if row < 0 or row >= len(model._assets):
         raise UpdateRefused(messages.UPDATE_REFUSED_GONE)
     mat = model._assets[row]
-    if not library_settings.allow_overwrite(model.preferences):  # the gate every caller goes through
+    if not library_settings.allow_overwrite(model.preferences):  # every caller is checked here
         debug.event("library", "overwrite refused - the library "
                     "does not allow it", mat_id=str(mat.mat_id),
                     name=mat.name)
         raise UpdateRefused(messages.UPDATE_REFUSED_VERSIONS_OFF)
-    known = model._content_state.get(str(mat.mat_id))    # content is outside the index merge: last write would win
+    known = model._content_state.get(str(mat.mat_id))    # content files are not merged like the index: the last write would overwrite
     current = model._content_stat(mat.mat_id)
     if known is not None and current is not None and current != known:
         debug.event("library", "content update refused - the files "
@@ -95,14 +95,14 @@ def update_asset_content(model, row: int, node: hou.Node) -> str:
         raise UpdateRefused(messages.UPDATE_REFUSED_CHANGED_ON_DISK)
     handler = nodes.NodeHandler(model.preferences)
     renderer = handler.get_renderer_from_node(node)
-    if not nodes.ocio_set():    # the save's own two refusals, asked before anything is held aside
+    if not nodes.ocio_set():    # the two checks `save_node` makes, run before any file is copied aside
         raise UpdateRefused(messages.OCIO_NOT_SET)
     if not renderer:
         raise UpdateRefused(messages.UPDATE_REFUSED_NOT_A_BUILDER)
 
     old_signature = None  # values-only is a new version, else structural ▸p/structure-signature
     pre_edit = {}
-    try:  # a failed answer counts as structural: it only skips a version
+    try:  # a failed comparison counts as structural: it only skips a version
         old_signature = nodes.staged_asset(
             model.preferences, mat, nodes.structure_signature)
         if versions.version_count(model.preferences, mat.mat_id) == 0:
@@ -112,8 +112,8 @@ def update_asset_content(model, row: int, node: hou.Node) -> str:
                     "will be treated as structural",
                     mat_id=str(mat.mat_id), error=str(exc))
 
-    try:  # the pre-edit copies go on every exit, the early returns included
-        if not handler.save_node(node, mat.mat_id, True):  # its two refusals were asked above
+    try:  # the pre-edit copies are deleted on every exit, early returns included
+        if not handler.save_node(node, mat.mat_id, True):  # its two checks already ran above
             return ""
         model._content_state[str(mat.mat_id)] = model._content_stat(  # our own write is the new baseline for this id
             mat.mat_id)
@@ -141,7 +141,7 @@ def update_asset_content(model, row: int, node: hou.Node) -> str:
             shutil.rmtree(os.path.dirname(
                 next(iter(pre_edit.values()))), ignore_errors=True)
     mat.cop_net = handler.cop_info
-    mat._extra.pop("textures", None)    # replaced whole - the new content's references are the inventory now
+    mat._extra.pop("textures", None)    # replaced entirely - the new content's references are the inventory now
     inventory = handler.texture_inventory
     if isinstance(inventory, (list, tuple)) and inventory:
         mat._extra["textures"] = list(inventory)
@@ -164,22 +164,22 @@ def update_asset_content(model, row: int, node: hou.Node) -> str:
                 )
     model._add_thumb_paths(row)  # the engine discard inside is what makes the repaint fetch the freshly rendered PNG
     listed = model.save()
-    if not listed:    # the save said why; the record waits in memory for the next save that works
+    if not listed:    # `save` showed why; the record stays in memory until a later save succeeds
         debug.event("library", "update written but the library list was not saved",
                     mat_id=str(mat.mat_id), name=mat.name)
     try:
         node.setUserData("assetlib_id", str(mat.mat_id))
-    except (hou.OperationFailed, hou.ObjectWasDeleted):    # a vanished node costs the stamp ▸r/node-vanished
+    except (hou.OperationFailed, hou.ObjectWasDeleted):    # a deleted node is left without the id ▸r/node-vanished
         pass
     return renderer if listed else library.ListNotSaved(renderer)
 
 
 def render_thumbnail(model, row: int) -> None:
-    render_thumbnails(model, [row])  # a batch of one, down the same path
+    render_thumbnails(model, [row])  # a batch of one, through the same code
 
 
 def render_thumbnails(model, rows) -> None:
-    """Re-render every row in the model: each renderer's rows in ONE husk. ▸r/husk-startup"""
+    """Re-render each row in `rows`: each renderer's rows in ONE husk. ▸r/husk-startup"""
     from amaze.render import thumbs
     rows = [row for row in rows if 0 <= row < model.rowCount()]
     if not rows:
@@ -207,7 +207,7 @@ def import_asset_to_scene(
 
 
 def convert(model, index: QtCore.QModelIndex, target: str, render: bool = True):
-    """This row as a `target` material, saved beside it under its name: (ok, report)."""
+    """Convert this row to a `target` material, saved as a new row, same name: (ok, report)."""
     from amaze.render.material_conversion import engine as conversion_engine
     from amaze.render.material_conversion.report import ConversionReport
     mat = model._assets[index.row()]
@@ -218,7 +218,7 @@ def convert(model, index: QtCore.QModelIndex, target: str, render: bool = True):
         return False, report
 
     handler = nodes.NodeHandler(model.preferences)
-    with hou.undos.disabler():    # the WHOLE staged body, the twin's stamp included ▸r/undo-groups
+    with hou.undos.disabler():    # the WHOLE block, the id stamp on the new builder included ▸r/undo-groups
         scratch = hou.node("/obj").createNode("matnet")
         try:
             source = handler.rebuild_saved(mat, scratch)
@@ -229,8 +229,8 @@ def convert(model, index: QtCore.QModelIndex, target: str, render: bool = True):
             saved = add_asset(
                 model, made.builder, ",".join(mat.categories), ",".join(mat.tags), False,
                 name=mat.name, render=render)
-            if isinstance(saved, library.ListNotSaved):    # landed, unlisted: the caller says so
+            if isinstance(saved, library.ListNotSaved):    # files saved, list not saved: the caller tells the user
                 return saved, report
-            return bool(saved), report    # a refused save leaves nothing: the scratch goes below
+            return bool(saved), report    # a refused save leaves nothing: the scratch matnet is destroyed below
         finally:
             scratch.destroy()
