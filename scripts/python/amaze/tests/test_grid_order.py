@@ -1,4 +1,4 @@
-"""The Grid area's invariant: what is shown and in what order, however the rows arrive."""
+"""The Grid area's invariant: which rows are shown and in what order, however they are added."""
 
 import os
 import sys
@@ -51,7 +51,7 @@ class _Case(unittest.TestCase):
         proxy = multifilterproxy_model.MultiFilterProxyModel()
         proxy.setSourceModel(source)
         proxy.setSortCaseSensitivity(QtCore.Qt.CaseInsensitive)
-        proxy.setDynamicSortFilter(False)      # as the panel does; it also stops the re-sort, so survivors keep source order
+        proxy.setDynamicSortFilter(False)      # as the panel does; it also stops the re-sort, so remaining rows keep source order
         proxy.sort(0)
         return source, proxy
 
@@ -60,18 +60,18 @@ class _Case(unittest.TestCase):
                 for r in range(proxy.rowCount())]
 
     def settle(self):
-        """The re-sort is coalesced onto the event loop, so let the loop turn before reading the proxy."""
+        """The re-sort is coalesced onto the event loop, so process events before reading the proxy."""
         QtWidgets.QApplication.processEvents()
 
 
 class ANewRowLandsInOrder(_Case):
 
     def test_a_saved_asset_does_not_land_at_the_bottom(self):
-        """A row appended at the end of source order comes back in sorted position, not at the bottom."""
+        """A row appended at the end of source order appears in sorted position, not at the bottom."""
         source, proxy = self.build(["alpha", "gamma", "delta"])
         self.assertEqual(["alpha", "delta", "gamma"], self.shown(proxy),
                          "the fixture is not sorted, so nothing below "
-                         "is about ordering")
+                         "tests ordering")
 
         source.append("beta")
         self.settle()
@@ -79,42 +79,42 @@ class ANewRowLandsInOrder(_Case):
         self.assertEqual(
             ["alpha", "beta", "delta", "gamma"], self.shown(proxy),
             "a newly inserted row is not in order - it is wherever the "
-            "source put it, which is what reads as 'the grid did not "
-            "refresh' with the tile sitting at the bottom of 548")
+            "source put it, which is what looks like 'the grid did not "
+            "refresh' with the tile at the bottom of 548")
 
         for name in ("charlie", "able", "baker"):    # a multi-save inserts a row at a time
             source.append(name)
         self.settle()
         self.assertEqual(
             ["able", "alpha", "baker", "beta", "charlie", "delta", "gamma"],
-            self.shown(proxy), "several saves in one turn landed out of order")
+            self.shown(proxy), "several saves in one turn appeared out of order")
 
     def test_a_filtered_grid_still_lands_it_in_order(self):
-        """A row arriving under a narrowing filter is still ordered and still filtered."""
+        """A row added while a filter is set is still ordered and still filtered."""
         source, proxy = self.build(["alpha", "zulu"])
         proxy.setFilter(QtCore.Qt.ItemDataRole.DisplayRole, "al")
         self.settle()
         self.assertEqual(["alpha"], self.shown(proxy),
-                         "the filter did not narrow, so this test is "
-                         "not about filtering")
+                         "the filter did not narrow, so this test does "
+                         "not test filtering")
         source.append("alfa")
         source.append("yankee")
         self.settle()
         self.assertEqual(
             ["alfa", "alpha"], self.shown(proxy),
-            "a row arriving while a filter is on is either out of "
+            "a row added while a filter is on is either out of "
             "order or not filtered")
 
 
 class AFilterChangeReordersWhatComesBack(_Case):
-    """A filter change re-tests the rows, and the ones it leaves come back sorted, not in source order."""
+    """A filter change re-tests the rows, and the ones it keeps are shown sorted, not in source order."""
 
     def test_the_rows_a_filter_LEAVES_are_in_order(self):
         source, proxy = self.build(["zulu", "bravo", "alpha"])
-        proxy.setFilter(QtCore.Qt.ItemDataRole.DisplayRole, "a")   # nothing appended: the insert route re-sorts on its own
+        proxy.setFilter(QtCore.Qt.ItemDataRole.DisplayRole, "a")   # nothing appended: the insert path re-sorts by itself
         self.assertEqual(
             ["alpha", "bravo"], self.shown(proxy),
-            "the surviving rows are in source order, which is what "
+            "the remaining rows are in source order, which is what "
             "'pick a category and go back to All' looked like")
         proxy.removeFilter(QtCore.Qt.ItemDataRole.DisplayRole)
         self.assertEqual(["alpha", "bravo", "zulu"], self.shown(proxy),
@@ -153,11 +153,11 @@ class TheResortIsCoalesced(_Case):
         self.settle()
         self.assertEqual(
             1, len(sorts),
-            "25 rows arriving in one turn cost %d sorts - one per row is "
+            "25 rows added in one turn cost %d sorts - one per row is "
             "quadratic" % len(sorts))
 
     def test_a_model_is_in_name_order_before_anything_asks(self):
-        """Every grid opens on Name, A to Z, so a model starts there; no proxy has to ask."""
+        """Every grid opens on Name, A to Z, so a model starts in that order; no proxy sorts it."""
         source = _Rows(["b", "a"])
         proxy = multifilterproxy_model.MultiFilterProxyModel()
         proxy.setSourceModel(source)
@@ -205,7 +205,7 @@ class _Flagged(grid_engine.GridEngine, QtCore.QAbstractTableModel):
             [self.ColourRole])
 
     def rename(self, row, name):
-        """A rename changes the SORT key, which is not passive."""
+        """A rename changes the SORT key, so it is not a paint-only change."""
         old = self._names[row]
         self._names[row] = name
         self._flags[name] = self._flags.pop(old)
@@ -221,7 +221,7 @@ class _Flagged(grid_engine.GridEngine, QtCore.QAbstractTableModel):
         self.endInsertRows()
 
     def thumbnail_arrived(self, row):
-        """A frequent emission that must cost nothing: a thumbnail landing changes nothing a filter reads."""
+        """A frequent emission that must cost nothing: a loaded thumbnail changes nothing a filter reads."""
         index = self.index(row, 0)
         self.dataChanged.emit(index, index,
                               [QtCore.Qt.ItemDataRole.DecorationRole])
@@ -244,7 +244,7 @@ class AChangedRowIsRETESTED(_Case):
         source, proxy = self.build_flagged(["alpha", "beta"], ["alpha"])
         self.assertEqual(["alpha"], self.shown(proxy),
                          "the favourites filter is not filtering, so "
-                         "nothing below is about it")
+                         "nothing below tests it")
 
         source.toggle(0)
         self.settle()
@@ -252,10 +252,10 @@ class AChangedRowIsRETESTED(_Case):
         self.assertEqual(
             [], self.shown(proxy),
             "the row is still in the grid with its star off - the "
-            "filter says favourites and the grid shows one that is not")
+            "filter is favourites-only and the grid shows one that is not")
 
     def test_the_row_that_arrives_lands_IN_ORDER(self):
-        """Same rule as an insert: a row coming back into view lands in order, not at the end."""
+        """Same rule as an insert: a row the filter shows again appears in order, not at the end."""
         source, proxy = self.build_flagged(
             ["gamma", "alpha", "beta"], ["gamma"])
         source.toggle(source._names.index("alpha"))    # by name: the model keeps its own order
@@ -295,22 +295,22 @@ class TheCoalescerDoesNotWAKEItself(_Case):
                 counts = self._counting(source, proxy)
 
                 for row in range(3):
-                    source.toggle(row)          # three rows move at once
+                    source.toggle(row)          # three rows change at once
                 self.settle()
-                self.settle()                   # a second turn, for any echo
+                self.settle()                   # a second turn, for any pass the first one scheduled
 
                 self.assertEqual(shown, self.shown(proxy),
-                                 "the rows did not move, so this measures "
+                                 "the shown rows did not change, so this measures "
                                  "nothing")
                 self.assertEqual(
                     1, counts["filter"],
                     "%d re-filters for one burst" % counts["filter"])
                 self.assertEqual(
                     0, counts["sort"],
-                    "%d sorts for a star the order does not read" % counts["sort"])
+                    "%d sorts for a favourite flag the sort does not use" % counts["sort"])
 
     def test_an_insert_and_a_data_change_MERGE_into_one_pass(self):
-        """An insert costs the model one sort and a star in the same turn one re-filter."""
+        """An insert costs one model sort, and a favourite toggle in the same turn one re-filter."""
         source, proxy = self.build_flagged(["bravo"], ["bravo"])
         counts = self._counting(source, proxy)
 
@@ -319,7 +319,7 @@ class TheCoalescerDoesNotWAKEItself(_Case):
         self.settle()
 
         self.assertEqual(["alpha"], self.shown(proxy),
-                         "the two changes did not both land")
+                         "the two changes did not both take effect")
         self.assertEqual(1, counts["sort"], "%d sorts" % counts["sort"])
         self.assertEqual(1, counts["filter"],
                          "%d re-filters" % counts["filter"])
@@ -357,7 +357,7 @@ class ACOLOURChangeIsNotAReFilter(_Case):
                     % (emitted, len(calls)))
 
     def test_the_SORT_role_still_counts(self):
-        """A rename changes where a row sorts, so it must re-pass even though no filter reads it."""
+        """A rename changes where a row sorts, so it needs a pass even though no filter reads it."""
         source, proxy = self.build_flagged(
             ["zulu", "bravo"], ["zulu", "bravo"])
         self.assertEqual(["bravo", "zulu"], self.shown(proxy))
@@ -366,7 +366,7 @@ class ACOLOURChangeIsNotAReFilter(_Case):
         self.assertEqual(
             ["alpha", "bravo"], self.shown(proxy),
             "a renamed row did not move - the sort role was treated as "
-            "passive")
+            "paint-only")
 
 
 class TheRuleHasOneHome(unittest.TestCase):
@@ -407,11 +407,11 @@ class TheRuleHasOneHome(unittest.TestCase):
             "a caller is re-sorting a proxy by hand outside "
             "construction, at %s - the proxy guarantees its own order "
             "now, and a second copy of that rule is how the first one "
-            "came to be one route short" % offenders)
+            "came to miss one code path" % offenders)
 
 
 class _TenColumns(QtCore.QAbstractTableModel):
-    """The shape the grid models share: roles as instance attributes, read off the source."""
+    """The shape the grid models share: roles as instance attributes, read from the source."""
 
     FavoriteRole = QtCore.Qt.ItemDataRole.UserRole + 61
     KindRole = QtCore.Qt.ItemDataRole.UserRole + 70
@@ -451,7 +451,7 @@ class PaintOnlyRolesCostNoPass(unittest.TestCase):
             with self.subTest(proxy=type(proxy).__name__):
                 model = proxy.sourceModel()
                 if hasattr(proxy, "setFilter"):
-                    proxy.setFilter(model.FavoriteRole, True)   # arm it as the section does: it watches ACTIVE filters
+                    proxy.setFilter(model.FavoriteRole, True)   # set it as the section does: it checks only ACTIVE filters
                 for roles, matters, why in (
                         ([model.CategoryColorRole], False,
                          "a colour pick re-filters the whole section"),
@@ -467,7 +467,7 @@ class PaintOnlyRolesCostNoPass(unittest.TestCase):
 
 
 class _Counted(QtCore.QAbstractListModel):
-    """Five roles on the MaterialLibrary numbers, every row passing every filter, fetches counted."""
+    """Five roles at the MaterialLibrary numbers, every row passing every filter, reads counted."""
 
     ROLES = {256 + 1: ["Wood"], 256 + 2: True, 256 + 3: "Karma",
              256 + 4: ["oak"]}
@@ -509,7 +509,7 @@ class AFilterPassFetchesEachRoleOnce(unittest.TestCase):
     def test_a_pass_reads_each_role_once_and_stops_at_a_failure(self):
         for name_filter, rows, reads in (
                 ("a", 3, {0: 3, 257: 3, 258: 3, 259: 3, 260: 3}),
-                ("zz", 0, {0: 3})):    # failing the cheapest test reads nothing behind it
+                ("zz", 0, {0: 3})):    # failing the cheapest test reads no further role
             with self.subTest(name_filter=name_filter):
                 fetched, shown = self._pass(name_filter)
                 self.assertEqual(rows, shown,
@@ -568,7 +568,7 @@ class AFilterChangeIsOnePass(unittest.TestCase):
         self.assertFalse(
             proxy._pass_scheduled,
             "the setter's own synchronous pass scheduled a second one "
-            "off its rowsInserted echo - two sorts and two "
+            "from its own rowsInserted - two sorts and two "
             "layoutChanged per keystroke")
 
 

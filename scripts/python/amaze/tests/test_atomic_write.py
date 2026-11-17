@@ -87,7 +87,7 @@ class AtomicWriteTest(unittest.TestCase):
         answer = hostos.write_json_atomic(
             self.path, {"rows": ["a", "é"], "n": 2}, indent=1, sort_keys=True)
         self.assertEqual(hostos.fingerprint_of(self.path), answer,
-                         "the writer names bytes other than the ones it wrote")
+                         "the returned fingerprint is not of the bytes on disk")
 
     def test_no_scratch_file_survives_a_success(self):
         hostos.write_json_atomic(self.path, {"ok": True})
@@ -95,7 +95,7 @@ class AtomicWriteTest(unittest.TestCase):
                          "a scratch file was left in the library")
 
     def test_a_failed_write_leaves_no_scratch_and_the_file_intact(self):
-        """No leftover for a sweep to call an orphan, and the good file outlives the bad write."""
+        """No leftover a cleanup could call an orphan; the good file stays after a bad write."""
         hostos.write_json_atomic(self.path, {"good": 1})
         with self.assertRaises(TypeError):
             hostos.write_json_atomic(self.path, {"bad": object()})
@@ -117,7 +117,7 @@ class AtomicWriteTest(unittest.TestCase):
         self.assertEqual([os.path.abspath(self.dir)], seen)
 
     def _windows_rules(self):
-        """Replace and remove refuse a read-only file, as Microsoft documents for Windows."""
+        """Replace and remove fail on a read-only file, as Microsoft documents for Windows."""
         real_replace, real_remove = os.replace, os.remove
 
         def writable(path):
@@ -143,7 +143,7 @@ class AtomicWriteTest(unittest.TestCase):
         self.addCleanup(sleeper.stop)
 
     def test_a_read_only_destination_leaves_no_scratch_behind(self):
-        """Windows refuses the swap onto a read-only file, and then the delete of a read-only scratch."""
+        """Windows fails the rename onto a read-only file, and then the delete of a read-only scratch."""
         hostos.write_json_atomic(self.path, {"v": 1})
         os.chmod(self.path, 0o444)
         self._windows_rules()
@@ -171,11 +171,11 @@ class AtomicWriteTest(unittest.TestCase):
         self._windows_rules()
         hostos.discard_scratch(scratch)
         self.assertFalse(os.path.exists(scratch),
-                         "a read-only scratch outlived its discard")
+                         "a read-only scratch still exists after `discard_scratch`")
 
 
 class EveryScratchWriterIsUniqueTest(unittest.TestCase):
-    """Uniqueness is of the name, so each test drives the real writer. ▸r/atomic-writes"""
+    """Uniqueness is of the name, so each test calls the real writer. ▸r/atomic-writes"""
 
     def setUp(self):
         self.dir = tempfile.mkdtemp(prefix="amaze_scratch_")
@@ -235,7 +235,7 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
         return handler, builder, mat_path, record_path
 
     def test_save_asset_pair_uses_unique_scratches(self):
-        """`.mat`/`.json` is the asset itself, with no `.bak-*` tier behind it. ▸p/asset-write-unit"""
+        """`.mat`/`.json` is the asset itself, with no `.bak-*` backup copy. ▸p/asset-write-unit"""
         from amaze.core import asset_record
 
         handler, builder, mat_path, record_path = self._asset_writer("ASSET1")
@@ -280,10 +280,10 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
                          "where the module's own directory scan will find it")
         with open(store.manifest_path, encoding="utf-8") as handle:
             self.assertEqual(6, len(json.load(handle)),
-                             "the manifest did not survive the writes")
+                             "the manifest is incomplete after the writes")
 
     def test_the_texture_manifest_keeps_its_on_disk_shape(self):
-        """A cache file's bytes are a contract; reformatting rewrites every manifest on every machine."""
+        """A cache file's format is fixed; reformatting rewrites every manifest on every machine."""
         from amaze.core import texture_library
 
         store = texture_library.ThumbnailCache.__new__(
@@ -314,7 +314,7 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
         real_request = matx_sources._request
         matx_sources._request = lambda _url: _Resp(body)
         self.addCleanup(setattr, matx_sources, "_request", real_request)
-        scratches = set()   # caught mid-flight; the name is gone by the end
+        scratches = set()   # seen during the download; the file is gone by the end
 
         def watch(_read, _total):
             scratches.update(n for n in os.listdir(self.dir)
@@ -327,7 +327,7 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
             6, len(scratches),
             "the download scratch name repeated (%r) - two fetches of one "
             "asset share the buffer, and the cleanup then removes the copy "
-            "the other one is about to promote" % sorted(scratches))
+            "the other one is about to rename into place" % sorted(scratches))
         self.assertEqual(
             ["texture.png"], sorted(os.listdir(self.dir)),
             "a scratch file was left beside the download")
@@ -348,7 +348,7 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
             self.assertFalse(
                 os.path.exists(scratch),
                 "create=False left a file at the name, so Houdini is being "
-                "handed an existing file after all")
+                "given an existing file after all")
             self.assertEqual(self.dir, os.path.dirname(scratch),
                              "the scratch is not beside its destination")
             seen.add(scratch)
@@ -367,7 +367,7 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
                 "extension, so Houdini writes a format Qt cannot read"
                 % os.path.basename(scratch))
             self.assertFalse(os.path.exists(scratch),
-                             "a renderer is handed a file that exists")
+                             "a renderer is given a file that exists")
 
     def test_every_render_scratch_is_named_through_its_helper(self):
         """SOURCE-DERIVED: a capture needs a live viewer, so the call sites are read. ▸p/testing-can-fail"""
@@ -382,7 +382,7 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
             self.assertIn(
                 "hostos.render_scratch(", source,
                 "%s names its own render scratch, so the extension rule "
-                "is back in a caller's hands" % where)
+                "is left to a caller" % where)
         source = inspect.getsource(scene_captures.capture_viewport)
         body = "\n".join(line.split("#")[0]
                          for line in source.splitlines())
@@ -391,16 +391,16 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
         self.assertEqual(
             1, len(assigns),
             "capture_viewport no longer has exactly one scratch name - "
-            "this test cannot say which one Houdini is handed (%r)" % assigns)
+            "this test cannot tell which one Houdini is given (%r)" % assigns)
         called = assigns[0].split("=", 1)[1].strip()
         self.assertTrue(
             called.startswith("_capture_scratch("),
             "capture_viewport builds its own scratch name instead of "
             "going through the helper, so the unique-name rule and the "
-            "extension rule are both back in play here (%r)" % called)
+            "extension rule are both unenforced here (%r)" % called)
 
     def test_a_scratch_is_not_leaked_when_the_second_one_cannot_be_made(self):
-        """A refused record scratch never strands the `.mat` scratch made before it."""
+        """When the record scratch cannot be made, the `.mat` scratch made before it is removed."""
         from amaze.tests import test_support
         handler, builder, mat_path, record = self._asset_writer("LEAK")
 
@@ -416,7 +416,7 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
             "Library has to decide whether it is an orphan")
 
     def test_preserving_an_unreadable_file_says_nothing_on_screen(self):
-        """The helper records and the caller speaks; a line printed inside doubles the message."""
+        """The helper logs and the caller prints; a line printed inside shows the message twice."""
         import contextlib
         import io
 
@@ -498,14 +498,14 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
                          "the failed write left its scratch files behind")
 
     def test_concurrent_asset_pair_writers_never_mix(self):
-        """Mixing is forced with a barrier, so the headline assertion can go red. ▸p/testing-can-fail"""
+        """Mixing is forced with a barrier, so the main assertion can fail. ▸p/testing-can-fail"""
         from amaze.core import asset_record
 
         hostos.replace_file = self._real_replace
         writers = {mark: self._asset_writer("RACE") for mark in ("A", "B")}
         _handler, _builder, mat_path, record_path = writers["A"]
         for number, mark in enumerate(("A", "B"), 1):
-            writers[mark][1].parm("amaze_n").set(number)    # each writer's builder says who
+            writers[mark][1].parm("amaze_n").set(number)    # each writer's builder value identifies it
         mixed = []
         raised = []
         scratches = {}
@@ -545,12 +545,12 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
             [], mixed,
             "a writer's scratch held the OTHER writer's bytes - this is the "
             "parseable corruption a shared scratch name produces, and for "
-            "the asset itself there is no .bak tier to recover from")
+            "the asset itself there is no .bak copy to recover from")
         self.assertEqual(2, len(scratches),
                          "premise: both writers must have reached the .mat")
         self.assertNotEqual(
             scratches["A"], scratches["B"],
-            "two overlapping writers were handed the same scratch path, so "
+            "two overlapping writers got the same scratch path, so "
             "they share one buffer by construction")
         self.assertEqual([], raised, "a concurrent write raised")
         with open(mat_path, encoding="utf-8") as handle:
@@ -560,7 +560,7 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
         self.assertIn(values.get("amaze_n"), ({"val": 1.0}, {"val": 2.0}),
                       "the .json holds neither writer's builder whole")
         self.assertEqual([], self._leftovers(os.path.dirname(mat_path)),
-                         "a scratch file survived the race")
+                         "a scratch file was left after the race")
 
     def test_a_new_file_gets_exactly_what_a_plain_open_would_have(self):
         """Against `_DEFAULT_FILE_MODE`, not `!= 0o600`, which a 077 umask passes. ▸p/testing-can-fail"""
@@ -604,11 +604,11 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
             self.assertEqual(
                 mode, os.stat(path).st_mode & 0o777,
                 "an atomic write changed permissions the user chose - the "
-                "repair is reaching past the one mode it is meant to know")
+                "repair changes modes other than the one it is meant to fix")
 
 
 class PrefsSurvivesADamagedOrUnwritableFileTest(unittest.TestCase):
-    """`settings.json` is read at panel build and written in ordinary use, so both fail softly."""
+    """`settings.json` is read at panel build and written in ordinary use, so neither may raise."""
 
     def setUp(self):
         self.dir = tempfile.mkdtemp(prefix="amaze_prefs_hard_")
@@ -625,7 +625,7 @@ class PrefsSurvivesADamagedOrUnwritableFileTest(unittest.TestCase):
             fh.write(payload)
 
     def test_a_top_level_list_does_not_kill_the_panel(self):
-        """A non-object top level has no `.get()`, and raising here kills the panel with no message."""
+        """A non-object top level has no `.get()`; raising here fails the panel build, silently."""
         for payload in ('["not", "an", "object"]', '"just a string"'):
             with self.subTest(payload=payload):
                 self._write(payload)
@@ -652,11 +652,11 @@ class PrefsSurvivesADamagedOrUnwritableFileTest(unittest.TestCase):
             p.save()                                  # must not raise
         self.assertTrue(
             log.matching("could not save settings.json", "prefs"),
-            "a failed settings write left no trace at all")
+            "a failed settings write left no log entry at all")
 
 
 class NoContentWriterTargetsItsDestinationTest(unittest.TestCase):
-    """A source scan of the whole package, since asset content has no `.bak-*` tier. ▸r/atomic-writes"""
+    """A source scan of the whole package, since asset content has no `.bak-*` copy. ▸r/atomic-writes"""
 
     SCRATCH_NAMES = {"scratch", "path", "tmp_mat", "tmp", "dest"}
 
@@ -694,8 +694,8 @@ class NoContentWriterTargetsItsDestinationTest(unittest.TestCase):
         self.assertEqual(
             [], offenders,
             "a node archive is written straight onto its destination, so a "
-            "save that dies partway truncates content that has no backup "
-            "tier to restore from:\n  " + "\n  ".join(offenders))
+            "save that fails partway truncates content that has no backup "
+            "copy to restore from:\n  " + "\n  ".join(offenders))
 
 
 class TwoPanesEditSettingsWithoutClobberTest(unittest.TestCase):
@@ -712,25 +712,25 @@ class TwoPanesEditSettingsWithoutClobberTest(unittest.TestCase):
         return p
 
     def test_every_collected_key_has_a_backing_attribute(self):
-        """Every collected key sits under `users/<uid>/`, the one home of per-user settings."""
+        """Every collected key is under `users/<uid>/`, which holds all per-user settings."""
         from amaze.prefs import settings_store
         rules = settings_store.RULES
         self.assertEqual(
             ["users"], [key for key in rules if "/" not in key],
-            "a per-user key is folded outside a user block, a second place to store it")
+            "a per-user key is merged outside a user block, a second place to store it")
         self.assertEqual("fields", rules.get("users"),
-                         "a uid this pane has never seen must arrive "
-                         "whole, or a second user is invisible")
+                         "a uid this pane has never seen must be merged "
+                         "in full, or a second user is not shown")
         blank = prefs.Prefs()
         for attr in ("_file_folders", "_file_favorites",
                      "_file_location_records", "_users_blocks"):
             self.assertTrue(
                 hasattr(blank, attr),
-                "the fold is absorbed into %s, which a fresh Prefs "
+                "the merge result is stored in %s, which a fresh Prefs "
                 "does not have" % attr)
 
     def test_a_scalar_takes_the_saving_pane(self):
-        """Scalars are not a fight: the pane being touched wins the single-choice keys."""
+        """Scalar keys are not merged: the value from the pane that saved last is kept."""
         pane_a = self._prefs()
         pane_a.library_user = "u-one"
         pane_a.save()
@@ -745,11 +745,11 @@ class TwoPanesEditSettingsWithoutClobberTest(unittest.TestCase):
         check.path = self.dir
         check.load()
         self.assertEqual(512, check.thumbsize,
-                         "the active editor's scalar lost")
+                         "the last saving pane's value was not kept")
 
 
 class TheLibraryUserIsTheOneIdentityTest(unittest.TestCase):
-    """`library_user` is who this is; it keys per-user storage, signs versions. ▸p/identity-is-chosen"""
+    """`library_user` is the user: it keys per-user storage and marks versions. ▸p/identity-is-chosen"""
 
     def _home(self, prefix="amaze_user_"):
         home = tempfile.mkdtemp(prefix=prefix)
@@ -800,15 +800,15 @@ class TheLibraryUserIsTheOneIdentityTest(unittest.TestCase):
                            'environ.get("USER"'):
                 self.assertNotIn(
                     banned, source,
-                    "%s appears in %s - an identity can be harvested "
-                    "into a user's name" % (banned, name))
+                    "%s appears in %s - the account or machine name can "
+                    "end up as a user's name" % (banned, name))
         self.assertIn("prefs.py", checked)
         self.assertIn("persistence.py", checked)
         self.assertIn("users.py", checked)
 
 
 class TheUserIsAUidWithANameTest(unittest.TestCase):
-    """A user is a UID with a name: a rename relinks one label, moves no data. ▸p/identity-is-chosen"""
+    """A user is a UID with a name: a rename changes one name, moves no data. ▸p/identity-is-chosen"""
 
     def _prefs(self):
         from amaze.tests import test_support
@@ -875,7 +875,7 @@ class TheUserIsAUidWithANameTest(unittest.TestCase):
         self.assertEqual("Vermilion", users.name_for(p, uid),
                          "the new name is not linked to the same UID")
         self.assertIn(uid, users.all_users(p),
-                      "the rename minted a second user")
+                      "the rename created a second user")
         self.assertEqual(1, len(users.all_users(p)))
 
     def test_the_current_user_is_the_picked_uid(self):
@@ -890,7 +890,7 @@ class TheUserIsAUidWithANameTest(unittest.TestCase):
                          "the machine-local pointer must hold the UID")
 
     def test_a_name_left_in_the_pointer_is_nobody(self):
-        """A NAME in the pointer, as the first builds wrote it, names nobody, and nobody is made of it."""
+        """A NAME in the pointer, as the first builds wrote it, matches no user, and none is created."""
         from amaze.core import users
         p = self._prefs()
         p.library_user = "Plum"
@@ -911,7 +911,7 @@ class TheUserIsAUidWithANameTest(unittest.TestCase):
         p.library_user = ""
         self.assertEqual(users.ASK, users.first_run_state(p))
         self.assertIsNone(users.current(p),
-                          "it minted a second identity instead of "
+                          "it created a second identity instead of "
                           "asking which user this is")
 
         p = self._prefs()
@@ -938,12 +938,12 @@ class TheUserListRowsTest(unittest.TestCase):
             "library user named like it could be mistaken for it")
 
 
-A_USER = "a1b2c3d4e5f60718293a4b5c6d7e8f90"  # minted shape: only uuid4().hex reads back as an owner
+A_USER = "a1b2c3d4e5f60718293a4b5c6d7e8f90"  # the shape `users.create` makes: only a uuid4().hex is read back as an owner
 B_USER = "90f8e7d6c5b4a3928170f6e5d4c3b2a1"
 
 
 class SandboxRefusesAWriteOutsideTempTest(unittest.TestCase):
-    """The JSON write door refuses when a run may touch only temp. ▸p/hand-run-script-is-unguarded"""
+    """The JSON writer raises when a run may write only in temp. ▸p/hand-run-script-is-unguarded"""
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="amaze_sandbox_")
@@ -977,7 +977,7 @@ class SandboxRefusesAWriteOutsideTempTest(unittest.TestCase):
             self.assertEqual({"a": 1}, json.load(handle))
 
     def test_unarmed_it_does_nothing_at_all(self):
-        """Nothing in the product sets the variable; a guard on by accident would refuse real saves."""
+        """Nothing in the product sets the variable; a sandbox left on would block real saves."""
         os.environ.pop(hostos.SANDBOX_VAR, None)
         self.assertFalse(hostos.sandboxed())
         outside = os.path.join(self.tmp, "..", os.path.basename(self.tmp),
@@ -988,7 +988,7 @@ class SandboxRefusesAWriteOutsideTempTest(unittest.TestCase):
 
 
 class SandboxRefusesEveryPrimitiveTest(unittest.TestCase):
-    """Every shared write primitive refuses a path outside the temp dir, not only the JSON door."""
+    """Every shared write primitive refuses a path outside the temp dir, not only the JSON one."""
 
     def setUp(self):
         base = tempfile.mkdtemp(prefix="amaze_sandbox_prim_")
@@ -1056,7 +1056,7 @@ class SandboxRefusesEveryPrimitiveTest(unittest.TestCase):
         change.trash("materials/LEFTOVER.mat")
         with self.assertRaises(hostos.SandboxRefused):
             change.commit()
-        self.assertTrue(os.path.exists(leftover), "the refused move still took the file")
+        self.assertTrue(os.path.exists(leftover), "the refused move still moved the file")
 
     def test_a_cache_folder_made_outside_is_refused(self):
         self.addCleanup(hostos.set_cache_override, hostos._cache_override)
@@ -1065,7 +1065,7 @@ class SandboxRefusesEveryPrimitiveTest(unittest.TestCase):
 
 
 class SandboxKeepsThePerUserFoldersInTempTest(unittest.TestCase):
-    """Armed, the settings, cache and log folders stand in temp - a suite save's history lands there."""
+    """Sandboxed, the settings, cache and log folders are in temp, so a suite save's history is too."""
 
     def setUp(self):
         original = os.environ.get(hostos.SANDBOX_VAR)
@@ -1103,7 +1103,7 @@ class SandboxKeepsThePerUserFoldersInTempTest(unittest.TestCase):
         self._assert_in_temp()
 
     def test_unarmed_the_folders_are_the_users_own(self):
-        """Nothing in the product arms it, so the stand-in must never answer for a real session."""
+        """Nothing in the product sets it, so a real session must never get the temp folder."""
         held = os.environ.get(hostos.SANDBOX_HOME_VAR)
         if held is None:
             self.addCleanup(os.environ.pop, hostos.SANDBOX_HOME_VAR, None)
@@ -1113,11 +1113,11 @@ class SandboxKeepsThePerUserFoldersInTempTest(unittest.TestCase):
         os.environ.pop(hostos.SANDBOX_VAR, None)
         os.environ[hostos.SANDBOX_HOME_VAR] = tempfile.gettempdir()
         self.assertEqual("", hostos.sandbox_home(),
-                         "an unarmed run answered the stand-in folder")
+                         "a run without the sandbox returned the temp folder")
 
 
 class OnePathHasOneSpelling(unittest.TestCase):
-    """Both encoders spell a path one way, `~` over a `$AMAZE/..` walk; both decoders read both."""
+    """Both encoders spell a path one way, `~` over a `$AMAZE/..` path; both decoders read both."""
 
     def _cases(self):
         from amaze.helpers import hostos
@@ -1127,7 +1127,7 @@ class OnePathHasOneSpelling(unittest.TestCase):
                  home,
                  "/Volumes/Share/textures"]
         if amaze:
-            # The divergent shape: shares a subtree with the install, not under it.
+            # The case that differs: shares a parent with the install, not under it.
             cases.append(os.path.join(
                 os.path.dirname(amaze), "Sibling", "textures"))
             cases.append(os.path.join(amaze, "scripts"))
@@ -1160,7 +1160,7 @@ class OnePathHasOneSpelling(unittest.TestCase):
             "an existing settings.json entry stopped resolving")
 
     def test_a_trailing_separator_survives_the_round_trip(self):
-        """`directory` keeps its separator; the home half is built canonically, not by gluing POSIX on."""
+        """`directory` keeps its separator; the home part comes from `posix_path`, not string joining."""
         from amaze.prefs import persistence
         for path in (test_support.posix_path(os.path.expanduser("~"))
                      + "/Cloud/lib/",
@@ -1172,7 +1172,7 @@ class OnePathHasOneSpelling(unittest.TestCase):
 
 
 class ImportingTheHarnessArmsTheSandboxTest(unittest.TestCase):
-    """A test started without the runner is armed by `test_support`. ▸p/hand-run-script-is-unguarded"""
+    """A test run without the runner is sandboxed by `test_support`. ▸p/hand-run-script-is-unguarded"""
 
     CHILD = ("from amaze.core import library_db\n"
              "from amaze.tests import test_support\n"
@@ -1192,7 +1192,7 @@ class ImportingTheHarnessArmsTheSandboxTest(unittest.TestCase):
                                 capture_output=True, text=True, env=env,
                                 timeout=300)
         self.assertEqual(0, result.returncode,
-                         "the bare run died: %s" % result.stderr[-800:])
+                         "the bare run failed: %s" % result.stderr[-800:])
         return dict(line.split("=", 1) for line in result.stdout.splitlines()
                     if line.startswith(("ARMED=", "SETTINGS=")))
 
@@ -1200,7 +1200,7 @@ class ImportingTheHarnessArmsTheSandboxTest(unittest.TestCase):
         said = self._bare_run()
         self.assertEqual(
             "True", said.get("ARMED"),
-            "a test module started without start_test.sh is not armed, so "
+            "a test module started without start_test.sh has no sandbox, so "
             "it can write the user's real settings folder")
         self.assertNotEqual(
             os.path.realpath(hostos.real_config_root()),
@@ -1209,12 +1209,12 @@ class ImportingTheHarnessArmsTheSandboxTest(unittest.TestCase):
 
 
 class TheSandboxStaysArmedForTheSuiteTest(unittest.TestCase):
-    """`AMAZE_SANDBOX` stays armed for the whole process; named to sort behind the guard class."""
+    """`AMAZE_SANDBOX` stays set for the whole process; named to sort after the sandbox classes."""
 
     def test_the_armed_state_survived_the_sandbox_tests(self):
         self.assertTrue(
             hostos.sandboxed(),
-            "a sandbox test disarmed the process and never re-armed it "
+            "a sandbox test turned the sandbox off and never back on "
             "- every test after this module can now write live data")
 
 
@@ -1250,7 +1250,7 @@ class TextFilesAreTheSameBytesOnEveryOS(unittest.TestCase):
 
     def test_the_scan_still_finds_the_package_opens(self):
         self.assertGreaterEqual(len(self._text_opens()), 30,    # ▸p/vacuous-register
-                                "the scan stopped matching, so its silence means nothing")
+                                "the scan stopped matching, so an empty result proves nothing")
 
     def test_every_text_open_names_its_encoding(self):
         bare = [where for where, _mode, keywords in self._text_opens()

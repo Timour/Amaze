@@ -1,4 +1,4 @@
-"""The preview engine is a BOX: name `amaze.preview`, never its insides. ▸p/preview-door"""
+"""Other code imports `amaze.preview`, never its submodules. ▸p/preview-door"""
 import ast
 import os
 import types
@@ -46,14 +46,14 @@ class ThePreviewEngineIsAPackageWithADoor(unittest.TestCase):
         self.assertTrue(
             getattr(preview, "__all__", None),
             "preview/__init__.py declares no __all__, so what is inside "
-            "the box and what is offered are the same thing")
+            "the package and what it exports are the same thing")
         preview.reload_engine()
         inside = [m for m in vars(preview).values()
                   if isinstance(m, types.ModuleType)
                   and getattr(m, "__name__", "").startswith(DOOR + ".")]
         self.assertTrue(
             inside,
-            "the door binds no submodule of its own, so there is nothing "
+            "amaze.preview binds no submodule of its own, so there is nothing "
             "to compare a rebind against and this test proves nothing")
         unowned, stale = [], []
         for name in preview.__all__:
@@ -67,8 +67,8 @@ class ThePreviewEngineIsAPackageWithADoor(unittest.TestCase):
                 stale.append(name)
         self.assertEqual(
             [], unowned,
-            "the door offers these but no submodule of it defines them, "
-            "so __all__ has drifted from what is behind it: %s" % unowned)
+            "amaze.preview exports these but no submodule defines them, "
+            "so __all__ no longer matches the submodules: %s" % unowned)
         self.assertEqual(
             [], stale,
             "reload_engine() left these bound to the code it replaced, "
@@ -86,9 +86,9 @@ class ThePreviewEngineIsAPackageWithADoor(unittest.TestCase):
                         os.path.relpath(path, PACKAGE), name))
         self.assertEqual(
             [], sorted(offenders),
-            "these reach past the preview engine's API into its "
-            "internals, so it is a directory rather than an engine and "
-            "nothing could be swapped for it: %s" % "; ".join(
+            "these import past the preview engine's API into its "
+            "internals, so it is a folder rather than an engine and "
+            "it could not be replaced: %s" % "; ".join(
                 sorted(offenders)))
 
 

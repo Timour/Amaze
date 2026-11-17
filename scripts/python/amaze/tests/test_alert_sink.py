@@ -1,4 +1,4 @@
-"""The sinks that speak: `alert` once per condition, `refuse` once per gesture. ▸p/refusal-sink"""
+"""How `debug` reports: `alert` once per condition, `refuse` once per action. ▸p/refusal-sink"""
 
 import ast
 import os
@@ -66,7 +66,7 @@ class AlertIsOncePerConditionTest(unittest.TestCase):
 
 
 class SayUnlistedNamesWhatTheListDidNotTake(unittest.TestCase):
-    """`library.say_unlisted`: the one status line six doors end on, and silence when all landed"""
+    """`library.say_unlisted`: one status line at the end of six callers; none when all saved"""
 
     def setUp(self):
         from amaze.utils import rc_calls
@@ -89,7 +89,7 @@ class SayUnlistedNamesWhatTheListDidNotTake(unittest.TestCase):
         return self.said
 
     def test_nothing_is_said_when_every_row_landed(self):
-        """The guard: without it a clean batch ends on `0 materials were added`."""
+        """The empty check: without it a batch with no failure ends on `0 materials were added`."""
         self.assertEqual([], self._say([]))
 
     def test_one_added_row_is_named(self):
@@ -99,7 +99,7 @@ class SayUnlistedNamesWhatTheListDidNotTake(unittest.TestCase):
 
     def test_several_added_rows_are_counted_not_named(self):
         said = self._say(["Rust", "Chrome", "Oak"])
-        self.assertEqual(1, len(said), "a batch said more than one line: %r" % said)
+        self.assertEqual(1, len(said), "a batch wrote more than one line: %r" % said)
         self.assertIn("3 materials were added, but the library could not be saved.", said[0])
 
     def test_one_updated_row_says_updated(self):
@@ -112,7 +112,7 @@ class SayUnlistedNamesWhatTheListDidNotTake(unittest.TestCase):
 
 
 class TheOnlineImportEndsOnThatLine(unittest.TestCase):
-    """A batch collects the records its list did not take and says so once, after everything else"""
+    """A batch collects the records the library could not save and shows one line, after all else"""
 
     class _Panel:
         _online_download_active = False
@@ -125,7 +125,7 @@ class TheOnlineImportEndsOnThatLine(unittest.TestCase):
             self.landed.append(held)
 
     def _batch(self, answers):
-        """`import_records` over len(answers) records, each door answering one (ok, reason)."""
+        """`import_records` on len(answers) records; `import_material` returns each (ok, reason)."""
         from amaze.panel import online_import as online_import_mod
 
         class Door(online_import_mod.OnlineImport):
@@ -136,7 +136,7 @@ class TheOnlineImportEndsOnThatLine(unittest.TestCase):
         with mock.patch.object(hou, "ui", types.SimpleNamespace(
                 setStatusMessage=lambda text, *a, **k: self.said.append(text),
                 displayMessage=lambda text, *a, **k: self.shown.append(
-                    "\n\n".join(filter(None, (text, k.get("details")))))),    # the list rides in details
+                    "\n\n".join(filter(None, (text, k.get("details")))))),    # the list is passed in `details`
                 create=True):
             Door(panel).import_records(list(answers))
         return panel
@@ -175,7 +175,7 @@ class TheOnlineImportEndsOnThatLine(unittest.TestCase):
 
 
 class RefuseIsTheGestureSinkTest(unittest.TestCase):
-    """`debug.refuse`: bad aim to the status line, damage to a dialog. ▸p/refusal-sink"""
+    """`debug.refuse`: a wrong target on the status line, damage in a dialog. ▸p/refusal-sink"""
 
     def setUp(self):
         from amaze.utils import rc_calls
@@ -183,22 +183,22 @@ class RefuseIsTheGestureSinkTest(unittest.TestCase):
         self.shown = []
         self.printed = []
         self.addCleanup(debug.hand_over, debug._ui)
-        debug.hand_over(rc_calls.HoudiniSpeaker)    # what the pane and every shelf tool hand over
+        debug.hand_over(rc_calls.HoudiniSpeaker)    # what the pane and every shelf tool pass to `hand_over`
 
     def _ui(self):
-        """Both calls, so a wrong branch is a wrong list and not an AttributeError reading as a crash."""
+        """Both calls, so a wrong branch fills the wrong list instead of raising an AttributeError."""
         return types.SimpleNamespace(
             setStatusMessage=lambda text, *a, **k: self.said.append(text),
             displayMessage=lambda text, *a, **k: self.shown.append(text),
         )
 
     def _fire_deferred(self, singleShot):
-        """Run what the dialog branch parked."""
+        """Run what the dialog branch deferred."""
         for call in singleShot.call_args_list:
             call.args[1]()
 
     def test_bad_aim_goes_to_the_status_line_every_time(self):
-        """Named for the app, and never de-duplicated the way an alert is."""
+        """Starts with `Amaze: `, and is never de-duplicated the way an alert is."""
         with mock.patch.object(hou, "ui", self._ui(), create=True):
             for _ in range(3):
                 debug.refuse("that node has no file parameter")
@@ -206,10 +206,10 @@ class RefuseIsTheGestureSinkTest(unittest.TestCase):
                          "a wrong-target refusal opened a dialog")
         self.assertEqual(3, len(self.said),
                          "the refusal was de-duplicated like an alert, so "
-                         "a repeated gesture looked like it landed")
+                         "a repeated action looked like it succeeded")
         for text in self.said:
             self.assertTrue(text.startswith("Amaze: "),
-                            "the status line does not say who is speaking: "
+                            "the status line does not start with `Amaze: `: "
                             "%r" % text)
             self.assertIn("that node has no file parameter", text)
 
@@ -231,7 +231,7 @@ class RefuseIsTheGestureSinkTest(unittest.TestCase):
             self.assertEqual(
                 [], self.shown,
                 "the dialog opened INSIDE the release handler, where it "
-                "phantom-accepts the drag's own click")
+                "receives the drag's own release click")
             self.assertEqual(1, later.call_count)
             self._fire_deferred(later)
         self.assertEqual([], self.said,
@@ -240,7 +240,7 @@ class RefuseIsTheGestureSinkTest(unittest.TestCase):
         self.assertEqual(['"Rust": asset file is missing.'], self.shown)
 
     def test_the_deferred_dialog_waits_while_amaze_is_still_at_work(self):
-        """The parked dialog must not open inside Houdini's event pump. ▸p/deferred-ui-at-top-level"""
+        """The queued dialog must not open inside Houdini's event loop. ▸p/deferred-ui-at-top-level"""
         with mock.patch.object(hou, "ui", self._ui(), create=True):
             debug.refuse(debug.Damage('"Rust": asset file is missing.'))
 
@@ -254,14 +254,14 @@ class RefuseIsTheGestureSinkTest(unittest.TestCase):
                          "the dialog did not open once the event loop was idle")
 
     def test_with_nothing_handed_over_the_log_only_prints(self):
-        """The log reaches Houdini only through what was handed over, never by itself."""
+        """The log shows messages in Houdini only through the object given to `hand_over`."""
         debug.hand_over(None)
         with mock.patch.object(hou, "ui", self._ui(), create=True), \
                 mock.patch("builtins.print", self.printed.append):
             debug.refuse("no ramp here")
             debug.refuse(debug.Damage("gone"))
         self.assertEqual(([], []), (self.said, self.shown),
-                         "the log spoke to Houdini with nothing handed over")
+                         "the log called Houdini's UI with nothing handed over")
         self.assertEqual(2, len(self.printed))
 
     def test_headless_says_it_anyway_and_does_not_raise(self):
@@ -271,12 +271,12 @@ class RefuseIsTheGestureSinkTest(unittest.TestCase):
             shown = debug.refuse("no ramp here")
             damaged = debug.refuse(debug.Damage("gone"))
         self.assertTrue(shown and damaged,
-                        "a headless refusal reported that it said nothing")
+                        "a headless refusal returned that it showed nothing")
         self.assertEqual(2, len(self.printed))
 
 
     def test_on_windows_the_fallback_prints_nothing(self):
-        """A print opens the Windows Console, so alert and refuse keep note's rule. ▸r/platform-files"""
+        """A print opens the Windows Console; alert, refuse and note skip it. ▸r/platform-files"""
         from amaze.helpers import hostos
         debug.hand_over(None)
         self.addCleanup(debug._alerted.clear)
@@ -289,15 +289,15 @@ class RefuseIsTheGestureSinkTest(unittest.TestCase):
         self.assertEqual([], self.printed, "a fallback printed on Windows")
 
 class TheDamageDoorMarksItsRefusalsTest(unittest.TestCase):
-    """Every literal refusal the import door authors, classified. ▸p/refusal-sink"""
+    """Every literal refusal the import functions in nodes.py return, classified. ▸p/refusal-sink"""
 
     ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     DOORS = ("_payload_or_refusal", "_import_asset_to_scene_inner",
              "_import_cop_asset_inner", "_load_saved")
 
-    DAMAGE = {    # opening words -> library broken? A forwarded reason keeps its origin marking
+    DAMAGE = {    # opening words -> library damaged? A forwarded reason keeps the marking of its source
         '"%s": asset file is missing on disk.': True,
-        '"%s": %s.': True,    # the Node door's empty or unreadable file, its reason composed in
+        '"%s": %s.': True,    # the Node import's empty or unreadable file, its reason inserted
         '"%s" cannot be imported: its id is not a usable file': True,
         '"%s" cannot be imported: its files resolve to': True,
         '"%s" cannot be imported: its material file is': True,
@@ -323,7 +323,7 @@ class TheDamageDoorMarksItsRefusalsTest(unittest.TestCase):
         return ""
 
     def _authored_refusals(self):
-        """{sentence: marked} for every literal refusal the doors return."""
+        """{sentence: marked} for every literal refusal the DOORS functions return."""
         with open(os.path.join(self.ROOT, "render", "nodes.py"),
                   encoding="utf-8") as fh:
             tree = ast.parse(fh.read())
@@ -348,14 +348,14 @@ class TheDamageDoorMarksItsRefusalsTest(unittest.TestCase):
         return found
 
     def test_each_sentence_is_marked_exactly_as_its_severity_says(self):
-        """Red, never vacuous, when a sentence is reworded or moved."""
+        """Fails, and never passes on nothing found, when a sentence is reworded or moved."""
         found = self._authored_refusals()
         missing = [opening for opening in self.DAMAGE
                    if not any(s.startswith(opening) for s in found)]
         self.assertEqual(
             [], missing,
             "refusal(s) this test classifies are no longer returned by %s "
-            "- re-key them in the same commit that moved them, never drop "
+            "- update their keys in the commit that moved them, never drop "
             "the entry:\n  %s" % (", ".join(self.DOORS),
                                   "\n  ".join(missing)))
         wrong = []
@@ -372,22 +372,22 @@ class TheDamageDoorMarksItsRefusalsTest(unittest.TestCase):
                              % sentence[:60])
         self.assertEqual(
             [], wrong,
-            "the import door's severity split has drifted - a damage "
-            "sentence left unmarked reaches the user as a status line "
-            "the next write erases, and a bad-aim sentence marked opens "
-            "a dialog mid-gesture:\n  " + "\n  ".join(wrong))
+            "the Damage marking in nodes.py no longer matches DAMAGE - a damage "
+            "sentence left unmarked is shown on the status line, which "
+            "the next write erases, and a wrong-target sentence marked opens "
+            "a dialog during the drag:\n  " + "\n  ".join(wrong))
 
 
 class NoReleaseVerbOpensAModalInline(unittest.TestCase):
-    """A release verb speaks through the sink: a modal in a release takes its click. ▸p/refusal-sink"""
+    """A release verb calls `debug.refuse`: a modal in a release gets its click. ▸p/refusal-sink"""
 
     ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     MODALS = {"displayMessage", "displayConfirmation", "displayCustomConfirmation", "readInput",
               "readMultiInput", "selectFromList", "selectFile", "selectColor", "selectNode"}
     BOX_MODALS = {"information", "warning", "critical", "question"}    # on QMessageBox
-    PANEL_RELEASES = ("assign_category_active", "move_files_active")    # the gesture's own calls
+    PANEL_RELEASES = ("assign_category_active", "move_files_active")    # the panel's own drop calls
     REACHED = ("material_lop_viewport_drop", "assign_material_to_obj", "_import_material_builder",
-               "import_geo_in_context")    # the doors that once opened one
+               "import_geo_in_context")    # the functions that once opened one
     HELPERS = {"drop_placement": ("panel/drop_placement.py", "DropPlacement"),    # the objects the panel holds
                "tile_capture": ("panel/tile_capture.py", "TileCapture"),
                "online_import": ("panel/online_import.py", "OnlineImport"),
@@ -448,7 +448,7 @@ class NoReleaseVerbOpensAModalInline(unittest.TestCase):
                         stack.append(("section", called, path + " > " + called))
         reached = {name for _side, name in seen}
         self.assertEqual([], [door for door in self.REACHED if door not in reached],
-                         "premise: the walk no longer reaches these doors - re-key REACHED")
+                         "premise: the walk no longer reaches these functions - update REACHED")
         self.assertEqual(
             [], offenders,
             "a release verb opens a modal inline, where it takes the drag's own "
@@ -457,7 +457,7 @@ class NoReleaseVerbOpensAModalInline(unittest.TestCase):
 
 
 class AFailedReleaseSpeaksThroughTheSink(unittest.TestCase):
-    """Two doors driven for real: nothing opens inside the release, and the reason reaches the sink."""
+    """Two import paths run for real: nothing opens inside the release; the reason goes to `refuse`."""
 
     @classmethod
     def setUpClass(cls):
@@ -478,7 +478,7 @@ class AFailedReleaseSpeaksThroughTheSink(unittest.TestCase):
         self.later = QtCore.QTimer.singleShot
 
     def test_a_scene_that_will_not_open_is_told_after_the_release(self):
-        """The hip door's `outside` verb, its load refused by Houdini."""
+        """`open_hip_scene` on a scene file, with `hou.hipFile.load` failing."""
         from amaze.core import locations
         panel = self.panel
         panel.section_tabs.setChecked("file")
@@ -492,15 +492,15 @@ class AFailedReleaseSpeaksThroughTheSink(unittest.TestCase):
         self.later.reset_mock()    # the section switch defers work of its own
         with mock.patch.object(hou.hipFile, "load", failed):
             panel.sections["file"].open_hip_scene(proxy.index(row, 0))
-        self.assertEqual(1, failed.call_count, "premise: the load was never asked")
+        self.assertEqual(1, failed.call_count, "premise: the load was never called")
         self.assertEqual([], self.shown, "the failed open showed a modal inside the release")
-        self.assertEqual(1, self.later.call_count, "the failed open was not handed to the sink")
-        self.later.call_args.args[1]()    # what the sink parked for when Qt is idle
+        self.assertEqual(1, self.later.call_count, "the failed open was not deferred to a dialog")
+        self.later.call_args.args[1]()    # the call `debug.refuse` deferred until Qt is idle
         self.assertEqual(1, len(self.shown))
         self.assertIn(proxy.index(row, 0).data(path_role), self.shown[0])
 
     def test_a_network_that_takes_no_geometry_is_said_on_the_status_line(self):
-        """The geo door's import, its container refused: bad aim, never a dialog."""
+        """`import_geo_in_context` where node creation fails: a wrong target, never a dialog."""
         def refuse(*_args, **_kwargs):
             raise hou.OperationFailed("Cannot create a node inside a locked asset")
         network = types.SimpleNamespace(
@@ -510,18 +510,18 @@ class AFailedReleaseSpeaksThroughTheSink(unittest.TestCase):
         self.assertIsNone(made)
         self.assertEqual(([], 0), (self.shown, self.later.call_count),
                          "a network refusing the import opened a dialog")
-        self.assertEqual(1, len(self.said), "the refusal reached no status line")
+        self.assertEqual(1, len(self.said), "the refusal was not shown on the status line")
         self.assertIn("rock.bgeo.sc", self.said[0])
 
 
 class TheTenSitesAreConvertedTest(unittest.TestCase):
-    """Source-derived: every user alert is raised through alert() or the registry. ▸o/debug-engine"""
+    """Source scan: every user alert is raised through alert() or the registry. ▸o/debug-engine"""
 
     ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
     EXPECTED = {    # file -> conditions; empty: moved to the registry ▸p/source-derived-tests
         os.path.join("core", "gradient_library.py"): (
-            "colors-not-saved",),    # the trailing comma is load-bearing: a bare string is walked one character at a time
+            "colors-not-saved",),    # the trailing comma is required: a bare string is iterated one character at a time
         os.path.join("core", "library_db.py"): ("database-%s-%s-%s", "database-write-failed-%s",
                                                 "shrunk-%s-%s"),
         os.path.join("core", "tile_icons.py"): ("icons-not-saved",),
@@ -531,7 +531,7 @@ class TheTenSitesAreConvertedTest(unittest.TestCase):
     }
 
     def test_a_database_that_does_not_read_says_how_to_get_it_back(self):
-        """Each database is judged by one door, whose read-only sentences point at the check."""
+        """Only library_db.py decides a database is read-only; its messages point at the check."""
         from amaze import messages
         for text in (messages.DATABASE_CORRUPT_READ_ONLY, messages.DATABASE_MISSING_READ_ONLY,
                      messages.DATABASE_SHRUNK):
@@ -541,7 +541,7 @@ class TheTenSitesAreConvertedTest(unittest.TestCase):
         for name in ("DATABASE_CORRUPT_READ_ONLY", "DATABASE_MISSING_READ_ONLY",
                      "LIBRARY_FORMAT_AHEAD_READ_ONLY", "DATABASE_SHRUNK", "LIBRARY_WRITE_FAILED"):
             self.assertIn("messages." + name, source,
-                          "%s is no longer said by the one door that judges a database" % name)
+                          "%s is no longer used by library_db.py, which checks each database" % name)
 
     def test_every_condition_is_raised_through_alert(self):
         missing = []
@@ -556,7 +556,7 @@ class TheTenSitesAreConvertedTest(unittest.TestCase):
 
 
 class EveryWayInHandsTheLogItsSpeaker(unittest.TestCase):
-    """The log speaks through Houdini only once handed over, so every entry point does that first."""
+    """Houdini shows the log's messages only after `hand_over`; every entry point calls it first."""
 
     REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__))))))
@@ -589,7 +589,7 @@ class EveryWayInHandsTheLogItsSpeaker(unittest.TestCase):
         source = inspect.getsource(panel.AmazePanel.__init__)
         self.assertIn("rc_calls.start()", source)
         self.assertLess(source.index("rc_calls.start()"), source.index("debug.install()"),
-                        "the session header is written before the log knows the Houdini")
+                        "the session header is written before `rc_calls.start()` sets up the log")
 
     def test_save_to_amaze_hands_it_over(self):
         import inspect
@@ -598,7 +598,7 @@ class EveryWayInHandsTheLogItsSpeaker(unittest.TestCase):
 
 
 class AHeldDatabaseIsNeverCalledCorrupt(unittest.TestCase):
-    """A database that is there but cannot be opened is read-only for now, never said to be corrupt."""
+    """A database that is there but cannot be opened is read-only for now, never reported corrupt."""
 
     def test_held_is_read_only_silent_and_judged_again(self):
         from amaze.core import guard, library_db, library_files
@@ -614,7 +614,7 @@ class AHeldDatabaseIsNeverCalledCorrupt(unittest.TestCase):
         self.assertEqual([], log.messages("alert"), "a held database was alerted about")
         library_db.refresh(prefs)
         self.assertEqual(guard.FINE, library_db.document(prefs, library_files.MATERIALS).verdict,
-                         "the database was not judged again once it opened")
+                         "the database was not checked again once it could be opened")
 
 
 if __name__ == "__main__":

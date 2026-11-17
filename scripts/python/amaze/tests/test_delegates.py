@@ -39,7 +39,7 @@ class _ExplodingModel(QtCore.QAbstractListModel):
 
 
 class TheTileStandsOnItsFrame(unittest.TestCase):
-    """The tile's cell and every badge land where the T frames draw them. ▸r/tile-from-frame"""
+    """The tile's cell and every badge match where the T frames draw them. ▸r/tile-from-frame"""
 
     def setUp(self):
         from amaze import amazetheme
@@ -201,7 +201,7 @@ class TheSvgCacheTest(unittest.TestCase):
         self.assertEqual(1, len(self.ui_helpers._SVG_CACHE))
         self.ui_helpers.render_svg_pixmap(self.icon, 32)
         self.assertEqual(1, len(self.ui_helpers._SVG_CACHE),
-                         "the second ask rendered the file again")
+                         "the second call rendered the file again")
         self.ui_helpers.render_svg_pixmap(
             self.icon, 32, {"#5d7abd": "#ff0000"})
         self.assertEqual(
@@ -212,7 +212,7 @@ class TheSvgCacheTest(unittest.TestCase):
                          "another size reused the 32px picture")
 
     def test_the_caller_never_receives_the_cached_pixmap_itself(self):
-        """QPixmap is mutable: a caller painting into the cached object would poison every later ask."""
+        """QPixmap is mutable: a caller painting into the cached object would alter every later call."""
         first = self.ui_helpers.render_svg_pixmap(self.icon, 32)
         second = self.ui_helpers.render_svg_pixmap(self.icon, 32)
         self.assertIsNot(first, second)
@@ -297,7 +297,7 @@ class OneSvgPainterTest(unittest.TestCase):
 
 
 class PainterBalanceTest(unittest.TestCase):
-    """A delegate hands the painter back as it got it, even when a row raises mid-paint."""
+    """A delegate leaves the painter's state as it found it, even when a row raises mid-paint."""
 
     def setUp(self):
         self.messages = []
@@ -448,10 +448,10 @@ class BandContrastTest(unittest.TestCase):
             "a category colour drops its label below 3:1 (%s at %.2f:1)"
             % (worst_color.name() if worst_color else "?", worst))
 
-    LEGACY_PRESETS = ("#ef8878", "#4af2a1", "#5cc9f5", "#e2b148")   # what older saved tiles hold; the live palette is drawn, not this corpus
+    LEGACY_PRESETS = ("#ef8878", "#4af2a1", "#5cc9f5", "#e2b148")   # colours older saved tiles hold; the current palette comes from the drawing
 
     def test_the_shipped_presets_are_unchanged(self):
-        """The contrast rule does not restyle what is saved: the four legacy presets keep their ink."""
+        """Contrast does not restyle what is saved: the four legacy presets keep their text colour."""
         for value in self.LEGACY_PRESETS + ("#00ee00",):    # the green that exposed the old threshold
             color = QtGui.QColor(value)
             self.assertGreater(
@@ -472,11 +472,11 @@ class BandContrastTest(unittest.TestCase):
             self.assertEqual(
                 color.name(),
                 self.DELEGATE.readable_on(color, row).name(),
-                "preset %s was altered although it already reads" % value)
+                "preset %s was altered although it was already readable" % value)
 
 
 class PaintCostTest(unittest.TestCase):
-    """Two things the grid was paying for and not using."""
+    """Two things the grid computed and did not use."""
 
     COLOR_ROLE = QtCore.Qt.ItemDataRole.UserRole + 8
     SUBTITLE = QtCore.Qt.ItemDataRole.UserRole + 3
@@ -531,7 +531,7 @@ class PaintCostTest(unittest.TestCase):
             % len(reads))
 
     def test_a_badge_is_rendered_at_device_resolution(self):
-        """A badge rasterises at side*dpr, as `_icon_pixmap` does, or Retina upscales it soft."""
+        """A badge rasterises at side*dpr, as `_icon_pixmap` does, or Retina upscales it blurred."""
         normal = delegates.AssetItemDelegate._badge_pixmap(
             "badge_favourite", 22, 1.0)
         retina = delegates.AssetItemDelegate._badge_pixmap(
@@ -560,7 +560,7 @@ class PaintCostTest(unittest.TestCase):
 
 
 class BadgeFamilyTest(unittest.TestCase):
-    """The four badges are one family: one art set, `_badge_pixmap`, `_badge_side`, no re-tint."""
+    """All badges share one art set, `_badge_pixmap` and `_badge_side`, and are never re-tinted."""
 
     NAMES = ("badge_open", "badge_favourite", "badge_favourite_off", "badge_versions",
              "badge_comment", "badge_execute") + tuple(r.badge for r in renderers.ALL)
@@ -584,7 +584,7 @@ class BadgeFamilyTest(unittest.TestCase):
             "shrinks past legibility")
 
     def _asked_for(self, role_kw, value, icon_side):
-        """Wire one badge role, run `_paint_badges`, and record every rasteriser ask with its dpr."""
+        """Set one badge role, run `_paint_badges`, record each `_badge_pixmap` call with its dpr."""
         asked = []
 
         def spy(name, side, dpr=1.0, opacity=None):
@@ -617,7 +617,7 @@ class BadgeFamilyTest(unittest.TestCase):
         return asked
 
     def test_every_corner_asks_for_its_own_art_at_the_family_size(self):
-        """Each corner asks for its own art by name, at the `_badge_side` size and the real dpr."""
+        """Each badge requests its own art by name, at the `_badge_side` size and the real dpr."""
         corner = delegates.AssetItemDelegate._badge_side(128)
         rest = amazetheme.BADGE_REST_OPACITY
         cases = (    # (badge, its value, art, size, opacity: None = as drawn)
@@ -631,16 +631,16 @@ class BadgeFamilyTest(unittest.TestCase):
         self.assertEqual(
             len(cases), len(delegates.BADGES),
             "the badge table and this test disagree about how many "
-            "badges there are - a new row must be driven here too")
+            "badges there are - a new row must be tested here too")
         for role_kw, value, art, expected, opacity in cases:
             asked = self._asked_for(role_kw, value, 128)
             self.assertEqual(
                 [(art, expected, 2.0, opacity)], asked,
-                "%s does not go through the family engine, or the pass "
-                "asked for a badge nothing wired" % role_kw)
+                "%s is not drawn through `_badge_pixmap`, or the pass "
+                "requested a badge no role was set for" % role_kw)
 
     def test_the_renderer_badge_draws_each_renderers_own_art(self):
-        """One badge per renderer, from the renderer table; an older spelling finds its renderer."""
+        """One badge per renderer, from the renderer table; an old name maps to its renderer."""
         corner = delegates.AssetItemDelegate._badge_side(128)
         cases = [(r.key, r.badge) for r in renderers.ALL] + [("MaterialX", "badge_renderer_materialx")]
         for stored, art in cases:
@@ -651,7 +651,7 @@ class BadgeFamilyTest(unittest.TestCase):
                          "a renderer Amaze does not offer drew a badge")
 
     def test_every_button_badge_wears_the_one_rest_and_hover_opacity(self):
-        """Every button badge rests at the one strength; under the pointer its hover art wins."""
+        """Every button badge uses the rest opacity; hovered, its hover art or hover opacity."""
         role = QtCore.Qt.ItemDataRole.UserRole + 66
         family = {b.name for b in delegates.BADGES if b.dims or b.off_art}
         self.assertEqual({"favourite", "versions", "comment"}, family)
@@ -699,7 +699,7 @@ class BadgeFamilyTest(unittest.TestCase):
                                          "%s at %s" % (name, "hover" if hovered else "rest"))
 
     def test_the_backdrop_is_the_same_in_every_state(self):
-        """The backdrop keeps its drawn strength at any icon opacity, read off the rendered pixels."""
+        """The backdrop keeps its drawn opacity at any icon opacity, read off the rendered pixels."""
         for name in ("badge_favourite_off", "badge_versions", "badge_comment",
                      "badge_comment_off", "badge_execute"):
             as_drawn = delegates.AssetItemDelegate._badge_pixmap(name, 44, 1.0, None).toImage()
@@ -731,7 +731,7 @@ class SidebarIndentTest(unittest.TestCase):
     COLOR_ROLE = int(QtCore.Qt.ItemDataRole.UserRole) + 77
 
     def _option_for(self, colour):
-        """The style option the delegate hands the style for one row; the strip is its decoration."""
+        """The style option the delegate gives the style for one row; the strip is its decoration."""
         role = self.COLOR_ROLE
 
         class _Row(QtCore.QAbstractListModel):
@@ -778,7 +778,7 @@ class SidebarIndentTest(unittest.TestCase):
                 HasDecoration,
                 "a row does not declare a decoration, so nothing is "
                 "reserved on it at all")
-        strip_px = strip.icon.pixmap(strip.decorationSize).toImage()  # anti-vacuity: the coloured strip carries the colour, the plain one is clear
+        strip_px = strip.icon.pixmap(strip.decorationSize).toImage()  # so the test can fail: the coloured strip has the colour, the plain one is clear
         plain_px = plain.icon.pixmap(plain.decorationSize).toImage()
         self.assertEqual(
             QtGui.QColor("#e28248").rgb(),
@@ -791,7 +791,7 @@ class SidebarIndentTest(unittest.TestCase):
 
 
 class HiddenCountsAreStillFetched(unittest.TestCase):
-    """With counts off every row's count is still asked, and only All shows its count."""
+    """With counts off every row's count is still read, and only All shows its count."""
 
     def _counted(self, show_counts):
         from amaze.core import category
@@ -829,7 +829,7 @@ class HiddenCountsAreStillFetched(unittest.TestCase):
             with self.subTest(show_counts=show):
                 asked, texts = self._counted(show)
                 self.assertEqual(shown, texts)
-                self.assertEqual([0, 1], asked, "a count went unfetched")
+                self.assertEqual([0, 1], asked, "a row's count was not read")
 
 
 class OnePickerForTheWholeAppTest(unittest.TestCase):
@@ -843,7 +843,7 @@ class OnePickerForTheWholeAppTest(unittest.TestCase):
         with patch.object(QtWidgets.QColorDialog, "getColor",
                           return_value=QtGui.QColor()):
             self.assertIsNone(ui_helpers.pick_color("#112233"),
-                              "a cancelled pick answered a colour")
+                              "a cancelled pick returned a colour")
         with patch.object(QtWidgets.QColorDialog, "getColor",
                           return_value=QtGui.QColor("#589abb")):
             picked = ui_helpers.pick_color("#112233")
@@ -873,7 +873,7 @@ class OnePickerForTheWholeAppTest(unittest.TestCase):
 
 
 class TheSubtitleIsTheNAMEsSize(unittest.TestCase):
-    """The sub-line takes the name size, secondary by colour alone, at every UI font size."""
+    """The subtitle has the name's size, set apart by colour alone, at every UI font size."""
 
     def test_the_two_sizes_match_at_every_ui_font(self):
         """Selection bolds both; it must not resize either."""
@@ -897,7 +897,7 @@ class TheSubtitleIsTheNAMEsSize(unittest.TestCase):
                                                "its size")
 
     def test_a_PIXEL_sized_option_font_still_derives(self):
-        """A pixel-sized font answers -1 to `pointSizeF`, which Qt refuses as a size ▸r/font-sizing"""
+        """A pixel-sized font gives -1 for `pointSizeF`, which Qt rejects as a size ▸r/font-sizing"""
         delegates.AssetItemDelegate._font_cache.clear()
         self.addCleanup(delegates.AssetItemDelegate._font_cache.clear)
         base = QtGui.QFont("Source Sans 3")
@@ -911,9 +911,9 @@ class TheSubtitleIsTheNAMEsSize(unittest.TestCase):
         QtCore.qInstallMessageHandler(None)
         self.assertEqual(
             [], [line for line in refused if "setPointSizeF" in line],
-            "the sub-line handed Qt a size it refuses")
+            "the subtitle passed Qt a size it rejects")
         self.assertEqual(9, rend.pixelSize(),
-                         "the sub-line left the option font's pixel size")
+                         "the subtitle lost the option font's pixel size")
         self.assertEqual(name.pixelSize(), rend.pixelSize(),
                          "one row, two sizes")
         self.assertEqual(fm_name.height(), fm_rend.height(),
@@ -921,7 +921,7 @@ class TheSubtitleIsTheNAMEsSize(unittest.TestCase):
 
 
 class TheFontCacheTellsFontsApart(unittest.TestCase):
-    """`fonts_for` shares fonts: fonts differing in anything drawn get their own entry ▸r/font-sizing"""
+    """`fonts_for` caches fonts: fonts differing in anything drawn get their own entry ▸r/font-sizing"""
 
     def _isolated_cache(self):
         delegates.AssetItemDelegate._font_cache.clear()
@@ -943,9 +943,9 @@ class TheFontCacheTellsFontsApart(unittest.TestCase):
                          "the 9px caller lost its own size")
         self.assertEqual(13, large[0].pixelSize(),
                          "a 13px option font was served the 9px cache "
-                         "entry - every pixel font keys the same")
+                         "entry - every pixel font has the same key")
         self.assertEqual(13, large[1].pixelSize(),
-                         "the sub-line was served the 9px cache entry")
+                         "the subtitle was served the 9px cache entry")
         self.assertGreater(large[2].height(), small[2].height(),
                            "both sizes measure the same, so the tile "
                            "lays out at the wrong height too")
@@ -975,7 +975,7 @@ class TheFontCacheTellsFontsApart(unittest.TestCase):
                          "cache entry - the key ignores weight")
 
     def test_it_is_still_a_CACHE(self):
-        """Two separately built but equal fonts land on one entry, or every repaint rebuilds them."""
+        """Two separately built but equal fonts share one entry, or every repaint rebuilds them."""
         self._isolated_cache()
         first = delegates.AssetItemDelegate.fonts_for(
             self._at_pixel_size(11), False)

@@ -1,4 +1,4 @@
-"""The fixture identity guard catches every known leak shape ▸p/guard-must-be-independent"""
+"""The fixture identity guard detects every known form of leak ▸p/guard-must-be-independent"""
 
 import os
 import shutil
@@ -19,7 +19,7 @@ from amaze.tests import test_support  # redirects the log
 class GuardCase(unittest.TestCase):
 
     def pin(self, account, host):
-        """Answer as a machine with this account and host name."""
+        """Make `gen` see a machine with this account and host name."""
         real = gen.real_account
         self.addCleanup(setattr, gen, "real_account", real)
         gen.real_account = lambda: account
@@ -55,7 +55,7 @@ class GuardCase(unittest.TestCase):
         path = self.write(payload)
         self.assertEqual(
             0, gen.redact_identity(path),
-            "the redactor rewrote bytes it had no business in: %r" % payload)
+            "the redactor rewrote bytes that hold no identity: %r" % payload)
         self.assertEqual([], gen.complaints(path),
                          "the guard flagged innocent bytes: %r" % payload)
 
@@ -63,7 +63,7 @@ class GuardCase(unittest.TestCase):
 class TheGuardCatchesWhatEarlierVersionsPassed(GuardCase):
 
     def test_every_shape_an_earlier_version_passed_is_caught(self):
-        """Each leak shape is caught, then redacted clean."""
+        """Each form of leak is detected, then fully redacted."""
         for why, payload, account, host in (
                 ("the real shape", b"  author builduser@buildbox.local\n",
                  "builduser", "BuildBox"),
@@ -81,7 +81,7 @@ class TheGuardCatchesWhatEarlierVersionsPassed(GuardCase):
     def test_a_machine_local_path_is_a_finding(self):
         """A per-user temp folder and a Windows home, slashed either way. ▸r/launching-shell-decides"""
         self.pin("builduser", "BuildBox")
-        for payload in (b"set -g HIP = '/var/folders/zz/"    # invented, as a lifted token is a leak
+        for payload in (b"set -g HIP = '/var/folders/zz/"    # invented, as a copied real token is a leak
                         b"zyxw9vut8srq7pon6mlk0000gn/T/x'\n",
                         b"set -g HIP = 'C:/Users/somebody/houdini22.0/x'\n",
                         b"c:\\users\\somebody\\Documents\\x\n"):
@@ -91,7 +91,7 @@ class TheGuardCatchesWhatEarlierVersionsPassed(GuardCase):
                     "a machine-local path passed the guard: %r" % payload)
 
     def test_an_opaque_format_is_a_finding_not_a_pass(self):
-        """A byte scan cannot see inside a compressed payload, so silence there is unproven, not clean."""
+        """A byte scan cannot see inside a compressed payload, so no finding is unproven, not clean."""
         self.pin("builduser", "BuildBox")
         path = self.write(b"scf1" + b"\0" * 40, suffix=".bgeo.sc")
         found = gen.complaints(path)
@@ -125,7 +125,7 @@ class TheGuardDoesNotCryWolf(GuardCase):
 class TheStandInKeepsTheLengthAndChangesTheValue(unittest.TestCase):
 
     def test_the_length_never_moves_and_a_stand_in_is_stable(self):
-        """Same length, or Houdini refuses the file; a stand-in maps to itself. ▸r/author-stamp"""
+        """Same length, or Houdini rejects the file; a stand-in maps to itself. ▸r/author-stamp"""
         for size in range(1, 41):
             with self.subTest(size=size):
                 value = b"n" * size
@@ -138,7 +138,7 @@ class TheStandInKeepsTheLengthAndChangesTheValue(unittest.TestCase):
 
 
 class SuiteDebrisHasOneMaker(unittest.TestCase):
-    """Every suite directory comes from one maker, in the system temp folder."""
+    """Every suite directory is made by one function, in the system temp folder."""
 
     def test_every_support_scratch_comes_from_the_one_maker(self):
         """Every test_support directory comes from `scratch_dir`; a second bare `mkdtemp` is a leak."""

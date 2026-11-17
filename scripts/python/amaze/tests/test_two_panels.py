@@ -21,12 +21,12 @@ def _document(panel, filename="materials.json"):
 
 
 def _rows(panel, filename="materials.json"):
-    """Disk rows by id as a string, `Material.mat_id`'s spelling."""
+    """Disk rows by id as a string, the form `Material.mat_id` uses."""
     return {str(key): row for key, row in _document(panel, filename)["assets"].items()}
 
 
 def _second_panel(testcase):
-    """A panel beside the fixture panel; both hold the connector the way two pane tabs do."""
+    """A second panel on the fixture panel's settings, as two open pane tabs are."""
     return test_support.reopened_panel(testcase)
 
 
@@ -54,7 +54,7 @@ class TwoPanelsShareOneLibraryTest(unittest.TestCase):
                             ", ".join(asset.tags), None)
 
         self.assertTrue(self.b.material_model.save(),
-                        "premise: the second panel's save was refused")
+                        "premise: the second panel's save failed")
 
         self.assertEqual(
             "renamed by panel A", _rows(self.a)[target].get("name"),
@@ -65,10 +65,10 @@ class TwoPanelsShareOneLibraryTest(unittest.TestCase):
         target = model._assets[index.row()].mat_id
         model.remove_asset(index)
         self.assertNotIn(target, _rows(self.a),
-                         "premise: the delete never reached disk")
+                         "premise: the delete was never written to disk")
 
         self.assertTrue(self.b.material_model.save(),
-                        "premise: the second panel's save was refused")
+                        "premise: the second panel's save failed")
 
         self.assertNotIn(
             target, _rows(self.a),
@@ -82,18 +82,18 @@ class TwoPanelsShareOneLibraryTest(unittest.TestCase):
             "one panel's save writes the other's copy of the rows")
 
     def test_h8_a_pending_delete_is_spent_by_the_save_that_marked_it(self):
-        """One model per library, so there is no second saver to spend it."""
+        """One model per library, so no second model's save can clear the mark."""
         index, model = self._named_asset(self.a)
         target = model._assets[index.row()].mat_id
         model._unlist_row(index.row())
         self.assertIn(str(target), model._forgotten, "premise: the mark was not made")
 
         self.assertTrue(self.b.material_model.save(),
-                        "the other panel's save was refused")
+                        "the other panel's save failed")
 
         self.assertNotIn(
             target, _rows(self.a),
-            "the delete mark was spent by a save that did not make it, so "
+            "the delete mark was cleared by a save that did not set it, so "
             "the row survived on disk")
 
     def test_h9_a_switch_and_back_leaves_both_panels_saving(self):
@@ -111,7 +111,7 @@ class TwoPanelsShareOneLibraryTest(unittest.TestCase):
                         "the other panel was left detached by the switch")
 
     def test_h9_a_panel_opened_after_a_switch_joins_the_same_models(self):
-        """Without the re-file the models sit under the old path; the next panel builds a second set."""
+        """Not re-registered, the models stay under the old path; the next panel builds a second set."""
         other = test_support.fresh_library(self)
         self.a.prefs.dir = other
         self.a.switch_all_models()
@@ -124,7 +124,7 @@ class TwoPanelsShareOneLibraryTest(unittest.TestCase):
             "set of models - which is the divergence phase 1 removed")
 
     def test_a_closed_panel_leaves_no_listener_on_the_shared_models(self):
-        """Qt takes a parented proxy with its widget; unparented, a closed tab hears signals forever."""
+        """Qt deletes a parented proxy with its widget; unparented, a closed tab still gets signals."""
         import shiboken6
 
         doomed = [self.b.material_sorted_model, self.b.material_selection_model,
@@ -139,21 +139,21 @@ class TwoPanelsShareOneLibraryTest(unittest.TestCase):
         alive = [o for o in doomed if shiboken6.isValid(o)]
         self.assertEqual(
             [], alive,
-            "%d of the closed panel's proxies outlived it, still wired to the "
+            "%d of the closed panel's proxies outlived it, still connected to the "
             "shared models" % len(alive))
         self.assertTrue(self.a.material_model.rowCount(),
                         "the surviving panel lost its rows when the other closed")
 
     def test_a_pending_resort_dies_with_the_panel_that_asked_for_it(self):
-        """A re-sort is coalesced to the next loop turn; closing the panel first must not leave it queued."""
+        """A re-sort is deferred to the next event loop pass; closing the panel must not leave it queued."""
         from PySide6 import QtCore
 
         proxy = self.b.material_sorted_model
         ran = []
-        proxy._pass_now = lambda: ran.append(True)    # patched BEFORE scheduling, so this is the callable the timer carries
+        proxy._pass_now = lambda: ran.append(True)    # patched BEFORE scheduling, so this is the callable the timer holds
         proxy._schedule_pass()
         self.assertTrue(proxy._pass_scheduled,
-                        "premise: no pass was queued, so nothing races here")
+                        "premise: no pass was queued, so nothing is tested here")
 
         test_support.stop_panel_workers(self.b)
         self.b.deleteLater()
@@ -166,7 +166,7 @@ class TwoPanelsShareOneLibraryTest(unittest.TestCase):
                          "on a proxy Qt had already destroyed")
 
     def test_a_category_removed_in_one_panel_tells_the_other_sidebar(self):
-        """Both sidebars alias one list: a row leaves the second panel with no signal. ▸p/one-model-set"""
+        """Both sidebars share one list: the second panel loses a row with no signal. ▸p/one-model-set"""
         categories = self.a.category_model
         before = categories.rowCount()
         self.assertTrue(before > 1,
@@ -184,14 +184,14 @@ class TwoPanelsShareOneLibraryTest(unittest.TestCase):
 
         name = categories.data(categories.index(before - 1, 0),
                                categories.CatSortRole)
-        categories.remove_category(name)    # the SIDEBAR's door; the library model's namesake only strips the category off assets
+        categories.remove_category(name)    # the SIDEBAR's method; the library model's same-named one only strips the category off assets
 
         self.assertEqual(before - 1, self.b.category_model.rowCount(),
-                         "premise: the row did not leave the shared list")
+                         "premise: the row was not removed from the shared list")
         self.assertTrue(
             heard,
             "a category disappeared from the second panel's sidebar and the "
-            "model said nothing - its view is painting rows that are gone")
+            "model emitted no signal - its view paints rows that are gone")
 
 
 if __name__ == "__main__":

@@ -113,7 +113,7 @@ class TestMaterialLibrary(unittest.TestCase):
                 library.MaterialLibrary()
 
     def test_each_role_answers_the_records_field(self):
-        """Decoration answers None until the async engine delivers; the delegate paints a dark tile."""
+        """Decoration returns None until the thumbnail is ready; the delegate paints a dark tile."""
         self.assertEqual(1, self.library.rowCount())
         self.assertEqual("TestMaterial", self.library.assets[0].name)
         index = self.library.index(0, 0)
@@ -128,7 +128,7 @@ class TestMaterialLibrary(unittest.TestCase):
                 self.assertEqual(expected, self.library.data(index, role))
 
     def test_data_favorite_role(self):
-        """The role answers the one favourites door, keyed by asset id: never the shared record."""
+        """The role returns `locations.is_favourite`, keyed by asset id: never the shared record."""
         from amaze.core import library as library_mod
         index = self.library.index(0, 0)
         mat_id = self.library._assets[0].mat_id
@@ -181,7 +181,7 @@ class TestMaterialLibrary(unittest.TestCase):
         self.assertEqual(original_name, call_args[0][0])
 
     def test_remove_asset(self):
-        """Every file the asset owns goes to the library's trash with its row, and nothing else."""
+        """Every file the asset owns moves to the library's trash with its row, and nothing else."""
         index = self.library.index(0, 0)
         initial_count = self.library.rowCount()
         mat_id = self.library._assets[0].mat_id
@@ -198,10 +198,10 @@ class TestMaterialLibrary(unittest.TestCase):
 
         self.assertEqual([], [path for path in owned if os.path.exists(path)],
                          "remove_asset left files the asset owns")
-        self.assertTrue(os.path.exists(bystander), "remove_asset took another asset's file")
+        self.assertTrue(os.path.exists(bystander), "remove_asset removed another asset's file")
         trash = os.path.join(self._library_dir, "trash")
         self.assertEqual(len(owned), sum(len(files) for _r, _d, files in os.walk(trash)),
-                         "the owned files did not land in the library's trash")
+                         "the owned files were not moved to the library's trash")
         self.assertEqual(self.library.rowCount(), initial_count - 1)
 
     def test_remove_asset_invalid_index(self):
@@ -260,7 +260,7 @@ class TestMaterialLibrary(unittest.TestCase):
             "a save that names nothing no longer falls back to the node")
 
     def test_add_asset_says_no_when_the_save_did_not_happen(self):
-        """Every `add_asset` answers a renderer name only when saved, an empty string when not."""
+        """Every `add_asset` returns a renderer name only when saved, an empty string when not."""
         mock_node = Mock()
         mock_node.name.return_value = "RefusedMaterial"
 
@@ -278,11 +278,11 @@ class TestMaterialLibrary(unittest.TestCase):
 
         self.assertEqual(
             "", renderer,
-            "a refused save answered with a renderer, which every "
+            "a failed save returned a renderer, which every "
             "caller reads as success")
         self.assertEqual(
             before, len(self.library.assets),
-            "a refused save still added a row")
+            "a failed save still added a row")
 
     def test_flags(self):
         """Test flags returns correct item flags"""
@@ -292,7 +292,7 @@ class TestMaterialLibrary(unittest.TestCase):
         self.assertTrue(flags & QtCore.Qt.ItemFlag.ItemIsDragEnabled)
 
     def test_render_thumbnail(self):
-        """render_thumbnail hands that one asset to the renderer, as a batch of one."""
+        """render_thumbnail passes that one asset to the renderer, as a batch of one."""
         index = self.library.index(0, 0)
         material_actions.render_thumbnail(self.library, index.row())
 
@@ -302,7 +302,7 @@ class TestMaterialLibrary(unittest.TestCase):
     def test_import_asset_to_scene(self):
         """Test import_asset_to_scene imports asset to Houdini"""
         mock_importer = Mock()
-        mock_importer.import_asset_to_scene.return_value = (True, "", [])    # the seam's shape
+        mock_importer.import_asset_to_scene.return_value = (True, "", [])    # the real method's return shape
         self.mock_nodes_cls.return_value = mock_importer
 
         index = self.library.index(0, 0)
@@ -314,7 +314,7 @@ class TestMaterialLibrary(unittest.TestCase):
 
 
 def _without_the_legacy_row(prefs) -> None:
-    """The fixture's odd row with no files taken out, so a check starts from a healthy library."""
+    """The fixture's id -1 row, which has no files, removed: checks start on a healthy library."""
     index = os.path.join(prefs.dir, library_files.MATERIALS)
     with open(index, encoding="utf-8-sig") as handle:
         document = json.load(handle)
@@ -324,7 +324,7 @@ def _without_the_legacy_row(prefs) -> None:
 
 
 class CheckLibraryMovesAndNeverDeletesTest(unittest.TestCase):
-    """Check Library on a real library: moves what no list holds, keeps every listed row."""
+    """Check Library on a real library: moves files no database lists, keeps every listed row."""
 
     def setUp(self):
         self.prefs = test_support.fixture_prefs(self)
@@ -348,12 +348,12 @@ class CheckLibraryMovesAndNeverDeletesTest(unittest.TestCase):
         return path
 
     def test_unlisted_files_go_to_the_librarys_trash(self):
-        """A move aside that is wrong is undone from the trash; an unlink is not."""
+        """A wrong move can be undone from the trash; a deleted file cannot."""
         from amaze.core import repair
         stray = [self._write(os.path.join(self.mat_dir, "orphan.mat")),
                  self._write(os.path.join(self.mat_dir, "orphan.png"))]
         findings = self._survey()
-        self.assertTrue(findings["complete"], "premise: every list reads")
+        self.assertTrue(findings["complete"], "premise: every database is readable")
         self.assertIn("orphan.mat", findings["unaccounted"][MATERIALS_KEY])
         self.assertIn("orphan.png", findings["unaccounted"][MATERIALS_KEY])
         result = repair.move_aside(findings, "unlisted")
@@ -366,7 +366,7 @@ class CheckLibraryMovesAndNeverDeletesTest(unittest.TestCase):
         self.assertTrue(os.path.isfile(os.path.join(root, MATERIALS_KEY, "orphan.mat")))
 
     def test_a_half_synced_asset_keeps_its_row_and_its_surviving_file(self):
-        """A file still syncing looks like one that is gone, so the row and its other half stay."""
+        """A file still syncing looks like one that is gone, so the row and its other file stay."""
         from amaze.core import repair
         os.remove(os.path.join(self.mat_dir, self.first_id + ".mat"))
         with open(self.index, encoding="utf-8-sig") as handle:
@@ -375,7 +375,7 @@ class CheckLibraryMovesAndNeverDeletesTest(unittest.TestCase):
         self.assertIn(self.first_id,
                       [one for one, _name in findings["missing_files"][library_files.MATERIALS]])
         self.assertIn("files are missing", "\n".join(repair.report_lines(findings)),
-                      "the row survives and nobody is told its file is missing")
+                      "the row is kept and the report does not list its missing file")
         if findings["complete"]:
             repair.move_aside(findings, ("unlisted", "leftovers"))
         with open(self.index, encoding="utf-8-sig") as handle:
@@ -383,10 +383,10 @@ class CheckLibraryMovesAndNeverDeletesTest(unittest.TestCase):
                              "a row was dropped on one missing file")
         self.assertTrue(os.path.exists(os.path.join(self.mat_dir,
                                                     self.first_id + material.RECORD_SUFFIX)),
-                        "the surviving half of a half-synced asset was moved")
+                        "the remaining file of a partly synced asset was moved")
 
     def test_an_unreadable_asset_folder_holds_everything_back(self):
-        """A folder still syncing would read as every asset missing, so it is not all clear."""
+        """A folder still syncing would read as every asset missing, so the survey is incomplete."""
         from amaze.core import repair
         shutil.rmtree(self.mat_dir)
         with open(self.index, "rb") as handle:
@@ -399,11 +399,11 @@ class CheckLibraryMovesAndNeverDeletesTest(unittest.TestCase):
             repair.move_aside(findings, "unlisted")
         self.assertIn("could not look inside", "\n".join(repair.report_lines(findings)))
         with open(self.index, "rb") as handle:
-            self.assertEqual(before, handle.read(), "the list changed while a folder was unread")
+            self.assertEqual(before, handle.read(), "the database changed while a folder could not be read")
 
 
 class TheLibraryKeepsNoTagList(unittest.TestCase):
-    """Tags live on each asset; the library-wide list was read by nothing, so no file keeps one."""
+    """Tags are stored on each asset; nothing read the library-wide list, so no file keeps one."""
 
     @staticmethod
     def _read(path):
@@ -448,7 +448,7 @@ class TheSentinelHasOneHome(unittest.TestCase):
                         (test_support.posix_relpath(path, root), count))
         self.assertEqual(
             [("core/material.py", 1)], spellings,
-            "the sentinel is spelled outside its one home - import "
+            "the sentinel is written outside core/material.py - import "
             "material.MULTIPLE_VALUES instead")
 
 
@@ -516,7 +516,7 @@ class SingleCategoryTest(unittest.TestCase):
 
 
 class ACommaInsideOneCategoryNameStaysWholeTest(unittest.TestCase):
-    """The rename dialog keeps a comma in a name; a door moving an asset INTO it hands over a list."""
+    """The rename dialog allows a comma in a name; code moving an asset INTO it passes a list."""
 
     NAME = "Wood, Oak"
 
@@ -542,7 +542,7 @@ class ACommaInsideOneCategoryNameStaysWholeTest(unittest.TestCase):
         document["assets"][str(self.asset.mat_id)]["categories"] = [self.NAME]
         with open(index, "w", encoding="utf-8") as handle:
             json.dump(document, handle, indent=4)
-        test_support.reset_database_singletons()    # an action refuses a library this process holds
+        test_support.reset_database_singletons()    # an action does not run on a library this process has open
         findings = repair.survey(self.prefs.dir, self.prefs.img_dir)
         self.assertNotIn(self.asset.mat_id,
                          [one for one, _name in findings["uncategorised"][library_files.MATERIALS]],
@@ -562,7 +562,7 @@ class ACommaInsideOneCategoryNameStaysWholeTest(unittest.TestCase):
                          "assigning the category split its name at the comma")
 
     def test_an_edit_leaving_multiple_values_keeps_the_name(self):
-        """A multi-selection edit that leaves Category alone hands back each asset's own."""
+        """A multi-selection edit that leaves Category alone keeps each asset's own."""
         from amaze.core import material
         self.asset.categories = [self.NAME]
         row = self.model.find_asset_row_by_id(self.asset.mat_id)
@@ -573,7 +573,7 @@ class ACommaInsideOneCategoryNameStaysWholeTest(unittest.TestCase):
 
 
 class AnInlineSectionHasNoFilesToMissTest(unittest.TestCase):
-    """Code and Colors keep their content IN their list: no row of theirs has files to miss."""
+    """Code and Colors keep their content IN their database: no row of theirs has files."""
 
     def setUp(self):
         self.prefs = test_support.fixture_prefs(self)
@@ -588,20 +588,20 @@ class AnInlineSectionHasNoFilesToMissTest(unittest.TestCase):
     def _checked(self, model):
         from amaze.core import repair
         filename = model.DB_FILENAME
-        test_support.reset_database_singletons()    # saved, and let go: an action refuses one held
+        test_support.reset_database_singletons()    # saved and closed: an action does not run on one held open
         before = self._rows(filename)
-        self.assertTrue(before, "premise: the list holds nothing to keep")
+        self.assertTrue(before, "premise: the database has no rows to keep")
         findings = repair.survey(self.prefs.dir, self.prefs.img_dir)
         self.assertEqual({library_files.MATERIALS, library_files.NODES},
                          set(findings["missing_files"]),
-                         "an inline list was checked for files it never has")
+                         "an inline database was checked for files it never has")
         self.assertNotIn(filename, findings["missing_renders"])
         self.assertEqual([], [line for line in repair.report_lines(findings)
                               if "missing" in line],
                          "Check Library reported inline content as files that are missing")
         if findings["complete"]:
             repair.move_aside(findings, ("unlisted", "leftovers"))
-        self.assertEqual(before, self._rows(filename), "Check Library changed the list's rows")
+        self.assertEqual(before, self._rows(filename), "Check Library changed the database's rows")
 
     def test_check_library_keeps_every_snippet(self):
         from amaze.core import code_library
@@ -675,7 +675,7 @@ class ModelSignalTest(unittest.TestCase):
         self.cats.remove_category("Doomed")
         self.assertEqual(
             1, len(removed),
-            "a category vanished with no rowsRemoved signal")
+            "a category was removed with no rowsRemoved signal")
 
     def test_removing_a_name_that_is_not_there_is_a_no_op(self):
         """A displayed name with its leading underscore stripped must not raise out of the slot."""
@@ -694,7 +694,7 @@ class ModelSignalTest(unittest.TestCase):
         before = model.rowCount()
         model.add_asset("print(1)", "snippet_probe", "Python", "", "", False)
         if model.rowCount() == before:
-            self.skipTest("add_asset refused this snippet")
+            self.skipTest("add_asset did not add this snippet")
         self.assertEqual(
             1, len(inserted),
             "a snippet appeared with no rowsInserted signal")
@@ -724,8 +724,8 @@ class ARetiredFieldDoesNotComeBackOnASaveTest(unittest.TestCase):
     def test_neither_field_survives_the_record(self):
         row = material.Material.from_dict({"id": "R1", "name": "n", "favorite": True,
                                            "icon": {"name": "box"}}).get_as_dict()
-        self.assertNotIn("favorite", row, "the retired favourite rides back into the database")
-        self.assertNotIn("icon", row, "the retired icon rides back into the database")
+        self.assertNotIn("favorite", row, "the retired favourite is written back to the database")
+        self.assertNotIn("icon", row, "the retired icon is written back to the database")
 
 
 class AMaterialStarLivesInTheLibraryStoreTest(unittest.TestCase):
@@ -749,20 +749,20 @@ class AMaterialStarLivesInTheLibraryStoreTest(unittest.TestCase):
         model.toggle_fav(index.row())
         self.assertTrue(
             model.data(index, model.FavoriteRole),
-            "the toggle did not light the star through the store")
+            "the toggle did not set the star through the store")
         test_support.settle_stamps()
         with open(os.path.join(self.prefs.dir, library_files.MATERIALS), encoding="utf-8") as fh:
             stars = json.load(fh).get("favorites", {}).get(test_support.FIXTURE_USER, {})
         self.assertTrue(
             stars.get(mat_id),
-            "the star is lit but the database does not carry it - "
-            "the role is answering something machine-local again")
+            "the star is set but the database does not hold it - "
+            "the role is reading something machine-local again")
         self.assertNotIn(
             mat_id, list(getattr(self.prefs, "material_favorites", ()) or ()),
-            "the toggle wrote settings.json - the star went to the "
+            "the toggle wrote settings.json - the star was stored per "
             "machine, so the same user's other machine cannot see it")
 
-        # And it comes back through a fresh model reading the store.
+        # And a fresh model reading the store returns it.
         test_support.reset_database_singletons()
         again =self.library_mod.MaterialLibrary(preferences=self.prefs)
         rows = {str(a.mat_id): r for r, a in enumerate(again.assets)}
@@ -778,8 +778,8 @@ class AMaterialStarLivesInTheLibraryStoreTest(unittest.TestCase):
         model.toggle_fav(index.row())
         self.assertFalse(
             model.data(index, model.FavoriteRole),
-            "a machine with nobody picked lit a star - the store filed "
-            "it under a blank tag, which is an ABSENT user, not a "
+            "a machine with no user picked set a star - the store saved "
+            "it under a blank name, which is an ABSENT user, not a "
             "shared one")
 
 
@@ -819,7 +819,7 @@ class MaterialRoundTripTest(unittest.TestCase):
         self.assertEqual("PolyHaven", asset.get_as_dict().get("source"))
 
     def test_an_unknown_key_cannot_overwrite_a_known_one(self):
-        """_extra is re-emitted, but it must never win over real state."""
+        """_extra is written back, but must never override a known field."""
         Material = self._material()
         row = {
             "id": "x", "name": "real", "categories": [], "tags": [],
@@ -842,7 +842,7 @@ class MaterialRoundTripTest(unittest.TestCase):
         self.assertEqual(
             set(Material._KNOWN_KEYS),
             emitted | set(Material._RETIRED_KEYS),
-            "_KNOWN_KEYS and get_as_dict have drifted apart")
+            "_KNOWN_KEYS and get_as_dict no longer match")
         self.assertFalse(
             emitted & set(Material._RETIRED_KEYS),
             "a retired key is still being written, so the schema step "
@@ -850,7 +850,7 @@ class MaterialRoundTripTest(unittest.TestCase):
 
 
 class UnreadableSiblingIsNotOverwrittenTest(unittest.TestCase):
-    """A sibling file changed underneath and unparseable survives our saves, with a copy kept."""
+    """A database file changed elsewhere and unparseable is not overwritten; a copy is kept."""
 
     def setUp(self):
         from amaze.core import library as library_mod, library_db
@@ -890,7 +890,7 @@ class UnreadableSiblingIsNotOverwrittenTest(unittest.TestCase):
         self.assertTrue(kept, "no copy was kept, so there is nothing to recover from")
 
     def test_the_refusal_holds_for_the_REST_of_the_session(self):
-        """Refusing once is not enough: the next save would overwrite what the first preserved."""
+        """Skipping one write is not enough: the next save would overwrite what the first kept."""
         self._their_file_changed_and_is_unparseable()
         self._save()
         before = self._text()
@@ -898,7 +898,7 @@ class UnreadableSiblingIsNotOverwrittenTest(unittest.TestCase):
         self.assertEqual(before, self._text(), "a later save in the same session overwrote it")
 
     def test_an_ordinary_save_still_works(self):
-        """The refusal must not be the normal path."""
+        """Skipping the write must not be the normal path."""
         self.assertTrue(self._save())
         with open(self.db_path, encoding="utf-8") as handle:
             self.assertIn("assets", json.load(handle))
@@ -937,12 +937,12 @@ class TwoMachineMergeTest(unittest.TestCase):
         self._write_disk(data)
 
     def _ours(self):
-        """A change of this session's, saved: a merge, since the file moved under it."""
+        """A change of this session's, saved: a merge, since another write changed the file."""
         self.model.set_assetdata(self.model.index(0, 0), "ours", "", "", None)
         test_support.settle_stamps()
 
     def test_an_adopted_row_survives_the_next_save(self):
-        """The consequence, not the wiring."""
+        """Checks the result on disk, not the code path."""
         self._other_machine_adds_a_material()
         self._ours()
         self.model.save()                              # a SECOND save
@@ -958,7 +958,7 @@ class TwoMachineMergeTest(unittest.TestCase):
         self._write_disk(data)
         self._ours()
         self.assertEqual("#ff0000", self._disk()["categories"]["Karma_Mats"].get("color"),
-                         "another session's category colour was wiped by an unrelated save")
+                         "another session's category colour was removed by an unrelated save")
 
     def test_an_unknown_top_level_key_is_carried_through(self):
         """A newer build's key must not be dropped by an older one."""
@@ -982,7 +982,7 @@ class TwoMachineMergeTest(unittest.TestCase):
 
 
 class CheckLibraryRefusesOnIncompleteKnowledgeTest(unittest.TestCase):
-    """Materials and Nodes share img/, so every list's ids decide what no list holds."""
+    """Materials and Nodes share img/, so every database's ids decide which files none lists."""
 
     NODES = library_files.SECTION_FOLDERS[library_files.NODES]
 
@@ -1027,11 +1027,11 @@ class CheckLibraryRefusesOnIncompleteKnowledgeTest(unittest.TestCase):
         self._write_sibling(os.path.join(self.NODES, "COPASSET1.json"), "{}")
         findings = self._survey()
         self.assertIn("COPASSET1", findings["ids"],
-                      "a sibling's ids did not reach the unlisted check")
+                      "a sibling's ids were not used by the unlisted check")
         self.assertEqual([], findings["unaccounted"][self.NODES + "/"])
 
     def test_an_absent_sibling_is_not_an_error(self):
-        """Absent owns nothing; only present-but-unparseable is unsafe."""
+        """An absent file lists no assets; only present-but-unparseable is unsafe."""
         path = os.path.join(self.prefs.dir, library_files.NODES)
         if os.path.exists(path):
             os.remove(path)
@@ -1078,7 +1078,7 @@ class LibrarySwitchTest(unittest.TestCase):
         self.assertGreater(rows, 0, "fixture library has no assets to switch away from")
         self.assertEqual(rows, self.proxy.rowCount())
 
-        last = self.proxy.index(rows - 1, 0)  # park the selection on the LAST row, the one a smaller library cannot have
+        last = self.proxy.index(rows - 1, 0)  # put the selection on the LAST row, the one a smaller library cannot have
         self.selection.setCurrentIndex(
             last, QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
         self.assertEqual(rows - 1, self.selection.currentIndex().row())
@@ -1110,7 +1110,7 @@ class LibrarySwitchTest(unittest.TestCase):
         self.model.modelReset.connect(lambda: ended.append(1))
 
         from amaze.core import library as library_mod
-        with patch.object(library_mod.MaterialLibrary, "_read_rows",    # fail INSIDE the reset window
+        with patch.object(library_mod.MaterialLibrary, "_read_rows",    # fail BETWEEN the reset's begin and end
                           side_effect=OSError("library unreadable")):
             with self.assertRaises(OSError):
                 self.model.switch_model_data()
@@ -1122,7 +1122,7 @@ class LibrarySwitchTest(unittest.TestCase):
             "endResetModel must be in a finally")
 
     def test_a_switch_drops_the_content_labels_once(self):
-        """The USD and shader-type labels read from the files go on a switch, in one drop."""
+        """A switch clears the USD and shader-type labels read from the files, in one call."""
         from unittest.mock import patch
 
         self.model._usd_cache = {"stale": True}
@@ -1134,11 +1134,11 @@ class LibrarySwitchTest(unittest.TestCase):
         self.assertEqual(({}, {}), (self.model._usd_cache,
                                     self.model._shader_type_cache))
         self.assertEqual(1, dropped.call_count,
-                         "a library switch drops the content labels twice")
+                         "a library switch clears the content labels twice")
 
 
 class GradientSwitchTest(unittest.TestCase):
-    """Colors resets on a switch, and a save aimed at another library is refused."""
+    """Colors resets on a switch, and a save aimed at another library fails."""
 
     def _model(self):
         from amaze.core import gradient_library
@@ -1174,11 +1174,11 @@ class GradientSwitchTest(unittest.TestCase):
         model = self._model()
         self.assertTrue(model.save(), "premise: the model saves into its own library")
 
-        self.prefs.dir = _empty_library_dir(self)  # move the library under the model without switching it
+        self.prefs.dir = _empty_library_dir(self)  # change the library folder without switching the model
         self.assertFalse(
             model.save(),
             "the gradient model saved colours from library A into "
-            "library B - nothing refused the write")
+            "library B - nothing blocked the write")
 
 
 class TheColorsSidebarFollowsTheLibraryTest(unittest.TestCase):
@@ -1229,12 +1229,12 @@ class TheColorsSidebarFollowsTheLibraryTest(unittest.TestCase):
             "Alpha", labels,
             "the Colors sidebar kept the PREVIOUS library's category "
             "names - their counts come from the new library, so every "
-            "row reads zero and clicking one filters by a category "
+            "row shows zero and clicking one filters by a category "
             "that does not exist there: %s" % labels)
 
 
 class EveryLibraryModelClassCanSwitchTest(unittest.TestCase):
-    """Every library-backed model class answers `switch_model_data`; the list is `test_area_bindings`."""
+    """Every library-backed model class has `switch_model_data`; the list is `test_area_bindings`."""
 
     def test_every_library_model_class_answers_the_switch_verb(self):
         from amaze.core import (category, code_library, cop_library,
@@ -1308,7 +1308,7 @@ class FavouritesArePerUserTest(unittest.TestCase):
             after = json.load(fh)
         self.assertEqual(before, after["assets"],
                          "a favourite toggle wrote the shared rows - "
-                         "my star still collides with yours")
+                         "one user's star still overwrites another's")
         self.assertIn(str(model.assets[0].mat_id),
                       after.get("favorites", {}).get(test_support.FIXTURE_USER, {}))
         self.assertTrue(model.data(model.index(0, 0), model.FavoriteRole))
@@ -1317,7 +1317,7 @@ class FavouritesArePerUserTest(unittest.TestCase):
 class TheSharedBaseCarriesNothingRendererShaped(unittest.TestCase):
     """`AssetLibrary` is shared; `MaterialLibrary` holds a material's labels, the actions its verbs."""
 
-    RENDERER_SHAPED = (  # checked with `vars()`, since inheritance answers `getattr` for every subclass
+    RENDERER_SHAPED = (  # checked with `vars()`, since `getattr` also finds inherited names on every subclass
         "is_usd_material", "shader_type_label",
     )
     MATERIAL_VERBS = ("add_asset", "update_asset_content", "import_asset_to_scene",
@@ -1329,7 +1329,7 @@ class TheSharedBaseCarriesNothingRendererShaped(unittest.TestCase):
         for name in self.MATERIAL_VERBS:
             self.assertIn(name, vars(material_actions), "%s is not a Material verb" % name)
             self.assertNotIn(name, vars(library.MaterialLibrary),
-                             "%s came back onto the Material model" % name)
+                             "%s is back on the Material model" % name)
         for name in self.RENDER_VERBS:
             self.assertIn(name, vars(material_actions), "%s is not a Material verb" % name)
             for model in (library.AssetLibrary, cop_library.CopLibrary,
@@ -1345,7 +1345,7 @@ class TheSharedBaseCarriesNothingRendererShaped(unittest.TestCase):
                       gradient_library.GradientLibrary):
             self.assertTrue(
                 issubclass(model, library.AssetLibrary),
-                "%s does not run on the shared engine" % model.__name__)
+                "%s does not inherit AssetLibrary" % model.__name__)
 
     def test_the_base_declares_none_of_the_material_surface(self):
         from amaze.core import library
@@ -1353,7 +1353,7 @@ class TheSharedBaseCarriesNothingRendererShaped(unittest.TestCase):
                    if name in vars(library.AssetLibrary)]
         self.assertEqual(
             [], on_base,
-            "the shared base grew renderer-shaped weight again: %s"
+            "the shared base has renderer-specific members again: %s"
             % on_base)
         for name in self.RENDERER_SHAPED:  # the positive control, so an emptied Material class cannot satisfy the assertion above by accident
             self.assertIn(
@@ -1394,7 +1394,7 @@ class EveryAssetModelIsGivenItsLibrary(unittest.TestCase):
 
         self.assertEqual(
             {}, wrong,
-            "these models can be built without being told which library "
+            "these models can be built without being given the library "
             "they are for, so they would read the machine's own: %s" % wrong)
 
 
@@ -1412,7 +1412,7 @@ class RendererDetectionSeesNestedSubnetsTest(unittest.TestCase):
 
 
 class NoTagsIsAnEmptyListTest(unittest.TestCase):
-    """No tags is `[]` on disk at every door: the add, and the row read back. ▸p/no-tags-is-empty"""
+    """No tags is `[]` on disk on every path: the add, and the row read back. ▸p/no-tags-is-empty"""
 
     def _saved_tags(self, prefs, name: str) -> list:
         test_support.settle_stamps()
@@ -1426,7 +1426,7 @@ class NoTagsIsAnEmptyListTest(unittest.TestCase):
         from amaze.core import library as library_mod
         from amaze.tests import make_library_fixture
 
-        test_support.pin_env(self, "OCIO", "/dev/null")    # save_node gates on $OCIO; nothing renders here
+        test_support.pin_env(self, "OCIO", "/dev/null")    # save_node requires $OCIO; nothing renders here
         test_support.reset_database_singletons()
         prefs = test_support.fixture_prefs(self)
         prefs.render_on_import = 0
@@ -1439,13 +1439,13 @@ class NoTagsIsAnEmptyListTest(unittest.TestCase):
             "premise: the save went through")
         self.assertEqual([[]], self._saved_tags(prefs, "Untagged"))
 
-        test_support.reset_database_singletons()    # a fresh read off disk, not the connector's cached document
+        test_support.reset_database_singletons()    # a fresh read from disk, not library_db's cached document
         reopened = library_mod.MaterialLibrary(preferences=prefs)
         self.assertTrue(reopened.save(),
                         "premise: the second save went through")
         self.assertEqual(
             [[]], self._saved_tags(prefs, "Untagged"),
-            "a row saved with no tags came back from disk carrying a "
+            "a row saved with no tags was read back from disk with a "
             "blank one")
 
     def test_a_row_read_back_with_no_tags_holds_an_empty_list(self):
@@ -1461,7 +1461,7 @@ class NoTagsIsAnEmptyListTest(unittest.TestCase):
 class TheContentGuardReadsOneFingerprint(unittest.TestCase):
 
     def test_the_content_stat_is_the_disk_state_of_the_mat(self):
-        """`_content_stat` answers `hostos.disk_state` of the .mat, None with no .mat or a bad id."""
+        """`_content_stat` returns `hostos.disk_state` of the .mat, None with no .mat or a bad id."""
         from amaze.core import library as library_mod
         from amaze.helpers import hostos
 
@@ -1476,7 +1476,7 @@ class TheContentGuardReadsOneFingerprint(unittest.TestCase):
             (hostos.disk_state(mat), None, None),
             (model._content_stat(mat_id), model._content_stat("absent-id"),
              model._content_stat("../../../Documents/x")),
-            "the content guard's stat drifted from the one fingerprint")
+            "the content guard's stat no longer matches `hostos.disk_state`")
 
 
 if __name__ == "__main__":

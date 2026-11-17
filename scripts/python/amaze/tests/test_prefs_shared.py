@@ -1,4 +1,4 @@
-"""Shared settings live with the library: a move of `dir` adopts them."""
+"""Shared settings are stored in the library: setting `dir` loads them."""
 
 import json
 import os
@@ -25,7 +25,7 @@ from amaze.tests import test_support         # noqa: E402
 
 
 class SharedPrefsCase(unittest.TestCase):
-    """Two machine-homes and one library, like the real pair of Macs."""
+    """Two settings folders and one library, like the real pair of Macs."""
 
     def setUp(self):
         self.home_a = tempfile.mkdtemp(prefix="amaze_shared_a_")
@@ -39,11 +39,11 @@ class SharedPrefsCase(unittest.TestCase):
         self.addCleanup(test_support.reset_database_singletons)
 
     def machine(self, home):
-        """A Prefs the way a session builds one - load settings, then meet the library."""
+        """A Prefs the way a session builds one - load settings, then set the library."""
         p = prefs_mod.Prefs()
         p.path = home
         p.load()
-        p.library_user = "u-" + os.path.basename(home)    # every change is signed by its user
+        p.library_user = "u-" + os.path.basename(home)    # every change records its user
         p.dir = self.lib + "/"
         return p
 
@@ -59,28 +59,28 @@ class SharedPrefsCase(unittest.TestCase):
 
 
 class AChangeReachesTheNextMachine(SharedPrefsCase):
-    """Shared means the OTHER machine's session answers with your value, off the library alone."""
+    """Shared means the OTHER machine's session reads your value, from the library alone."""
 
     def test_a_saved_change_is_the_next_machines_answer(self):
         a = self.machine(self.home_a)
         a.rendersize = 512
         # OFF, never ON - asserting True passes on the default alone.
         a.renderer_octane_enabled = False
-        a.render_on_import = 0    # falsy: the record wrap keeps the delete contract off it
+        a.render_on_import = 0    # falsy: stored in a record, so it is not read as a delete
         a.save()
         test_support.reset_database_singletons()
         b = self.machine(self.home_b)
         self.assertEqual(512, b.rendersize,
-                         "machine B still answers its own default - "
-                         "the store was not adopted")
+                         "machine B still returns its own default - "
+                         "the store was not loaded")
         self.assertFalse(b.renderer_octane_enabled,
-                         "a renderer flag did not travel")
+                         "a renderer flag did not reach machine B")
         self.assertEqual(0, b.render_on_import,
                          "a falsy shared value did not survive")
 
 
 class TheSharedKeysAreWrittenAsTheCopyAlone(SharedPrefsCase):
-    """`settings.json` keeps bootstrap and the copy of the shared keys, never a flat spelling."""
+    """`settings.json` holds bootstrap and the copy of the shared keys, never them at top level."""
 
     def test_settings_json_carries_the_copy_not_the_flat_keys(self):
         a = self.machine(self.home_a)
@@ -89,20 +89,20 @@ class TheSharedKeysAreWrittenAsTheCopyAlone(SharedPrefsCase):
         doc = self.settings_doc(self.home_a)
         self.assertNotIn(
             "rendersize", doc,
-            "the flat spelling is still written - two homes for one "
-            "value is the drift this line exists to remove")
+            "the top-level key is still written - two places for one "
+            "value is the mismatch this test exists to prevent")
         self.assertEqual(
             512, doc.get("shared_settings", {}).get("rendersize"),
             "the last-known copy is missing, so an unreachable "
             "library would reset every shared setting")
         self.assertIn("directory", doc,
-                      "bootstrap must stay flat - it is how the "
+                      "bootstrap must stay top-level - it is how the "
                       "library is found at all")
 
 
 
 class TheCopyServesAnUnreachableLibrary(SharedPrefsCase):
-    """The library is the truth; the copy opens the panel when the share is down and must survive."""
+    """The library is the source; the copy opens the panel when the share is down and must remain."""
 
     def test_values_survive_the_library_being_gone(self):
         a = self.machine(self.home_a)
@@ -114,13 +114,13 @@ class TheCopyServesAnUnreachableLibrary(SharedPrefsCase):
         p.path = self.home_a
         p.load()
         self.assertEqual(512, p.rendersize,
-                         "the copy did not serve with the library "
+                         "the copy was not used with the library "
                          "unreachable")
         p.save()          # must not raise, and must not lose the copy
         doc = self.settings_doc(self.home_a)
         self.assertEqual(
             512, doc.get("shared_settings", {}).get("rendersize"),
-            "a save without the library blanked the copy")
+            "a save without the library emptied the copy")
 
     def test_a_latched_store_leaves_attributes_and_copy_alone(self):
         a = self.machine(self.home_a)
@@ -144,16 +144,16 @@ class TheCopyServesAnUnreachableLibrary(SharedPrefsCase):
         with open(store_path, "rb") as handle:
             self.assertEqual(broken, handle.read(),
                              "a save wrote over a damaged store - "
-                             "the latch exists so evidence survives")
+                             "it stays read-only so the damaged file is kept")
         doc = self.settings_doc(self.home_a)
         self.assertEqual(
             32, doc.get("shared_settings", {}).get("rendersamples"),
             "the session's change was not kept locally while the "
-            "store refused")
+            "store was read-only")
 
 
 class TheLibraryIsAdoptedWhenItArrives(SharedPrefsCase):
-    """Setting `dir` after load must adopt, or the first save pushes local defaults over the shared."""
+    """Setting `dir` after load must read the store, or the first save puts local defaults over it."""
 
     def test_pointing_dir_at_a_library_adopts_without_a_load(self):
         a = self.machine(self.home_a)
@@ -164,12 +164,12 @@ class TheLibraryIsAdoptedWhenItArrives(SharedPrefsCase):
         fresh.path = self.home_b       # no settings.json, no load()
         fresh.dir = self.lib + "/"
         self.assertEqual(512, fresh.rendersize,
-                         "setting `dir` did not adopt the store - a "
-                         "fresh install would clobber the library's "
+                         "setting `dir` did not load the store - a "
+                         "fresh install would overwrite the library's "
                          "settings on its first save")
 
     def test_junk_in_the_store_does_not_poison_a_clamped_setting(self):
-        """A hand-edit can put a string where a size belongs, so the adopt validates as load does."""
+        """A hand edit can put text where a size goes, so setting `dir` validates as load does."""
         with open(os.path.join(self.lib, STORE), "w",
                   encoding="utf-8") as handle:
             json.dump({"settings": {
@@ -181,12 +181,12 @@ class TheLibraryIsAdoptedWhenItArrives(SharedPrefsCase):
                          "junk from the store reached the attribute "
                          "raw - the clamp was bypassed")
         self.assertEqual(512, b.rendersize,
-                         "a junk neighbour took the good value down "
+                         "an invalid neighbour discarded the good value "
                          "with it")
 
 
 class AnUnchangedSaveDoesNotTouchTheStore(SharedPrefsCase):
-    """`save()` runs from ordinary sidebar use, so the push is a no-op when no shared key moved."""
+    """`save()` runs on sidebar use, so the store is not written when no shared key changed."""
 
     def test_a_second_save_with_nothing_changed_leaves_the_file_alone(self):
         a = self.machine(self.home_a)
@@ -199,8 +199,8 @@ class AnUnchangedSaveDoesNotTouchTheStore(SharedPrefsCase):
         library_db.flush()
         self.assertEqual(before, os.stat(store_path).st_mtime_ns,
                          "an unchanged save rewrote DataBase.json - the "
-                         "UNCHANGED collapse is not reaching the "
-                         "push")
+                         "UNCHANGED check is not applied to the "
+                         "store write")
 
 
 class EverySharedRowIsReread(SharedPrefsCase):
@@ -384,7 +384,7 @@ class AMachineRunningBeforeAChangeTakesIt(SharedPrefsCase):
             b.sidebar_width = 300
             b.save()
         self.assertEqual(512, self.stored("rendersize"), "B wrote its own value back")
-        self.assertEqual(512, b.rendersize, "B still answers with its own value")
+        self.assertEqual(512, b.rendersize, "B still returns its own value")
 
     def test_with_no_door_the_second_save_keeps_it_too(self):
         a, b = self.both_open()
@@ -394,7 +394,7 @@ class AMachineRunningBeforeAChangeTakesIt(SharedPrefsCase):
         with self.on("B"):
             b.path_style = "absolute"
             b.save()    # its commit merges A's value in
-            self.assertEqual(1024, b.rendersize, "the save that merged A's value left B on its own")
+            self.assertEqual(1024, b.rendersize, "the save that merged A's value left B on its own value")
             b.show_notes = True
             b.save()
         self.assertEqual(1024, self.stored("rendersize"), "B's second save reverted A's change")
@@ -431,7 +431,7 @@ class AMachineRunningBeforeAChangeTakesIt(SharedPrefsCase):
             a.rendersize = 512
             a.save()
         with self.on("B"):
-            dialog = prefs_dialog.PrefsDialog(b, panel=None)    # the door re-reads the stores
+            dialog = prefs_dialog.PrefsDialog(b, panel=None)    # the dialog re-reads the stores
             self.addCleanup(dialog.deleteLater)
         self.assertEqual(512, dialog.line_rendersize.value(),
                          "Preferences shows the value this machine started with")

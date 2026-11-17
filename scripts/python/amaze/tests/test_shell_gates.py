@@ -1,4 +1,4 @@
-"""Shell gates are judged on words and an end marker, never exit status. ▸p/gate-fixture-safety"""
+"""Gate tests check printed text and an end marker, not exit status alone. ▸p/gate-fixture-safety"""
 
 import ast
 import os
@@ -147,20 +147,20 @@ class GateFixture(unittest.TestCase):
 
         _write(os.path.join(self.repo, RUNNER_REL), _STUB, executable=True)
         plain = os.path.join(sys.base_prefix, "bin", "python3")
-        _write(os.path.join(self.hfs, "bin", "hython"),    # a stand-in for the gate scripts: a real Houdini costs 1.3s a sync
+        _write(os.path.join(self.hfs, "bin", "hython"),    # a fake hython for the gate scripts: a real Houdini costs 1.3s a sync
                '#!/bin/bash\nexec "%s" "$@"\n'
                % (plain if os.path.isfile(plain) else "python3"), executable=True)
-        _write(os.path.join(self.repo, ".gitignore"), "__pycache__/\n")    # a bytecode cache must not read as a dirty tree ▸p/bytecode-cache-dirty-tree
+        _write(os.path.join(self.repo, ".gitignore"), "__pycache__/\n")    # a bytecode cache must not count as uncommitted ▸p/bytecode-cache-dirty-tree
         _write(os.path.join(self.repo, "OPmenu.xml"), "<menuDocument/>\n")
         _write(os.path.join(self.repo, "python_panels", "amaze.pypanel"),
                "<pythonPanelDocument/>\n")
-        # The shelf is NOT optional: tolerating a missing toolbar/ is the under-sync this catches.
+        # The shelf is NOT optional: accepting a missing toolbar/ is the incomplete sync this catches.
         _write(os.path.join(self.repo, "toolbar", "Amaze.shelf"),
                "<shelfDocument/>\n")
         _write(os.path.join(self.repo, "scripts", "python", "amaze",
                             "widget.py"), "VALUE = 1\n")
 
-        self.private_hooks = os.path.join(self.tmp, "private-hooks")   # a permissive process gate; its refusals have their own tests
+        self.private_hooks = os.path.join(self.tmp, "private-hooks")   # a process gate that always passes; its refusals have their own tests
         os.makedirs(self.private_hooks)
         _write(os.path.join(self.private_hooks, "pre-push-gate"),
                "#!/bin/sh\nexit 0\n", executable=True)
@@ -209,7 +209,7 @@ class GateFixture(unittest.TestCase):
                   self.branch)
 
     def _commit(self, *relative_paths):
-        """Unpushed commits touching exactly these paths; git answers forward slashes on every OS."""
+        """Unpushed commits touching exactly these paths; git returns forward slashes on every OS."""
         for relative in relative_paths:
             _write(os.path.join(self.repo, relative), "touched\n")
         self._git("add", "-A")
@@ -224,7 +224,7 @@ class GateFixture(unittest.TestCase):
     def _env(self, mode, **extra):
         """Never inherits a real bypass variable, or the pushing repository, from the calling suite."""
         env = dict(os.environ)
-        env.update(self.git_env)    # a copy of the environment too, so the stripping comes after it
+        env.update(self.git_env)    # a copy of the environment too, so the removals below come after it
         for name in ("AMAZE_SYNC_NO_VERIFY", "AMAZE_SKIP_TESTS",
                      "AMAZE_SCRATCH_INSTALL", "AMAZE_HOUDINI", "AMAZE_SKIP_REPORT",
                      "GIT_DIR", "GIT_WORK_TREE"):    # a worktree's pre-push sets GIT_DIR ▸r/git-hook-surface
@@ -249,13 +249,13 @@ class GateFixture(unittest.TestCase):
                               env=env)
 
     def sync(self, mode="green", **extra):
-        # From an unrelated cwd on purpose - it claims to run from anywhere.
+        # From an unrelated cwd on purpose - the script states it runs from anywhere.
         return self._run(os.path.join("tools", "sync-install.sh"),
                          mode, cwd=self.tmp, **extra)
 
     def ref_line(self, local_sha, local_ref=None, remote_ref=None,
                  remote_sha=None):
-        """One line of git's pre-push stdin; the hook gates on this, not on HEAD."""
+        """One line of git's pre-push stdin; the hook checks these refs, not HEAD."""
         branch_ref = "refs/heads/%s" % self.branch
         return "%s %s %s %s\n" % (local_ref or branch_ref, local_sha,
                                   remote_ref or branch_ref,
@@ -290,24 +290,24 @@ class FixtureFidelityTest(GateFixture):
 
     @staticmethod
     def _command_lines(script_text):
-        """The script with full-line comments removed - grep the line that RUNS, never prose about it."""
+        """The script with full-line comments removed - search the lines that RUN, never comments."""
         return "\n".join(line for line in script_text.splitlines()
                          if not line.lstrip().startswith("#"))
 
     def test_the_stub_still_matches_the_real_runner(self):
-        """The stub fakes the real runner's OUTPUT, so if that output changes the stub is a lie."""
+        """The stub fakes the real runner's OUTPUT, so if that output changes the stub is wrong."""
         with open(REAL_RUNNER, encoding="utf-8") as handle:
             code = self._command_lines(handle.read())
         self.assertIn("run_suite.py", code,
-                      "the real runner no longer drives run_suite.py, "
-                      "whose unittest-shaped output is what the stub "
-                      "fakes - restub")
+                      "the real runner no longer runs run_suite.py, "
+                      "whose unittest-format output is what the stub "
+                      "imitates - update the stub")
         self.assertIn("check_log_leak.py", code,
                       "the real runner no longer runs the leak check")
         with open(REAL_LEAK_CHECK, encoding="utf-8") as handle:
             self.assertIn("LOG LEAK", handle.read(),
                           "the leak check no longer prints 'LOG LEAK' - "
-                          "both gates grep for that literal")
+                          "both gates search for that exact text")
         self.assertNotIn("hython -m unittest", code,
                          "a command line runs bare hython -m unittest, "
                          "which skips the sync, the log sandbox, the lint "
@@ -327,7 +327,7 @@ class FixtureFidelityTest(GateFixture):
 class SyncInstallGateTest(GateFixture):
 
     def test_an_uncommitted_file_is_refused_before_anything_ships(self):
-        """The install only receives committed code, untracked included: the mirror copies `scripts/`."""
+        """Only committed code is installed, untracked included: the mirror copies `scripts/`."""
         _write(os.path.join(self.repo, "scripts", "python", "amaze",
                             "stray.py"), "# this was never committed\n")
 
@@ -339,13 +339,13 @@ class SyncInstallGateTest(GateFixture):
                       "the refusal did not name what was uncommitted")
         self.assertFalse(
             os.path.exists(os.path.join(self.install, "OPmenu.xml")),
-            "it refused and shipped anyway - the check must run BEFORE "
+            "it refused and copied to the install anyway - the check must run BEFORE "
             "the mirror, not after it")
         self.assertEqual([], self.suite_calls(),
                          "the suite ran despite the refusal")
 
     def test_a_scratch_pointing_at_the_real_install_is_refused(self):
-        """A typo must not aim a sabotage at the tree this protects."""
+        """A typo must not point the sabotage test at the real install this script protects."""
         _write(os.path.join(self.repo, "scripts", "python", "amaze",
                             "stray.py"), "# sabotaged\n")
 
@@ -355,7 +355,7 @@ class SyncInstallGateTest(GateFixture):
         self.assertIn("REAL install", self.both(result))
 
     def test_a_missing_install_is_refused_before_anything_is_copied(self):
-        """`$AMAZE` pointing nowhere stops at the guard; empty is never run, it names the real install."""
+        """A missing `$AMAZE` folder stops at the check; empty is never run: it means the real install."""
         missing = os.path.join(self.tmp, "not_an_install")
         result = self.sync("green", AMAZE=missing)
         self.assertEqual(result.returncode, 1, self.both(result))
@@ -377,7 +377,7 @@ class PrePushGateTest(GateFixture):
         self.assertNotEqual(result.returncode, 0, self.both(result))
         self.assertIn("process gate says no", self.both(result))
         self.assertEqual([], self.suite_calls(),
-                         "the suite ran before the process gate answered")
+                         "the suite ran before the process gate finished")
 
     def test_a_missing_process_gate_fails_closed(self):
         empty = os.path.join(self.tmp, "no-hooks")
@@ -409,14 +409,14 @@ class PrePushGateTest(GateFixture):
 
 
 class TargetedRunTest(unittest.TestCase):
-    """`start_test.sh <module>` runs that module; its argument prologue exits before Houdini starts."""
+    """`start_test.sh <module>` runs that module; its argument check exits before Houdini starts."""
 
     def _script(self):
         return os.path.join(
             os.path.dirname(os.path.abspath(__file__)), "start_test.sh")
 
     def _run(self, *args):
-        """The timeout matters: a regressed argument check starts the whole suite recursively."""
+        """The timeout matters: a broken argument check starts the whole suite recursively."""
         try:
             return subprocess.run(["bash", self._script(), *args],
                                   capture_output=True, text=True,
@@ -429,7 +429,7 @@ class TargetedRunTest(unittest.TestCase):
 
     def test_a_name_that_is_not_a_module_is_refused(self):
         for args in (("test_no_such_module_here",),
-                     ("--isolated", "test_no_such_module_here")):    # a guard reading only $1 drops it
+                     ("--isolated", "test_no_such_module_here")):    # a check reading only $1 misses it
             with self.subTest(args=args):
                 result = self._run(*args)
                 self.assertEqual(2, result.returncode, result.stderr)
@@ -446,10 +446,10 @@ class TargetedRunTest(unittest.TestCase):
         self.assertLess(
             check, houdini,
             "the argument check moved below the Houdini lookup, so a "
-            "typo now pays for an interpreter start to be refused")
+            "typo now costs an interpreter start before it is rejected")
 
     def test_a_real_module_name_reaches_the_runner(self):
-        """Read from source, never executed: the runner is handed the resolved module list."""
+        """Read from source, never executed: the runner gets the resolved module list."""
         with open(self._script(), encoding="utf-8") as handle:
             source = handle.read()
         self.assertIn("run_suite.py\" $run_modules", source,
@@ -463,11 +463,11 @@ class TargetedRunTest(unittest.TestCase):
                       "change")
         self.assertIn("SUBSET RUN", source,
                       "a subset run no longer announces itself, so a "
-                      "green one reads exactly like the full gate")
+                      "passing one looks exactly like the full gate")
 
 
 class TestEveryTestFileIsInTheGate(unittest.TestCase):
-    """`MODULES` is hand-maintained, so a test file it never names is green by hand and gates nothing."""
+    """`MODULES` is hand-maintained, so a test file it omits passes only by hand and blocks no push."""
 
     NOT_SUITES = {
         "test_support",
@@ -483,7 +483,7 @@ class TestEveryTestFileIsInTheGate(unittest.TestCase):
         match = re.search(r'^%s="(.*?)"' % name, src, re.S | re.M)
         self.assertIsNotNone(
             match, "%s= is gone from start_test.sh - this test can no "
-                   "longer see what the gate runs" % name)
+                   "longer read what the gate runs" % name)
         return set(match.group(1).replace("\\\n", " ").split())
 
     def _listed(self):
@@ -503,7 +503,7 @@ class TestEveryTestFileIsInTheGate(unittest.TestCase):
     def test_a_module_kept_out_of_the_default_run_still_runs(self):
         """GATE_MODULES skip a plain full run, so a tools/ change and CI are the only places they run."""
         gate = self._list("GATE_MODULES")
-        self.assertTrue(gate, "GATE_MODULES is empty - this test guards nothing")
+        self.assertTrue(gate, "GATE_MODULES is empty - this test checks nothing")
         self.assertEqual(set(), gate & self._list("MODULES"), "a module is in both lists")
         self.assertEqual(set(), gate - self._tuple_in("tools/select-tests.py", "GATE_TESTS"),
                          "a push that changes tools/ would not run these")
@@ -530,7 +530,7 @@ class TestEveryTestFileIsInTheGate(unittest.TestCase):
             "add them to MODULES in start_test.sh: %s" % missing)
 
     def test_the_runner_names_no_file_that_is_gone(self):
-        """A deleted file left in `MODULES` fails the import and takes the whole gate down."""
+        """A deleted file left in `MODULES` fails the import and with it the whole gate."""
         stale = sorted(self._listed() - self._on_disk() - self.NOT_SUITES)
         self.assertEqual(
             [], stale,
@@ -565,12 +565,12 @@ class EveryAppBuilderPicksOffscreen(unittest.TestCase):
         self.assertEqual(
             [], unguarded,
             "these modules build the app before setting the platform, so a "
-            "run they lead goes native and fails another module's layout "
+            "run they start uses the native platform and fails another module's layout "
             "asserts: %s" % unguarded)
 
 
 class EveryTestModuleArmsTheSandbox(unittest.TestCase):
-    """Importing `test_support` arms the sandbox, so every module does it at module level."""
+    """Importing `test_support` sets up the sandbox, so every module does it at module level."""
 
     def _imports_the_harness(self, tree):
         for node in tree.body:
@@ -606,7 +606,7 @@ class EveryTestModuleArmsTheSandbox(unittest.TestCase):
             % unarmed)
 
     def test_the_scan_sees_an_import(self):
-        """Guards the guard: a scan that matches nothing reports everything."""
+        """Tests the check itself: a scan that matches nothing reports every module."""
         self.assertTrue(self._imports_the_harness(ast.parse(
             "from amaze.tests import test_support")))
         self.assertTrue(self._imports_the_harness(ast.parse(
@@ -614,7 +614,7 @@ class EveryTestModuleArmsTheSandbox(unittest.TestCase):
         self.assertFalse(self._imports_the_harness(ast.parse(
             "def f():\n    from amaze.tests import test_support\n")))
         self.assertGreater(len(self._modules()), 40,
-                           "the test directory scan went vacuous")
+                           "the test directory scan found almost nothing")
 
 
 def _is_patch_call(node) -> bool:
@@ -673,7 +673,7 @@ class AStartedPatchIsUndoneWhenWhatFollowsRaises(unittest.TestCase):
             "stays on for every later test (one moved import once failed 821): %s" % offences)
 
     def test_the_scan_tells_a_leak_from_the_two_safe_shapes(self):
-        """Guards the guard: a scan that matches nothing passes everything."""
+        """Tests the check itself: a scan that matches nothing passes everything."""
         leak = ("def setUp(self):\n    self.p = patch('a.B')\n    self.b = self.p.start()\n"
                 "    self.q = patch('a.C')\n    self.q.start()\n")
         stopall = ("def setUp(self):\n    self.addCleanup(patch.stopall)\n"
@@ -722,7 +722,7 @@ class TheSuiteRunsOnTheProductionBuild(unittest.TestCase):
         self.assertEqual("", self._pick())
 
     def test_no_runner_still_asks_for_the_newest(self):
-        """The one choice lives in the resolver; a caller asking for the newest bypasses it."""
+        """Only the resolver picks the build; a caller asking for the newest would bypass it."""
         callers = [os.path.join("tools", name) for name in os.listdir(os.path.join(REPO, "tools"))
                    if name.endswith(".sh")]
         callers += [os.path.join("tools", "git-hooks", "pre-push"), RUNNER_REL]
@@ -732,7 +732,7 @@ class TheSuiteRunsOnTheProductionBuild(unittest.TestCase):
 
 
 class EveryToolSpeaksTheResolver(unittest.TestCase):
-    """Every `tools/*.sh` using hython sources the one resolver; two trap spellings are banned."""
+    """Every `tools/*.sh` using hython sources houdini-env.sh; two known-bad commands are banned."""
 
     def test_no_tool_carries_the_recorded_traps(self):
         tools = os.path.join(REPO, "tools")
@@ -745,19 +745,19 @@ class EveryToolSpeaksTheResolver(unittest.TestCase):
                 text = f.read()
             self.assertNotIn(
                 "mktemp -d -t", text,
-                "%s: GNU/MSYS mktemp refuses -t with no X's - the "
-                "script dies on line one on Windows" % name)
+                "%s: GNU/MSYS mktemp rejects -t with no X's - the "
+                "script fails on its first line on Windows" % name)
             self.assertNotIn(
                 "ls -d /Applications", text,
-                "%s carries its own mac-only Houdini lookup beside the "
+                "%s has its own mac-only Houdini lookup besides the "
                 "shared resolver" % name)
             if "hython" in text and name != "houdini-env.sh":
                 self.assertIn(
                     "houdini-env.sh", text,
-                    "%s reaches for hython without sourcing the "
+                    "%s uses hython without sourcing the "
                     "resolver" % name)
         self.assertGreaterEqual(checked, 3,    # houdini-env, run-tests, sync-install
-                                "the tools directory scan went vacuous")
+                                "the tools directory scan found almost nothing")
 
 
 if __name__ == "__main__":

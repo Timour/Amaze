@@ -43,7 +43,7 @@ def main(argv) -> None:
     program = unittest.main(module=None, argv=["unittest"] + list(argv),
                             exit=False)
     ok = program.result.wasSuccessful()
-    if recorder is not None and ok:    # a red run may not have reached what a green one does
+    if recorder is not None and ok:    # a failing run may have stopped before code a passing run reaches
         try:
             recorder.save(map_path, program.result.testsRun)
         except Exception as exc:                             # noqa: BLE001

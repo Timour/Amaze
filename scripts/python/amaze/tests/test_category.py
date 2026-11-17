@@ -15,7 +15,7 @@ from amaze.tests import test_support  # noqa: E402,F401 - import redirects the d
 
 
 def _write(prefs, document: dict) -> None:
-    """The library's materials.json as `document`, written whole."""
+    """Write `document` as the library's materials.json, replacing the file."""
     with open(os.path.join(prefs.dir, "materials.json"), "w", encoding="utf-8") as handle:
         handle.write(guard.encode(document).decode("utf-8"))
 
@@ -117,7 +117,7 @@ class TestCategories(unittest.TestCase):
 
 
 class NormalizeBracketsItsResetTest(unittest.TestCase):
-    """`normalize_categories` brackets its row swap in a reset pair. ▸r/model-contracts"""
+    """`normalize_categories` emits a reset pair around replacing its rows. ▸r/model-contracts"""
 
     def _model(self, entries):
         from amaze.core import category as category_mod
@@ -140,12 +140,12 @@ class NormalizeBracketsItsResetTest(unittest.TestCase):
             "the row set was replaced without a matched reset pair")
 
     def test_a_clean_list_resets_nothing(self):
-        """The bracket must not fire when no rows change."""
+        """No reset is emitted when no rows change."""
         model = self._model(["Metal", "Wood"])
         seen = []
         model.modelAboutToBeReset.connect(lambda: seen.append("about"))
         self.assertEqual(0, model.normalize_categories())
-        self.assertEqual([], seen, "a no-op reset the whole model")
+        self.assertEqual([], seen, "a call that changed nothing reset the whole model")
 
 class ALocalEditIsNotReadAsAMerge(unittest.TestCase):
     """A refresh resets the sidebar for a change made elsewhere, never for one of its own edits."""
@@ -194,7 +194,7 @@ class ALocalEditIsNotReadAsAMerge(unittest.TestCase):
 
 
 class TheAllRowHasOneRule(unittest.TestCase):
-    """All is shown, never stored as a category, and `category.is_all` alone says so."""
+    """All is shown, never stored as a category, and only `category.is_all` decides that."""
 
     def test_both_spellings_and_nothing_else(self):
         for name, want in (("_All", True), ("All", True), ("", False), (None, False),
@@ -221,7 +221,7 @@ class TheAllRowHasOneRule(unittest.TestCase):
                     words = {e.value for e in node.elts if isinstance(e, ast.Constant)}
                     if {"All", "_All"} <= words:
                         offenders.append("%s:%d" % (os.path.relpath(path, root), node.lineno))
-        self.assertEqual([], offenders, "the All rule is written again at %s" % offenders)
+        self.assertEqual([], offenders, "the All pair is spelled outside category.py at %s" % offenders)
 
 
 class TheFixtureRowCountTest(unittest.TestCase):

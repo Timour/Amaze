@@ -21,7 +21,7 @@ from amaze.tests import test_support  # noqa: E402
 
 
 class _Recorder:
-    """Stands in for the grid proxy, recording its filter; the real Categories model sits beside it."""
+    """Replaces the grid proxy and records its filter calls; the Categories model used is real."""
 
     def __init__(self):
         self.filters = []
@@ -48,7 +48,7 @@ class _CatList:
 
 
 class _Panel:
-    """The real name reader, wired to the proxy as in production, since it falls back to DisplayRole."""
+    """The real `raw_category_name`, given the proxy as in production; it falls back to DisplayRole."""
 
     from amaze.panel.panel import AmazePanel as _Real
     raw_category_name = _Real.raw_category_name
@@ -67,7 +67,7 @@ class _Section(sections.AssetSection):
         self.panel = _Panel(sidebar_proxy)
 
     def stack(self):
-        # The LABELLED shape the real one returns - a bare tuple would drift.
+        # The named tuple the real `stack()` returns - a bare tuple could get out of step.
         return sections.AssetStack(
             model=self._model, proxy=self._proxy,
             selection=None, categories=self._categories)
@@ -89,7 +89,7 @@ class ARowActsOnTheNameItStores(unittest.TestCase):
         self.section = _Section(self.categories, self.proxy, self.sidebar)
 
     def _row_for(self, stored):
-        """The proxy index of the row holding `stored`, as a click hands it; fails rather than skips."""
+        """The proxy index of the row holding `stored`, as a click gives it; fails rather than skips."""
         row = self.categories._row_of(stored)
         if row is None:
             self.categories.check_add_category(stored)
@@ -115,11 +115,11 @@ class ARowActsOnTheNameItStores(unittest.TestCase):
                 self.assertEqual(
                     [(_Model.CategoryRole, expected)], self.proxy.filters,
                     "the sidebar did not filter the grid on the name the "
-                    "row stores - the grid goes empty with the row lit")
+                    "row stores - the grid is empty while the row is selected")
 
 
 class WhatMayBeDroppedOnASidebarRowIsTheCONTEXTsAnswer(unittest.TestCase):
-    """What a sidebar row accepts is the context's answer, never a branch on a section key."""
+    """Each section class decides what its sidebar rows accept; no branch on a section key."""
 
     def test_every_context_answers_whether_it_takes_drops(self):
         """Category sections take tiles; File's folders and the online sources take none."""
@@ -129,11 +129,11 @@ class WhatMayBeDroppedOnASidebarRowIsTheCONTEXTsAnswer(unittest.TestCase):
             with self.subTest(context=name):
                 self.assertEqual(
                     takes, bool(getattr(sections, name).takes_category_drops),
-                    "%s answers the wrong way about tiles dropped on its "
+                    "%s returns the wrong value for tiles dropped on its "
                     "sidebar" % name)
 
     def test_COLOR_still_guards_its_synthetic_rows(self):
-        """A gradient row must be a real user category; the base answer is permissive."""
+        """A gradient row must be a real user category; the AssetSection default accepts any row."""
         section = sections.GradientSection.__new__(sections.GradientSection)
         section.panel = type("_P", (), {
             "gradient_model": type("_M", (), {
@@ -147,7 +147,7 @@ class WhatMayBeDroppedOnASidebarRowIsTheCONTEXTsAnswer(unittest.TestCase):
 
 
 class TheSidebarStandsOnItsFrame(unittest.TestCase):
-    """The sidebar's width, colour bar and splitter handle are what G01 draws. ▸r/sidebar-from-frame"""
+    """The sidebar's width, colour bar and splitter handle match frame G01. ▸r/sidebar-from-frame"""
 
     @classmethod
     def setUpClass(cls):
@@ -171,7 +171,7 @@ class TheSidebarStandsOnItsFrame(unittest.TestCase):
             self.assertEqual(a[2] + a[4], b[2], "two rows do not meet")
         self.assertEqual(1, len({(b[1], b[3], b[4]) for b in self._kind("bar")}),
                          "the colour bars are drawn at different places or sizes")
-        self.assertEqual(1, len({t[1] for t in self._kind("text")}), "the labels start apart")
+        self.assertEqual(1, len({t[1] for t in self._kind("text")}), "the labels start at different x positions")
         listed, handle = self._kind("list")[0], self._kind("splitter handle")[0]
         self.assertEqual(listed[1] + listed[3], handle[1], "the handle is not at the list's edge")
         self.assertEqual(self.frame["frame"][0], handle[1] + handle[3])
@@ -180,7 +180,7 @@ class TheSidebarStandsOnItsFrame(unittest.TestCase):
         width = self.px(self._kind("list")[0][3])
         panel = self.panel
         self.addCleanup(setattr, panel.prefs, "sidebar_width", panel.prefs.sidebar_width)
-        panel.prefs.sidebar_width = 0    # nothing remembered: the pane asks for its default
+        panel.prefs.sidebar_width = 0    # no saved width: the pane uses its default width
         self.assertEqual(width, panel.cat_wrapper.sizeHint().width())
         self.assertEqual((width, width),
                          (panel.cat_wrapper.maximumWidth(), panel.cat_list.maximumWidth()))

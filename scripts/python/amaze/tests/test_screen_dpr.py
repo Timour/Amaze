@@ -9,10 +9,10 @@ from amaze.tests import test_support  # noqa: F401
 
 _SRC = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-APP_WIDE = ("devicePixelRatio", "primaryScreen")   # both answer for the app, neither moves with the window ▸r/screen-dpr
+APP_WIDE = ("devicePixelRatio", "primaryScreen")   # both return an app-wide value; neither follows the window ▸r/screen-dpr
 
 EXEMPT = {
-    ("helpers/ui_helpers.py", "_screen_dpr"),      # a tooltip is built before anyone knows which monitor it pops on
+    ("helpers/ui_helpers.py", "_screen_dpr"),      # a tooltip is built before the monitor it opens on is known
     ("utils/rc_calls.py", "describe"),    # records the value in the log, draws nothing
     ("helpers/theme.py", "screen_ratio"),          # the shared reader: primary is its documented no-widget fallback
 }
@@ -79,19 +79,19 @@ class TheRatioFollowsTheWindow(unittest.TestCase):
         fixed = sorted(REMAINING - live)
         self.assertEqual(
             [], fixed,
-            "these are clean now - take them out of REMAINING so the "
-            "ratchet cannot slip back: %s" % fixed)
+            "these are clean now - take them out of REMAINING so a "
+            "new read there fails the test: %s" % fixed)
 
     def test_the_scan_can_find_a_read(self):
-        """A guard that matches nothing passes forever, so the scanner is fed a read it must see."""
+        """A check that matches nothing always passes, so the scanner gets a read it must find."""
         planted = ("class Widget:\n"
                    "    def paintEvent(self):\n"
                    "        r = QtGui.QGuiApplication.primaryScreen()\n")
         self.assertEqual(
             [("paintEvent", 3, "primaryScreen")],
             _reads_in(planted, "panel/planted.py"),
-            "the scanner cannot see an app-wide read that is right in "
-            "front of it, so its silence about the tree means nothing")
+            "the scanner cannot find an app-wide read in planted "
+            "source, so finding none in the tree means nothing")
 
 
 if __name__ == "__main__":

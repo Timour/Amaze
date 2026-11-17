@@ -64,7 +64,7 @@ def _plain(value):
 
 
 def _path(widget) -> str:
-    """Object names, or class plus sibling index where unnamed; without it paths collapse."""
+    """Object names, or class plus sibling index where unnamed; without it two paths could match."""
     parts = []
     node = widget
     while node is not None:
@@ -84,7 +84,7 @@ def _path(widget) -> str:
 
 
 def _connected_signals(obj) -> list:
-    """Each signal with a receiver: a dropped `connect()` leaves the tree intact, the panel dead."""
+    """Each connected signal: a missing `connect()` keeps the widget tree but breaks the panel."""
     out = []
     meta = obj.metaObject()
     for i in range(meta.methodCount()):
@@ -246,7 +246,7 @@ def _diff(before: dict, after: dict) -> list:
 
 
 class _Cleanups(contextlib.ExitStack):
-    """An ExitStack that answers `addCleanup`, so a test fixture can run outside a test."""
+    """An ExitStack that provides `addCleanup`, so a test fixture can run outside a test."""
 
     def addCleanup(self, function, *args, **kwargs):
         self.callback(function, *args, **kwargs)
@@ -254,7 +254,7 @@ class _Cleanups(contextlib.ExitStack):
 
 def _fixture_snapshot() -> dict:
     """Fingerprint a panel over the committed fixture library, the same panel on every machine."""
-    from amaze.tests import test_support    # arms the sandbox and redirects the log and the cache
+    from amaze.tests import test_support    # sets up the sandbox and redirects the log and the cache
 
     with _Cleanups() as cleanups:
         return snapshot(test_support.fixture_panel(cleanups))

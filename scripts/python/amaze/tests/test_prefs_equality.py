@@ -1,4 +1,4 @@
-"""What Prefs answers, pinned as invariants not a golden file: a disk round trip changes nothing."""
+"""Prefs property values, checked as invariants, not a golden file: a save and load changes none."""
 
 import os
 import shutil
@@ -57,7 +57,7 @@ class PrefsCase(unittest.TestCase):
         return p, folder
 
     def test_a_property_answers_the_same_after_a_round_trip(self):
-        """Save, load the same file back, and every answer holds."""
+        """Save, load the same file back, and every property returns the same value."""
         p, folder = self._fresh()
         before = _answers(p)
         self.assertTrue(before, "no properties were read at all")
@@ -72,10 +72,10 @@ class PrefsCase(unittest.TestCase):
                      for k in before if before[k] != after.get(k)}
         self.assertEqual(
             {}, differing,
-            "a round trip through disk changed what Prefs answers")
+            "a save and load changed what Prefs properties return")
 
     def test_every_property_is_readable(self):
-        """A property that raises is a broken answer whatever its value would have been."""
+        """A property that raises when read is broken, whatever value it would have returned."""
         p, _folder = self._fresh()
         raised = {k: v for k, v in _answers(p).items()
                   if isinstance(v, str) and v.startswith("RAISED ")}

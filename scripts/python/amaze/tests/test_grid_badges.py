@@ -83,9 +83,9 @@ class TheVersionsBadgeAnswersOnlyWhereItIsDrawn(unittest.TestCase):
         index = self.model.index(0, 0)
         handled = self.delegate.editorEvent(
             self._release_on_the_badge(option), self.model, option, index)
-        self.assertTrue(handled, "the badge did not take the click")
+        self.assertTrue(handled, "the badge did not handle the click")
         self.assertEqual(1, len(self.clicked),
-                         "the versions dialog was not asked for")
+                         "the versions dialog was not requested")
 
 
 class _StarRows(QtCore.QAbstractListModel):
@@ -111,7 +111,7 @@ class _StarRows(QtCore.QAbstractListModel):
 
 
 class TheStarBadgeIsAButtonInBOTHItsStates(unittest.TestCase):
-    """The star toggles a plain tile and a favourite one; with no click wired it is no button."""
+    """The star toggles a plain tile and a favourite one; with no click handler it is no button."""
 
     def setUp(self):
         self.clicked = []
@@ -130,27 +130,27 @@ class TheStarBadgeIsAButtonInBOTHItsStates(unittest.TestCase):
             self.model.index(0, 0))
 
     def test_a_click_stars_a_tile_that_is_NOT_yet_a_favourite(self):
-        """The badge answers while its role is falsy: the resting star is a button, not a dim indicator."""
+        """The badge is clickable while its role is falsy: the plain star is a button, not an indicator."""
         option = _view_option(self.view)
         self.assertTrue(self._click_the_star(self.delegate, option),
-                        "the resting star did not take the click")
+                        "the resting star did not handle the click")
         self.assertEqual(1, len(self.clicked),
-                         "the favourite toggle was never asked for")
+                         "the favourite toggle was never called")
 
     def test_a_click_unstars_a_tile_that_IS_one(self):
         self.model.favourite = True
         option = _view_option(self.view)
         self.assertTrue(self._click_the_star(self.delegate, option),
-                        "the amber star did not take the click")
+                        "the amber star did not handle the click")
         self.assertEqual(1, len(self.clicked))
 
     def test_an_UNWIRED_delegate_offers_no_star_button(self):
-        """The online grid: role wired, no click, so a click falls through to plain selection."""
+        """The online grid: role set, no click handler, so a click is a plain selection."""
         bare = test_support.tile_delegate({"favourite": FAVORITE_ROLE}, SUBTITLE_ROLE)
         self.view.setItemDelegate(bare)
         option = _view_option(self.view)
         self.assertFalse(self._click_the_star(bare, option),
-                         "a delegate with no click wired swallowed the "
+                         "a delegate with no click handler consumed the "
                          "click anyway")
 
 
@@ -192,14 +192,14 @@ class TheCommentBadgeIsAButton(unittest.TestCase):
         rect = delegate._badge_rect(option.rect, "comment")
         handled = delegate.editorEvent(
             _release(rect.center()), model, option, index)
-        self.assertTrue(handled, "the comment badge swallowed nothing")
+        self.assertTrue(handled, "the comment badge did not handle the click")
         self.assertEqual([index], clicked)
 
     def test_a_commentless_tile_shows_the_outline_badge_like_the_heart(self):
         row = next(b for b in delegates.BADGES if b.name == "comment")
         self.assertEqual("badge_comment", row.art)
         self.assertFalse(row.dims, "the filled bubble is not drawn as its art is")
-        self.assertFalse(row.hover_art, "the filled bubble grew a second art for hover")
+        self.assertFalse(row.hover_art, "the filled bubble has a second art for hover")
         self.assertEqual("badge_comment_off", row.off_art,
                          "a tile with no comments shows no badge")
         self.assertEqual("badge_comment_off_hover", row.off_hover_art,
@@ -242,7 +242,7 @@ class AQuickSecondClickOnABadgeIsAClick(unittest.TestCase):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
     def _double_click(self, at):
-        """The five events the Qt manual says a double-click delivers; answers (imports, heart clicks)."""
+        """The five events the Qt manual says a double-click delivers; returns (imports, heart clicks)."""
         panel = self.panel
         panel._on_tab_toggled("material", True)
         view = panel.thumblist
@@ -278,7 +278,7 @@ class AQuickSecondClickOnABadgeIsAClick(unittest.TestCase):
         imports, clicks = self._double_click(
             lambda delegate, rect: delegate._badge_rect(rect, "favourite").center())
         self.assertEqual([], imports, "a quick second click on the heart imported the tile")
-        self.assertEqual(2, len(clicks), "the heart did not take both clicks")
+        self.assertEqual(2, len(clicks), "the heart did not receive both clicks")
 
     def test_a_double_click_on_the_tile_still_imports(self):
         imports, clicks = self._double_click(lambda delegate, rect: rect.center())

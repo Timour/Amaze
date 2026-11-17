@@ -1,4 +1,4 @@
-"""One colour gesture per area; the context says what a colour is; the three stores stay three."""
+"""One colour action per area; each section titles its picker; the three stores stay separate."""
 
 import os
 import sys
@@ -23,7 +23,7 @@ from amaze.tests import test_support  # noqa: E402
 class EveryContextSaysWhatAColourIs(unittest.TestCase):
 
     def test_each_one_names_its_own_picker(self):
-        """A location is not a category, and the picker's title is the only place that shows."""
+        """A location is not a category, and the picker's title is the only text that shows it."""
         self.assertEqual("Location Color", sections.FileSection.colour_title)
         for name in ("AssetSection", "GradientSection"):
             self.assertEqual("Category Color",
@@ -31,7 +31,7 @@ class EveryContextSaysWhatAColourIs(unittest.TestCase):
 
 
 class TheColourReachesBOTHPlacesItIsPainted(unittest.TestCase):
-    """A sidebar colour paints the row and every tile under it; a gesture must repaint both."""
+    """A sidebar colour paints the row and every tile in it; setting it must repaint both."""
 
     @classmethod
     def setUpClass(cls):
@@ -51,7 +51,7 @@ class TheColourReachesBOTHPlacesItIsPainted(unittest.TestCase):
         return panel.active_section(), model, model.index(row, 0)
 
     def test_the_sidebar_is_TOLD_so_the_row_actually_repaints(self):
-        """These models answer live from the store, so only a change signal proves the row repaints."""
+        """These models read the store live, so only a change signal proves the row repaints."""
         for key in ("material", "gradient", "file"):
             with self.subTest(section=key):
                 context, model, index = self._sidebar_row(key)
@@ -60,7 +60,7 @@ class TheColourReachesBOTHPlacesItIsPainted(unittest.TestCase):
                 told = []
                 for signal in (model.dataChanged, model.modelReset,
                                model.layoutChanged):
-                    def heard(*_args, s=signal, told=told):    # bound now: no other fills it
+                    def heard(*_args, s=signal, told=told):    # defaults bind this signal and list now
                         told.append(s)
                     signal.connect(heard)
                     self.addCleanup(signal.disconnect, heard)
@@ -70,7 +70,7 @@ class TheColourReachesBOTHPlacesItIsPainted(unittest.TestCase):
 
                 self.assertTrue(
                     told,
-                    "nothing told the %s sidebar its row changed, so "
+                    "no change signal reached the %s sidebar, so "
                     "the colour appears only after something else "
                     "happens to refresh it" % key)
                 self.assertEqual(
@@ -90,7 +90,7 @@ class TheColourReachesBOTHPlacesItIsPainted(unittest.TestCase):
                     "",
                     str(model.index(index.row(), 0).data(
                         category.SIDEBAR_COLOR_ROLE) or ""),
-                    "the %s row still wears the cleared colour" % key)
+                    "the %s row still shows the cleared colour" % key)
 
     def test_an_UNDERSCORE_category_is_coloured_by_its_stored_name(self):
         """Colour is keyed by the stored name, not the displayed one; driven through the panel gesture."""
@@ -131,7 +131,7 @@ class TheColourReachesBOTHPlacesItIsPainted(unittest.TestCase):
         self.assertEqual(
             "", context.sidebar_colour("_WIP"),
             "Clear Color cleared a colour keyed by the DISPLAYED name, "
-            "so the stored one is still there and the row still wears "
+            "so the stored one is still there and the row still shows "
             "it")
 
 

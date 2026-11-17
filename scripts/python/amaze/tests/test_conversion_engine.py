@@ -96,7 +96,7 @@ class _Writer(engine.RendererAPI):
 
 
 class TheEngineRoutesThroughMaterialX(unittest.TestCase):
-    """Routing and refusals with each plugin pinned, so the host decides nothing here."""
+    """Routes and refusals with each plugin set loaded or not, so this Houdini changes nothing."""
 
     def test_the_targets_are_the_menu_order(self):
         self.assertEqual(("Karma", "Redshift", "Octane"), engine.targets())
@@ -138,7 +138,7 @@ class TheEngineRoutesThroughMaterialX(unittest.TestCase):
             made = engine.convert(scratch, "Reader", "Writer", scratch, "My Mat")
         self.assertEqual("mtlxstandard_surface", writer.fed, "the writer read no MaterialX")
         with self.assertRaises(hou.ObjectWasDeleted):
-            writer.middle.path()    # the MaterialX step is gone
+            writer.middle.path()    # the intermediate MaterialX network was deleted
         self.assertEqual("My_Mat", made.builder.name())
         self.assertEqual(1, made.report.skipped.count(engine.UNWIRED))
 
@@ -179,11 +179,11 @@ class RedshiftLoadsOnlyWithBothItsContainers(unittest.TestCase):
 
 
 class TheLibraryDoorRefusesFirst(unittest.TestCase):
-    """`actions.materials.convert` says why before it rebuilds anything."""
+    """`actions.materials.convert` returns the reason before it rebuilds anything."""
 
     @classmethod
     def setUpClass(cls):
-        test_support.pin_env(test_support.class_scope(cls), "OCIO", "/dev/null")    # save_node gates on $OCIO; nothing renders here
+        test_support.pin_env(test_support.class_scope(cls), "OCIO", "/dev/null")    # save_node requires $OCIO; nothing renders here
 
     def setUp(self):
         test_support.reset_database_singletons()
@@ -199,7 +199,7 @@ class TheLibraryDoorRefusesFirst(unittest.TestCase):
 
     @property
     def row(self):
-        return self.model.find_asset_row_by_id(self.source_id)    # rows sort; the id holds
+        return self.model.find_asset_row_by_id(self.source_id)    # rows are re-sorted; the id stays
 
     def _convert(self, target):
         before = len(self.model.assets)
@@ -221,7 +221,7 @@ class TheLibraryDoorRefusesFirst(unittest.TestCase):
 
 @unittest.skipUnless(OCTANE, "the Octane plugin is not loaded")
 class AMaterialXMaterialBecomesOctanes(unittest.TestCase):
-    """The network copied into Octane's builder, each node Octane refuses resolved or said."""
+    """The network copied into Octane's builder, each node Octane rejects replaced or reported."""
 
     @classmethod
     def setUpClass(cls):
@@ -325,7 +325,7 @@ class WhatOctaneIgnoresIsSaidOnlyWhenUsed(unittest.TestCase):
 
 @unittest.skipUnless(OCTANE, "the Octane plugin is not loaded")
 class TheOctaneTwinLivesInTheLibrary(unittest.TestCase):
-    """Convert to Octane saves Octane's builder beside the source, and it goes back into a scene."""
+    """Convert to Octane adds Octane's builder as a second asset, which imports into a scene."""
 
     @classmethod
     def setUpClass(cls):
@@ -352,7 +352,7 @@ class TheOctaneTwinLivesInTheLibrary(unittest.TestCase):
 
     @property
     def row(self):
-        return self.model.find_asset_row_by_id(self.source_id)    # the twin sorted in beside it
+        return self.model.find_asset_row_by_id(self.source_id)    # the converted copy sorts next to it
 
     def _clear_mat(self):
         for child in self.mat.children():
@@ -410,13 +410,13 @@ class AnOnlineImportCanLandAsOctane(unittest.TestCase):
             built, scratch, "Online Brick", "Octane")
         self.assertTrue(nodes.is_octane_builder(builder))
         self.assertTrue(wired)
-        self.assertEqual("Online_Brick", builder.name(), "the twin kept a `1`")
+        self.assertEqual("Online_Brick", builder.name(), "the Octane builder kept a `1`")
         self.assertEqual([builder], list(scratch.children()), "the MaterialX build was left")
 
 
 @unittest.skipUnless(OCTANE and REDSHIFT, "Redshift and Octane are not both loaded")
 class ARedshiftMaterialReachesOctane(unittest.TestCase):
-    """Redshift to MaterialX to Octane: one report, the MaterialX step gone."""
+    """Redshift to MaterialX to Octane: one report, the MaterialX network deleted."""
 
     def test_the_base_colour_crosses_both_steps(self):
         parent = hou.node("/obj").createNode("matnet")
@@ -655,7 +655,7 @@ KEYED = "/maps/keyed_albedo.png"
 
 
 class AKeyframedTexturePathCrossesEvaluated(unittest.TestCase):
-    """A referenced or expression texture path has no raw spelling: its evaluated path crosses."""
+    """A texture path from a reference or expression has no raw text: the evaluated path is used."""
 
     def setUp(self):
         self.parent = hou.node("/obj").createNode("matnet")
@@ -671,7 +671,7 @@ class AKeyframedTexturePathCrossesEvaluated(unittest.TestCase):
     def _crosses(self, make_source, source, target, image_type, file_parm):
         for expression, language in self.keyframed:
             with self.subTest(language=str(language)):
-                parent = hou.node("/obj").createNode("matnet")    # each case its own names
+                parent = hou.node("/obj").createNode("matnet")    # a network per case, so names do not clash
                 self.addCleanup(parent.destroy)
                 net, path_parm = make_source(parent)
                 path_parm.setExpression(expression, language)
@@ -719,7 +719,7 @@ class AKeyframedTexturePathCrossesEvaluated(unittest.TestCase):
 
 
 class AnOnlineImportWhoseListWasNotSavedSaysSo(unittest.TestCase):
-    """An online import whose list write is refused lands nothing, and its answer names the material."""
+    """An online import whose database write fails adds nothing, and its reason names the material."""
 
     def setUp(self):
         test_support.pin_env(self, "OCIO", "/dev/null")
@@ -752,10 +752,10 @@ class AnOnlineImportWhoseListWasNotSavedSaysSo(unittest.TestCase):
         held = test_support.asset_ids(self.model)
         with test_support.full_disk_for(os.path.join(self.prefs.dir, self.model.DB_FILENAME)):
             record, ok, reason = self._import("unlisted")
-        self.assertFalse(ok, "an import whose row was refused answered success")
+        self.assertFalse(ok, "an import whose row was not written returned success")
         self.assertIn(matx_import.record_name(record), str(reason))
         self.assertEqual([], test_support.arrived(self.model, held),
-                         "an import whose row was refused shows as a tile")
+                         "an import whose row was not written shows as a tile")
 
     def test_a_listed_import_answers_no_reason(self):
         _record, ok, reason = self._import("listed")
@@ -768,7 +768,7 @@ class TheConversionDevToolsShareOneSettingsStub(unittest.TestCase):
     def test_extract_specs_reads_the_stub_conversion_report_holds(self):
         from amaze.tests import conversion_report, extract_specs
         self.assertIs(conversion_report._Prefs, extract_specs._Prefs,
-                      "the two dev tools carry a settings stub each again")
+                      "the two dev tools each define their own settings stub again")
 
 
 if __name__ == "__main__":

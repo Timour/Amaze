@@ -32,7 +32,7 @@ def _prefs_over(folder, path_style="absolute"):
 
 
 def _pin(testcase, name, value):
-    """`$name` is `value` for the test, whatever it was; its own value comes back after."""
+    """Set `$name` to `value` for the test; its previous value is restored afterwards."""
     previous = hou.getenv(name)
     if previous is None:
         testcase.addCleanup(hou.unsetenv, name)
@@ -51,7 +51,7 @@ def _network_with_image(testcase, file_value):
 
 
 class TokenPathsTest(unittest.TestCase):
-    """The pure path half: $AMAZELIB spellings round-trip against a library directory."""
+    """The path-only part: $AMAZELIB paths round-trip against a library directory."""
 
     def test_library_paths_round_trip_and_outside_paths_pass_through(self):
         from amaze.core import texstore
@@ -133,8 +133,8 @@ class AdoptTest(unittest.TestCase):
         self.assertEqual("/gone/never/t.png",
                          image.parm("file").unexpandedString(),
                          "a dangling reference must stay visible, not "
-                         "be rewritten into the library where nothing "
-                         "landed")
+                         "be rewritten into the library where no file "
+                         "was copied")
 
     def test_a_locked_parm_stays_visible_and_out_of_the_inventory(self):
         from amaze.core import texstore
@@ -145,8 +145,8 @@ class AdoptTest(unittest.TestCase):
         image.parm("file").lock(True)
         inventory = texstore.adopt(builder, prefs, "Brick__locked")
         self.assertEqual([], inventory,
-                         "a token the network does not actually carry "
-                         "was promised to the row - export would pack "
+                         "a token the network does not actually contain "
+                         "was added to the row - export would pack "
                          "a texture nothing references")
         self.assertEqual(source, image.parm("file").unexpandedString(),
                          "the locked parm was rewritten")
@@ -201,7 +201,7 @@ class AReferencedParmTest(unittest.TestCase):
         self.assertEqual(source, scene.unexpandedString(),
                          "a save rewrote a parm outside the copy it staged")
         self.assertEqual(token, image.parm("file").unexpandedString(),
-                         "the staged parm does not carry the adopted file")
+                         "the staged parm does not hold the adopted file")
         self.assertEqual([token], inventory)
 
     def test_a_reference_inside_the_copy_keeps_following(self):
@@ -222,7 +222,7 @@ class AReferencedParmTest(unittest.TestCase):
 
 
 class RawPathTest(unittest.TestCase):
-    """raw_path() is the raw spelling, or the evaluated path where the parm has keyframes."""
+    """raw_path() is the unexpanded text, or the evaluated path where the parm has keyframes."""
 
     def test_a_plain_parm_reads_raw_and_a_keyframed_one_reads_evaluated(self):
         from amaze.core import texstore
@@ -237,10 +237,10 @@ class RawPathTest(unittest.TestCase):
 
 
 class ResolveParmsTest(unittest.TestCase):
-    """resolve_parms() is the scene-side door: $AMAZELIB leaves spelled as Write Paths As says."""
+    """resolve_parms() on import to the scene: $AMAZELIB paths written as Write Paths As sets."""
 
     def test_write_paths_as_spells_a_placed_texture(self):
-        """Under the chosen variable when the library lies inside it, as the File section writes."""
+        """Under the chosen variable when the library is inside it, as the File section writes."""
         from amaze.core import texstore
         from amaze.helpers import helpers
         lib = _scratch_library(self)
@@ -272,11 +272,11 @@ class ResolveParmsTest(unittest.TestCase):
 
 
 class SaveDoorTest(unittest.TestCase):
-    """Save to Amaze adopts on the staged copy, never the scene node; the row carries the inventory."""
+    """Save to Amaze adopts on the staged copy, never the scene node; the row holds the inventory."""
 
     @classmethod
     def setUpClass(cls):
-        test_support.pin_env(test_support.class_scope(cls), "OCIO", "/dev/null")    # save_node gates on $OCIO
+        test_support.pin_env(test_support.class_scope(cls), "OCIO", "/dev/null")    # save_node requires $OCIO
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
     def _outside_texture(self, name="fabric_diff.png"):
@@ -312,7 +312,7 @@ class SaveDoorTest(unittest.TestCase):
                          "happen on the staged copy only")
         row, = test_support.arrived(model, held)
         tokens = (row.get_as_dict().get("textures") or [])
-        self.assertEqual(1, len(tokens), "the row carries no inventory")
+        self.assertEqual(1, len(tokens), "the row holds no inventory")
         self.assertTrue(tokens[0].startswith("$AMAZELIB/matX/"), tokens)
         from amaze.core import texstore
         landed = texstore.resolve(tokens[0], prefs)
@@ -328,7 +328,7 @@ class SaveDoorTest(unittest.TestCase):
         self.assertNotIn(source.encode(), payload)
 
     def test_copy_to_scene_writes_textures_as_write_paths_as_says(self):
-        """A placed material's library textures open, spelled under `$JOB` when that is the choice."""
+        """A placed material's library textures resolve, written under `$JOB` when that is chosen."""
         from amaze.core import texstore
         from amaze.render import nodes as nodes_mod
         model = self.panel.material_model
@@ -346,7 +346,7 @@ class SaveDoorTest(unittest.TestCase):
         self.assertTrue(ok, reason)
         self.addCleanup(created[0].destroy)
         refs = [raw for _p, raw in texstore.references(created[0])]
-        self.assertTrue(refs, "premise: the landed network has a "
+        self.assertTrue(refs, "premise: the imported network has a "
                               "file reference")
         for raw in refs:
             self.assertTrue(raw.startswith("$JOB/"),

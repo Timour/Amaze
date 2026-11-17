@@ -1,4 +1,4 @@
-"""LOP material assignment headless: the USD half of a viewport drop, on real stages and bindings."""
+"""LOP material assignment headless: the USD part of a viewport drop on real stages and bindings."""
 
 import os
 import shutil
@@ -75,7 +75,7 @@ class TestBoundMaterials(unittest.TestCase):
 class TestRemoveUnreferenced(unittest.TestCase):
 
     def test_only_a_material_nothing_binds_is_removed(self):
-        """Removing one still bound elsewhere turns one swap into a scene-wide breakage."""
+        """Removing one still bound elsewhere leaves other prims bound to a deleted material."""
         for pattern, target, removed, left in (
                 ("/sphere_a", "mat_b", True, {"mat_a"}),
                 ("/sphere_a", "mat_a", False, {"mat_a", "mat_b"}),
@@ -200,7 +200,7 @@ class TestNameNewAssign(unittest.TestCase):
             scene.lopnet, list(scene.lopnet.children()), "/sphere_a"
         )
         self.assertEqual(existing, scene.assign.name(),
-                         "a reused assign lost the name it earned")
+                         "a reused assign lost the name it already had")
         before = list(scene.lopnet.children())
         fresh = scene.lopnet.createNode("assignmaterial")
         lop_assign.name_new_assign(scene.lopnet, before, "/sphere_a")
@@ -222,7 +222,7 @@ class TestDropChoices(unittest.TestCase):
                         labels[0])
 
     def test_bound_prim_offers_swap_first(self):
-        """Swap before assign: rebinding beats piling another assignment on top of a dead material."""
+        """Swap first: rebinding is better than adding an assignment over an unused material."""
         scene = _Scene(self)
         scene.bind("/sphere_a", "/materials/mat_a")
         choices = lop_assign.drop_choices(scene.stage(), "/sphere_a")
@@ -232,7 +232,7 @@ class TestDropChoices(unittest.TestCase):
                         "assign disappeared when a material was bound")
         self.assertNotIn("Swap All Materials", [l for _k, l, _p in choices],
                          "'Swap All' offered for a single material")
-        for kind, _label, payload in choices:    # handed straight to the actions: a wrong shape crashes the click
+        for kind, _label, payload in choices:    # passed straight to the actions: a wrong shape raises on click
             if kind == "swap":
                 self.assertIsInstance(payload, list)
                 matpath, prims = payload[0]
@@ -242,7 +242,7 @@ class TestDropChoices(unittest.TestCase):
                 self.assertTrue(str(payload).startswith("/"))
 
     def test_no_prim_or_no_stage_offers_nothing(self):
-        """A drop on empty viewport space gets an empty list, so the caller pops no menu."""
+        """A drop on empty viewport space gets an empty list, so the caller shows no menu."""
         scene = _Scene(self)
         self.assertEqual(lop_assign.drop_choices(scene.stage(), ""), [])
         self.assertEqual(lop_assign.drop_choices(None, "/sphere_a"), [])
@@ -279,7 +279,7 @@ class TestCollectionBindings(unittest.TestCase):
         self.assertEqual(found[0][0], "/materials/mat_a")
         self.assertEqual(lop_assign.drop_choices(stage, "/torus_object1")[0][0],
                          "swap", "no Swap entry for a collection-bound material")
-        self.assertTrue(    # drops land on the mesh: the ancestor walk must reach the parent's binding
+        self.assertTrue(    # a drop hits the mesh prim: the ancestor search must find the parent's binding
             lop_assign.bound_materials_under(stage, "/torus_object1/mesh_0"),
             "an ancestor's collection binding was not found from the mesh")
 
@@ -295,7 +295,7 @@ class TestAssignNodeLookup(unittest.TestCase):
         self.addCleanup(self.lopnet.destroy)
         self.sphere = self.lopnet.createNode("sphere")
 
-        self.stale = self.lopnet.createNode("assignmaterial", "stale_assign")  # created first, wired to nothing
+        self.stale = self.lopnet.createNode("assignmaterial", "stale_assign")  # created first, connected to nothing
         self.live = self.lopnet.createNode("assignmaterial", "live_assign")
         self.live.setInput(0, self.sphere)
         self.live.setDisplayFlag(True)
@@ -308,10 +308,10 @@ class TestAssignNodeLookup(unittest.TestCase):
         self.assertEqual(
             "live_assign", found.name(),
             "the drop picked a disconnected assignmaterial, so the "
-            "binding lands where nothing displays it")
+            "binding is written where nothing displays it")
 
     def test_with_no_assign_in_the_chain_creation_order_is_the_fallback(self):
-        """Filtered it finds nothing; unfiltered, every drop converges on the first-created node."""
+        """With `connected_to` it finds none; without, every drop uses the first-created node."""
         lonely = hou.node("/stage").createNode("lopnet")
         self.addCleanup(lonely.destroy)
         sphere = lonely.createNode("sphere")
@@ -344,7 +344,7 @@ class TestLockedContextIsRefused(unittest.TestCase):
                                       "locked asset")
 
         handler.update_context = refuse
-        asset = None   # files must exist, or the import refuses before `update_context`
+        asset = None   # files must exist, or the import stops before `update_context`
         for candidate in model.assets:
             payload = material.payload_path(
                 prefs, candidate.mat_id, prefs.ext, library_files.MATERIALS)
@@ -378,7 +378,7 @@ class TheViewportDropUsesHoudinisOwnLibraryPicker(unittest.TestCase):
                       "asking Houdini's own script")
         self.assertNotIn("first_materiallibrary", source)
         self.assertFalse(hasattr(dragengine, "first_materiallibrary"),
-                         "Amaze still carries its own first-library rule")
+                         "Amaze still defines its own `first_materiallibrary`")
 
 
 if __name__ == "__main__":

@@ -32,11 +32,11 @@ class TheSubjectBelongsToTheContext(unittest.TestCase):
                 context = getattr(sections, name)
                 self.assertTrue(
                     hasattr(context, "comment_subject"),
-                    "%s cannot say what its comment subject is, so the "
-                    "panel has to know for it" % name)
+                    "%s has no `comment_subject`, so the "
+                    "panel has to work out its subject itself" % name)
 
     def test_a_context_that_takes_no_comments_has_no_subject(self):
-        """The two questions must agree: a context whose chip is disabled cannot produce a subject."""
+        """The two attributes must agree: a context whose chip is disabled returns no subject."""
         self.assertFalse(sections.OnlineContext.takes_comments)
         self.assertIsNone(
             sections.OnlineContext.comment_subject(
@@ -62,7 +62,7 @@ class TheSubjectIsRightForEachContext(unittest.TestCase):
             proxy.rowCount(), 1,
             "the %s fixture has %d rows: with fewer than two, no filter "
             "can put a row at a proxy position that is not its source "
-            "position, and this test cannot say anything"
+            "position, and this test checks nothing"
             % (key, proxy.rowCount()))
 
         context.filter_text(proxy.index(proxy.rowCount() - 1, 0).data())
@@ -74,7 +74,7 @@ class TheSubjectIsRightForEachContext(unittest.TestCase):
         index = proxy.index(0, 0)
         self.assertNotEqual(
             0, proxy.mapToSource(index).row(),
-            "the surviving row is source row 0 as well, so an unmapped "
+            "the remaining row is source row 0 as well, so an unmapped "
             "index would still read the right row and this test is not "
             "reproducing the conditions it exists for")
 
@@ -97,7 +97,7 @@ class TheSubjectIsRightForEachContext(unittest.TestCase):
         self.assertEqual(
             "material:%s" % index.data(model.IdRole), subject.key,
             "the comment key does not name the asset that is selected, "
-            "so the pane writes onto a different tile's page")
+            "so the pane writes to a different tile's page")
         self.assertEqual(index.data(), subject.name)
         self.assertEqual(index.data(model.RendererLabelRole) or "", subject.type)
 
@@ -107,19 +107,19 @@ class TheSubjectIsRightForEachContext(unittest.TestCase):
         self.assertIsNotNone(
             subject, "no subject for a File row - the fixture location "
                      "is empty, so this cannot test anything")
-        tail = subject.key[len("file:"):]    # `loc:<id>/<relative>`, so a moved location orphans no comment
+        tail = subject.key[len("file:"):]    # `loc:<id>/<relative>`, so moving a location keeps its comments
         self.assertTrue(
             subject.key.startswith("file:") and tail.startswith("loc:")
             and "/" in tail,
             "a File row's comment key is %r - it must be 'file:' plus "
-            "the location-keyed ident, which is what lets a comment "
-            "follow the location wherever it moves" % subject.key)
+            "the location-keyed ident, which is what keeps a comment "
+            "attached to the location when it moves" % subject.key)
         self.assertEqual(
             subject.name, os.path.basename(subject.key[len("file:"):]),
             "the key names one file and the header names another")
 
     def test_a_colour_subject_is_keyed_by_the_SELECTED_palettes_uid(self):
-        """`tile_key(row)` is the same row-number read: the key's uid names the palette the header shows."""
+        """`tile_key(row)` also reads by row number: the key's uid must be the palette the header shows."""
         subject, _index = self._subject_for_last_row("gradient")
         self.assertIsNotNone(
             subject, "no subject for a palette - the fixture has none, "
@@ -127,7 +127,7 @@ class TheSubjectIsRightForEachContext(unittest.TestCase):
         uid = subject.key[len("gradient:"):]
         self.assertTrue(
             subject.key.startswith("gradient:") and uid,
-            "a palette answered with %r - an EMPTY uid is one every "
+            "a palette returned the key %r - an EMPTY uid is one every "
             "palette would share" % subject.key)
         model = self.panel.gradient_model
         named = [model.entry(row).get("name", "")
@@ -139,7 +139,7 @@ class TheSubjectIsRightForEachContext(unittest.TestCase):
             "than the one the header names")
 
     def test_a_selected_current_row_is_answered_without_listing_the_selection(self):
-        """Every selection change asks this, so a wide selection must not cost a walk of it."""
+        """This runs on every selection change, so it must not list a large selection."""
         panel = self.panel
         panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()
@@ -175,7 +175,7 @@ class TheSubjectIsRightForEachContext(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
         self.assertTrue(panel._is_online(), "not online, so this proves "
                                             "nothing")
-        self.assertFalse(panel.active_section().takes_comments)    # BOTH halves, because they must agree: the chip with nothing selected, the subject with a selection
+        self.assertFalse(panel.active_section().takes_comments)    # check BOTH, as they must agree: the chip uses this with nothing selected, the subject with one
         self.assertIsNone(panel._notes_subject())
 
     def _leave_online(self):
@@ -185,7 +185,7 @@ class TheSubjectIsRightForEachContext(unittest.TestCase):
 
 
 class NothingSelectedDimsThePane(unittest.TestCase):
-    """Qt keeps the CURRENT tile when the selection empties, so the pane asks the selection instead."""
+    """Qt keeps the CURRENT tile when the selection empties, so the pane uses the selection instead."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -200,7 +200,7 @@ class NothingSelectedDimsThePane(unittest.TestCase):
                            "the fixture needs three tiles; row 0 is unnamed")
 
     def _click(self, pos, modifiers=QtCore.Qt.KeyboardModifier.NoModifier):
-        """Press and release through the grid's own handlers, the door a real click goes through."""
+        """Press and release through the grid's own handlers, the path a real click takes."""
         left = QtCore.Qt.MouseButton.LeftButton
         self.view.mousePressEvent(QtGui.QMouseEvent(
             QtCore.QEvent.Type.MouseButtonPress, QtCore.QPointF(pos),
@@ -227,7 +227,7 @@ class NothingSelectedDimsThePane(unittest.TestCase):
 
     def _assert_dim(self):
         self.assertEqual([], self.panel.active_section().grid_selection(),
-                         "the gesture left a selection")
+                         "the click left a selection")
         self.assertTrue(
             self.view.currentIndex().isValid(),
             "Qt dropped the current index as well, so this does not "
@@ -261,7 +261,7 @@ class NothingSelectedDimsThePane(unittest.TestCase):
 
 
 class TheCommentsPaneHOLDSItsOwnWidth(unittest.TestCase):
-    """One flexible pane, the grid; a side pane asks for a width and keeps it."""
+    """Only the grid resizes freely; a side pane requests a width and keeps it."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -282,8 +282,8 @@ class TheCommentsPaneHOLDSItsOwnWidth(unittest.TestCase):
             with self.subTest(pane=name):
                 self.assertIsInstance(
                     getattr(self.panel, name), ui_helpers.HeldPane,
-                    "%s is not a held pane, so its width is kept by "
-                    "something written just for it" % name)
+                    "%s is not a `HeldPane`, so its width is kept by "
+                    "code written just for it" % name)
 
     def test_opening_it_gives_it_the_REMEMBERED_width(self):
         self.panel.prefs.notes_panel_width = 320
@@ -292,14 +292,14 @@ class TheCommentsPaneHOLDSItsOwnWidth(unittest.TestCase):
         self.assertEqual(320, self._sizes()[self.panel.notes_panel])
 
     def test_opening_it_takes_the_room_from_the_GRID(self):
-        """Not from the sidebar - the grid is the one pane that flexes."""
+        """Not from the sidebar - the grid is the only pane that resizes freely."""
         sidebar = self.panel.cat_wrapper
         before = self._sizes()[sidebar]
         self.panel.btn_notes.setChecked(True)
         QtWidgets.QApplication.processEvents()
         self.assertEqual(
             before, self._sizes()[sidebar],
-            "opening Comments resized the SIDEBAR, which holds its own "
+            "opening Comments resized the SIDEBAR, which keeps its own "
             "width")
 
 
@@ -320,7 +320,7 @@ class TheHeaderFollowsTheAssetItNames(unittest.TestCase):
         self.assertEqual("New Name", self.pane.name_label.text())
 
     def test_an_edit_IN_PROGRESS_survives_the_header_update(self):
-        """`set_subject` runs on every click, so a rename moves the header but never reloads the page."""
+        """`set_subject` runs on every click, so a rename sets the header but never reloads the page."""
         self.pane.text_edit.setPlainText("half a sentence")
         self.pane.set_subject(sections.CommentSubject("material:asset-1", "New Name", "Karma"))
         self.assertEqual("half a sentence",
@@ -328,7 +328,7 @@ class TheHeaderFollowsTheAssetItNames(unittest.TestCase):
 
 
 class APendingEditIsNotLostOnTheWayOUT(unittest.TestCase):
-    """Typed text waits 600ms for the debounce, so every way the pane goes away writes it first."""
+    """Typed text waits 600ms for the debounce, so every way the pane closes saves it first."""
 
     def setUp(self):
         test_support.reset_database_singletons()
@@ -346,7 +346,7 @@ class APendingEditIsNotLostOnTheWayOUT(unittest.TestCase):
         self.assertTrue(
             self.pane._save_timer.isActive(),
             "the edit did not start the debounce, so nothing is pending "
-            "and this test cannot say anything")
+            "and this test checks nothing")
         return key
 
     def _stored(self, key):
@@ -366,7 +366,7 @@ class APendingEditIsNotLostOnTheWayOUT(unittest.TestCase):
         self.assertTrue(self._stored(key), "the page is empty on disk")
 
     def test_the_pane_is_wired_to_the_APPLICATION_quitting(self):
-        """Houdini quitting sends no widget event, so `aboutToQuit` reaches `flush`; checked, not emitted."""
+        """Houdini quitting sends no widget event, so `aboutToQuit` calls `flush`; checked, not emitted."""
         app = QtWidgets.QApplication.instance()
         was_connected = app.aboutToQuit.disconnect(self.pane.flush)    # disconnect() returns False for a connection never made, it does not raise
         if was_connected:
@@ -374,7 +374,7 @@ class APendingEditIsNotLostOnTheWayOUT(unittest.TestCase):
         self.assertTrue(
             was_connected,
             "the Comments pane does not flush when the application "
-            "quits - the last 600ms of typing goes with the session")
+            "quits - the last 600ms of typing is lost at exit")
 
     def test_a_pane_with_nothing_pending_writes_nothing(self):
         """`flush()` runs on every teardown and subject switch, so it writes nothing when nothing changed."""
@@ -409,7 +409,7 @@ class ALibrarySwitchLeavesTheNoteWhereItWasTyped(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
 
     def _switch_library(self):
-        """Preferences' own door: another library picked, with a user, and Apply."""
+        """Through Preferences: pick another library, with a user, then Apply."""
         other = test_support.seeded_library(self)
         self.assertTrue(test_support.apply_library(self, self.panel, other))
         QtWidgets.QApplication.processEvents()
@@ -418,7 +418,7 @@ class ALibrarySwitchLeavesTheNoteWhereItWasTyped(unittest.TestCase):
     def _typed_in(self, library, key):
         library_db.flush()
         holder = types.SimpleNamespace(dir=library)
-        library_db.release(holder)    # the page as it is ON DISK, not as a held table has it
+        library_db.release(holder)    # the page as it is ON DISK, not as the open table in memory has it
         page = notes.note_for(holder, key)
         return [item.get("text", "") for item in page.get("items", [])]
 
@@ -430,14 +430,14 @@ class ALibrarySwitchLeavesTheNoteWhereItWasTyped(unittest.TestCase):
         old = self.panel.prefs.dir
         pane.text_edit.setPlainText("typed before the switch")
         self.assertTrue(pane._save_timer.isActive(),
-                        "nothing is pending, so this test cannot say anything")
+                        "nothing is pending, so this test checks nothing")
 
         new = self._switch_library()
         self.assertNotEqual(old, self.panel.prefs.dir)
         pane.flush()    # the debounce firing after the switch
 
         self.assertIn("typed before the switch", self._typed_in(old, key),
-                      "the edit never reached the library it was typed in")
+                      "the edit was never written to the library it was typed in")
         self.assertNotIn("typed before the switch", self._typed_in(new, key),
                          "the edit was written into the library switched to")
 
@@ -451,7 +451,7 @@ class ALibrarySwitchLeavesTheNoteWhereItWasTyped(unittest.TestCase):
         self.assertIsNone(pane._key,
                           "the pane still shows the previous library's asset")
         self.assertFalse(pane.text_edit.isEnabled(),
-                         "the pane still takes typing for an asset not on screen")
+                         "the pane still accepts typing for an asset not on screen")
         self.assertEqual(amazetheme.COMMENT_DIM_NAME, pane.name_label.text())
 
 
@@ -463,12 +463,12 @@ class ThePANEL_BEING_DESTROYED_writesAPendingEdit(unittest.TestCase):
 
     def test_deleting_the_panel_flushes_the_pane_first(self):
         pane = self.panel.notes_panel
-        prefs = self.panel.prefs    # held now: after the delete, reading anything off the panel is a use-after-free
+        prefs = self.panel.prefs    # read now: after the delete, reading anything from the panel is a use-after-free
         pane.set_subject(sections.CommentSubject("material:asset-9", "Rusty", "Karma"))
         pane.text_edit.setPlainText("typed as the tab closed")
         self.assertTrue(pane._save_timer.isActive(),
-                        "nothing pending, so this test cannot say "
-                        "anything")
+                        "nothing pending, so this test checks "
+                        "nothing")
 
         test_support.stop_panel_workers(self.panel)
         self.panel.deleteLater()
@@ -478,7 +478,7 @@ class ThePANEL_BEING_DESTROYED_writesAPendingEdit(unittest.TestCase):
 
         self.assertTrue(
             notes.note_for(prefs, "material:asset-9").get("items", []),
-            "the page is empty on disk - the edit died with the tab")
+            "the page is empty on disk - the edit was lost with the tab")
 
 
 if __name__ == "__main__":

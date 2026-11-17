@@ -120,7 +120,7 @@ class TheOnlineImportRunsInsideHoudinisOperation(_OnThePanel):
     def test_an_esc_stops_the_batch_after_the_current_record_and_says_so(self):
         imported = self._import(["Bricks", "Moss", "Rust"], _EscOnTheThirdReport)
         self.assertEqual(["Bricks"], imported,
-                         "the Esc did not stop the batch after the record in hand")
+                         "the Esc did not stop the batch after the current record")
         self.assertIn(messages.ONLINE_IMPORT_STOPPED % (1, 3), self.said[-1])
 
 
@@ -145,7 +145,7 @@ class TheSceneImportRunsInsideHoudinisOperation(_OnThePanel):
                 mock.patch.object(matx_import, "build_in_scene", side_effect=build):
             self.panel.online_import.import_records_to_scene([_record("Bricks"), _record("Moss")])
         self.assertEqual(["Bricks"], built,
-                         "the Esc did not stop the scene import after the record in hand")
+                         "the Esc did not stop the scene import after the current record")
         self.assertIn(messages.ONLINE_IMPORT_STOPPED % (1, 2), self.said[-1])
 
 
@@ -182,12 +182,12 @@ class TheMultiMaterialSaveRunsInsideHoudinisOperation(_OnThePanel):
     def test_an_esc_stops_the_batch_after_the_current_material_and_says_so(self):
         saved = self._save(["a", "b", "c"], _EscOnTheSecondReport)
         self.assertEqual(["save_probe_a"], saved,
-                         "the Esc did not stop the save after the material in hand")
+                         "the Esc did not stop the save after the current material")
         self.assertIn(messages.SAVE_STOPPED % (1, 3), self.said[-1])
 
 
 class AnEscInsideOneRecordReachesTheBatch(_OnThePanel):
-    """The Esc raised inside a download leaves the record's own handler for the batch loop."""
+    """The Esc raised inside a download propagates past the record's handler to the batch loop."""
 
     class _Interrupting:
         """A source whose every download is stopped by the Esc."""
@@ -231,7 +231,7 @@ class AnEscInsideOneRecordReachesTheBatch(_OnThePanel):
 
 
 class ThePanelPumpsNothingForImportsAndSaves(unittest.TestCase):
-    """The import and save paths leave the event loop to Houdini's operation."""
+    """The import and save paths let Houdini's operation process events, never themselves."""
 
     def test_no_processEvents_in_the_import_and_save_paths(self):
         for owner, name in ((online_import.OnlineImport, "download_operation"),
@@ -241,10 +241,10 @@ class ThePanelPumpsNothingForImportsAndSaves(unittest.TestCase):
                             (panel_mod.AmazePanel, "save_asset")):
             source = inspect.getsource(getattr(owner, name))
             self.assertNotIn("processEvents", source,
-                             owner.__name__ + "." + name + " pumps the event loop itself")
+                             owner.__name__ + "." + name + " processes events itself")
         self.assertNotIn("processEvents",
                          inspect.getsource(sections.MaterialSection.commit_save),
-                         "MaterialSection.commit_save pumps the event loop itself")
+                         "MaterialSection.commit_save processes events itself")
 
 
 if __name__ == "__main__":
