@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.34.6
+
+- Comments and test names in the code are reworded.
+
 ## 1.34.5
 
 - Preferences ▸ About shows the main logo, with the version under it.
