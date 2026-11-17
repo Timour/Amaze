@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.34.4
+
+- Preferences ▸ Add-On: the list no longer moves sideways, and its scroll bar sits beside the rows.
+
 ## 1.34.3
 
 - A Python snippet's tile has its run button in the lower-right corner. **Edit** is on the right-click menu.
