@@ -2163,14 +2163,25 @@ class RemovingANestedLocationTest(unittest.TestCase):
             "premise: the location is still registered")
 
     def test_a_location_added_inside_another_keeps_the_comment_star_and_icon(self):
+        from amaze.core import library_db
         prefs = self._nested(self.outer)
-        self._annotate(prefs)
+        old = self._annotate(prefs)
         self.assertEqual((True, True, "activity"), self._shown(prefs, self.inner),
                          "premise: the file under the outer location is not annotated")
+        held = library_db.document(prefs, locations_mod.FILES)
+        prefs.library_user = self.OTHER    # another user of the library stars the same file
+        held.put_mine(locations_mod.FAVORITES, old, True)
+        library_db.save(prefs, locations_mod.FILES)
+        prefs.library_user = test_support.FIXTURE_USER
         prefs.add_file_folder(self.inner)
         self.assertEqual(
             (True, True, "activity"), self._shown(prefs, self.inner),
             "a file's star, comment or icon was not found once its folder became a location")
+        model, row = self._row(prefs, self.inner)
+        self.assertNotEqual(old, model.file_key(row), "premise: the file kept its key")
+        self.assertEqual({model.file_key(row): True},
+                         held.everyones(locations_mod.FAVORITES).get(self.OTHER),
+                         "another user's favorite stayed under the key the file no longer has")
 
     def test_a_second_session_adding_the_same_folder_uses_the_first_one_s_id(self):
         from amaze.core import documents, library_db
@@ -2183,6 +2194,32 @@ class RemovingANestedLocationTest(unittest.TestCase):
         held = library_db.document(prefs, locations_mod.FILES)
         self.assertEqual(["0" * 32], sorted(held.table(locations_mod.PATHS)),
                          "one folder got a second location id")
+
+    def test_two_ids_for_one_folder_become_one_and_every_key_follows(self):
+        from amaze.core import library_db
+        prefs = self._nested(self.inner)
+        self._annotate(prefs)
+        held = library_db.document(prefs, locations_mod.FILES)
+        mine = locations_mod.location_id(prefs, self.inner)
+        twin = "0" * 32 if mine != "0" * 32 else "1" * 32    # sorts first, so it is the one kept
+        self.assertTrue(held.put(locations_mod.PATHS, twin,
+                                 {"path": hostos.storage_path_key(self.inner)}))
+        prefs.library_user = self.OTHER    # the other session's user registered it under its own id
+        held.put_mine(locations_mod.LOCATIONS, "loc:" + twin, {"registered": True})
+        held.put_mine(locations_mod.FAVORITES, "loc:" + twin + "/plate.txt", True)
+        library_db.save(prefs, locations_mod.FILES)
+        prefs.library_user = test_support.FIXTURE_USER
+        locations_mod.touch()
+
+        self.assertEqual(1, locations_mod.fold_duplicate_ids(prefs))
+
+        self.assertEqual([twin], sorted(held.table(locations_mod.PATHS)))
+        self.assertEqual((True, True, "activity"), self._shown(prefs, self.inner),
+                         "the star, comment or icon stayed under the id that was dropped")
+        everyone = held.everyones(locations_mod.LOCATIONS)
+        self.assertEqual([["loc:" + twin], ["loc:" + twin]],
+                         [sorted(everyone[user]) for user in sorted(everyone)])
+        self._remove(prefs, self.inner)
 
     def test_the_outer_location_keeps_the_comment_star_and_icon(self):
         prefs = self._nested(self.outer, self.inner)

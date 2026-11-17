@@ -98,8 +98,9 @@ def update(preferences) -> bool:
     library_dir = str(preferences.dir or "")
     if not library_dir or not os.path.isdir(library_dir):
         return False
-    from amaze.core import library_db
+    from amaze.core import library_db, locations
     library_db.guard_of(preferences).expire_trash()
+    locations.fold_duplicate_ids(preferences)
     before = library_settings.library_version(library_dir)
     if before >= library_policy.LIBRARY_VERSION:
         return False

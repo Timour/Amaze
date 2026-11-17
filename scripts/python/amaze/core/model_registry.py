@@ -85,6 +85,8 @@ def refresh_all(preferences=None) -> list:
                 locations.touch()    # Files keys and records are recomputed on next use
             if held is None:
                 continue
+            if name == library_files.FILES:
+                locations.fold_duplicate_ids(held)
             shared = apply_merged(held, name)
             moved.extend(attr for attr, model in models.items()
                          if any(model is one for one in shared))
@@ -93,9 +95,11 @@ def refresh_all(preferences=None) -> list:
 
 def _after_save(key: str, name: str) -> None:
     """After a save merged another session's changes, refresh every model on that database."""
+    held = library_db.preferences_of(key)
     if name == library_files.FILES:
         locations.touch()    # as in `refresh_all`: a merge may have changed the location ids
-    held = library_db.preferences_of(key)
+        if held is not None:
+            locations.fold_duplicate_ids(held)
     if held is not None and key in _models:
         apply_merged(held, name)
 

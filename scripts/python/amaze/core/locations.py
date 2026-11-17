@@ -294,12 +294,12 @@ def _rehome_into(preferences, path: str, lid: str) -> None:
     held = _files(preferences)
     inside = {path_identity(path): lid}
     moves = {}
-    for key in list(held.table(COMMENTS)) + list(held.table(ICONS)) + list(held.mine(FAVORITES)):
+    for key in list(held.table(COMMENTS)) + list(held.table(ICONS)) + _everyones_favorite_keys(held):
         full = "" if key.startswith(LOC_PREFIX + lid) else _path_of_key(preferences, key)
         fresh = _ident_under(inside, path_identity(full)) if full else ""
         if fresh and fresh != key and fresh != LOC_PREFIX + lid:
             moves[key] = fresh
-    if moves and files_moved(preferences, moves):
+    if moves and files_moved(preferences, moves, everyone=True):
         _carry_captures(preferences, moves)
         debug.event("file", "a new location took over the keys of the files under it",
                     moved=len(moves))
@@ -417,8 +417,59 @@ def set_favourites(preferences, wanted: dict, database: str = FILES) -> bool:
     return bool(saved) or saved.reason == "unchanged"
 
 
-def files_moved(preferences, keys: dict) -> bool:
-    """Files moved on disk: their comments, icons and this user's stars are re-keyed `{old: new}`."""
+def _everyones_favorite_keys(held) -> list:
+    """Every key any user has a favorite under, each once."""
+    found = []
+    for own in held.everyones(FAVORITES).values():
+        found.extend(key for key in (own or {}) if key not in found)
+    return found
+
+
+def fold_duplicate_ids(preferences) -> int:
+    """Two ids for one folder become the smaller: every key under the other moves to it; how many."""
+    global _generation
+    if not ready(preferences):
+        return 0
+    held = _files(preferences)
+    by_path = {}
+    for lid in sorted(held.table(PATHS)):
+        path = str((held.table(PATHS)[lid] or {}).get("path") or "")
+        if path:
+            by_path.setdefault(path_identity(path), []).append(lid)
+    pairs = [(LOC_PREFIX + loser, LOC_PREFIX + lids[0], loser)
+             for lids in by_path.values() for loser in lids[1:]]
+    if not pairs:
+        return 0
+    keys = list(held.table(COMMENTS)) + list(held.table(ICONS)) + _everyones_favorite_keys(held) \
+        + [key for own in held.everyones(LOCATIONS).values() for key in (own or {})]
+    moves = {key: new + key[len(old):] for old, new, _loser in pairs for key in keys
+             if key == old or key.startswith(old + "/")}
+    with library_db.library_for(preferences).holding():
+        for old, new in moves.items():
+            for section in (COMMENTS, ICONS):
+                entry, there = held.get(section, old), held.get(section, new)
+                if entry is None:
+                    continue
+                if there is None:
+                    held.put(section, new, entry)
+                elif isinstance(entry.get("items"), list) and isinstance(there.get("items"), list):
+                    held.put(section, new, dict(there, items=there["items"] + entry["items"]))
+                held.drop(section, old)
+            held.rekey_everyones(FAVORITES, old, new)
+            held.rekey_everyones(LOCATIONS, old, new)
+        for _old, _new, loser in pairs:
+            held.drop(PATHS, loser)
+    saved = library_db.save(preferences, FILES)
+    _generation += 1
+    if saved:
+        _carry_captures(preferences, moves)
+    debug.event("file", "two ids of one folder made one", folders=len(pairs), keys=len(moves),
+                saved=bool(saved))
+    return len(pairs) if saved else 0
+
+
+def files_moved(preferences, keys: dict, everyone: bool = False) -> bool:
+    """Re-key `{old: new}`: comments, icons, this user's stars; `everyone` moves every user's."""
     held = _files(preferences)
     if not keys or not held.writable or not held.user():
         return not keys
@@ -430,7 +481,9 @@ def files_moved(preferences, keys: dict) -> bool:
                 if entry is not None:
                     held.put(section, new, entry)    # a moved file's entry overwrites an old one at the new key
                     held.drop(section, old)
-            if held.mine(FAVORITES).get(old):
+            if everyone:    # a location changed, which changes the key for every user of the library
+                held.rekey_everyones(FAVORITES, old, new)
+            elif held.mine(FAVORITES).get(old):
                 held.put_mine(FAVORITES, new, True)
                 held.put_mine(FAVORITES, old, None)
     saved = library_db.save(preferences, FILES)
