@@ -592,6 +592,29 @@ class WhatTheConversionReplacesIsKeptTest(_OldLibrary):
             outcome, _asked = self.convert(classic=_Classic(self, loaded=False, trash=True))
         self.assertEqual(["Old Brick"], [one.name for one in outcome.set_aside])
 
+    def test_comment_pictures_that_could_not_move_are_moved_by_the_next_run(self):
+        self.lay_out()
+        name = "0123456789abcdef0123456789abcdef.png"
+        write(self.at("img", "comments", name), b"pasted")
+        write(self.at("notes.json"), {"notes": {"material:KEEP1": {"items": [
+            {"t": "image", "src": "img/comments/" + name, "id": "c1", "author": ""}]}}})
+        with mock.patch.object(library_conversion, "rehome_pictures",
+                               side_effect=OSError(13, "The file is in use")):
+            outcome, _asked = self.convert()
+        self.assertEqual(library_conversion.STOPPED, outcome.status)
+        self.assertTrue(library_conversion.needs_conversion(self.dir),
+                        "nothing would move the comment pictures after this")
+        outcome, _asked = self.convert()
+        self.assertEqual(library_conversion.DONE, outcome.status)
+        self.assertEqual(b"pasted", read_bytes(self.at("materials", "comments", name)))
+        self.assertFalse(library_conversion.needs_conversion(self.dir))
+
+    def test_a_folder_that_holds_only_pictures_is_no_older_library(self):
+        folder = test_support.scratch_dir("amaze_only_pictures_")
+        self.addCleanup(shutil.rmtree, folder, True)
+        write(os.path.join(folder, "img", "logo.png"), b"a picture")
+        self.assertFalse(library_conversion.needs_conversion(folder))
+
     def test_a_library_from_before_users_gives_its_favorites_to_the_named_user(self):
         self.lay_out()
         write(self.at("favourites.json"), {"favourites": {"KEEP1": True}})

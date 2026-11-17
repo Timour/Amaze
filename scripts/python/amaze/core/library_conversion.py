@@ -300,9 +300,20 @@ def needs_conversion(library_dir: str) -> bool:
         return False
     if _old_databases_left(library_dir):
         return True
-    if _converted_databases(library_dir):
-        return False    # what a finished run left, set aside or claimed twice, is Check Library's
-    return bool(_plan_ids(library_dir) or _old_version_folders(library_dir))
+    if _converted_databases(library_dir):    # what a finished run left is Check Library's,
+        return _pictures_to_move(library_dir)    # but pictures not yet in their section are moved
+    return bool(_plan_ids(library_dir, pictures=False) or _old_version_folders(library_dir))
+
+
+def _pictures_to_move(library_dir: str) -> bool:
+    """Whether `rehome_pictures` has work left: an old file capture, or an old comment picture."""
+    for name in _listing(os.path.join(library_dir, OLD_CAPTURES)):
+        match = OLD_FILE_CAPTURE.match(name)    # one whose new name is taken stays: Check reports it
+        if match and not os.path.lexists(os.path.join(
+                library_dir, library_files.FILES_FOLDER, match.group(1) + ".png")):
+            return True
+    return any(not library_files.is_os_noise(name)
+               for name in _listing(os.path.join(library_dir, OLD_COMMENT_PICTURES)))
 
 
 def old_users(library_dir: str) -> dict:
@@ -324,7 +335,7 @@ def old_version(library_dir: str) -> int:
     return 1 if needs_conversion(library_dir) else 0
 
 
-def _plan_ids(library_dir: str) -> set:
+def _plan_ids(library_dir: str, pictures: bool = True) -> set:
     """Every id with a format 3 file: in `mat/`, beside a section's files, or a picture."""
     ids = set()
     for name in _listing(os.path.join(library_dir, OLD_FOLDER)):
@@ -336,6 +347,8 @@ def _plan_ids(library_dir: str) -> set:
             found = _id_of(name, OLD_SUFFIXES)
             if found:
                 ids.add(found)
+    if not pictures:    # a folder holding only pictures is no library
+        return ids
     for name in _listing(os.path.join(library_dir, OLD_PICTURES)):
         found = _id_of(name, (ICON_TAIL + ".png", ".png"))
         if found:
@@ -820,10 +833,7 @@ def _convert(library_dir: str, confirm, progress, user: str, machine_stars, show
             debug.event("convert", "the new databases did not read back - the old files stay")
             return Outcome(BLOCKED, "the new databases did not read back as they were written.")
     counts["deleted"] += _remove_old_root_files(library_dir, user)
-    try:
-        rehome_pictures(library_dir, user)
-    except (OSError, guard.Refused) as exc:    # they stay where they were, for Check Library to report
-        debug.event("convert", "pictures not moved into their sections", error=str(exc))
+    rehome_pictures(library_dir, user)    # an OSError stops the run: the next one moves them
     debug.event("convert", "library conversion", set_aside=len(set_aside), **counts)
     return Outcome(DONE, set_aside=set_aside, counts=counts, old_trash=old_trash)
 
