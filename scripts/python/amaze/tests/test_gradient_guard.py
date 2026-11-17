@@ -828,6 +828,43 @@ class ColorsHonourARefusedSave(unittest.TestCase):
             fh.write(b"\x89PNG\r\n")
         return path
 
+    def _annotated(self, row: int) -> tuple:
+        """The palette at `row` given a comment, an icon and this user's favorite; (document, id)."""
+        held = library_db.document(self.lib.preferences, self.lib.DB_FILENAME)
+        key = str(self.lib._assets[row].mat_id)
+        self.assertTrue(held.put("comments", key, {"items": [{"t": "text", "text": "kept"}]}))
+        self.assertTrue(held.put("icons", key, {"name": "activity", "bg": "#ff8000"}))
+        self.assertTrue(held.put_mine("favorites", key, True))
+        library_db.flush()
+        return held, key
+
+    def _belongs(self, held, key: str) -> tuple:
+        return (held.get("comments", key) is not None, held.get("icons", key) is not None,
+                bool(held.mine("favorites").get(key)))
+
+    def test_a_delete_takes_the_comment_the_icon_and_the_favorite_with_it(self):
+        row = self._row_named("doomed")
+        held, key = self._annotated(row)
+        self.assertEqual(1, self.lib.remove_rows([row]))
+        library_db.flush()
+        self.assertEqual((False, False, False), self._belongs(held, key))
+        with open(self.path, encoding="utf-8") as handle:
+            stored = json.load(handle)
+        self.assertNotIn(key, stored["comments"])
+        self.assertNotIn(key, stored["icons"])
+
+    def test_a_refused_delete_keeps_the_comment_the_icon_and_the_favorite(self):
+        row = self._row_named("doomed")
+        held, key = self._annotated(row)
+        with test_support.full_disk_for(self.path):
+            self.lib.remove_rows([row])
+            library_db.flush()
+        self.assertEqual((True, True, True), self._belongs(held, key))
+        self.lib.add_user_gradient("later", "", {"values": [], "keys": []})
+        with open(self.path, encoding="utf-8") as handle:
+            stored = json.load(handle)
+        self.assertIn(key, stored["comments"], "a later save dropped what the failed delete took")
+
     def test_a_refused_delete_puts_the_palette_back(self):
         """Its stamp file stays too, and no later save may commit the delete that failed."""
         stamp = self._stamp_of("doomeduid")
