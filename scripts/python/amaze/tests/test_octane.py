@@ -242,7 +242,7 @@ class OctanesOwnBuilderRoundTrips(unittest.TestCase):
                          nodes.NodeHandler(self.prefs).import_targets(asset))
         stage = hou.node("/obj").createNode("lopnet", "octane_lop_probe")
         self.addCleanup(stage.destroy)
-        imported = self._imported(asset, target="lop", context=stage)
+        imported = self._imported(asset, target="lop", context=stage.createNode("materiallibrary"))
         library = imported.parent()
         self.assertEqual("materiallibrary", library.type().name())
         from pxr import UsdShade
@@ -267,7 +267,7 @@ class OctanesOwnBuilderRoundTrips(unittest.TestCase):
         self.assertEqual({"mat", "lop"}, nodes.NodeHandler(self.prefs).import_targets(asset))
         stage = hou.node("/obj").createNode("lopnet", "octane_classic_probe")
         self.addCleanup(stage.destroy)
-        imported = self._imported(asset, target="lop", context=stage)
+        imported = self._imported(asset, target="lop", context=stage.createNode("materiallibrary"))
         self.assertEqual(renderers.OCTANE.usd_builder, imported.type().name())
         for got, want in zip(octane_api.find_shader(imported).parmTuple("baseColor").eval(), RED):
             self.assertAlmostEqual(want, got, places=5)

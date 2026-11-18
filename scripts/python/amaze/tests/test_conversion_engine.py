@@ -390,7 +390,7 @@ class TheOctaneTwinIsSavedInTheLibrary(unittest.TestCase):
                          nodes.NodeHandler(self.prefs).import_targets(self.twin))
         stage = hou.node("/obj").createNode("lopnet", "octane_twin_probe")
         self.addCleanup(stage.destroy)
-        library = self._imported(target="lop", context=stage).parent()
+        library = self._imported(target="lop", context=stage.createNode("materiallibrary")).parent()
         from pxr import UsdShade
         outputs = [o.GetFullName()
                    for prim in library.stage().Traverse()
@@ -522,8 +522,8 @@ class AnOctaneMaterialBecomesMaterialX(unittest.TestCase):
         self.assertTrue(normalmap.type().name().startswith("mtlxnormalmap"))
         read = _input_node(normalmap, "in")
         self.assertEqual("vector3", read.parm("signature").evalAsString())
-        self.assertEqual("automatic", read.parm("filecolorspace").evalAsString(),
-                         "the signature decides; nothing forces Raw on a data map")
+        self.assertTrue(read.parm("filecolorspace").isAtDefault(),
+                        "the signature decides; nothing forces Raw on a data map")
 
     def test_a_2d_transform_rotates_and_scales_about_the_centre(self):
         net, shader = _octane_net(self.parent)
