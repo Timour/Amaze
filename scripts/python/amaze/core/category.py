@@ -39,7 +39,7 @@ class Categories(QtCore.QAbstractListModel):
 
     def __init__(self, preferences: prefs.Prefs) -> None:
         super().__init__()
-        self.preferences = preferences  # required, never defaulted ▸p/duplication-third-verb
+        self.preferences = preferences  # required, never defaulted ▸p/delete-both-duplicates
         self._categories = stored_order(self._doc())
         self._seen = list(self._categories)    # the database's order as last read or saved
         self._colour_table = self._read_colours()

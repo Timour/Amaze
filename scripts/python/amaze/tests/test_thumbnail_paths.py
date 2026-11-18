@@ -826,7 +826,7 @@ class ANodeCreationFailureIsCaughtAsHouError(unittest.TestCase):
 
 
 class BundledFilesAreFoundThroughOneLookup(unittest.TestCase):
-    """Bundled files, the ui/ art included, resolve through `amaze.package_file` alone. ▸p/adoption"""
+    """Bundled files, the ui/ art included, resolve through `amaze.package_file` alone. ▸p/reuse"""
 
     def test_package_file_returns_a_real_bundled_path(self):
         import amaze

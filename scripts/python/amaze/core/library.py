@@ -104,7 +104,7 @@ class AssetLibrary(grid_engine.GridEngine,
 
     def __init__(self, preferences: prefs.Prefs) -> None:
         super().__init__()
-        self.preferences = preferences  # required, and shared with the panel ▸p/duplication-third-verb
+        self.preferences = preferences  # required, and shared with the panel ▸p/delete-both-duplicates
         self._removed_ids = set()    # ids this model removed, dropped from the database at its save
         self._assets = self._read_rows()
         self._colours_seen = self._colours()

@@ -400,7 +400,7 @@ def op_path_parms(nodes):
 
 
 def clear_inherited_stamps(container: hou.Node, include_self=False) -> int:
-    """Strip `assetlib_id` from what a load brought in; returns the count ▸r/inherited-stamps"""
+    """Strip `assetlib_id` from what a load brought in; returns the count ▸r/inherited-asset-ids"""
     cleared = 0
     items = list(container.allSubChildren())
     if include_self:
@@ -450,7 +450,7 @@ def load_items_strict(node: hou.Node, file_name: str) -> str:
         return ("its material file could not be loaded (%s) - %s"
                 % (file_name, str(failure).strip()
                    or "Houdini gave no reason"))
-    clear_inherited_stamps(node)    # the file's inner nodes have stale stamps ▸r/inherited-stamps
+    clear_inherited_stamps(node)    # the file's inner nodes have stale stamps ▸r/inherited-asset-ids
     return ""
 
 
@@ -1521,7 +1521,7 @@ class NodeHandler:
                         material=mat.name, error=str(exc))
             copnet.destroy()
             return
-        clear_inherited_stamps(copnet)    # ▸r/inherited-stamps
+        clear_inherited_stamps(copnet)    # ▸r/inherited-asset-ids
         helpers.auto_place(copnet)
         self._cop_companion_path = copnet.path()
         debug.event("import", "cop restored",
@@ -1665,7 +1665,7 @@ class NodeHandler:
                             except hou.ObjectWasDeleted:
                                 pass
                     return (False, debug.Damage(nothing_loaded(mat.name, file_name)))
-                for loaded in new_children:    # only what this load added ▸r/inherited-stamps
+                for loaded in new_children:    # only what this load added ▸r/inherited-asset-ids
                     clear_inherited_stamps(loaded, include_self=True)
                 self._imported_cop_nodes = list(new_children)
                 self._imported_cop_notes_boxes_dots = [    # moved with the nodes, as a paste moves them
@@ -1730,7 +1730,7 @@ class NodeHandler:
         if not [child for child in target.children() if child not in held]:
             container.destroy()    # created here and empty: never left in the scene with a stamp
             return (False, debug.Damage(nothing_loaded(mat.name, file_name)))
-        clear_inherited_stamps(container)    # before the container's own stamp below ▸r/inherited-stamps
+        clear_inherited_stamps(container)    # before the container's own stamp below ▸r/inherited-asset-ids
         helpers.auto_place(container)
         try:
             container.setUserData("assetlib_id", str(mat.mat_id))

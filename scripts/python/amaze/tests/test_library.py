@@ -92,7 +92,7 @@ class TestMaterialLibrary(unittest.TestCase):
         self.library = library.MaterialLibrary(self.mock_prefs)
 
     def test_a_positional_prefs_is_the_preferences(self):
-        """`preferences` is first and positional, so the plain call binds it. ▸p/duplication-third-verb"""
+        """`preferences` is first and positional, so the plain call binds it. ▸p/delete-both-duplicates"""
         from amaze.core import library
 
         self.mock_prefs_cls.return_value = Mock()  # not `self.mock_prefs`, else the assertion compares the mock to itself
@@ -1363,7 +1363,7 @@ class TheSharedBaseHasNothingRendererSpecific(unittest.TestCase):
 
 
 class EveryAssetModelIsGivenItsLibrary(unittest.TestCase):
-    """Every asset model takes `preferences` first, with no default. ▸p/duplication-third-verb"""
+    """Every asset model takes `preferences` first, with no default. ▸p/delete-both-duplicates"""
 
     MODELS = (  # the AssetLibrary and Categories family only ▸r/model-parent
         ("Categories", "amaze.core.category"),

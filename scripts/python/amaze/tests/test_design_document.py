@@ -148,7 +148,7 @@ class NoDialogSetsItsOwnWidth(unittest.TestCase):
             + "\n  ".join(offenders))
 
     def test_no_dialog_sizes_itself_from_its_own_geometry(self):
-        """No geometry call reads the widget's size; the layout gives `sizeHint` ▸p/sized-from-nothing"""
+        """No geometry call reads the widget's size; the layout gives `sizeHint` ▸p/sized-from-640x480"""
         offenders = []
         for name in sorted(os.listdir(DIALOG_DIR)):
             if not name.endswith(".py"):

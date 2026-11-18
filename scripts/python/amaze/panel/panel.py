@@ -339,7 +339,7 @@ class AmazePanel(QtWidgets.QWidget):
     }
 
     def _ui_icon_path(self, filename: str) -> str:
-        """An icon in ui/, or "" for no filename (callers fall back). ▸p/adoption"""
+        """An icon in ui/, or "" for no filename (callers fall back). ▸p/reuse"""
         if not filename:
             return ""
         return amaze.package_file("ui", filename)

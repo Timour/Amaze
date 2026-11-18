@@ -233,7 +233,7 @@ class ALooseSurfaceSaveKeepsAWireThroughADot(unittest.TestCase):
 
 
 class AnImportClearsInnerAssetlibIds(unittest.TestCase):
-    """An inner `assetlib_id` survives save and reload; an import clears it. ▸r/inherited-stamps"""
+    """An inner `assetlib_id` survives save and reload; an import clears it. ▸r/inherited-asset-ids"""
 
     def setUp(self):
         self.parent = hou.node("/obj").createNode("matnet")
@@ -312,7 +312,7 @@ class AnImportClearsInnerAssetlibIds(unittest.TestCase):
         self.assertIsNone(inner.userData("assetlib_id"))
 
     def test_a_dot_in_the_network_does_not_stop_the_sweep(self):
-        """Dots have no userData, so the walk must skip them without raising. ▸r/inherited-stamps"""
+        """Dots have no userData, so the walk must skip them without raising. ▸r/inherited-asset-ids"""
         holder = self.parent.createNode("subnet", "holder")
         holder.createNetworkDot()
         stamped = holder.createNode("null", "stamped")
