@@ -231,10 +231,10 @@ def _every_choice(findings: dict, may_change: bool):
         if unknown:
             offer(messages.BUTTON_MOVE_ONE_UNKNOWN_ASIDE if unknown == 1
                   else messages.BUTTON_MOVE_UNKNOWN_ASIDE % unknown, "unknown")
-        dead, stars = findings.get("dead_folders") or [], findings.get("favorites_of_missing_files") or []
-        if dead:
+        missing, stars = findings.get("missing_folders") or [], findings.get("favorites_of_missing_files") or []
+        if missing:
             offer(messages.BUTTON_SET_ASIDE_FOLDERS
-                  % repair.on_a_button(repair.folders(len(dead))), "set-aside")
+                  % repair.on_a_button(repair.folders(len(missing))), "set-aside")
         elif stars:
             offer(messages.BUTTON_REMOVE_FAVORITES_OF_MISSING_FILES
                   % repair.on_a_button(repair.favorites(len(stars))), "stars")
@@ -481,9 +481,9 @@ def _do_move_unknown(findings: dict, guard: bool, changed) -> None:
 
 def _do_set_aside(findings: dict, guard: bool, changed) -> None:
     """Set aside folders not on this computer, and remove favourite marks on deleted files."""
-    dead, stars = findings.get("dead_folders") or [], findings.get("favorites_of_missing_files") or []
-    if dead:
-        asked = _confirmed(messages.CONFIRM_SET_ASIDE_FOLDERS % repair.folders(len(dead)),
+    missing, stars = findings.get("missing_folders") or [], findings.get("favorites_of_missing_files") or []
+    if missing:
+        asked = _confirmed(messages.CONFIRM_SET_ASIDE_FOLDERS % repair.folders(len(missing)),
                            messages.BUTTONS_SET_ASIDE, messages.HELP_SET_ASIDE_FOLDERS
                            % (messages.HELP_FAVORITES_OF_MISSING_FILES_REMOVED_TOO if stars else ""))
     else:
@@ -492,7 +492,7 @@ def _do_set_aside(findings: dict, guard: bool, changed) -> None:
     if not asked:
         return
     try:
-        folders = repair.set_aside_folders(findings, guard_session=guard) if dead else []
+        folders = repair.set_aside_folders(findings, guard_session=guard) if missing else []
         gone = repair.drop_favorites_of_missing_files(findings, guard_session=guard) if stars else []
     except FIX_FAILED as exc:
         _show_message(messages.NOTHING_CHANGED_REASON % exc, hou.severityType.Warning)
@@ -505,7 +505,7 @@ def _do_set_aside(findings: dict, guard: bool, changed) -> None:
             messages.FAVORITES_OF_MISSING_FILES_ALSO_REMOVED % repair.favorites(len(gone)) if gone else ""))
     elif gone:
         _show_message(messages.FAVORITES_OF_MISSING_FILES_REMOVED_DONE % repair.favorites(len(gone)))
-    if len(folders) < len(dead) or not (folders or gone):    # a folder was skipped: it exists again, or its drive is offline
+    if len(folders) < len(missing) or not (folders or gone):    # a folder was skipped: it exists again, or its drive is offline
         _show_message(messages.LIBRARY_CHANGED_SINCE_CHECK, hou.severityType.Warning)
 
 

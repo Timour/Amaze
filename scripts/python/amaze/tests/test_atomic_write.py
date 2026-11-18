@@ -884,7 +884,7 @@ class TheUserIsAUidWithANameTest(unittest.TestCase):
         self.assertIsNone(users.current(p), "a library with nobody in it has a user")
         self.assertEqual({}, users.all_users(p), "asking for the user made one")
         uid = users.create(p, "Plum")
-        users.adopt(p, uid)
+        users.set_current_user(p, uid)
         self.assertEqual(uid, users.current(p))
         self.assertEqual(uid, p.library_user,
                          "the machine-local pointer must hold the UID")

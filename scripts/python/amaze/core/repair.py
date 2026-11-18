@@ -351,7 +351,7 @@ def _folder_size(path: str) -> tuple:
 
 def _files_section(preferences) -> dict:
     """The Files section's folders missing or on an unmounted drive, and starred files gone."""
-    found = {"dead_folders": [], "unmounted_folders": [], "favorites_of_missing_files": []}
+    found = {"missing_folders": [], "unmounted_folders": [], "favorites_of_missing_files": []}
     if preferences is None:
         return found
     from amaze.core import locations
@@ -361,7 +361,7 @@ def _files_section(preferences) -> dict:
         if hostos.volume_unreachable(path):    # unreachable is not missing: a network share may be briefly offline
             found["unmounted_folders"].append(path)
         else:
-            found["dead_folders"].append(path)
+            found["missing_folders"].append(path)
     for path in locations.favourite_paths(preferences):
         if os.path.exists(path) or hostos.volume_unreachable(path):
             continue
@@ -989,15 +989,15 @@ def _unknown_lines(findings: dict) -> list:
 
 def _files_section_lines(findings: dict) -> list:
     said = []
-    dead = findings.get("dead_folders") or []
-    if dead:
+    missing = findings.get("missing_folders") or []
+    if missing:
         said.append("%s in the Files section %s not on this computer. Setting %s aside "
                     "keeps %s comments, icons and favorites, and they come back when "
                     "the folder is added again:\n  %s"
-                    % ("This folder" if len(dead) == 1 else "These %d folders" % len(dead),
-                       "is" if len(dead) == 1 else "are", "it" if len(dead) == 1 else "them",
-                       "its" if len(dead) == 1 else "their",
-                       "\n  ".join(sorted(os.path.normpath(p) for p in dead))))
+                    % ("This folder" if len(missing) == 1 else "These %d folders" % len(missing),
+                       "is" if len(missing) == 1 else "are", "it" if len(missing) == 1 else "them",
+                       "its" if len(missing) == 1 else "their",
+                       "\n  ".join(sorted(os.path.normpath(p) for p in missing))))
     unmounted = findings.get("unmounted_folders") or []
     if unmounted:
         said.append("%s on a drive that is not connected, so %s left as %s - %s back "
@@ -1239,7 +1239,7 @@ def set_aside_folders(findings: dict, guard_session: bool = True) -> list:
         _raise_if_library_open_in_houdini()
     preferences = findings["preferences"]
     done = []
-    for path in findings.get("dead_folders", ()):
+    for path in findings.get("missing_folders", ()):
         if os.path.isdir(path) or hostos.volume_unreachable(path):
             continue    # it is there again since the check
         preferences.remove_file_folder(path)

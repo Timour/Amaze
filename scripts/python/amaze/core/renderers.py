@@ -42,7 +42,7 @@ OCTANE = Renderer("Octane", "Octane", "Octane", "filter_octane", "octane",
                   builder_mark="octane_material_builder")
 
 ALL = (KARMA, REDSHIFT, OCTANE)
-HUB = KARMA
+INTERMEDIATE = KARMA
 RENDER_TAB = (REDSHIFT, KARMA, OCTANE)
 
 RENDERABLE_CONTEXTS = ("SOP", "COP", "")    # node contexts whose tiles can hold a render; "" is a pre-context COP ▸p/nodes-section

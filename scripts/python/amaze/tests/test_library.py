@@ -941,7 +941,7 @@ class TwoMachineMergeTest(unittest.TestCase):
         self.model.set_assetdata(self.model.index(0, 0), "ours", "", "", None)
         test_support.settle_stamps()
 
-    def test_an_adopted_row_is_kept_by_the_next_save(self):
+    def test_a_merged_row_is_kept_by_the_next_save(self):
         """Checks the result on disk, not the code path."""
         self._other_machine_adds_a_material()
         self._ours()
@@ -969,7 +969,7 @@ class TwoMachineMergeTest(unittest.TestCase):
         self.assertEqual({"keep": "me"}, self._disk().get("something_a_newer_build_wrote"),
                          "an unrecognised top-level key was dropped on save")
 
-    def test_a_sparse_adopted_row_is_kept_not_dropped(self):
+    def test_a_sparse_merged_row_is_kept_not_dropped(self):
         """A row carrying only an id is kept: `from_dict` fills defaults rather than raising."""
         data = self._disk()
         data["assets"]["SPARSE_ROW"] = {"id": "SPARSE_ROW"}
@@ -977,7 +977,7 @@ class TwoMachineMergeTest(unittest.TestCase):
         try:
             self._ours()
         except Exception as exc:                       # noqa: BLE001
-            self.fail("a sparse adopted row aborted the save: %s" % exc)
+            self.fail("a sparse merged row aborted the save: %s" % exc)
         self.assertIn("SPARSE_ROW", self._disk()["assets"])
 
 

@@ -1,4 +1,4 @@
-"""MaterialX, the hub: its builder is the Material Engine's, and every route passes here."""
+"""MaterialX, the intermediate step: its builder is the Material Engine's; every route uses it."""
 
 from __future__ import annotations
 
@@ -56,9 +56,9 @@ def normal_incidence_reflectance(n: float, k: float) -> float:
 
 
 class MaterialXAPI(engine.RendererAPI):
-    """The hub: the engine routes every other pair through its builder."""
+    """The intermediate step: the engine routes every other pair through its builder."""
 
-    name = engine.HUB
+    name = engine.INTERMEDIATE
 
     def available(self) -> bool:
         return True
@@ -67,10 +67,10 @@ class MaterialXAPI(engine.RendererAPI):
         return nodes.build_karma_material(parent, name, produce)
 
     def to_materialx(self, container, builder, report):
-        raise TypeError("MaterialX is the hub: the engine never converts it to itself")
+        raise TypeError("MaterialX is the intermediate step: the engine never converts it to itself")
 
     def from_materialx(self, container, parent, name, report):
-        raise TypeError("MaterialX is the hub: the engine never converts it to itself")
+        raise TypeError("MaterialX is the intermediate step: the engine never converts it to itself")
 
 
 API = MaterialXAPI()

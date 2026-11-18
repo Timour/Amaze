@@ -1768,7 +1768,7 @@ class NodeHandler:
             self._discard_pending_cop_promote()    # a save that never reached `save_asset_pair` keeps no companion
 
     def _save_copy(self, node: hou.Node, asset_id: str, update: bool, renderer) -> bool:
-        """Every material save: a scratch copy, its textures adopted, the pair written, a render."""
+        """Every material save: a scratch copy, its textures copied in, the pair written, a render."""
         from amaze.helpers import helpers
         from amaze.render import thumbs
         asset_id = str(asset_id)
@@ -1793,7 +1793,7 @@ class NodeHandler:
                     raise hou.OperationFailed("it could not be rebuilt as %s" % renderer.usd_builder)
             if path_map:
                 self.rewrite_cop_refs((root,), path_map)
-            self.texture_inventory = texstore.adopt(    # on the copy: the scene node stays untouched
+            self.texture_inventory = texstore.copy_into_library(    # on the copy: the scene node stays untouched
                 root, self._preferences, texstore.asset_folder(node.name(), asset_id))
             holder, items = ((staging, (root,)) if whole    # a builder subnet keeps its own data
                              else (root, root.allItems()))    # NOT children(): a dot is no child ▸r/node-items

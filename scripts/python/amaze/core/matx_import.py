@@ -213,9 +213,9 @@ def _producer_for(record, source, resolution, preferences, progress=None):
 
 def to_renderer(builder, scratch, name: str, renderer: str):
     """MaterialX's builder, or its `renderer` copy made in `scratch`: (builder, shader, wired, report)."""
-    if renderers.normalized(renderer) == conversion_engine.HUB:
+    if renderers.normalized(renderer) == conversion_engine.INTERMEDIATE:
         return builder, None, None, None
-    made = conversion_engine.convert(builder, conversion_engine.HUB, renderer, scratch, name)
+    made = conversion_engine.convert(builder, conversion_engine.INTERMEDIATE, renderer, scratch, name)
     builder.destroy()
     if made.builder is not None:
         try:
@@ -248,7 +248,7 @@ def _staged_build(record, source, resolution, preferences, progress,
         if shader is None:
             yield None, note, "Could not build a shading network for " + name
             return
-        if renderers.normalized(renderer) != conversion_engine.HUB:    # every import is built in MaterialX first
+        if renderers.normalized(renderer) != conversion_engine.INTERMEDIATE:    # every import is built in MaterialX first
             builder, shader, wired, _report = to_renderer(
                 builder, scratch, name, renderer)
             if shader is None:
@@ -270,7 +270,7 @@ def _staged_build(record, source, resolution, preferences, progress,
 
 
 def build_in_scene(record, source, resolution, destination, preferences,
-                   progress=None, renderer: str = renderers.HUB.key):
+                   progress=None, renderer: str = renderers.INTERMEDIATE.key):
     """One online record built under `destination` in the scene, the library untouched: (builder, why)."""
     if destination is None:
         return (None, "No destination network for the material.")
@@ -306,7 +306,7 @@ def build_in_scene(record, source, resolution, destination, preferences,
 
 def hosted_picture(record, source, renderer) -> str:
     """Amaze's own render of `record` in a temp file, for a MaterialX import; empty when none."""
-    if renderers.normalized(renderer) != conversion_engine.HUB:
+    if renderers.normalized(renderer) != conversion_engine.INTERMEDIATE:
         return ""
     if not (getattr(record, "payload", None) or {}).get("preview"):
         return ""
@@ -323,7 +323,7 @@ def hosted_picture(record, source, renderer) -> str:
 
 
 def import_record(record, source, resolution, library, preferences,
-                  progress=None, renderer: str = renderers.HUB.key, *, save, render=True):
+                  progress=None, renderer: str = renderers.INTERMEDIATE.key, *, save, render=True):
     """One record saved by `save` into `library`: (ok, why); on ok, why is its name if not listed."""
     name = record_name(record)
     debug.event("import", "start", title=record.title, name=name,

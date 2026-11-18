@@ -2429,7 +2429,7 @@ def _check_ui(*wanted_labels):
 
 
 class CheckLibraryResetsTheFolderModelTest(unittest.TestCase):
-    """Dead locations leave the prefs, and the File model is reset before any box is shown."""
+    """Missing locations leave the prefs, and the File model is reset before any box is shown."""
 
     @classmethod
     def setUpClass(cls):
@@ -2438,15 +2438,15 @@ class CheckLibraryResetsTheFolderModelTest(unittest.TestCase):
     def test_missing_locations_are_removed_with_a_structural_signal(self):
         panel = self.panel
         model = panel.file_folders_model
-        dead_a, alive, dead_b = [
+        missing_a, alive, missing_b = [
             tempfile.mkdtemp(prefix="amaze_cleanup_%s_" % name)
-            for name in ("dead_a", "alive", "dead_b")
+            for name in ("missing_a", "alive", "missing_b")
         ]
-        for path in (dead_a, alive, dead_b):
+        for path in (missing_a, alive, missing_b):
             self.addCleanup(shutil.rmtree, path, ignore_errors=True)
             self.addCleanup(panel.prefs.remove_file_folder, path)
             model.add_folder(path)
-        for path in (dead_a, dead_b):
+        for path in (missing_a, missing_b):
             shutil.rmtree(path)
 
         events = []
@@ -2471,10 +2471,10 @@ class CheckLibraryResetsTheFolderModelTest(unittest.TestCase):
         self.assertIn(    # the locations API returns CANONICAL absolute paths, so the expectation converts too
             hostos.canonical_path_key(alive), survivors,
             "cleanup removed a location whose folder is still there")
-        for path in (dead_a, dead_b):
+        for path in (missing_a, missing_b):
             self.assertNotIn(
                 hostos.canonical_path_key(path), survivors,
-                "a dead location was not removed - the second removal "
+                "a missing location was not removed - the second removal "
                 "used a row index the first one had already shifted")
 
 
@@ -2483,17 +2483,17 @@ class CheckLibraryReachesTheFoldersTest(unittest.TestCase):
 
     def test_a_missing_location_is_named_set_aside_and_reported(self):
         panel = test_support.fixture_panel(self)
-        dead = tempfile.mkdtemp(prefix="amaze_dead_location_")
-        self.addCleanup(shutil.rmtree, dead, ignore_errors=True)
-        self.addCleanup(panel.prefs.remove_file_folder, dead)
-        panel.file_folders_model.add_folder(dead)
-        shutil.rmtree(dead)
+        missing = tempfile.mkdtemp(prefix="amaze_missing_location_")
+        self.addCleanup(shutil.rmtree, missing, ignore_errors=True)
+        self.addCleanup(panel.prefs.remove_file_folder, missing)
+        panel.file_folders_model.add_folder(missing)
+        shutil.rmtree(missing)
 
         screen = _check_ui("Fix Safe")
         with mock.patch.object(hou, "ui", screen, create=True):
             test_support.repair_from_preferences(self, panel)
 
-        self.assertNotIn(hostos.canonical_path_key(dead), list(panel.prefs.file_folders),
+        self.assertNotIn(hostos.canonical_path_key(missing), list(panel.prefs.file_folders),
                          "Check Library left a location whose folder is gone")
         self.assertIn("1 folder in the Files section is gone.", screen.shown[0],
                       "the Repair dialog does not count the location")
@@ -2511,9 +2511,9 @@ class CheckLibraryDropsOnlyFileStarsTest(unittest.TestCase):
         model.toggle_fav(1)
         self.assertTrue(locations_mod.is_favourite(panel.prefs, mat_id, model.DB_FILENAME),
                         "premise: the material star did not set")
-        dead = os.path.join(panel.prefs.file_folders[0], "gone.exr")
-        panel.prefs.add_file_favorite(dead)
-        self.assertTrue(locations_mod.is_favourite(panel.prefs, dead),
+        missing = os.path.join(panel.prefs.file_folders[0], "gone.exr")
+        panel.prefs.add_file_favorite(missing)
+        self.assertTrue(locations_mod.is_favourite(panel.prefs, missing),
                         "premise: the File star did not set")
 
         from amaze.core import repair
@@ -2527,7 +2527,7 @@ class CheckLibraryDropsOnlyFileStarsTest(unittest.TestCase):
             "was checked as a file path, and no file is named like an id")
         self.assertNotIn(str(mat_id), "\n".join(lines),
                          "the report lists a material id as a gone file")
-        self.assertFalse(locations_mod.is_favourite(panel.prefs, dead),
+        self.assertFalse(locations_mod.is_favourite(panel.prefs, missing),
                          "Check Library kept a favourite whose file is gone")
 
     def test_the_file_favourites_list_no_asset_star(self):

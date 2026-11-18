@@ -29,29 +29,29 @@ _seq = 0
 _excepthook_installed = globals().get("_excepthook_installed", False)
 _crash_counts: dict = globals().get("_crash_counts", {})    # kept across a module reload, like the two counters below
 
-FLOOD_VERBATIM = 5
-FLOOD_MARKER_EVERY = 1000
-FLOOD_DECAY_SECONDS = 300
+REPEAT_VERBATIM = 5
+REPEAT_MARKER_EVERY = 1000
+REPEAT_DECAY_SECONDS = 300
 
 _crash_recorded: dict = globals().get("_crash_recorded", {})
 _crash_last_seen: dict = globals().get("_crash_last_seen", {})
-_flood_lock = globals().get("_flood_lock") or threading.RLock()    # the three counters, together; re-entrant
+_repeat_lock = globals().get("_repeat_lock") or threading.RLock()    # the three counters, together; re-entrant
 
 
-def _flood_key(kind: str, exc_type_name: str, tb_text: str) -> str:
+def _repeat_key(kind: str, exc_type_name: str, tb_text: str) -> str:
     """One failure's key: its kind, its type and the frame that raised it."""
     lines = tb_text.splitlines()
     frame = lines[-2].strip() if len(lines) >= 2 else ""
     return "%s|%s|%s" % (kind, exc_type_name, frame)
 
 
-def _flood_check(kind: str, exc_type_name: str, tb_text: str):
+def _repeat_check(kind: str, exc_type_name: str, tb_text: str):
     """Rate-limit an identical, repeating failure; (record_it, count). ▸o/debug-engine"""
-    key = _flood_key(kind, exc_type_name, tb_text)
-    with _flood_lock:    # never `_write_lock`: `_flush_repeat` takes that one inside
+    key = _repeat_key(kind, exc_type_name, tb_text)
+    with _repeat_lock:    # never `_write_lock`: `_flush_repeat` takes that one inside
         now = time.monotonic()
         last = _crash_last_seen.get(key)
-        if last is not None and now - last > FLOOD_DECAY_SECONDS:
+        if last is not None and now - last > REPEAT_DECAY_SECONDS:
             _flush_repeat(key)
             _crash_counts.pop(key, None)
             _crash_recorded.pop(key, None)
@@ -59,11 +59,11 @@ def _flood_check(kind: str, exc_type_name: str, tb_text: str):
 
         count = _crash_counts.get(key, 0) + 1
         _crash_counts[key] = count
-        if count <= FLOOD_VERBATIM:
+        if count <= REPEAT_VERBATIM:
             _crash_recorded[key] = _crash_recorded.get(key, 0) + 1
             return True, count
         power_of_ten = count == 10 ** (len(str(count)) - 1)
-        if power_of_ten or count % FLOOD_MARKER_EVERY == 0:
+        if power_of_ten or count % REPEAT_MARKER_EVERY == 0:
             _crash_recorded[key] = _crash_recorded.get(key, 0) + 1
             return True, count
         return False, count
@@ -71,18 +71,18 @@ def _flood_check(kind: str, exc_type_name: str, tb_text: str):
 
 def _suppressed_for(kind: str, exc_type_name: str, tb_text: str, count: int) -> int:
     """How many of this key's occurrences never reached the log - counted, never inferred."""
-    key = _flood_key(kind, exc_type_name, tb_text)
+    key = _repeat_key(kind, exc_type_name, tb_text)
     return max(count - _crash_recorded.get(key, 0), 0)
 
 
 def _record_crash(kind: str, exc_type_name: str, tb_text: str, msg: str,
                   data: dict) -> None:
-    """Write one exception record unless `_flood_check` rate-limits it; a repeat includes its counts."""
-    keep, count = _flood_check(kind, exc_type_name, tb_text)
+    """Write one exception record unless `_repeat_check` rate-limits it; a repeat includes its counts."""
+    keep, count = _repeat_check(kind, exc_type_name, tb_text)
     if not keep:
         return
     data = dict(data)
-    if count > FLOOD_VERBATIM:
+    if count > REPEAT_VERBATIM:
         data["repeat_count"] = count
         data["suppressed"] = _suppressed_for(kind, exc_type_name, tb_text,
                                              count)
@@ -96,7 +96,7 @@ def _flush_repeat(key: str) -> None:
     if not count:
         return
     recorded = _crash_recorded.get(key, 0)
-    if count <= FLOOD_VERBATIM:
+    if count <= REPEAT_VERBATIM:
         return
     kind, _, rest = key.partition("|")
     exc_name, _, frame = rest.partition("|")
@@ -436,10 +436,10 @@ def event(category: str, message: str, /, **data) -> None:
     """A structured entry, not written with Debug Mode off; **data may reuse category and message."""
     if not _enabled or _rotation_blocked:
         return
-    keep, count = _flood_check("event:%s" % category, message, "")
+    keep, count = _repeat_check("event:%s" % category, message, "")
     if not keep:
         return
-    if count > FLOOD_VERBATIM:
+    if count > REPEAT_VERBATIM:
         data = dict(data, repeat_count=count)
     _write({"cat": category, "msg": message, "data": data})
 

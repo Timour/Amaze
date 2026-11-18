@@ -503,7 +503,7 @@ class FileFiles(grid_engine.GridEngine,
         full_path = self._pending_writes.pop(key, None)
         if full_path is None or self._image_cache is None:
             return
-        if not self._image_cache.adopt(full_path, png):    # another cache's PNG, or the file was removed
+        if not self._image_cache.record_png(full_path, png):    # another cache's PNG, or the file was removed
             debug.event("file", "converted image not cached", png=png, path=full_path)
 
     def _on_convert_attempted(self, key) -> None:

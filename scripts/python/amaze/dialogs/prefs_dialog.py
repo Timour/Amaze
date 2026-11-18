@@ -522,7 +522,7 @@ class PrefsDialog(base_dialog.AssetDialog):
                 self._fill_libraries()
                 return False
         library_db.flush()    # pending changes are saved as the user who made them
-        users.adopt(self._prefs, uid)
+        users.set_current_user(self._prefs, uid)
         debug.event("prefs", "library and user applied", library=self._prefs.dir, user=uid)
         self._added_libraries = [known for known in self._added_libraries
                                  if not _same_folder(known, folder)]

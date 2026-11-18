@@ -854,7 +854,7 @@ class MaterialSection(AssetSection):
             if renderer.key in conversion_engine.targets())
 
     def menu_convert_to(self, indexes, current, payload=None) -> None:
-        self.panel.convert_selected(payload or renderers.HUB.key)
+        self.panel.convert_selected(payload or renderers.INTERMEDIATE.key)
 
     library_model_attrs = ("material_model", "category_model")
     model_attr = "material_model"
@@ -2138,20 +2138,20 @@ class OnlineContext(Section):
     def import_targets(self, indexes, current) -> tuple:
         """The renderer the import CREATES, as in C06a/C06b; disabled without its plugin."""
         from amaze.render.material_conversion import engine as conversion_engine
-        hub = renderers.HUB.key
+        intermediate = renderers.INTERMEDIATE.key
         return tuple(
             (renderer.label, renderer.key, renderer.icon,
-             renderer.key == hub or conversion_engine.can_convert(hub, renderer.key))
+             renderer.key == intermediate or conversion_engine.can_convert(intermediate, renderer.key))
             for renderer in renderers.offered(self.panel.prefs)
             if renderer.key in conversion_engine.targets())
 
     def menu_import_to_library(self, indexes, current, payload=None) -> None:
         self.panel.online_import.import_records(self._records(indexes),
-                                                renderer=payload or renderers.HUB.key)
+                                                renderer=payload or renderers.INTERMEDIATE.key)
 
     def menu_import_to_scene(self, indexes, current, payload=None) -> None:
         self.panel.online_import.import_records_to_scene(    # this method does the editor restore for both of its callers
-            self._records(indexes), renderer=payload or renderers.HUB.key)
+            self._records(indexes), renderer=payload or renderers.INTERMEDIATE.key)
 
     def selection_is_amaze_packages(self, indexes, current) -> bool:
         """Every selected record is an amazepkg - Restore means nothing for a material source."""

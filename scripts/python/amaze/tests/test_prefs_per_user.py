@@ -348,7 +348,7 @@ class DeletingAUserDropsTheirBlock(PerUserCase):
         keep = users.create(p, "Cobalt")
         gone = users.create(p, "Sienna")
         for uid in (gone, keep, gone):    # each switch saves the previous user under their uid
-            users.adopt(p, uid)
+            users.set_current_user(p, uid)
         held = self._blocks(p)
         self.assertTrue({keep, gone, test_support.FIXTURE_USER} <= set(held),
                         "premise: every user has a block on disk")
@@ -362,7 +362,7 @@ class DeletingAUserDropsTheirBlock(PerUserCase):
     def test_deleting_another_user_drops_only_their_block(self):
         from amaze.core import users
         p, keep, gone = self._two_users_with_blocks()
-        users.adopt(p, keep)
+        users.set_current_user(p, keep)
         self.assertTrue(users.delete(p, gone))
         held = self._blocks(p)
         self.assertNotIn(gone, held, "the deleted user's block stayed")
@@ -385,7 +385,7 @@ class DeletingAUserDropsTheirBlock(PerUserCase):
         """Another pane's settings, read before the delete, leave the block out of its next save."""
         from amaze.core import users
         p, keep, gone = self._two_users_with_blocks()
-        users.adopt(p, keep)
+        users.set_current_user(p, keep)
         second = prefs_mod.Prefs()
         second.path = p.path
         second.load()
@@ -402,13 +402,13 @@ class DeletingAUserDropsTheirBlock(PerUserCase):
         """A restored `DataBase.json` can bring a deleted uid back; picking it keeps their view state."""
         from amaze.core import library_db, users
         p, keep, gone = self._two_users_with_blocks()
-        users.adopt(p, keep)
+        users.set_current_user(p, keep)
         self.assertTrue(users.delete(p, gone))
         held = library_db.document(p, "DataBase.json")
         self.assertTrue(held.put(users.SECTION, gone, {"name": "Sienna"}),
                         "premise: the record is back in DataBase.json")
         library_db.flush(p)
-        users.adopt(p, gone)
+        users.set_current_user(p, gone)
         p.view_mode = "list"
         p.save()
         held = self._blocks(p)
@@ -450,7 +450,7 @@ class EachBlockKnowsItsLibrary(PerUserCase):
         from amaze.core import users
         p = test_support.fixture_prefs(self)
         keep = users.create(p, "Cobalt")
-        users.adopt(p, keep)
+        users.set_current_user(p, keep)
         return p, keep
 
     def _key(self, p):
@@ -486,8 +486,8 @@ class EachBlockKnowsItsLibrary(PerUserCase):
         from amaze.core import users
         p, keep = self._library()
         gone = users.create(p, "Sienna")
-        users.adopt(p, gone)
-        users.adopt(p, keep)
+        users.set_current_user(p, gone)
+        users.set_current_user(p, keep)
         self._elsewhere(p, lambda table: table.pop(gone))
         p.save()
         held = self._blocks(p)
@@ -515,8 +515,8 @@ class EachBlockKnowsItsLibrary(PerUserCase):
         from amaze.core import users
         p, keep = self._library()
         gone = users.create(p, "Sienna")
-        users.adopt(p, gone)
-        users.adopt(p, keep)
+        users.set_current_user(p, gone)
+        users.set_current_user(p, keep)
         self._unreadable_roster(p)
         test_support.reset_database_singletons()
         with test_support.captured_log():
@@ -556,7 +556,7 @@ class EachBlockKnowsItsLibrary(PerUserCase):
         p.save()
         self.assertIn(keep, self._blocks(p),
                       "the block of this machine's current user was pruned")
-        users.adopt(p, other)
+        users.set_current_user(p, other)
         self.assertNotIn(keep, self._blocks(p))
 
     def test_a_user_another_houdini_added_keeps_their_block(self):
@@ -577,8 +577,8 @@ class EachBlockKnowsItsLibrary(PerUserCase):
         from amaze.core import users
         p, keep = self._library()
         gone = users.create(p, "Sienna")
-        users.adopt(p, gone)
-        users.adopt(p, keep)
+        users.set_current_user(p, gone)
+        users.set_current_user(p, keep)
         self._elsewhere(p, lambda table: table.pop(gone))
         self._unreadable_roster(p)
         p.save()
@@ -600,8 +600,8 @@ class EachBlockKnowsItsLibrary(PerUserCase):
         from amaze.core import users
         p, keep = self._library()
         gone = users.create(p, "Sienna")
-        users.adopt(p, gone)
-        users.adopt(p, keep)
+        users.set_current_user(p, gone)
+        users.set_current_user(p, keep)
         self._elsewhere(p, lambda table: table.pop(gone))
         self.assertIn(gone, users.all_users(p), "premise: this Houdini's roster is stale")
         p.view_mode = "list"

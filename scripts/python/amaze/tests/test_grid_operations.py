@@ -696,7 +696,7 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
             self.panel.assign_category_active("usds")
         self.assertIn("Dropped elsewhere",
                       [asset.name for asset in self.model.assets],
-                      "premise: the save adopted nothing")
+                      "premise: the save merged nothing")
         self.assertEqual(["usds"], list(self.model.assets[1].categories))
         self._assert_no_row_moved_inside(caught, "a sidebar drop")
 
@@ -716,7 +716,7 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
             self.panel._update_existing_asset(self.model.tile_key(1), None)
         self.assertIn("Saved elsewhere",
                       [asset.name for asset in self.model.assets],
-                      "premise: the save adopted nothing")
+                      "premise: the save merged nothing")
         self._assert_no_row_moved_inside(caught, "Save Version")
 
     def test_editing_a_snippet(self):
@@ -738,7 +738,7 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
             self.panel.sections["code"]._edit_code_row(row)
         self.assertIn("Typed elsewhere",
                       [asset.name for asset in code.assets],
-                      "premise: the save adopted nothing")
+                      "premise: the save merged nothing")
         self._assert_no_row_moved_inside(caught, "Edit Snippet")
 
 

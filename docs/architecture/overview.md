@@ -524,7 +524,7 @@ Structured session logging, JSON Lines. **Two tiers:**
 - **File:** `core/debug.py` · **Log:** `amaze_debug.jsonl` in the
   OS-Integration Engine's per-OS log dir
 - **API:** `install()` · `configure(on)` · `exception(where)` ·
-  `event(cat, msg)` · `ledger(cat, msg)` (an `event` the flood guard
+  `event(cat, msg)` · `ledger(cat, msg)` (an `event` the repeat limit
   never limits, one record per call: every database save) · `note(...)` ·
   `timed(cat, msg)` · `alert(msg)` · `refuse(reason)` · `set_ui(ui)` ·
   snapshots: `node_snapshot()` · `material_snapshot()`
@@ -539,18 +539,18 @@ Structured session logging, JSON Lines. **Two tiers:**
   test runner sets it: the crash tier writes with Debug Mode off, so a
   suite that raises on purpose would otherwise fill the user's own log
   with genuine-looking crash records.
-- **One repeating failure cannot flood the file.** Identity is the
+- **One repeating failure is written a limited number of times.** Identity is the
   event kind plus the exception type plus its deepest frame, so one
   frequent failure never suppresses a different failure. The first
-  `FLOOD_VERBATIM` are written in full, then one marker at each power of
-  ten and every `FLOOD_MARKER_EVERY` after that; a key quiet for
-  `FLOOD_DECAY_SECONDS` counts as a new occurrence rather than a
-  continuing flood. An atexit flush writes each key's exact total, so a
-  session that ended mid-flood still records the full count.
+  `REPEAT_VERBATIM` are written in full, then one marker at each power of
+  ten and every `REPEAT_MARKER_EVERY` after that; a key quiet for
+  `REPEAT_DECAY_SECONDS` counts as a new occurrence rather than a
+  continuing repeat. An atexit flush writes each key's exact total, so a
+  session that ended mid-repeat still records the full count.
 - **A new file starts from zero — three functions reset the state.**
   `configure()` with a changed path, `redirect()` and `clear_log()` all
   reset the session id, the record counter, the rotation latch and the
-  flood counts, because `n` is a record's place in ITS OWN file and the
+  repeat counts, because `n` is a record's place in ITS OWN file and the
   counters are per-file too. The single exception is the alert history:
   a dialog the user dismissed stays dismissed through a move or a Debug
   Mode toggle, and only Clear Log forgets it.

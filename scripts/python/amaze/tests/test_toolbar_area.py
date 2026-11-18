@@ -26,13 +26,13 @@ class TheToolbarIsATable(unittest.TestCase):
 
         table = AmazePanel.TOOLBAR_CONTROLS
         self.assertTrue(table, "the toolbar table is empty")
-        for control, fact, verb in table:
+        for control, fact, effect in table:
             with self.subTest(control=control):
                 self.assertTrue(control and fact)
                 self.assertIn(
-                    verb, ("enabled", "shown"),
+                    effect, ("enabled", "shown"),
                     "%s follows its fact by %r, which is neither "
-                    "enabled-ness nor visibility" % (control, verb))
+                    "enabled-ness nor visibility" % (control, effect))
                 self.assertTrue(
                     hasattr(sections.Section, fact),
                     "%s follows %r, which no context declares - so every "
@@ -85,10 +85,10 @@ class TheToolbarFollowsTheContextLive(unittest.TestCase):
     def setUpClass(cls):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
-    def _state(self, control, verb):
+    def _state(self, control, effect):
         widget = getattr(self.panel, control, None)
         self.assertIsNotNone(widget, "%s is not on the panel" % control)
-        return widget.isEnabled() if verb == "enabled" else not widget.isHidden()
+        return widget.isEnabled() if effect == "enabled" else not widget.isHidden()
 
     def test_each_control_matches_its_contexts_declaration(self):
         from amaze.panel.panel import AmazePanel
@@ -99,10 +99,10 @@ class TheToolbarFollowsTheContextLive(unittest.TestCase):
             panel.section_tabs.setChecked(key)
             QtWidgets.QApplication.processEvents()
             context = panel.active_section()
-            for control, fact, verb in AmazePanel.TOOLBAR_CONTROLS:
+            for control, fact, effect in AmazePanel.TOOLBAR_CONTROLS:
                 with self.subTest(section=key, control=control):
                     self.assertEqual(
-                        getattr(context, fact), self._state(control, verb),
+                        getattr(context, fact), self._state(control, effect),
                         "%s does not match %s.%s in the %s tab"
                         % (control, type(context).__name__, fact, key))
 
@@ -120,20 +120,20 @@ class TheToolbarFollowsTheContextLive(unittest.TestCase):
         self.assertIsInstance(context, sections.OnlineContext,
                               "not in the online world, so this proves "
                               "nothing")
-        for control, fact, verb in AmazePanel.TOOLBAR_CONTROLS:
+        for control, fact, effect in AmazePanel.TOOLBAR_CONTROLS:
             with self.subTest(control=control):
                 if control == "btn_filter":    # the one exception: online the eye button holds the kind filter, re-enabled by the sync block
                     self.assertTrue(
-                        self._state(control, verb),
+                        self._state(control, effect),
                         "the eye is disabled in the online world - the "
                         "kind filter is on that button there")
                     continue
                 self.assertEqual(
-                    getattr(context, fact), self._state(control, verb),
+                    getattr(context, fact), self._state(control, effect),
                     "%s is enabled in the online world, where it has "
                     "nothing to act on" % control)
-        for control, _fact, verb in AmazePanel.TOOLBAR_CONTROLS:
-            if verb != "enabled":
+        for control, _fact, effect in AmazePanel.TOOLBAR_CONTROLS:
+            if effect != "enabled":
                 continue
             with self.subTest(control=control, asked="visible"):
                 self.assertFalse(

@@ -955,12 +955,12 @@ class ColorsUndoAFailedSave(unittest.TestCase):
         self.assertIn("theirs2", self._on_disk_names(other_path), "premise: the other library saves")
 
 
-class ColorsModelGetsWhatTheMergeAdopted(unittest.TestCase):
-    """A row the merge adopted reaches the model: take_adopted() runs after every save."""
+class ColorsModelGetsWhatTheMergeAdded(unittest.TestCase):
+    """A row the merge added from disk reaches the model after every save."""
 
     def setUp(self):
         test_support.reset_database_singletons()
-        self.dir = tempfile.mkdtemp(prefix="amaze_grad_adopt_")
+        self.dir = tempfile.mkdtemp(prefix="amaze_grad_merge_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         self.path = os.path.join(self.dir, COLORS)
         _write_colors_json(self.path, {"categories": ["Warm"],
@@ -984,13 +984,13 @@ class ColorsModelGetsWhatTheMergeAdopted(unittest.TestCase):
                  for r in range(self.lib.rowCount())]
         self.assertIn(
             "from_theirs", names,
-            "the merge adopted the row into colors.json and never "
+            "the merge added the row into colors.json and never "
             "passed it to the model, so the grid, the sidebar counts "
             "and the filter never saw it - and the next save rebuilds "
             "the list without it")
 
 
-class ColorsKeepTheCategoriesTheMergeAdopted(unittest.TestCase):
+class ColorsKeepTheCategoriesTheMergeAdded(unittest.TestCase):
     """Another session's category and its colour must be kept by the save AFTER the merge."""
 
     def setUp(self):

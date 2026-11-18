@@ -1405,7 +1405,7 @@ class ThePictureButtonIsActuallyRun(unittest.TestCase):
 
         return mock.patch.object(hou, "ui", _Ui, create=True)
 
-    def test_clicking_it_adopts_and_inserts(self):
+    def test_clicking_it_copies_and_inserts(self):
         picked = self._a_picture_on_disk()
         with self._fake_ui(picked):
             self._menu_entry("Image").trigger()
@@ -1457,25 +1457,25 @@ class APictureIsCOPIEDIntoTheLibrary(unittest.TestCase):
     def test_the_file_is_copied_into_its_section_s_comments(self):
         original = self._a_picture_outside_the_library()
         self.assertEqual(self.KEY, self.notes.note_key("material", "X1"), "premise: the key's shape")
-        src = self.notes.adopt_image(self.prefs, original, self.KEY)
+        src = self.notes.copy_image_into_library(self.prefs, original, self.KEY)
         self.assertTrue(src.startswith("materials/comments/"), src)
         landed = os.path.join(self.prefs.dir, *src.split("/"))
         self.assertTrue(os.path.isfile(landed), "nothing was copied in")
         self.assertTrue(os.path.isfile(original),
-                        "adopting a picture MOVED the user's own file")
+                        "copying a picture into the library MOVED the user's own file")
 
     def test_two_pictures_of_the_same_name_do_not_collide(self):
-        first = self.notes.adopt_image(
+        first = self.notes.copy_image_into_library(
             self.prefs, self._a_picture_outside_the_library("same.png"), self.KEY)
-        second = self.notes.adopt_image(
+        second = self.notes.copy_image_into_library(
             self.prefs, self._a_picture_outside_the_library("same.png"), self.KEY)
         self.assertNotEqual(first, second,
                             "the second picture overwrote the first")
 
-    def test_adopt_image_returns_empty_for_a_missing_file(self):
+    def test_copy_image_into_library_returns_empty_for_a_missing_file(self):
         self.assertEqual(
-            "", self.notes.adopt_image(self.prefs,
-                                       os.path.join(self.outside, "nope.png"), self.KEY))
+            "", self.notes.copy_image_into_library(self.prefs,
+                                                   os.path.join(self.outside, "nope.png"), self.KEY))
 
     def test_no_half_copied_picture_is_left_where_a_note_points(self):
         """The copy is renamed into place when complete; a failure leaves nothing at the target."""
@@ -1489,7 +1489,7 @@ class APictureIsCOPIEDIntoTheLibrary(unittest.TestCase):
             raise OSError("the disk filled up")
 
         with mock.patch.object(guard.Disk, "write", failing_write):
-            src = self.notes.adopt_image(self.prefs, original, self.KEY)
+            src = self.notes.copy_image_into_library(self.prefs, original, self.KEY)
 
         self.assertEqual("", src, "a failed copy reported a path anyway")
         folder = os.path.join(self.prefs.dir, "materials", "comments")

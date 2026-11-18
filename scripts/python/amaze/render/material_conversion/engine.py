@@ -1,4 +1,4 @@
-"""Every material conversion, routed through MaterialX, the hub. ▸p/one-engine-shared-base"""
+"""Every material conversion, via MaterialX, the intermediate step. ▸p/one-engine-shared-base"""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from amaze.core import renderers
 from amaze.helpers import wording
 from amaze.render.material_conversion.report import ConversionReport
 
-HUB = renderers.HUB.key
+INTERMEDIATE = renderers.INTERMEDIATE.key
 API_MODULES = tuple(renderer.converter for renderer in renderers.ALL)
 UNWIRED = ("the surface output is not wired, so this material renders black until "
            "it is connected by hand")
@@ -114,14 +114,14 @@ def convert(container, source, target, parent, name, report=None) -> Converted:
     if reason:
         report.skip(reason)
         return Converted(None, None, False, report)
-    reading, writing, hub = api(source), api(target), apis()[HUB]
-    if reading is hub:
+    reading, writing, intermediate = api(source), api(target), apis()[INTERMEDIATE]
+    if reading is intermediate:
         made = writing.from_materialx(container, parent, name, report)
     else:
-        built = hub.build(parent, name, lambda builder: reading.to_materialx(
+        built = intermediate.build(parent, name, lambda builder: reading.to_materialx(
             container, builder, report))
         made = Converted(built[0], built[1], built[2], report)
-        if writing is not hub and made.shader is not None:
+        if writing is not intermediate and made.shader is not None:
             middle = made.builder
             made = writing.from_materialx(middle, parent, name, report)
             with hou.undos.disabler():

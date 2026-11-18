@@ -379,7 +379,7 @@ class AMultiMaterialSaveRendersOneBatch(unittest.TestCase):
         for row in rows:
             selection.select(proxy.mapFromSource(self.model.index(row, 0)),
                              QtCore.QItemSelectionModel.SelectionFlag.Select)
-        registry = {engine.HUB: engine.apis()[engine.HUB], "Octane": Plain()}
+        registry = {engine.INTERMEDIATE: engine.apis()[engine.INTERMEDIATE], "Octane": Plain()}
         with mock.patch.dict(engine._registry, registry, clear=True):
             twins = self._new_asset_ids(lambda: self.panel.convert_selected("Octane"))
         self.assertEqual(2, len(twins), "premise: the conversion saved no twins")

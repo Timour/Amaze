@@ -140,7 +140,7 @@ def current(preferences):
     return str(preferences.library_user)
 
 
-def adopt(preferences, uid):
+def set_current_user(preferences, uid):
     """Set and save `library_user` to `uid`; the user picker calls this once the user has chosen."""
     uid = str(uid)
     try:

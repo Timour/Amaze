@@ -152,10 +152,10 @@ class TheCopyIsUsedForAnUnreachableLibrary(SharedPrefsCase):
             "store was read-only")
 
 
-class TheLibraryIsAdoptedWhenDirIsSet(SharedPrefsCase):
+class TheLibraryIsReadWhenDirIsSet(SharedPrefsCase):
     """Setting `dir` after load must read the store, or the first save puts local defaults over it."""
 
-    def test_pointing_dir_at_a_library_adopts_without_a_load(self):
+    def test_pointing_dir_at_a_library_reads_it_without_a_load(self):
         a = self.machine(self.home_a)
         a.rendersize = 512
         a.save()
@@ -246,11 +246,11 @@ class EveryRowFollowsAUserOrLibraryChange(SharedPrefsCase):
         self.prefs = self.machine(self.home_a)
         self.first = users.create(self.prefs, "Cobalt")
         self.second = users.create(self.prefs, "Sienna")
-        users.adopt(self.prefs, self.first)
-        users.adopt(self.prefs, self.second)
+        users.set_current_user(self.prefs, self.first)
+        users.set_current_user(self.prefs, self.second)
         for name, value in self.SECOND.items():
             setattr(self.prefs, name, value)
-        users.adopt(self.prefs, self.first)
+        users.set_current_user(self.prefs, self.first)
         self.assertNotEqual(self.SECOND["enabled_sections"],
                             self.prefs.enabled_sections,
                             "premise: the first user's state is not the second's")

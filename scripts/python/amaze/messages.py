@@ -371,7 +371,7 @@ CHECK_CONFLICT_COPIES = '%s from a sync service.'
 
 CHECK_FAVORITES_OF_MISSING_FILES ='%s %s of %s gone.'
 
-CHECK_DEAD_FOLDERS = '%s in the Files section %s gone.'
+CHECK_MISSING_FOLDERS ='%s in the Files section %s gone.'
 
 FIXED_RESTORED = '%s restored from %s.'
 

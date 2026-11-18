@@ -991,7 +991,7 @@ class OnlyTheConverterNamesFormat3Test(unittest.TestCase):
              "LEGACY_ASSET_FOLDER",
              "library.json", "cops.json", "gradients.json", "notes.json", "icons.json",
              "favourites.json", "locations.json", "location_paths.json", "users.json",
-             "prefs.json", "policy.json", "pre-adopt", "PRE_ADOPT",
+             "prefs.json", "policy.json", "pre-adopt", "TEXTURE_UPDATE_BACKUP",
              ".bak-", "bak-first", "bak-before-restore", "history_root", "record_history",
              "snapshot_before_write", "seed_restore_floor", "existed_before",
              ".amaze_gradient_seed", ".amaze_code_starter", ".assetlib_", "material_favorites",
@@ -1272,7 +1272,7 @@ class PicturesLiveInTheirSectionTest(_Library):
         self.addCleanup(shutil.rmtree, os.path.dirname(source), True)
         for section, folder in (("material", "materials"), ("gradient", "colors"),
                                 ("file", "files")):
-            src = notes.adopt_image(self.prefs, source, notes.note_key(section, "X1"))
+            src = notes.copy_image_into_library(self.prefs, source, notes.note_key(section, "X1"))
             self.assertTrue(src.startswith(folder + "/comments/"), (section, src))
             self.assertTrue(os.path.isfile(self.at(*src.split("/"))))
         self.assertEqual("files", os.path.basename(os.path.dirname(

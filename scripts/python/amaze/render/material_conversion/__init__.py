@@ -1,1 +1,1 @@
-"""The Material Conversion Engine: one engine, one API per renderer, MaterialX the hub."""
+"""The Material Conversion Engine: one API per renderer, MaterialX as the intermediate step."""

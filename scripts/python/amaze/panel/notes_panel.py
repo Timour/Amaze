@@ -666,7 +666,7 @@ class NotesPanel(ui_helpers.SavedWidthPane):
         chosen = hou.text.expandString(chosen or "").strip()
         if not chosen:
             return
-        src = notes.adopt_image(self.preferences, chosen, self._key)
+        src = notes.copy_image_into_library(self.preferences, chosen, self._key)
         if not src:
             ui.displayMessage(
                 messages.PICTURE_NOT_COPIED_TO_LIBRARY,

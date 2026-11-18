@@ -34,7 +34,7 @@ class Rebuilder:
                 if fresh.type().name() != renderer.usd_builder:
                     raise hou.OperationFailed(
                         "it was not rebuilt as %s" % renderer.usd_builder)
-                texstore.adopt(fresh, preferences, texstore.asset_folder(name, asset_id))
+                texstore.copy_into_library(fresh, preferences, texstore.asset_folder(name, asset_id))
                 items = fresh.allItems()    # NOT children(): a dot is no child
                 handler.save_asset_pair(
                     material.payload_path(preferences, asset_id, preferences.ext,

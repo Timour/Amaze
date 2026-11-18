@@ -29,13 +29,13 @@ from amaze.tests import test_support  # noqa: E402 - import redirects the debug 
 
 
 class _LogCase(unittest.TestCase):
-    """A temp debug log for the flood tests; a base class with no tests, so none runs twice."""
+    """A temp debug log for the repeat tests; a base class with no tests, so none runs twice."""
 
     def setUp(self):
         """Point `debug` at a temp log, restored after, or later records go to a deleted dir."""
-        self.tmp = tempfile.mkdtemp(prefix="amaze_flood_")
+        self.tmp = tempfile.mkdtemp(prefix="amaze_repeats_")
         self.addCleanup(shutil.rmtree, self.tmp, True)
-        self.log = os.path.join(self.tmp, "flood.jsonl")
+        self.log = os.path.join(self.tmp, "repeats.jsonl")
         was_on, was_path = debug.is_on(), debug.log_path()
         self.addCleanup(debug.configure, was_on, was_path)
         debug.configure(True, self.log)
@@ -49,7 +49,7 @@ class _LogCase(unittest.TestCase):
             return [json.loads(line) for line in handle if line.strip()]
 
 
-class TestFloodGuard(_LogCase):
+class TestRepeatLimit(_LogCase):
 
     def _raise_and_record(self, where="loop"):
         try:
@@ -63,15 +63,15 @@ class TestFloodGuard(_LogCase):
         written = [r for r in self._records() if r.get("cat") == "exception"]
         # 5 verbatim + markers at 10/100/1000/2000/3000, not 3000 records.
         self.assertLess(len(written), 20, "the repeated failure was not rate-limited")
-        self.assertGreaterEqual(len(written), debug.FLOOD_VERBATIM)
+        self.assertGreaterEqual(len(written), debug.REPEAT_VERBATIM)
         last = written[-1]
         self.assertEqual(last["data"].get("repeat_count"), 3000)
         self.assertEqual(
             last["data"].get("suppressed"), 3000 - len(written),
             "suppressed does not match the records actually written")
 
-    def test_a_small_flood_still_reports_its_size(self):
-        """A flood too small for the every-1000 marker must still leave its count."""
+    def test_a_short_run_of_repeats_still_reports_its_size(self):
+        """A run of repeats too short for the every-1000 marker must still leave its count."""
         for _ in range(100):
             self._raise_and_record(where="small")
         written = [r for r in self._records()
@@ -80,10 +80,10 @@ class TestFloodGuard(_LogCase):
         counts = [r["data"].get("repeat_count") for r in written
                   if r.get("data", {}).get("repeat_count")]
         self.assertTrue(
-            counts, "a 100-occurrence flood left no count in the log at all")
+            counts, "a 100-occurrence repeat left no count in the log at all")
         self.assertGreaterEqual(
             max(counts), 100,
-            "the log understates a 100-occurrence flood as %s" % max(counts))
+            "the log understates a 100-occurrence repeat as %s" % max(counts))
 
     def test_a_different_failure_is_never_suppressed(self):
         """Rate-limiting one repeated failure must not suppress an unrelated one."""
@@ -135,7 +135,7 @@ class TestFloodGuard(_LogCase):
 
 
 class TwoThreadsCountEveryOccurrence(_LogCase):
-    """Convert worker threads and the UI thread log at once; a flood's final count must be exact."""
+    """Convert worker threads and the UI thread log at once; a repeat's final count must be exact."""
 
     def test_two_threads_logging_one_event_lose_no_count(self):
         import threading
@@ -156,16 +156,16 @@ class TwoThreadsCountEveryOccurrence(_LogCase):
                 thread.join()
         finally:
             sys.setswitchinterval(interval)
-        key = debug._flood_key("event:race", "same message", "")
+        key = debug._repeat_key("event:race", "same message", "")
         self.assertEqual(2 * per_thread, debug._crash_counts.get(key),
-                         "the flood count lost increments")
+                         "the repeat count lost increments")
         written = [r for r in self._records() if r.get("cat") == "race"]
         self.assertEqual(len(written), debug._crash_recorded.get(key),
                          "the recorded count is not what was written")
 
 
 class TestPerPassBudget(_LogCase):
-    """Per-item records share one flood key, so a pass needs its own allowance."""
+    """Per-item records share one repeat key, so a pass needs its own allowance."""
 
     def test_identical_per_item_records_are_suppressed_without_a_budget(self):
         for i in range(273):
@@ -188,7 +188,7 @@ class TestPerPassBudget(_LogCase):
         self.assertEqual(
             [20, 20], seen,
             "a second pass did not get its own allowance - that is the "
-            "whole difference from the session-wide flood guard, which "
+            "whole difference from the session-wide repeat limit, which "
             "stays silent once spent")
 
     def test_two_passes_do_not_share_an_allowance(self):
@@ -229,7 +229,7 @@ class EveryFailedSaveWritesARecord(_LogCase):
     def test_six_failed_saves_in_a_row_each_write_a_record(self):
         import types
         from amaze.core import library_db, library_files
-        library = tempfile.mkdtemp(prefix="amaze_flood_saves_")
+        library = tempfile.mkdtemp(prefix="amaze_repeats_saves_")
         self.addCleanup(shutil.rmtree, library, True)
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
@@ -242,8 +242,8 @@ class EveryFailedSaveWritesARecord(_LogCase):
                 library_db.save(holder, library_files.CODE)
         self.assertEqual(
             before + 6, len(self._saves()),
-            "save records went missing - they share one flood key, so "
-            "the log stops after %d" % debug.FLOOD_VERBATIM)
+            "save records went missing - they share one repeat key, so "
+            "the log stops after %d" % debug.REPEAT_VERBATIM)
 
 
 class TestLogIsolation(unittest.TestCase):
@@ -482,7 +482,7 @@ class TestExcepthookWorksAfterReload(unittest.TestCase):
         self.assertEqual(
             debug._crash_counts.get("k"), 100,
             "the count reset on reload while its companions persisted - "
-            "the flood counters no longer agree")
+            "the repeat counters no longer agree")
 
     def test_a_crash_still_records_after_a_reopen(self):
         """The sentinel is set before the first install, or it overwrites the self-reference."""

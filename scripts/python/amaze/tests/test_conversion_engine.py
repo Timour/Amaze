@@ -101,9 +101,9 @@ class TheEngineRoutesThroughMaterialX(unittest.TestCase):
     def test_the_targets_are_the_menu_order(self):
         self.assertEqual(("Karma", "Redshift", "Octane"), engine.targets())
 
-    def test_a_stored_materialx_name_reads_as_the_hub(self):
+    def test_a_stored_materialx_name_reads_as_the_intermediate(self):
         for stored in ("Karma", "MaterialX", "MtlX"):
-            self.assertIs(engine.api(engine.HUB), engine.api(stored), stored)
+            self.assertIs(engine.api(engine.INTERMEDIATE), engine.api(stored), stored)
 
     def test_a_renderer_without_an_api_has_no_route(self):
         self.assertFalse(engine.has_route("Mantra", "Karma"))
@@ -129,9 +129,9 @@ class TheEngineRoutesThroughMaterialX(unittest.TestCase):
                     self.assertEqual(source != target, engine.can_convert(source, target),
                                      "%s to %s" % (source, target))
 
-    def test_a_route_reads_into_the_hub_then_writes_from_it(self):
+    def test_a_route_reads_into_the_intermediate_then_writes_from_it(self):
         reader, writer = _Reader(), _Writer()
-        registry = {engine.HUB: engine.apis()[engine.HUB], "Reader": reader, "Writer": writer}
+        registry = {engine.INTERMEDIATE: engine.apis()[engine.INTERMEDIATE], "Reader": reader, "Writer": writer}
         scratch = hou.node("/obj").createNode("matnet")
         self.addCleanup(scratch.destroy)
         with mock.patch.dict(engine._registry, registry, clear=True):

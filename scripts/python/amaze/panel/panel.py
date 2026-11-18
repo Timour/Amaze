@@ -99,7 +99,7 @@ _reload(users)    # before versions and the dialogs showing a user: both resolve
 _reload(renderers)
 _reload(material)
 _reload_loaded("amaze.core.material_files")    # before nodes and library, which read saved materials by it
-_reload(texstore)    # before nodes and library, which adopt and resolve through it
+_reload(texstore)    # before nodes and library, which copy textures in and resolve them through it
 if _DEV_RELOAD and "amaze.preview" in sys.modules:
     sys.modules["amaze.preview"].reload_engine()    # the package reloads itself ▸r/package-reload
 _reload_loaded("amaze.render.material_converter")
@@ -2245,12 +2245,12 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _sync_toolbar(self, context) -> None:
         """Set every toolbar control from TOOLBAR_CONTROLS and what `context` declares."""
-        for name, fact, verb in self.TOOLBAR_CONTROLS:
+        for name, fact, effect in self.TOOLBAR_CONTROLS:
             control = getattr(self, name, None)
             if control is None:
                 continue
             offered = bool(getattr(context, fact, True))
-            if verb == "shown":
+            if effect == "shown":
                 control.setVisible(offered)
             else:
                 control.setEnabled(offered)

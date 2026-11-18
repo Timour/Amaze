@@ -1609,7 +1609,7 @@ class OnlinePackageImportTest(unittest.TestCase):
                 "the library is wrong (reason: %s)" % reason)
         self.assertEqual(before + 1, model.rowCount())
 
-    def test_restore_selected_is_adopt_only(self):
+    def test_restore_selected_skips_a_present_tile(self):
         from unittest import mock
         model = self.panel.gradient_model
         present = str(model.assets[0].mat_id)
@@ -1801,7 +1801,7 @@ class OnlinePackageImportTest(unittest.TestCase):
 
 
 class TexturePackingTest(unittest.TestCase):
-    """Format 2: adopted textures are packed and restored at their tokens; an escaping token fails."""
+    """Format 2: stored textures are packed and restored at their tokens; an escaping token fails."""
 
     @classmethod
     def setUpClass(cls):
@@ -1853,10 +1853,10 @@ class TexturePackingTest(unittest.TestCase):
         out = _out_path(self, "landed.amazepkg")
         packages.write_package(
             out, [packages.collect_asset(model, str(row.mat_id))])
-        adopted = texstore.resolve(
+        stored = texstore.resolve(
             (row.get_as_dict().get("textures") or [""])[0],
             model.preferences)
-        os.remove(adopted)    # the package must be the only source, as in a foreign library
+        os.remove(stored)    # the package must be the only source, as in a foreign library
         before = model.rowCount()
         held = test_support.asset_ids(model)
         summary = self.panel.package_import.import_file(out)
@@ -1902,16 +1902,16 @@ class TexturePackingTest(unittest.TestCase):
         out = _out_path(self, "shared.amazepkg")
         packages.write_package(
             out, [packages.collect_asset(model, str(row.mat_id))])
-        adopted = texstore.resolve(row.get_as_dict()["textures"][0],
-                                   model.preferences)
-        before = os.stat(adopted).st_ino
+        stored = texstore.resolve(row.get_as_dict()["textures"][0],
+                                  model.preferences)
+        before = os.stat(stored).st_ino
         self.assertEqual(1, self.panel.package_import.import_file(out)["imported"])
-        self.assertEqual(before, os.stat(adopted).st_ino,
+        self.assertEqual(before, os.stat(stored).st_ino,
                          "a texture already in place byte for byte was written again")
-        with open(adopted, "wb") as handle:
+        with open(stored, "wb") as handle:
             handle.write(b"WEAVEBYTES")    # the same length, so only the content differs
         self.assertEqual(1, self.panel.package_import.import_file(out)["imported"])
-        self.assertEqual(b"weavebytes", _bytes(adopted),
+        self.assertEqual(b"weavebytes", _bytes(stored),
                          "a different texture in place was kept")
 
     def test_a_token_escaping_the_library_counts_as_refused_and_writes_nothing(self):

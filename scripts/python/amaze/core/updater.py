@@ -351,9 +351,9 @@ def apply_update(staged: str, install: str) -> None:
         raise OSError("the staged update is not there: %s" % staged)
     aside = install.rstrip("/\\") + ".replacing"
     if os.path.isdir(aside):
-        _carry_addons(aside, install)    # an older build's failed add-on copy left the only copy here
+        _copy_addons(aside, install)    # an older build's failed add-on copy left the only copy here
     shutil.rmtree(aside, ignore_errors=True)    # a leftover from a run that stopped mid-swap
-    _carry_addons(install, staged)    # part of the swap: if the add-on copy fails, nothing is installed
+    _copy_addons(install, staged)    # part of the swap: if the add-on copy fails, nothing is installed
     os.rename(install, aside)    # same parent as the install, so this one never crosses a volume
     try:
         try:
@@ -368,11 +368,11 @@ def apply_update(staged: str, install: str) -> None:
     debug.event("updater", "update applied", install=install)
 
 
-def _carry_addons(old: str, new: str) -> None:
+def _copy_addons(old: str, new: str) -> None:
     """Copy the add-ons `new` lacks out of `old`; raises OSError with a complete sentence."""
     from amaze.core import addons
     try:
-        addons.carry(old, new)
+        addons.copy_addons(old, new)
     except OSError as exc:
         debug.event("updater", "add-ons not copied", error=str(exc), kept=old)
         raise OSError(

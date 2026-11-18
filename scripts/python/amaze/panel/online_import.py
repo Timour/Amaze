@@ -36,7 +36,7 @@ class OnlineImport:
         finally:
             self.panel._online_download_active = False
 
-    def import_records(self, records, renderer=renderers.HUB.key) -> None:
+    def import_records(self, records, renderer=renderers.INTERMEDIATE.key) -> None:
         """Import online records into the LIBRARY, built as `renderer` through the conversion engine."""
         if not len(records):
             return
@@ -71,7 +71,7 @@ class OnlineImport:
         library.report_unlisted(unlisted)    # the status line, last: nothing after it writes the line
 
     def import_material(self, record, on_progress=None,
-                        renderer=renderers.HUB.key, render=True):
+                        renderer=renderers.INTERMEDIATE.key, render=True):
         """Download and save one online material as `renderer`, calling on_progress(0..1): (ok, reason)."""
         from amaze.core import matx_import
         if record is None or not self.panel.material_model:
@@ -122,7 +122,7 @@ class OnlineImport:
         return (source, resolution, "")
 
     def import_records_to_scene(self, records,
-                                renderer=renderers.HUB.key) -> None:
+                                renderer=renderers.INTERMEDIATE.key) -> None:
         """Build online records into the scene, not the library; store tiles go to the library."""
         from amaze.core import matx_import
         packages_only = [r for r in records

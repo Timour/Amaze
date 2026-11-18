@@ -376,7 +376,7 @@ def plugins_loaded(*renderers):
     from amaze.render.material_conversion import engine
     stack = contextlib.ExitStack()
     for each in engine.apis().values():
-        if each.name != engine.HUB:
+        if each.name != engine.INTERMEDIATE:
             stack.enter_context(mock.patch.object(
                 each, "available", lambda name=each.name: name in renderers))
     return stack

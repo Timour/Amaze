@@ -90,9 +90,9 @@ def _ref_lines(findings: dict) -> list:
         said.append(messages.CHECK_FAVORITES_OF_MISSING_FILES % (
             repair.favorites(stars), _are(stars),
             "a file that is" if stars == 1 else "files that are"))
-    dead = len(findings.get("dead_folders") or ())
-    if dead:
-        said.append(messages.CHECK_DEAD_FOLDERS % (repair.folders(dead), _are(dead)))
+    missing = len(findings.get("missing_folders") or ())
+    if missing:
+        said.append(messages.CHECK_MISSING_FOLDERS % (repair.folders(missing), _are(missing)))
     return said
 
 
@@ -107,7 +107,7 @@ def lights(findings: dict) -> dict:
     held = bool(_in_state(findings, ("held",)))
     unread = _in_state(findings, _UNREAD)
     refs = (len(findings.get("favorites_of_missing_files") or ())
-            + len(findings.get("dead_folders") or ()))
+            + len(findings.get("missing_folders") or ()))
     files_unread = any(entry["filename"] == naming.FILES for entry in unread)
 
     def status(unchecked: bool, count: int) -> tuple:
@@ -221,7 +221,7 @@ def safe_fixes(findings: dict) -> list:
         fixes.append("recover")
     if shown[REFS][0] == FOUND:
         fixes.extend(key for key, held in (("favorites", "favorites_of_missing_files"),
-                                           ("folders", "dead_folders"))
+                                           ("folders", "missing_folders"))
                      if findings.get(held))
     return fixes
 
@@ -253,7 +253,7 @@ def found_names(findings: dict) -> list:
             names.extend(entry[0] for entry in findings.get(key) or ())
     if shown[REFS][0] == FOUND:
         names.extend(findings.get("favorites_of_missing_files") or ())
-        names.extend(findings.get("dead_folders") or ())
+        names.extend(findings.get("missing_folders") or ())
     return [str(name) for name in names]
 
 
@@ -309,7 +309,7 @@ def _fix_safe(findings: dict, done: dict, guard_session: bool) -> None:
 
 
 def fix_safe(findings: dict, guard_session: bool = True) -> dict:
-    """Adds and tidies only: unlisted assets recovered, dead references dropped; what was done."""
+    """Adds and tidies only: unlisted assets recovered, missing references dropped; what was done."""
     done = _nothing_done()
     _fix_safe(findings, done, guard_session)
     debug.event("repair", "fix safe", **_counts(done))

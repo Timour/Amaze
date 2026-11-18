@@ -84,7 +84,7 @@ def references(node) -> list:
     return refs
 
 
-def adopt_file(source: str, prefs, folder: str) -> str:
+def copy_file_into_library(source: str, prefs, folder: str) -> str:
     """Copy one file into `matX/<folder>/textures/`; its token, or "" for a missing file."""
     token = tokenize(source, prefs)
     if token.startswith(TOKEN_PREFIX):
@@ -101,7 +101,7 @@ def adopt_file(source: str, prefs, folder: str) -> str:
     return tokenize(target, prefs)
 
 
-def adopt(node, prefs, folder: str) -> list:
+def copy_into_library(node, prefs, folder: str) -> list:
     """Copy every outside file the node references into the store, rewrite its parms; the tokens."""
     import hou
     inventory = []
@@ -109,7 +109,7 @@ def adopt(node, prefs, folder: str) -> list:
         if raw.startswith(TOKEN_PREFIX):
             _remember(inventory, raw)
             continue
-        token = adopt_file(hou.text.expandString(raw), prefs, folder)
+        token = copy_file_into_library(hou.text.expandString(raw), prefs, folder)
         if not token:
             debug.event("texstore", "referenced file missing",
                         parm=parm.path(), raw=raw)

@@ -350,10 +350,10 @@ class AFailedSaveLeavesNoCompanionScratch(unittest.TestCase):
         return [name for name in os.listdir(folder)
                 if name.startswith(self.ASSET + "_cop")]
 
-    def test_a_raising_adoption_leaves_no_companion_scratch(self):
+    def test_a_raising_texture_copy_leaves_no_companion_scratch(self):
         handler = nodes.NodeHandler(self.prefs)
         handler._renderer = "Karma"
-        with mock.patch.object(nodes.texstore, "adopt",
+        with mock.patch.object(nodes.texstore, "copy_into_library",
                                side_effect=OSError("disk gone")):
             with self.assertRaises(OSError):
                 handler.save_node(self.builder, self.ASSET, False)

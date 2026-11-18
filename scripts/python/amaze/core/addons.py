@@ -257,7 +257,7 @@ def installed_all(amaze_root: str) -> list:
     return sorted(found, key=lambda pair: str(pair[1]["name"]).lower())
 
 
-def carry(old_root: str, new_root: str) -> list:
+def copy_addons(old_root: str, new_root: str) -> list:
     """Copy the add-ons `new_root` lacks out of `old_root`, all or none; returns the names copied."""
     source, dest = os.path.join(old_root, ROOT), os.path.join(new_root, ROOT)
     if not os.path.isdir(source):

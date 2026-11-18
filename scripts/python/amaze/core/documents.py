@@ -139,9 +139,9 @@ class Document:
 
     def load(self) -> None:
         """Read the file as it is now, dropping anything not yet saved."""
-        self._adopt(self.guard.read(self.name))
+        self._use_reading(self.guard.read(self.name))
 
-    def _adopt(self, reading: guard.Reading) -> None:
+    def _use_reading(self, reading: guard.Reading) -> None:
         self.verdict, self.why, self.shrunk = reading.verdict, reading.why, reading.shrunk
         self._ticket = reading.ticket
         self._data, self._extra = self._split(reading.document or {})
@@ -290,12 +290,12 @@ class Document:
         if not reading.writable:
             moved = (self.verdict, self.writable) != (reading.verdict, reading.writable)
             if reading.verdict == guard.NEWER and not self._dirty:
-                self._adopt(reading)
+                self._use_reading(reading)
             else:    # the data in memory is kept while the file cannot be read
                 self.verdict, self.why, self._ticket = reading.verdict, reading.why, None
             return moved
         if self._ticket is None and not self._dirty:
-            self._adopt(reading)
+            self._use_reading(reading)
             return True
         before = copy.deepcopy(self._data)
         self._merge(reading.document)

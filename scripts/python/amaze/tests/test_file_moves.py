@@ -462,7 +462,7 @@ class AReloadLeavesAMoveUnderWayAloneTest(unittest.TestCase):
 
 
 class WhatAmazeKeepsFollowsTheFileTest(unittest.TestCase):
-    """Star, comment, icon and capture are stored by the file's key; `carry` re-keys them."""
+    """Star, comment, icon and capture are stored by the file's key; `rekey_moved_files` re-keys them."""
 
     def setUp(self):
         self.root = tempfile.mkdtemp(prefix="amaze_move_state_")

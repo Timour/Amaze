@@ -625,7 +625,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
                 return SECTION_TILE_LABELS.get(section, "Amaze")
             return rec.source if rec.kind == "package" else rec.source + " (values)"
         if role == self.RendererRole:
-            return renderers.HUB.key    # what an import becomes, so the Filter treats it like library rows
+            return renderers.INTERMEDIATE.key    # what an import becomes, so the Filter treats it like library rows
         if role == self.CategoryRole:
             return [rec.category]
         if role == self.TagRole:

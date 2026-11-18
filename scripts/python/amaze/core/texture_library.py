@@ -70,7 +70,7 @@ class ThumbnailCache:
 
     def forget(self, paths) -> None:
         """Drop entries a cleanup deleted, reading the disk manifest first so no save writes them back."""
-        self._adopt_from_disk()
+        self._merge_entries_from_disk()
         for path in paths:
             self._manifest.pop(self._key(path), None)
 
@@ -79,7 +79,7 @@ class ThumbnailCache:
         for old, new in moves.items():
             self._manifest.pop(self._key(old), None)
             self._manifest.pop(self._key(new), None)    # a stale entry here would be kept over the moved one
-        self._adopt_from_disk()
+        self._merge_entries_from_disk()
 
     def _load_manifest(self) -> dict:
         """The manifest, or {}; one that exists but cannot be parsed sets `_unreadable`, blocking saves."""
@@ -105,23 +105,23 @@ class ThumbnailCache:
                 % exc, path=self.manifest_path)
             return {}
 
-    def _adopt_from_disk(self) -> None:
+    def _merge_entries_from_disk(self) -> None:
         """Merge in entries another writer added since our read; only adds, and a key in both keeps ours."""
         answer = hostos.peer_read(self.manifest_path,    # ▸r/peer-read
                                   getattr(self, "_disk_state", None))
         self._disk_state = answer.fingerprint    # the read just made, never a second one
         if answer.verdict != hostos.PEER_CHANGED:
             return      # unchanged, absent, or unreadable, which _load_manifest handles
-        adopted = 0
+        merged = 0
         for key, value in answer.document.items():
             key = self._key(key)
             if key not in self._manifest and isinstance(value, dict):
                 self._manifest[key] = value
-                adopted += 1
-        if adopted:
-            debug.event("textures", "adopted thumbnail entries another "
+                merged += 1
+        if merged:
+            debug.event("textures", "merged thumbnail entries another "
                         "writer added", path=self.manifest_path,
-                        adopted=adopted)
+                        merged=merged)
 
     def save(self) -> None:
         if not self._dirty:
@@ -131,7 +131,7 @@ class ThumbnailCache:
         if not self.ensure_dir():
             return
         try:
-            self._adopt_from_disk()  # sessions share this path; write_json_atomic never leaves a partial file
+            self._merge_entries_from_disk()  # sessions share this path; write_json_atomic never leaves a partial file
             self._disk_state = hostos.write_json_atomic(    # what we wrote, never a re-read
                 self.manifest_path, self._manifest, indent=None)
             self._dirty = False
@@ -155,7 +155,7 @@ class ThumbnailCache:
         """Where `full_path`'s thumbnail PNG is in this cache - what a convert worker writes."""
         return self._cache_path(self._key(full_path))
 
-    def adopt(self, full_path: str, png: str) -> bool:
+    def record_png(self, full_path: str, png: str) -> bool:
         """Record a worker PNG for `full_path`; False if `png` is not its file here or no source exists."""
         full_path = self._key(full_path)
         if hostos.comparable_path(png) != hostos.comparable_path(self._cache_path(full_path)):

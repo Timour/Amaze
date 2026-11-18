@@ -1,4 +1,4 @@
-"""Add-on packages in `addons.py`: `write`, the validating `read`, `install` and `carry`."""
+"""Add-on packages in `addons.py`: `write`, the validating `read`, `install` and `copy_addons`."""
 
 import json
 import os
@@ -530,11 +530,11 @@ class AnAmazeUpdateKeepsItsAddOnsTest(_Workspace):
                       for folder, _dirs, names in os.walk(self.dir)
                       for name in names if addons.ROOT in folder.split(os.sep))
 
-    def test_a_failed_carry_raises_oserror_and_keeps_the_old_install(self):
+    def test_a_failed_addon_copy_raises_oserror_and_keeps_the_old_install(self):
         """The OSError has the reason, the old install is kept, the next update copies them."""
         test_support.write_text(os.path.join(self.amaze, "scripts", "which.txt"), "1.0")
         test_support.write_text(os.path.join(self.amaze, self.HOME_MADE), "a home-made add-on")
-        real, calls = addons.carry, []
+        real, calls = addons.copy_addons, []
 
         def fails_once(old, new):
             calls.append(new)
@@ -542,7 +542,7 @@ class AnAmazeUpdateKeepsItsAddOnsTest(_Workspace):
                 raise OSError(13, "Permission denied", os.path.join(old, self.HOME_MADE))
             return real(old, new)
 
-        with mock.patch.object(addons, "carry", fails_once):
+        with mock.patch.object(addons, "copy_addons",fails_once):
             with self.assertRaises(OSError) as caught:
                 updater.apply_update(self._release("staged1", "1.1"), self.amaze)
             self.assertIn("add-ons", str(caught.exception))
@@ -571,7 +571,7 @@ class AnAmazeUpdateKeepsItsAddOnsTest(_Workspace):
         test_support.write_text(os.path.join(self.amaze, "scripts", "which.txt"), "1.1")
         leftover = self.amaze + ".replacing"
         test_support.write_text(os.path.join(leftover, self.HOME_MADE), "a home-made add-on")
-        with mock.patch.object(addons, "carry", side_effect=OSError(28, "No space left")):
+        with mock.patch.object(addons, "copy_addons",side_effect=OSError(28, "No space left")):
             with self.assertRaises(OSError):
                 updater.apply_update(self._release("staged", "1.2"), self.amaze)
         self.assertEqual([os.path.join("Amaze.replacing", self.HOME_MADE)], self._add_on_files(),
@@ -579,8 +579,8 @@ class AnAmazeUpdateKeepsItsAddOnsTest(_Workspace):
         self.assertEqual("1.1", self._which())
 
 
-class TheCarryTest(_Workspace):
-    """`carry` copies what a new tree lacks; the old install keeps its add-ons until deleted."""
+class CopyAddonsTest(_Workspace):
+    """`copy_addons` copies what a new tree lacks; the old install keeps its add-ons until deleted."""
 
     def setUp(self):
         super().setUp()
@@ -594,15 +594,15 @@ class TheCarryTest(_Workspace):
             found += [os.path.relpath(os.path.join(folder, name), root) for name in names]
         return sorted(found)
 
-    def test_the_carry_copies_only_what_the_new_tree_lacks(self):
+    def test_copy_addons_copies_only_what_the_new_tree_lacks(self):
         test_support.write_text(os.path.join(self.new, addons.ROOT, "a", "otls", "a.hda"), "installed since")
-        addons.carry(self.amaze, self.new)
+        addons.copy_addons(self.amaze, self.new)
         with open(os.path.join(self.new, addons.ROOT, "a", "otls", "a.hda"), encoding="utf-8") as fh:
-            self.assertEqual("installed since", fh.read(), "`carry` overwrote an add-on in the new tree")
+            self.assertEqual("installed since", fh.read(), "`copy_addons` overwrote an add-on in the new tree")
         self.assertEqual(self._tree(self.amaze), self._tree(self.new))
-        self.assertEqual(4, len(self._tree(self.amaze)), "`carry` emptied the old tree")
+        self.assertEqual(4, len(self._tree(self.amaze)), "`copy_addons` emptied the old tree")
 
-    def test_a_carry_that_fails_part_way_removes_what_it_copied(self):
+    def test_a_copy_addons_that_fails_part_way_removes_what_it_copied(self):
         real = shutil.copytree
 
         def fails_in_b(src, dst, *args, **kwargs):
@@ -615,12 +615,12 @@ class TheCarryTest(_Workspace):
         os.makedirs(self.new)
         with mock.patch.object(shutil, "copytree", fails_in_b):
             with self.assertRaises(OSError) as failed:
-                addons.carry(self.amaze, self.new)
+                addons.copy_addons(self.amaze, self.new)
         self.assertEqual("[Errno 28] No space left on device", str(failed.exception),
                          "the message is copytree's error list, not its first cause")
-        self.assertEqual([], self._tree(self.new), "a failed `carry` left part of the add-ons in the new tree")
+        self.assertEqual([], self._tree(self.new), "a failed `copy_addons` left part of the add-ons in the new tree")
         self.assertFalse(os.path.exists(os.path.join(self.new, addons.ROOT)))
-        self.assertEqual(4, len(self._tree(self.amaze)), "a failed carry lost add-on files")
+        self.assertEqual(4, len(self._tree(self.amaze)), "a failed copy_addons lost add-on files")
 
 
 class ThePackageTemplateTest(unittest.TestCase):

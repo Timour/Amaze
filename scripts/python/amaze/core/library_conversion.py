@@ -24,7 +24,7 @@ STAMP = ".stamp.json"    # the row, written beside the asset files
 OLD_SUFFIXES = (BUILDER, STAMP, INTERFACE)
 ICON_TAIL = "_icon"    # `img/<id>_icon.png`: a custom icon composed to disk
 OLD_FACES = ("preview", "capture")    # stored tile choices that are treated as `image` now
-PRE_ADOPT = ".pre-adopt"    # `mat/<id>.mat.pre-adopt`: backups an earlier texture update left
+TEXTURE_UPDATE_BACKUP = ".pre-adopt"    # `mat/<id>.mat.pre-adopt`: backups an earlier texture update left
 UPGRADE_BACKUP = "backup-redshift-vopnet-"    # `mat/<this><date>/`: backups a builder upgrade left
 OLD_MEMBER_KINDS = ("builder", "interface", "stamp", "tile_icon", "capture")    # an old package's
 STALE_SIDECAR_S = 60    # one format 3 save wrote `.builder.json` and `.interface` moments apart
@@ -139,8 +139,8 @@ def old_shape(relative: str) -> bool:
     top, name = parts[0], parts[-1]
     if top == OLD_FOLDER:    # files left in `mat/` are unknown to the conversion: reported, never removed
         return False
-    if len(parts) == 2 and library_files.owns_assets(top) and name.endswith(PRE_ADOPT):
-        return bool(_id_of(name[: -len(PRE_ADOPT)], (".mat",)))
+    if len(parts) == 2 and library_files.owns_assets(top) and name.endswith(TEXTURE_UPDATE_BACKUP):
+        return bool(_id_of(name[: -len(TEXTURE_UPDATE_BACKUP)], (".mat",)))
     if len(parts) == 2 and library_files.owns_assets(top):
         return bool(_id_of(name, OLD_SUFFIXES))
     if len(parts) == 2 and top == OLD_PICTURES:
@@ -696,7 +696,7 @@ def _remove_old_backups(old_dir: str) -> int:
     gone = 0
     for name in _listing(old_dir):
         path = os.path.join(old_dir, name)
-        if name.endswith(PRE_ADOPT) and os.path.isfile(path) and not os.path.islink(path):
+        if name.endswith(TEXTURE_UPDATE_BACKUP) and os.path.isfile(path) and not os.path.islink(path):
             gone += _remove([path])
         elif name.startswith(UPGRADE_BACKUP) and os.path.isdir(path) \
                 and not os.path.islink(path):

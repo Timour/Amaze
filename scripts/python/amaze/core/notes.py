@@ -160,7 +160,7 @@ def image_folder(database: str) -> str:
     return "%s/%s" % (library_files.DATABASE_FOLDERS[database], library_files.COMMENT_FOLDER)
 
 
-def adopt_image(preferences, source: str, key: str) -> str:
+def copy_image_into_library(preferences, source: str, key: str) -> str:
     """Copy image `source` into the comments folder of `key`'s section; its relative path, or empty."""
     import os
 
@@ -178,6 +178,6 @@ def adopt_image(preferences, source: str, key: str) -> str:
         change.put_file(relative, data)
         change.commit()
     except OSError as exc:
-        debug.event("notes", "image not adopted", source=source, error=str(exc))
+        debug.event("notes", "image not copied", source=source, error=str(exc))
         return ""
     return relative

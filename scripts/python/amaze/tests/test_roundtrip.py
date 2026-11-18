@@ -505,7 +505,7 @@ class EveryMaterialSaveIsOneSave(unittest.TestCase):
         self.assertEqual(
             ["_save_copy", "save_node_cop"], writers,
             "a material save writes its files outside `_save_copy`, so its copy, "
-            "adoption or thumbnail can differ from every other renderer's")
+            "texture copy or thumbnail can differ from every other renderer's")
 
 
 class ARedshiftImportReadsItsInterfaceOnce(unittest.TestCase):

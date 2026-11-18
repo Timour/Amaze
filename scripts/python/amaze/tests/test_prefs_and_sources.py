@@ -183,7 +183,7 @@ class SharedDefaultsAreInOneTable(unittest.TestCase):
         p.load()
         self.assertEqual(library.rstrip("/") + "/DataBase.json", p.dir + "DataBase.json")
 
-    def test_load_clamps_parallel_downloads_as_the_adopt_does(self):
+    def test_load_clamps_parallel_downloads_as_the_setter_does(self):
         p = prefs_mod.Prefs()
         p.path = self._settings(
             {"shared_settings": {"matx_parallel_downloads": 64}})
@@ -1316,7 +1316,7 @@ class TheUserRowCreatesAndDeletes(unittest.TestCase):
                          "Apply did not switch this computer to the new user")
         self.assertEqual("Fern", dlg.cbb_library_user.currentText())
 
-    def test_deleting_the_current_user_adopts_nobody(self):
+    def test_deleting_the_current_user_selects_nobody(self):
         from amaze.core import users
         from amaze.dialogs import prefs_dialog
         from amaze.tests import test_support
