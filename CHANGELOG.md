@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.34.12
+
+- Internal names in the code are reworded.
+
 ## 1.34.11
 
 - Internal names in the code are reworded.
