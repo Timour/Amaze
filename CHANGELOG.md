@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.35.2
+
+- Code: the Run badge is an outline play mark. It turns green under the pointer and fills when you press it.
+
 ## 1.35.1
 
 - `.rat` files and other images that need a converter get their thumbnails again after a Redshift render has been started in the viewport.
