@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.36.2
+
+- File: on Windows, Houdini crashed when the sidebar listed a folder that has subfolders. The sidebar now draws that folder's arrow.
+
 ## 1.36.1
 
 - Material: the renderer is no longer a badge on the picture. Its icon sits at the right of the tile's second line, and that line gives only the renderer's name: MaterialX, Redshift or Octane. The full type, such as `USD Redshift:PBR`, is in list mode's Type column.
