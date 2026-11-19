@@ -230,7 +230,9 @@ class GateFixture(unittest.TestCase):
         self._install_holds(installed)
 
     def _install_holds(self, version):
-        _write(os.path.join(self.install, BRANDING_REL), 'APP_VERSION = "%s"\n' % version)
+        path = os.path.join(self.install, BRANDING_REL)
+        _write(path, 'APP_VERSION = "%s"\n' % version)
+        os.utime(path, (1, 1))    # written at another time: rsync skips a same-size file of the same second
 
     def _installed_version(self):
         """The version in the install's `branding.py`, as the file spells it."""
