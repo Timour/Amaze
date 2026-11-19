@@ -125,6 +125,13 @@ COMMENT_DIM_ICON_OPACITY = 0.25         # the speech bubble,
 COMMENT_DIM_ICON_COLOR = "#ffffff"        # in white
 COMMENT_DIM_ADD_COLOR = "#565656"         # the + art; Houdini's menu triangle keeps its colour
 
+INFO_ICON_COLOR = "#fdba00"      # ▸ the info pane (N02): its header icon, and its toolbar button while open
+INFO_ICON_ART_COLOR = "#5d7abd"  # the colour icon_info.svg is drawn in; INFO_ICON_COLOR replaces it
+INFO_ROW_BG = "#383838"          # the fill of rows 1, 3, 5...; the rows between show the page
+INFO_TEXT = "#cdc8bc"            # labels and values
+INFO_DIVIDER = "#2d2d2d"         # the line between the two columns, the page's own colour
+INFO_DIVIDER_WIDTH = 3           # that line's weight in px, centred on the drawn divider's x
+
 LIST_HEADER_BG = "#2a2a2a"       # ▸ list mode's header strip: a QHeaderView picks up none of these, so the strip sets them
 LIST_HEADER_DIVIDER = "#454545"
 
@@ -845,7 +852,7 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("text ▸ filter_label", 424, 7, 35, 15, "Search"),
             ("field ▸ line_filter", 474, 5, 200, 20, None),
             ("button ▸ btn_hip_capture", 1432, 3, 24, 24, None),
-            ("button ▸ btn_generate", 1458, 3, 24, 24, None),
+            ("button ▸ btn_info", 1458, 3, 24, 24, None),
             ("button ▸ btn_prefs", 1484, 3, 24, 24, None),
             ("icon ▸ btn_categories ▸ icon_categories.svg", 6, 7, 16, 16, None),
             ("icon ▸ btn_menu_view ▸ icon_renderer.svg", 31, 6, 18, 18, None),
@@ -856,7 +863,7 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("icon ▸ cb_favsonly ▸ favourite_on.svg", 162, 7, 15, 15, None),
             ("icon ▸ line_filter ▸ icon_search.svg", 478, 8, 13, 13, None),
             ("icon ▸ btn_hip_capture ▸ icon_screenshot.svg", 1435, 6, 18, 18, None),
-            ("icon ▸ btn_generate ▸ icon_generate.svg", 1461, 6, 18, 18, None),
+            ("icon ▸ btn_info ▸ icon_info.svg", 1461, 6, 18, 18, None),
             ("icon ▸ btn_prefs ▸ icon_library.svg", 1487, 6, 18, 18, None),
         ),
     },
@@ -947,9 +954,52 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("icon ▸ add ▸ icon_comments_add.svg", 424, 6, 18, 18, None),
         ),
     },
+    "N02": {   # the info pane over an image file - its header, row height, columns and divider are read
+        "frame": (450, 267),
+        "nodes": (
+            ("header", 0, 0, 450, 30, None),
+            ("body", 0, 30, 450, 237, None),
+            ("row ▸ 1", 0, 30, 450, 19, None),
+            ("row ▸ 2", 0, 49, 450, 19, None),
+            ("row ▸ 3", 0, 68, 450, 19, None),
+            ("row ▸ 4", 0, 87, 450, 19, None),
+            ("row ▸ 5", 0, 106, 450, 19, None),
+            ("row ▸ 7", 0, 144, 450, 19, None),
+            ("row ▸ 9", 0, 182, 450, 19, None),
+            ("row ▸ 11", 0, 220, 450, 19, None),
+            ("text ▸ name", 36, 7, 76, 15, "brushed_steel"),
+            ("text ▸ type", 118, 7, 71, 15, "USD MaterialX"),
+            ("label ▸ 1", 12, 32, 30, 15, "Name"),
+            ("value ▸ 1", 109, 32, 112, 15, "Name of selected item"),
+            ("label ▸ 2", 12, 51, 40, 15, "Created"),
+            ("value ▸ 2", 109, 51, 56, 15, "2021-08-10"),
+            ("label ▸ 3", 12, 70, 44, 15, "Modified"),
+            ("value ▸ 3", 109, 70, 56, 15, "2024-03-02"),
+            ("label ▸ 4", 12, 89, 21, 15, "Size"),
+            ("label ▸ 5", 12, 108, 37, 15, "Format"),
+            ("label ▸ 6", 12, 127, 59, 15, "Dimensions"),
+            ("label ▸ 7", 12, 146, 60, 15, "Color Space"),
+            ("value ▸ 4", 109, 89, 35, 15, "840 KB"),
+            ("value ▸ 5", 109, 108, 20, 15, "EXR"),
+            ("value ▸ 6", 109, 127, 58, 15, "2048 x 2048"),
+            ("value ▸ 7", 109, 146, 32, 15, "Linear"),
+            ("icon ▸ header ▸ icon_info.svg", 10, 5, 20, 20, None),
+            ("divider", 100, 30, 0, 228, None),
+            ("label ▸ 8", 12, 165, 47, 15, "Bit Depth"),
+            ("value ▸ 8", 109, 165, 54, 15, "16 bit float"),
+            ("label ▸ 9", 12, 184, 47, 15, "Channels"),
+            ("value ▸ 9", 109, 184, 28, 15, "RGBA"),
+            ("label ▸ 10", 12, 203, 67, 15, "Compression"),
+            ("value ▸ 10", 109, 203, 17, 15, "ZIP"),
+            ("label ▸ 11", 12, 222, 48, 15, "MIP Maps"),
+            ("value ▸ 11", 109, 222, 17, 15, "Yes"),
+            ("label ▸ 12", 12, 241, 33, 15, "Folder"),
+            ("value ▸ 12", 109, 241, 160, 15, "/Projects/library/textures/metal"),
+        ),
+    },
 }
 
-D01_FRAME = DIALOG_LAYOUT["D01"]["frame"]    # ▸ the frame sizes call sites name, read from the drawing
+D01_FRAME =DIALOG_LAYOUT["D01"]["frame"]    # ▸ the frame sizes call sites name, read from the drawing
 D02_FORM_WIDTH, D02_FRAME_H = DIALOG_LAYOUT["D02"]["frame"]    # the OPENING size; the grid grows
 SAVE_WIDTH = DIALOG_LAYOUT["D09"]["frame"][0]    # D09 and D13 alike, whatever their labels
 SAVE_FIELD_WIDTH = next(n[3] for n in DIALOG_LAYOUT["D09"]["nodes"] if n[0] == "QLineEdit")
@@ -1325,4 +1375,28 @@ def drawn_comments(frame_key: str = "N01") -> dict:
         "todo_pad": todo[2] - (plain[2] + plain[4]),
         "glyph": glyph[3],
         "glyph_inset": glyph[1] - plain[1],
+    }
+
+
+def drawn_info(frame_key: str = "N02") -> dict:
+    """The info pane's width, header, row height, columns and divider, off its frame."""
+    width = DIALOG_LAYOUT[frame_key]["frame"][0]
+
+    def node(kind, owner=None):
+        return drawn_node(frame_key, kind, owner)
+
+    header, icon, name = node("header"), node("icon", "header"), node("text", "name")
+    row, label, value = node("row", "1"), node("label", "1"), node("value", "1")
+    return {
+        "width": width,
+        "header": header[4],
+        "pad": icon[1] - header[1],
+        "gap": name[1] - (icon[1] + icon[3]),
+        "icon": icon[3],
+        "row": row[4],
+        "first_row": row[2] - node("body")[2],    # the first row's top inside the body
+        "label_x": label[1] - row[1],
+        "value_x": value[1] - row[1],
+        "text_y": label[2] - row[2],    # the text's drop inside its row
+        "divider_x": node("divider")[1] - row[1],
     }

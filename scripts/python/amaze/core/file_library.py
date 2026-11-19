@@ -7,7 +7,7 @@ import stat
 
 from PySide6 import QtCore, QtGui
 
-from amaze.core import captures, debug, file_moves, folders, geo_library, scene_files
+from amaze.core import captures, debug, file_info, file_moves, folders, geo_library, scene_files
 from amaze.core import grid_engine
 from amaze.core import locations
 from amaze.core import texture_library, thumbnails, tile_icons
@@ -727,6 +727,24 @@ class FileFiles(grid_engine.GridEngine,
     def tile_key(self, row: int) -> str:
         """A file row is keyed by its path, the key its icon is stored under."""
         return self.file_key(row)
+
+    def info_header(self, row: int) -> tuple:
+        """(name, type) heading a row in the info pane: its Name row without the stat, and its format."""
+        path = self._full_path(row) or ""
+        name, ending = os.path.basename(path), file_info.format_text(path)
+        return (name[:len(name) - len(ending) - 1] if ending else name,
+                str(self.row_data(row, self.FormatRole) or ""))
+
+    def info_rows(self, row: int) -> tuple:
+        """(before, after, request) the info pane shows for one file, from one `os.stat`."""
+        path = self._full_path(row) or ""
+        before, after = file_info.file_rows(path)
+        return before, after, file_info.request_for_file(path)
+
+    def info_paths(self, row: int) -> list:
+        """The one file a row is, for the read that adds up a selection's sizes."""
+        path = self._full_path(row)
+        return [path] if path else []
 
     def set_tile_icon(self, index, spec, save: bool = True) -> bool:
         row = index.row() if hasattr(index, "row") else int(index)

@@ -24,6 +24,12 @@ class CopLibrary(library.AssetLibrary):
 
     RENDERABLE = renderers.RENDERABLE_CONTEXTS    # defined in renderers.py; Check Library reads it too
 
+    def _info_facts(self, row: int, asset) -> tuple:
+        """Size, its textures included where the record lists some, and Context, the Type column."""
+        found = library.existing_files(self.own_file_paths(asset) + self.texture_paths(asset))
+        return [("Size", library.size_of(found)),
+                ("Context", str(self.row_data(row, self.RendererLabelRole) or ""))], None
+
     def can_preview(self, row: int) -> bool:
         """Only a renderable context has a rendered thumbnail; other node assets show the node icon."""
         if not 0 <= row < len(self._assets):

@@ -124,7 +124,7 @@ PANEL_ONLINE = 'Browse materials online.'
 
 PANEL_VIEW_MENU = 'Import a gallery file or a package, or export one.'
 
-PANEL_GENERATE = 'Generate a material.'
+PANEL_INFO = 'Info - details of the selected tile.'
 
 PANEL_KIND_FILTER = 'Show one kind of tile.'
 

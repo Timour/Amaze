@@ -39,7 +39,7 @@ class TheToolbarIsATable(unittest.TestCase):
                     "context returns the default and the control never "
                     "changes" % (control, fact))
         listed = {control for control, _f, _v in table}
-        for control in ("cb_favsonly", "btn_notes", "btn_filter",
+        for control in ("cb_favsonly", "btn_notes", "btn_info", "btn_filter",
                         "btn_hip_capture"):
             self.assertIn(control, listed,
                           "%s is missing from `TOOLBAR_CONTROLS`, so it "
@@ -185,6 +185,14 @@ class TheToolbarMatchesFrameB01(unittest.TestCase):
     def _drawn(self, kind):
         from amaze import amazetheme
         return amazetheme.drawn_by_owner("B01", kind)
+
+    def test_info_takes_the_generate_buttons_place(self):
+        self.assertEqual("btn_info", self._widget("btn_info").objectName())
+        names = [self.panel.toolbar_layout.itemAt(i).widget().objectName()
+                 for i in range(self.panel.toolbar_layout.count())
+                 if self.panel.toolbar_layout.itemAt(i).widget() is not None]
+        self.assertNotIn("btn_generate", names, "Generate is still a toolbar button")
+        self.assertFalse(hasattr(self.panel, "btn_generate"))
 
     def test_the_row_is_its_drawn_height(self):
         height = self.px(self.frame["frame"][1])

@@ -113,6 +113,22 @@ class TwoUsersKeepTheirOwnViewState(PerUserCase):
                          "unsaved change")
 
 
+class TheInfoPaneChoiceIsKept(PerUserCase):
+
+    def test_show_info_survives_a_save_and_a_load(self):
+        self.write_settings({"library_user": UID_A, "users": {UID_A: {}}})
+        p = self.prefs()
+        p.load()
+        self.assertFalse(p.show_info, "the info pane opens on a first start")
+        p.show_info = True
+        p.save()
+        self.assertTrue(self.read_settings()["users"][UID_A].get("show_info"),
+                        "show_info was not written to the user's block")
+        again = self.prefs()
+        again.load()
+        self.assertTrue(again.show_info, "show_info did not load back")
+
+
 class OneLayoutIsReadAndWritten(PerUserCase):
     """With a user picked, view state comes only from their block; unknown keys stay in the file."""
 

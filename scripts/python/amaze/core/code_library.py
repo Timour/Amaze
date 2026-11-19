@@ -260,6 +260,11 @@ class CodeLibrary(library.AssetLibrary):
             _unstage(held)
             self._versions_changed(asset)
 
+    def _info_facts(self, row: int, asset) -> tuple:
+        """Language, the Type column, and the number of lines in the snippet's text."""
+        return [("Language", str(self.row_data(row, self.RendererLabelRole) or "")),
+                ("Lines", str(len(asset.code.splitlines())))], None
+
     def row_data(self, row, role):
         """The tooltip is the snippet's own comment ▸p/d03-retired; the rest is AssetLibrary's."""
         if role == QtCore.Qt.ItemDataRole.ToolTipRole:

@@ -1076,7 +1076,7 @@ class CaptureButtonTest(unittest.TestCase):
             ["btn_categories", "btn_menu_view", "btn_menu_filter",
              "btn_online", "btn_notes", "cb_viewmode", "cb_favsonly",
              "click_slider", "filter_label", "line_filter", "stretch",
-             "btn_hip_capture", "btn_generate", "btn_prefs"],
+             "btn_hip_capture", "btn_info", "btn_prefs"],
             row,
             "the toolbar row is not in the designed order")
 

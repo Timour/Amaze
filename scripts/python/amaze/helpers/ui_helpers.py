@@ -213,6 +213,38 @@ def device_pixmap(path, side, dpr, color_replacements=None, opacity=None):
     return pixmap
 
 
+def faded_pixmap(pixmap: QtGui.QPixmap, opacity: float, dpr: float) -> QtGui.QPixmap:
+    """`pixmap`, made at ratio `dpr`, at `opacity` on a transparent copy; 1 returns it as is."""
+    if opacity >= 1.0:
+        return pixmap
+    faded = QtGui.QPixmap(pixmap.size())
+    faded.fill(QtCore.Qt.GlobalColor.transparent)
+    faded.setDevicePixelRatio(dpr)
+    painter = QtGui.QPainter(faded)
+    painter.setOpacity(opacity)
+    painter.drawPixmap(0, 0, pixmap)
+    painter.end()
+    return faded
+
+
+def fill_window(widget, hex_color: str) -> None:
+    """Background via the palette; a stylesheet on any ancestor restyles the subtree's scrollbars."""
+    palette = widget.palette()
+    palette.setColor(QtGui.QPalette.ColorRole.Window,
+                     QtGui.QColor(hex_color))
+    widget.setPalette(palette)
+    widget.setAutoFillBackground(True)
+
+
+def set_text_color(label, role: str, opacity: float = 1.0) -> None:
+    """Label text in one of the theme's text colours, via the palette, same reasoning as fill_window."""
+    color = QtGui.QColor(theme.color_hex(role))
+    color.setAlphaF(opacity)
+    palette = label.palette()
+    palette.setColor(QtGui.QPalette.ColorRole.WindowText, color)
+    label.setPalette(palette)
+
+
 def menu_icon(name: str, widget=None):
     """A menu row's ui/<name>.svg icon; every menu's icons come from here."""
     return QtGui.QIcon(device_pixmap(

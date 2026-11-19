@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import collections
+import hashlib
 import os
 
 import hou
@@ -12,7 +13,7 @@ from amaze import amazetheme
 from amaze.actions import code as code_actions
 from amaze.actions import materials as material_actions
 from amaze.actions import nodes as node_actions
-from amaze.core import (category, debug, file_library, file_moves,
+from amaze.core import (category, debug, file_info, file_library, file_moves,
                         grid_columns, library, library_settings, locations, multifilterproxy_model,
                         renderers, scene_captures, notes, section_list)
 from amaze.helpers import hostos, ui_helpers, wording
@@ -70,6 +71,7 @@ class Section:
     label = ""            # the tab's human label, read from section_list by key
 
     takes_comments = True    # a comment needs a library asset; online has none
+    takes_info = True    # the info pane describes a library item or a file; online has neither
     takes_favourites = True  # online rows return False, so the favourites filter empties the grid
     takes_filter_menu = True  # the entries describe the LOCAL section under it
     kind_filter_menu = False  # True for online: the filter menu offers All/Materials/Colors/Nodes/Code there
@@ -456,6 +458,29 @@ class Section:
     def comment_subject(self, index):
         """A CommentSubject for `index` (this section's proxy), or None to clear the pane."""
         return None
+
+    def info_subject(self, index):
+        """A file_info.Subject for one row (`index` in this section's proxy), or None to clear the pane."""
+        model, rows = self._model_and_rows([index]) if self.takes_info else (None, [])
+        key = model.tile_key(rows[0]) if rows else ""
+        if not key:
+            return None
+        name, kind = model.info_header(rows[0])
+        before, after, request = model.info_rows(rows[0])
+        return file_info.Subject(key="%s:%s" % (self.key, key), name=name, type=kind,
+                                 before=before, after=after, request=request)
+
+    def info_subject_for(self, indexes):
+        """A file_info.Subject for several rows: their count, and the read that adds up their sizes."""
+        model, rows = self._model_and_rows(indexes) if self.takes_info else (None, [])
+        if not rows:
+            return None
+        keys = "\n".join(sorted(model.tile_key(row) for row in rows))
+        paths = dict.fromkeys(path for row in rows for path in model.info_paths(row))    # a shared texture once
+        return file_info.Subject(
+            key="%s:%d:%s" % (self.key, len(rows), hashlib.sha1(keys.encode("utf-8")).hexdigest()),
+            name="%d items selected" % len(rows), type="", before=(("Items", str(len(rows))),),
+            request=file_info.request_for_sizes(paths))
 
     def _p(self, attr):
         return getattr(self.panel, attr, None)
@@ -2241,6 +2266,7 @@ class OnlineContext(Section):
         self.panel.matx_online_model.reload(force=True)    # force, or a loaded catalogue just re-filters and the user's explicit Refresh did nothing
 
     takes_comments = False    # the three the online section does not offer; the toolbar reads them
+    takes_info = False
     takes_favourites = False
     takes_filter_menu = False
     takes_capture = False    # an online tile is not in the library: nowhere to keep a capture

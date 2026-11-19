@@ -89,6 +89,7 @@ class Prefs(_Persistence):
         self._file_show_unknown = True  # show files Amaze cannot thumbnail (the OS-icon rows)
         self._file_location_records: dict = {}  # last-known copy of the library's location records, path -> record
         self._show_notes = False
+        self._show_info = False
         self._notes_panel_width = 0  # 0 = never dragged, so the 450px launch width applies
         self._sidebar_width = 0  # same rule, 220px design width
         self._icon_line_weight = "template"  # "template" (thin 10px stroke) or "feather" (the icon set's default)
@@ -392,6 +393,14 @@ class Prefs(_Persistence):
     @show_notes.setter
     def show_notes(self, val: bool) -> None:
         self._show_notes = bool(val)
+
+    @property
+    def show_info(self) -> bool:
+        return self._show_info
+
+    @show_info.setter
+    def show_info(self, val: bool) -> None:
+        self._show_info = bool(val)
 
     @property
     def notes_panel_width(self) -> int:

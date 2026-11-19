@@ -21,6 +21,12 @@ from amaze import messages
 THUMB_SIZE = 256
 EMPTY_SWATCH = "#444444"    # the background where a palette paints nothing
 
+BASIS_LABELS = {    # a stored basis name -> its label in a ramp's interpolation menu, where they differ
+    "CatmullRom": "Catmull-Rom",
+    "MonotoneCubic": "Monotone Cubic",
+    "BSpline": "B-Spline",
+}
+
 
 def _def_path(filename: str) -> str:
     """The path of a curated set shipped inside the package."""
@@ -279,6 +285,26 @@ class GradientLibrary(library.AssetLibrary):
         return bool(colors) and (
             not bases or all(b == "Constant" for b in bases)
         )
+
+    @classmethod
+    def interpolation(cls, colors: list, ramp: dict) -> str:
+        """Constant when it paints as bands, else the one basis by its menu label, Mixed for several."""
+        if cls._is_banded(colors, ramp):
+            return "Constant"
+        bases = {str(basis) for basis in ramp.get("bases") or ()}
+        if len(bases) != 1:
+            return "Mixed" if bases else ""
+        basis = bases.pop()
+        return BASIS_LABELS.get(basis, basis)    # Constant, Linear, Bezier, Hermite: the same in both
+
+    def _info_facts(self, row: int, asset) -> tuple:
+        """Colors, Values as upper-case hex, and Interpolation."""
+        colors = self._colors_of(asset)
+        hexes = [str(colour["hex"]).upper() for colour in colors
+                 if isinstance(colour, dict) and colour.get("hex")]
+        return [("Colors", str(len(colors)) if colors else ""),
+                ("Values", "  ".join(hexes)),
+                ("Interpolation", self.interpolation(colors, self._ramp_of(asset)))], None
 
     def _swatch_key(self, row: int):
         """The swatch's cache key, built from its content, so any edit makes a new key."""

@@ -22,7 +22,7 @@ from amaze.actions import library as library_actions
 from amaze.actions import materials as material_actions
 from amaze.actions import nodes as node_actions
 from amaze.core import grid_columns, grid_engine
-from amaze.panel import (dragdrop_widgets, empty_state, grid, notes_panel,
+from amaze.panel import (dragdrop_widgets, empty_state, grid, info_panel, notes_panel,
                          sections, sidebar)
 from amaze.core import debug, documents, library_db, library_files, locations, section_list
 from amaze.core import versions
@@ -155,6 +155,7 @@ _reload(sidebar)
 _reload(sections)
 _reload(empty_state)    # after grid AND sections: it imports the first and reads the second's EMPTY declarations
 _reload(notes_panel)
+_reload(info_panel)
 _reload(multifilterproxy_model)
 _reload(matx_sources)    # the online stack, which was never in this chain at all
 _reload_loaded("amaze.core.matx_translate")
@@ -451,6 +452,7 @@ class AmazePanel(QtWidgets.QWidget):
             on_badge=self._badge_click_handler,
         )
         self._sync_notes_button_pixmaps()
+        self._sync_info_button_pixmaps()
         self.sidebar_delegate.show_counts = self.prefs.sidebar_counts
         thumbnails.engine.set_budget_mb(self.prefs.ram_cache_mb)
         self.file_files_model.progress_changed.connect(
@@ -517,6 +519,8 @@ class AmazePanel(QtWidgets.QWidget):
         ):
             _notes_selection.selectionChanged.connect(
                 self._refresh_notes_subject)
+            _notes_selection.selectionChanged.connect(
+                self._refresh_info_subject)
 
         self.sections = sections.build_sections(self)    # one object per tab; shared handlers dispatch through self.active_section()
 
@@ -760,6 +764,9 @@ class AmazePanel(QtWidgets.QWidget):
         pane = getattr(self, "notes_panel", None)
         if pane is not None:
             pane.clear_subject()    # a pending edit is saved to its own library; the switch selects nothing
+        info = getattr(self, "info_panel", None)
+        if info is not None:
+            info.clear_subject()
         library_db.flush()    # pending saves are written to the library they were made in
         library_db.refresh()    # a switch reads every database as it is on disk now
         locations.forget()
@@ -978,6 +985,9 @@ class AmazePanel(QtWidgets.QWidget):
             pane = getattr(self, "notes_panel", None)
             if pane is not None:
                 pane.flush()
+            info = getattr(self, "info_panel", None)
+            if info is not None:
+                info.stop_reading()
             timer = getattr(self, "_thumbsize_save_timer", None)
             if timer is not None and timer.isActive():    # the debounce timer is deleted with the panel, so save now
                 timer.stop()
@@ -1138,16 +1148,13 @@ class AmazePanel(QtWidgets.QWidget):
                 tooltips.PANEL_PREFERENCES))
             self.toolbar_layout.addWidget(btn_prefs)
             self.toolbar_layout.addSpacing(theme.ui_px(self._TOOLBAR["gap"]))
-            self.btn_generate = ui_helpers.IconMenuButton(    # one generated material into the scene
-                None,
-                self._ui_icon_path("icon_generate.svg"),
-                on_click=self.generate_random_material,
-                fallback_label="Generate Material",
-                name="btn_generate",
-            )
-            self.btn_generate.setToolTip(ui_helpers.tooltip_text(
-                tooltips.PANEL_GENERATE))
-            self.toolbar_layout.addWidget(self.btn_generate)
+            self.btn_info = ui_helpers.ChipToggleButton(name="btn_info")
+            self.btn_info.setToolTip(ui_helpers.tooltip_text(
+                tooltips.PANEL_INFO))
+            self._sync_info_button_pixmaps()
+            self.btn_info.setChecked(bool(self.prefs.show_info))
+            self.btn_info.toggled.connect(self._on_info_toggled)    # after the initial state
+            self.toolbar_layout.addWidget(self.btn_info)
             self.toolbar_layout.addSpacing(theme.ui_px(self._TOOLBAR["gap"]))
             self.btn_categories = ui_helpers.ChipToggleButton(name="btn_categories")    # toggles action_catview
             self.btn_categories.setToolTip(ui_helpers.tooltip_text(
@@ -1197,6 +1204,8 @@ class AmazePanel(QtWidgets.QWidget):
 
             self.online_menu = menu_view    # no submenu: the importers below
             self.online_source_actions = {}    # stays empty: open_online_source finds no row to check
+            self.action_generate = self.online_menu.addAction("Generate Material")
+            self.action_generate.triggered.connect(self.generate_random_material)
             self.action_gallery_import = self.online_menu.addAction(
                 "Gallery Import (.gal)"
             )
@@ -1290,12 +1299,19 @@ class AmazePanel(QtWidgets.QWidget):
         cat_index = -1
         if isinstance(splitter, QtWidgets.QSplitter):
             cat_index = splitter.indexOf(self.cat_list)
+            if self.prefs.show_notes and self.prefs.show_info:
+                self.prefs.show_info = False    # one side pane at a time: the comments pane stays
             self.notes_panel = notes_panel.NotesPanel(self.prefs)    # the splitter's rightmost pane: sidebar | grid | notes
             splitter.addWidget(self.notes_panel)
             self.notes_panel.copy_font_and_text_color(self.cat_list)
             splitter.splitterMoved.connect(self._on_splitter_moved)
             self.notes_panel.changed.connect(self._on_note_saved)
             self.notes_panel.setVisible(bool(self.prefs.show_notes))
+            self.info_panel = info_panel.InfoPanel(self.prefs)    # beside notes; one shows at a time
+            splitter.addWidget(self.info_panel)
+            self.info_panel.copy_font(self.cat_list)
+            self.info_panel.shown.connect(self._refresh_info_subject)    # hiding forgot the subject
+            self.info_panel.setVisible(bool(self.prefs.show_info))
             splitter.setHandleWidth(theme.ui_px(self._SIDEBAR["handle"]))    # width only; Houdini draws the grip ▸r/sidebar-from-frame
         self.cat_wrapper = ui_helpers.SavedWidthPane(    # keeps its width: the last dragged width, or the design width
             self.prefs, "sidebar_width", theme.ui_px(self._SIDEBAR["width"]))
@@ -1312,7 +1328,8 @@ class AmazePanel(QtWidgets.QWidget):
         cat_wrapper_layout.addWidget(self.cat_list)
         if splitter is not None and cat_index >= 0:
             splitter.insertWidget(cat_index, self.cat_wrapper)    # the grid is the only flexible pane; the other two keep their width
-            fixed_width = (self.cat_wrapper, getattr(self, "notes_panel", None))
+            fixed_width = (self.cat_wrapper, getattr(self, "notes_panel", None),
+                           getattr(self, "info_panel", None))
             for i in range(splitter.count()):
                 flexible = splitter.widget(i) not in fixed_width
                 splitter.setStretchFactor(i, 1 if flexible else 0)
@@ -1411,6 +1428,7 @@ class AmazePanel(QtWidgets.QWidget):
         self.thumblist.viewport().installEventFilter(self)
         self.thumblist.doubleClicked.connect(self.import_asset_auto)
         self.thumblist.clicked.connect(self._refresh_notes_subject)    # idempotent
+        self.thumblist.clicked.connect(self._refresh_info_subject)
         thumblist_palette = self.thumblist.palette()    # Houdini paints the background; text contrast is computed against Base
         thumblist_palette.setColor(QtGui.QPalette.ColorRole.Base, QtGui.QColor(amazetheme.GRID_BACKGROUND))
         self.thumblist.setPalette(thumblist_palette)
@@ -1548,8 +1566,8 @@ class AmazePanel(QtWidgets.QWidget):
             self.toolbar_layout.insertItem(i_box, gap_item)
             self.toolbar_layout.insertItem(i_box, label_item)
         self._move_to_toolbar_end(getattr(self, "btn_hip_capture", None))    # capture stays the outermost control
-        self._move_to_toolbar_end(getattr(self, "btn_generate", None))
-        self._move_to_toolbar_end(self._toolbar_widget("btn_prefs"))    # capture first, then generate, then the gear, so the row ends ... stretch, Capture, Generate, gear
+        self._move_to_toolbar_end(getattr(self, "btn_info", None))
+        self._move_to_toolbar_end(self._toolbar_widget("btn_prefs"))    # ends: stretch, Capture, Info, gear
 
         edge = theme.ui_px(self._TOOLBAR["edge"])    # both edges hold a control once the capture button is back at the end
         self.toolbar_layout.setContentsMargins(edge, 0, edge, 0)
@@ -1956,6 +1974,7 @@ class AmazePanel(QtWidgets.QWidget):
             self.click_slider.setValue(grid.active_thumbsize(self))    # with Step Size on, snapped to the nearest step
         self.texture_progress.set_accent_color(accent)
         self._sync_notes_button_pixmaps()
+        self._sync_info_button_pixmaps()
         self.sidebar_delegate.set_drag_color(accent)
         self.sidebar_delegate.show_counts = self.prefs.sidebar_counts
         thumbnails.engine.set_budget_mb(self.prefs.ram_cache_mb)
@@ -2186,6 +2205,7 @@ class AmazePanel(QtWidgets.QWidget):
             self._sync_filters_to_section(context)
             self._restore_section_state(key)
         self._refresh_notes_subject()
+        self._refresh_info_subject()
         empty_state.track(self)    # the empty-state overlay follows the new model
 
     def _sync_filters_to_section(self, section) -> None:
@@ -2240,6 +2260,7 @@ class AmazePanel(QtWidgets.QWidget):
     TOOLBAR_CONTROLS = (    # (control, context fact, "enabled" or "shown")
         ("cb_favsonly", "takes_favourites", "enabled"),
         ("btn_notes", "takes_comments", "enabled"),
+        ("btn_info", "takes_info", "enabled"),
         ("btn_filter", "takes_filter_menu", "enabled"),
         ("btn_hip_capture", "takes_capture", "enabled"),
     )
@@ -2831,6 +2852,9 @@ class AmazePanel(QtWidgets.QWidget):
         splitter = pane.parentWidget()
         if not isinstance(splitter, QtWidgets.QSplitter):
             return
+        info = getattr(self, "info_panel", None)
+        if pane.isHidden() and info is not None:
+            pane = info    # the two share one place and one width: the shown one is recorded
         sizes = splitter.sizes()
         changed = False
         for widget, pref_key in (
@@ -2860,7 +2884,42 @@ class AmazePanel(QtWidgets.QWidget):
         self.prefs.show_notes = bool(checked)
         self.prefs.save()
         if checked:
+            self._close_other_pane("btn_info")
             self._refresh_notes_subject()
+
+    def toggle_info_panel(self) -> None:
+        """Toggle the info pane through its toolbar button, so the two always match."""
+        button = getattr(self, "btn_info", None)
+        if button is not None:
+            button.setChecked(not button.isChecked())
+
+    def _on_info_toggled(self, checked: bool) -> None:
+        """Show or hide the info pane and remember it; opening it closes the comments pane."""
+        panel = getattr(self, "info_panel", None)
+        if panel is None:
+            return
+        panel.setVisible(bool(checked))
+        self.prefs.show_info = bool(checked)
+        self.prefs.save()
+        if checked:
+            self._close_other_pane("btn_notes")
+            self._refresh_info_subject()
+
+    def _close_other_pane(self, button_name: str) -> None:
+        """Uncheck the other side pane's button; its own handler hides the pane and saves."""
+        button = getattr(self, button_name, None)
+        if button is not None and button.isChecked():
+            button.setChecked(False)
+
+    def _sync_info_button_pixmaps(self) -> None:
+        """The button's icon: its art's own colour while closed, INFO_ICON_COLOR while open."""
+        button = getattr(self, "btn_info", None)
+        if button is None:
+            return
+        button.set_art(
+            self._ui_icon_path("icon_info.svg"),
+            lighten_on_hover=False,
+            recolour_on={amazetheme.INFO_ICON_ART_COLOR: amazetheme.INFO_ICON_COLOR})
 
     def _sync_notes_button_pixmaps(self) -> None:
         """The button's icon: IDLE_BODY blue while the pane is closed, COMMENT_ICON_COLOR when open."""
@@ -2895,6 +2954,30 @@ class AmazePanel(QtWidgets.QWidget):
         if panel is None or panel.isHidden():
             return
         subject = self._notes_subject()
+        if subject is None:
+            panel.clear_subject()
+        else:
+            panel.set_subject(subject)
+
+    def _info_subject(self):
+        """What the info pane shows, or None: one selected row's, or several rows' together."""
+        context = self.active_section()
+        if context is None or not context.takes_info:    # the context decides
+            return None
+        indexes = grid_columns.selected_rows(    # grid and list share this selection
+            context.grid_selection_model())
+        if not indexes:
+            return None
+        if len(indexes) == 1:
+            return context.info_subject(indexes[0])
+        return context.info_subject_for(indexes)
+
+    def _refresh_info_subject(self, *_args) -> None:
+        """Point the info pane at the current selection; returns at once while it is hidden."""
+        panel = getattr(self, "info_panel", None)
+        if panel is None or panel.isHidden():
+            return
+        subject = self._info_subject()
         if subject is None:
             panel.clear_subject()
         else:

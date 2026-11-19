@@ -22,38 +22,6 @@ PAGE_BG = amazetheme.COMMENT_PAGE_BG
 _DRAWN = amazetheme.drawn_comments()    # every size and spacing below is from the N01 design frame ▸r/comments-from-frame
 
 
-def _fill(widget, hex_color: str) -> None:
-    """Background via the palette; a stylesheet on any ancestor restyles the subtree's scrollbars."""
-    palette = widget.palette()
-    palette.setColor(QtGui.QPalette.ColorRole.Window,
-                     QtGui.QColor(hex_color))
-    widget.setPalette(palette)
-    widget.setAutoFillBackground(True)
-
-
-def _set_text_color(label, role: str, opacity: float = 1.0) -> None:
-    """Label text in one of the theme's text colours, via the palette, same reasoning as _fill."""
-    color = QtGui.QColor(theme.color_hex(role))
-    color.setAlphaF(opacity)
-    palette = label.palette()
-    palette.setColor(QtGui.QPalette.ColorRole.WindowText, color)
-    label.setPalette(palette)
-
-
-def _faded(pixmap: QtGui.QPixmap, opacity: float, dpr: float) -> QtGui.QPixmap:
-    """`pixmap`, made at ratio `dpr`, at `opacity` on a transparent copy; 1 returns it as is."""
-    if opacity >= 1.0:
-        return pixmap
-    faded = QtGui.QPixmap(pixmap.size())
-    faded.fill(QtCore.Qt.GlobalColor.transparent)
-    faded.setDevicePixelRatio(dpr)
-    painter = QtGui.QPainter(faded)
-    painter.setOpacity(opacity)
-    painter.drawPixmap(0, 0, pixmap)
-    painter.end()
-    return faded
-
-
 class _AddButton(QtWidgets.QToolButton):
     """The + button: disabled with nothing selected, painted as in N01B, not faded by Houdini."""
 
@@ -512,7 +480,7 @@ class NotesPanel(ui_helpers.SavedWidthPane):
         outer.addWidget(page)
 
         header = QtWidgets.QWidget()
-        _fill(header, HEADER_BG)
+        ui_helpers.fill_window(header, HEADER_BG)
         header.setFixedHeight(theme.ui_px(_DRAWN["header"]))
         head = QtWidgets.QHBoxLayout(header)    # one row; every item is centred in the drawn height
         head.setContentsMargins(theme.ui_px(_DRAWN["pad"]), 0,
@@ -547,7 +515,7 @@ class NotesPanel(ui_helpers.SavedWidthPane):
         page_box.addWidget(header)
 
         body = QtWidgets.QWidget()
-        _fill(body, PAGE_BG)
+        ui_helpers.fill_window(body, PAGE_BG)
         body_box = QtWidgets.QVBoxLayout(body)
         body_box.setContentsMargins(0, 0, 0, 0)   # zero layout margins: the inset is the document margin
         self.text_edit = _NoteEdit()
@@ -565,9 +533,9 @@ class NotesPanel(ui_helpers.SavedWidthPane):
         side, plus_side = theme.ui_px(_DRAWN["icon"]), theme.ui_px(_DRAWN["plus"])
         dimmed = getattr(self, "_dimmed", False)    # nothing selected: labels and icons dimmed as in N01B
         text = amazetheme.COMMENT_DIM_TEXT_OPACITY if dimmed else 1.0
-        _set_text_color(self.name_label, "text_bright", text)
-        _set_text_color(self.type_label, "text", text)
-        self._icon_label.setPixmap(_faded(ui_helpers.device_pixmap(
+        ui_helpers.set_text_color(self.name_label, "text_bright", text)
+        ui_helpers.set_text_color(self.type_label, "text", text)
+        self._icon_label.setPixmap(ui_helpers.faded_pixmap(ui_helpers.device_pixmap(
             amaze.package_file("ui", "icon_comments.svg"), side, dpr,
             {amazetheme.COMMENT_ICON_COLOR: amazetheme.COMMENT_DIM_ICON_COLOR} if dimmed else None),
             amazetheme.COMMENT_DIM_ICON_OPACITY if dimmed else 1.0, dpr))

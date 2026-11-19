@@ -21,6 +21,7 @@ Installation is described in the [README](README.md).
 - [Tile icons](#tile-icons)
 - [Category colors](#category-colors)
 - [Comments](#comments)
+- [Info](#info)
 - [Drag and drop](#drag-and-drop)
 - [Preferences](#preferences)
 - [Housekeeping and troubleshooting](#housekeeping-and-troubleshooting)
@@ -77,7 +78,7 @@ The **toolbar**, from left to right:
 | | | |
 |:--:|---|---|
 | <img src="scripts/python/amaze/ui/icon_categories.svg" width="20"> | **Show Categories** | Shows and hides the sidebar. |
-| <img src="scripts/python/amaze/ui/icon_renderer.svg" width="20"> | **Import/Export** | Gallery Import (.gal), Import Package (.amazepkg), Export Asset (.amazepkg) and Export Category (.amazepkg). |
+| <img src="scripts/python/amaze/ui/icon_renderer.svg" width="20"> | **Import/Export** | [Generate Material](#generate-material), Gallery Import (.gal), Import Package (.amazepkg), Export Asset (.amazepkg) and Export Category (.amazepkg). |
 | <img src="scripts/python/amaze/ui/icon_view.svg" width="20"> | **Filter** | Filters the grid: Material by renderer, Color by the number of colors, Node by network type, Code by language and File by kind. |
 | <img src="scripts/python/amaze/ui/icon_online.svg" width="20"> | **Online** | Switches between the library and the online sources. |
 | <img src="scripts/python/amaze/ui/icon_comments.svg" width="20"> | **Comments** | Opens and closes the [Comments pane](#comments). Purple while the pane is open. |
@@ -86,7 +87,7 @@ The **toolbar**, from left to right:
 | <img src="docs/images/Icon-slider.svg" width="20"> | **Size slider** | Sets the thumbnail size, 64–512 px, and the row height in list view. |
 | <img src="scripts/python/amaze/ui/icon_search.svg" width="20"> | **Search** | Searches names and tags in the current section. A leading colon searches tags only: `:metal` finds everything tagged metal. |
 | <img src="scripts/python/amaze/ui/icon_screenshot.svg" width="20"> | **Capture** | Captures the Scene View as the selected tile's picture. In the File section with no tile selected, captures it as the open scene's picture. |
-| <img src="scripts/python/amaze/ui/icon_generate.svg" width="20"> | **Generate Material** | Builds a [generated material](#generate-material). |
+| <img src="scripts/python/amaze/ui/icon_info.svg" width="20"> | **Info** | Opens and closes the [Info pane](#info). Yellow while the pane is open. |
 | <img src="scripts/python/amaze/ui/icon_library.svg" width="20"> | **Preferences** | Opens [Preferences](#preferences). |
 
 The **Import/Export** and **Filter** menus:
@@ -129,7 +130,8 @@ move. **All** stays at the top, and new categories are added at the
 bottom. Category order is stored in the library; folder order is stored
 per machine.
 
-The sidebar and the Comments pane keep their width between sessions.
+The sidebar keeps its width between sessions. So do the Comments pane
+and the Info pane, which share one width.
 
 A tile has up to four **badges**, one per corner:
 
@@ -287,8 +289,8 @@ previews.
 
 ## Generate Material
 
-The **Generate Material** button on the toolbar builds a test material
-in the current material library.
+**Generate Material**, the first item in the toolbar's Import/Export
+menu, builds a test material in the current material library.
 
 Generation starts from one of 148 measured materials, 86 PhysicallyBased
 reference values and 62 RGL measurements, and varies it within its
@@ -665,6 +667,49 @@ comments, and a click on it opens and closes the pane.
 
 Every section takes comments: materials, palettes, nodes, snippets and
 files.
+
+---
+
+## Info
+
+The <img src="scripts/python/amaze/ui/icon_info.svg" width="16">
+**Info** button in the toolbar, between Capture and Preferences, opens
+and closes the **Info pane**. The pane sits where the Comments pane
+sits, and opening one closes the other. The button is yellow while the
+pane is open.
+
+The pane lists facts about the selected tile, one per row:
+
+| Selection | Rows |
+|---|---|
+| Material | Name, Date, Size, Renderer, Textures, Largest Texture, Version, License, ID |
+| Color | Name, Date, Colors, Values, Interpolation, License, ID |
+| Node | Name, Date, Size, Context, Version, License, ID |
+| Code | Name, Date, Language, Lines, Version, License, ID |
+| File | Name, Created, Modified, Size, Format, the rows of its kind, Folder |
+| Several tiles | Items, Size |
+
+**Date** is the day the asset was last saved. **Size** of a material or
+a node setup is the size of its files in the library, a material's
+textures included.
+
+A file gets more rows by its kind:
+
+| Kind | Rows |
+|---|---|
+| Image | Dimensions, Color Space, Bit Depth, Channels, Compression, MIP Maps |
+| Geometry, `.bgeo` and `.geo` | Points, Vertices, Primitives, Attributes, Dimensions, Saved With |
+| Geometry, `.obj` | Points, Vertices, Primitives, Dimensions |
+| USD | Prims, Layers, Default Prim, Up Axis, Meters Per Unit, Frames |
+
+A row appears when the file holds that fact: **Compression** for an
+EXR or a TIFF, **MIP Maps** for an EXR or a RAT, **Frames** for a USD
+file with a frame range. A scene file and any other file show the six
+rows every file has.
+
+The image and geometry rows and **Largest Texture** come from Houdini's
+`iinfo` and `ginfo`, and appear a moment after the tile is selected.
+Files are read while the pane is open.
 
 ---
 

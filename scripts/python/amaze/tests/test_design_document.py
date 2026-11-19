@@ -17,6 +17,7 @@ DRAWS_CHROME = (    # files that draw the panel and dialogs; their colours belon
     "panel/panel.py",
     "panel/delegates.py",
     "panel/notes_panel.py",
+    "panel/info_panel.py",
     "panel/empty_state.py",
     "dialogs/base_dialog.py",
     "dialogs/icon_dialog.py",

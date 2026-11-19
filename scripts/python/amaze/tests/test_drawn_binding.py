@@ -153,9 +153,12 @@ DRAWN_EXEMPT = (    # (does this node need no pin, why): every other drawn node 
     (lambda f, n: f.startswith("G"),
      "the sidebar's rows are drawn by Houdini's style: the panel reads its "
      "sizes through drawn_sidebar, held by TheSidebarMatchesItsDesignFrame"),
-    (lambda f, n: f.startswith("N"),
+    (lambda f, n: f in ("N01", "N01B"),
      "the comments pane is a document and a painted margin: it reads its "
      "sizes through drawn_comments, held by TheCommentsPaneMatchesItsDesignFrame"),
+    (lambda f, n: f == "N02",
+     "the info pane's rows are PAINTED: it reads its sizes through drawn_info, "
+     "held by test_info_panel ▸ TheInfoPaneMatchesItsDesignFrame"),
     (lambda f, n: f in ("D15", "D01") and n[0].startswith("QListWidget ▸ item"),
      "a row is PAINTED by the list's delegate: it reads its sizes through "
      "drawn_list_rows, held by TheManageWindowMatchesItsDesignFrame and test_versions_dialog"),
@@ -637,7 +640,7 @@ class EveryDrawnNodeIsBoundOrNamed(unittest.TestCase):
             "empty result proves nothing")
         self.assertEqual(
             {"P03a", "P03b", "T01", "T05", "T08", "T20", "T23", "T24", "L01", "B01", "S01",
-             "G01", "N01", "N01B"},
+             "G01", "N01", "N01B", "N02"},
             set(amazetheme.DIALOG_LAYOUT)
             - {frame_key for frame_key, _kind, _x, _y in self.pins},
             "P03a and P03b draw only switches and tab strips, and the panel's areas "

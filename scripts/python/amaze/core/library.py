@@ -3,6 +3,7 @@
 import json
 import os
 import shutil
+import stat
 from typing import Any
 from PySide6 import QtCore, QtGui
 
@@ -11,12 +12,14 @@ from amaze.core import asset_record
 from amaze.core import captures
 from amaze.core import debug
 from amaze.core import documents
+from amaze.core import file_info
 from amaze.core import grid_engine
 from amaze.core import library_db
 from amaze.core import library_files
 from amaze.core import locations
 from amaze.core import material, renderers, thumbnails, tile_icons
 from amaze.core import material_files
+from amaze.core import texstore
 from amaze.core import versions
 from amaze.helpers import hostos
 from amaze import messages
@@ -46,6 +49,34 @@ class ListNotSaved(str):
     """The return value of a save whose files were written but whose list entry was not saved."""
 
     __slots__ = ()
+
+
+def filled(rows) -> tuple:
+    """The (label, value) rows whose value is not empty, as a tuple: the info pane shows no empty row."""
+    return tuple((label, value) for label, value in rows if value)
+
+
+def file_count(count: int) -> str:
+    """`1 file` or `5 files`."""
+    return "1 file" if count == 1 else "%d files" % count
+
+
+def existing_files(paths) -> list:
+    """(path, size) of each path that is a file now, from one `os.stat` each."""
+    found = []
+    for path in paths:
+        try:
+            info = os.stat(path)
+        except (OSError, ValueError):    # ValueError: a path with a NUL in it
+            continue
+        if stat.S_ISREG(info.st_mode):
+            found.append((path, info.st_size))
+    return found
+
+
+def size_of(found) -> str:
+    """The total of `existing_files` rows as the info pane writes it; "" when no file exists."""
+    return file_info.size_text(sum(size for _path, size in found)) if found else ""
 
 
 def report_unlisted(names, updated: bool = False) -> None:
@@ -771,6 +802,53 @@ class AssetLibrary(grid_engine.GridEngine,
         """`asset_files_for` this library; a new per-asset file is added THERE and nowhere else."""
         return asset_files.asset_files_for(self.preferences, mat_id, self.DB_FILENAME)
 
+    def info_header(self, row: int) -> tuple:
+        """(name, type) heading a row in the info pane: what the comments pane shows for it."""
+        return (str(self.row_data(row, QtCore.Qt.ItemDataRole.DisplayRole) or ""),
+                str(self.row_data(row, self.RendererLabelRole) or ""))
+
+    def info_rows(self, row: int) -> tuple:
+        """(before, after, request) the info pane shows for one row; a row with no value is left out."""
+        asset = self._assets[row]
+        facts, request = self._info_facts(row, asset)
+        before = [("Name", str(self.row_data(row, QtCore.Qt.ItemDataRole.DisplayRole) or "")),
+                  ("Date", str(asset.date or "").split(" ")[0])] + facts    # stored with its time
+        after = (("Version", self._info_version(row)),
+                 ("License", str(asset.license or "").strip()),
+                 ("ID", str(asset.mat_id)))
+        return filled(before), filled(after), request
+
+    def _info_facts(self, row: int, asset) -> tuple:
+        """([rows after Date], the read that adds rows or None); each section names its own."""
+        return [], None
+
+    def _info_version(self, row: int) -> str:
+        """The Version column's text without its leading word; "" when it only repeats the name."""
+        role = self._column_role("version")
+        text = str(self.row_data(row, role) or "").strip() if role else ""
+        if text.startswith("Version "):    # `versions` names an unnamed version "Version 2"
+            text = text[len("Version "):]
+        name = str(self.row_data(row, QtCore.Qt.ItemDataRole.DisplayRole) or "")
+        return "" if text == name else text    # a Code version is named after its snippet
+
+    def texture_paths(self, asset) -> list:
+        """The texture files the record lists, as absolute paths; nothing is opened."""
+        tokens = asset._extra.get("textures")
+        return [texstore.resolve(str(token), self.preferences)
+                for token in (tokens if isinstance(tokens, list) else ()) if token]
+
+    def own_file_paths(self, asset) -> list:
+        """The paths `asset_files()` names for the asset; [] for an id that names no file."""
+        try:
+            return list(self.asset_files(asset.mat_id).values())
+        except hostos.PathOutsideBase:
+            return []
+
+    def info_paths(self, row: int) -> list:
+        """Every file one row owns, its textures included, for the read that adds up their sizes."""
+        asset = self._assets[row]
+        return self.own_file_paths(asset) + self.texture_paths(asset)
+
     def _hold_pre_edit_files(self, mat_id: str) -> dict:
         """Copy the asset's current files aside for the version store: {archive suffix: held path}."""
         import tempfile as _tempfile
@@ -1058,6 +1136,14 @@ class MaterialLibrary(AssetLibrary):
     def tile_subtitle(self, asset) -> str:
         """The renderer's name alone, `Redshift`: the tile's second line shares its line with the icon."""
         return renderers.label(str(asset.renderer or "").strip())
+
+    def _info_facts(self, row: int, asset) -> tuple:
+        """Size, Renderer and Textures, and the read that finds the largest texture."""
+        textures = existing_files(self.texture_paths(asset))
+        facts = [("Size", size_of(existing_files(self.own_file_paths(asset)) + textures)),
+                 ("Renderer", self.tile_subtitle(asset)),
+                 ("Textures", file_count(len(textures)) if textures else "")]
+        return facts, file_info.request_for_textures([path for path, _size in textures])
 
     def renderer_label(self, asset) -> str:
         """'USD ' for a USD-builder type, ':<shader>' where a table names it: `USD Redshift:PBR`."""

@@ -1711,14 +1711,14 @@ class TheEmptyPaneMatchesN01B(unittest.TestCase):
     def test_the_labels_PAINT_at_the_dimmed_opacity(self):
         """Measured against the SAME label at full ink, so a font from another test cancels out."""
         from amaze import amazetheme
-        from amaze.panel import notes_panel
+        from amaze.helpers import ui_helpers
         bg = QtGui.QColor(amazetheme.COMMENT_HEADER_BG)
         dim = amazetheme.COMMENT_DIM_TEXT_OPACITY
         for label, color_name in ((self.pane.name_label, "text_bright"),
                                   (self.pane.type_label, "text")):
             with self.subTest(label=label.text()):
                 shown = self._brightest_on_header(label)
-                notes_panel._set_text_color(label, color_name, 1.0)
+                ui_helpers.set_text_color(label, color_name, 1.0)
                 full = self._brightest_on_header(label)
                 for part in ("red", "green", "blue"):
                     background = getattr(bg, part)()
