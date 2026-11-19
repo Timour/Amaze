@@ -297,7 +297,8 @@ class TheMenusMatchTheOldHandlersOutput(unittest.TestCase):
 
     def test_file_menus_follow_the_kind_and_the_count_and_never_delete(self):
         """No Delete for any kind: these are the user's own files, and an os.remove once took some."""
-        top = ["New Folder", "----", "Save Scene", "----"]    # the folder shown, whatever is selected
+        top = ["New Folder", "----", "Copy", "Paste(off)", "----",    # nothing copied yet
+               "Save Scene", "----"]    # the folder shown, whatever is selected
         for kind, count, expected in (
                 (locations.KIND_IMAGE, 1,
                  top + ["Load Asset", "Copy Path", "----", "Show Location",
@@ -309,7 +310,8 @@ class TheMenusMatchTheOldHandlersOutput(unittest.TestCase):
                  top + ["Load Asset", "Copy Path", "----", "Show Location(off)",
                         "Thumbnail > [Render Image, Capture Scene(off), Customize]", "Favorite"]),
                 (locations.KIND_HIP, 1,      # a scene captures only while it is the open one
-                 ["New Folder", "----", "Open Scene", "Save Scene", "----",
+                 ["New Folder", "----", "Copy", "Paste(off)", "----",
+                  "Open Scene", "Save Scene", "----",
                   "Copy Path", "----", "Show Location",
                   "Thumbnail > [Capture Scene(off), Customize]", "Favorite"]),
                 (locations.KIND_OTHER, 1,    # what Houdini cannot open is absent, not greyed

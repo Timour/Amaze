@@ -430,8 +430,17 @@ Browses folders on disk.
   as a new file there, with the extension your license writes, and that
   file becomes the one you are working in. Both are greyed while All is
   showing, since there is no one folder to make them in.
+- **Copy** puts the selected files on the system clipboard. **Paste**
+  copies the files on the clipboard into the folder you are looking at.
+  The clipboard is the system's: files copied in Finder or Explorer paste
+  here, and files copied here paste there. When a name is already in the
+  folder, Paste asks once: **Overwrite** replaces those files, **Skip**
+  pastes the others and **Cancel** pastes nothing. A folder on the
+  clipboard is not pasted. A pasted file starts without the original's
+  favorite, comment and tile icon. Paste is greyed while All is showing
+  and while the clipboard holds no files.
 
-The right-click menu: **New Folder**, **Open Scene**, **Save Scene**,
+The right-click menu: **New Folder**, **Copy**, **Paste**, **Open Scene**, **Save Scene**,
 **Load Asset**, **Copy Path**, **Show Location**, **Thumbnail** and
 **Favorite**. **Thumbnail ▸** holds **Render Image** for images and
 geometry, **Capture Scene** and **Customize**.

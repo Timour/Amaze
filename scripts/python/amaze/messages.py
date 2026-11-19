@@ -155,6 +155,24 @@ MOVE_OPEN_SCENE = '%s is the scene open in Houdini, so it was not moved.'
 
 MOVE_BUSY = 'Another move is still running.'
 
+PASTE_DONE = 'Pasted %s into %s.'
+
+PASTE_PROGRESS = 'Pasting %s into %s: %d%%'
+
+PASTE_TAKEN = 'A file named %s is already in %s, so it was not pasted.'
+
+PASTE_TAKEN_MANY = 'Files named %s are already in %s, so they were not pasted.'
+
+PASTE_FAILED = '%s could not be pasted: %s.'
+
+PASTE_FOLDER = '%s is a folder, so it was not pasted.'
+
+PASTE_ASK = 'A file named %s is already in %s.'
+
+PASTE_ASK_MANY = 'Files named %s are already in %s.'
+
+BUTTONS_OVERWRITE_OR_SKIP = ('Overwrite', 'Skip', 'Cancel')
+
 STOCK_LOP_HELPERS_UNAVAILABLE = "Could not load Houdini's material-assignment helpers — material not imported."
 NETWORK_REFUSED_MATERIAL_LIBRARY = "%s can't take a Material Library, so the material was not imported.\n\n%s"
 DROPPED_MATERIAL_IMPORT_FAILED = "The dropped material could not be imported, so nothing was assigned. Other materials in the selection were still added to the library."

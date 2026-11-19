@@ -24,7 +24,8 @@ from amaze.core import captures, debug, file_library, file_moves  # noqa: E402
 from amaze.core import guard, library_db, notes, texture_library, thumbnails, tile_icons  # noqa: E402
 from amaze.core import workers  # noqa: E402
 from amaze.core import locations as locations_mod  # noqa: E402
-from amaze.helpers import hostos  # noqa: E402
+import hou  # noqa: E402
+from amaze.helpers import hostos, ui_helpers  # noqa: E402
 from amaze.panel import sidebar  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 from amaze.tests.test_file_section import _Prefs  # noqa: E402
@@ -671,8 +672,57 @@ class ThePicturesFollowTheFileTest(unittest.TestCase):
         self.assertEqual([], asked, "moved files were sent to render again")
 
 
-class TheFileTabMovesWhatIsDroppedOnAFolderTest(unittest.TestCase):
-    """A release over a folder row moves the selected files there; Undo Move puts them back."""
+class ACopyLeavesTheOriginalTest(_Folders):
+    """`copy` writes a second file; it replaces a file of that name only when told to."""
+
+    def _copy(self, **kwargs):
+        return file_moves.copy([(self.plate, self.moved_to)], **kwargs)
+
+    def test_the_copy_is_complete_and_the_original_stays(self):
+        ticks = []
+        result = self._copy(tick=ticks.append)
+        self.assertEqual([(self.plate, self.moved_to)], result.moved)
+        self.assertEqual(("plate", "plate"), (_read(self.plate), _read(self.moved_to)))
+        self.assertEqual(len("plate"), sum(ticks), "progress missed bytes")
+        self.assertEqual([], self._parts())
+
+    def test_a_name_in_use_is_skipped_and_its_file_is_unchanged(self):
+        test_support.write_text(self.moved_to, "other")
+        result = self._copy()
+        self.assertEqual([(self.plate, self.moved_to)], result.skipped)
+        self.assertEqual("other", _read(self.moved_to))
+        self.assertEqual([], self._parts())
+
+    def test_replace_writes_over_the_file_of_that_name(self):
+        test_support.write_text(self.moved_to, "other")
+        result = self._copy(replace=True)
+        self.assertEqual([(self.plate, self.moved_to)], result.moved)
+        self.assertEqual(("plate", "plate"), (_read(self.plate), _read(self.moved_to)))
+        self.assertEqual([], self._parts())
+
+    def test_a_replace_that_fails_keeps_the_file_that_was_there(self):
+        test_support.write_text(self.moved_to, "other")
+        full = OSError(errno.ENOSPC, "No space left on device")
+        with mock.patch.object(os, "fsync", side_effect=full):
+            result = self._copy(replace=True)
+        self.assertEqual([(self.plate, "No space left on device")], result.failed)
+        self.assertEqual("other", _read(self.moved_to))
+        self.assertEqual([], self._parts())
+
+    def test_a_file_copied_onto_itself_is_skipped_even_with_replace(self):
+        result = file_moves.copy([(self.plate, self.plate)], replace=True)
+        self.assertEqual([(self.plate, self.plate)], result.skipped)
+        self.assertEqual("plate", _read(self.plate))
+        self.assertEqual(["plate.exr"], os.listdir(self.a))
+
+    def test_a_stopped_copy_leaves_nothing_in_the_folder(self):
+        result = self._copy(stopped=lambda: True)
+        self.assertEqual(([], [], []), tuple(result))
+        self.assertEqual([], os.listdir(self.b))
+
+
+class _FileTabShowingA(unittest.TestCase):
+    """The File tab on a location with folders `a` and `b`, showing `a` and its plate.exr."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -706,6 +756,136 @@ class TheFileTabMovesWhatIsDroppedOnAFolderTest(unittest.TestCase):
             if index.data() == name:
                 return index
         return None
+
+    def _finish(self):
+        self.assertTrue(test_support.pump_until(lambda: not file_moves.mover.busy()),
+                        "the move or paste never finished")
+        QtWidgets.QApplication.processEvents()
+
+
+class TheFileTabCopiesAndPastesTest(_FileTabShowingA):
+    """Copy puts the selected files on the clipboard; Paste copies them into the folder shown."""
+
+    def setUp(self):
+        super().setUp()
+        clipboard = QtWidgets.QApplication.clipboard()
+        self.addCleanup(clipboard.clear)
+        clipboard.clear()
+        self.asked = []
+
+    def _copy_plate(self):
+        tile = self._tile("plate.exr")
+        self.section.menu_copy([tile], tile)
+
+    def _show_b(self):
+        self.section._browse(self.b)
+        self.assertTrue(test_support.pump_until(lambda: self.section._shown_folder() == self.b),
+                        "premise: b never shown")
+
+    def _answering(self, choice):
+        def ask(text, **kwargs):
+            self.asked.append((text, kwargs["buttons"]))
+            return choice
+        return mock.patch.object(hou, "ui", types.SimpleNamespace(displayMessage=ask),
+                                 create=True)
+
+    def test_copy_puts_the_file_on_the_clipboard_as_a_file_and_as_text(self):
+        self._copy_plate()
+        data = QtWidgets.QApplication.clipboard().mimeData()
+        self.assertEqual([self.plate], [url.toLocalFile() for url in data.urls()])
+        self.assertEqual(self.plate, data.text())
+
+    def test_paste_is_offered_only_with_files_copied_and_a_folder_shown(self):
+        self.assertFalse(self.section.menu_paste_enabled([], None), "offered with nothing copied")
+        self._copy_plate()
+        self.assertTrue(self.section.menu_paste_enabled([], None))
+        QtWidgets.QApplication.clipboard().setText("plate.exr")
+        self.assertFalse(self.section.menu_paste_enabled([], None), "offered for text")
+
+    def test_paste_copies_the_file_into_the_folder_shown(self):
+        self._copy_plate()
+        self._show_b()
+        self.section.menu_paste([], None)
+        self._finish()
+        self.assertEqual(("plate", "plate"), (_read(self.plate), _read(self.moved_to)))
+        self.assertEqual(messages.PASTE_DONE % ("1 file", "b"), self.shown[-1])
+        self.assertEqual([], self.asked)
+        self.assertFalse(self.section.can_undo_move([], None), "a paste is offered as Undo Move")
+
+    def test_paste_into_the_files_own_folder_changes_nothing_and_says_so(self):
+        self._copy_plate()
+        with self._answering(0):
+            self.section.menu_paste([], None)
+            self._finish()
+        self.assertEqual([], self.asked, "asked to overwrite a file with itself")
+        self.assertEqual(["plate.exr"], os.listdir(self.a))
+        self.assertEqual(messages.PASTE_TAKEN % ("plate.exr", "a"), self.shown[-1])
+
+    def _paste_two_onto_a_name_in_use(self, choice):
+        """plate.exr is in `b` already and new.exr is not; both are pasted with `choice` answered."""
+        test_support.write_text(self.moved_to, "other")
+        new = os.path.join(self.a, "new.exr")
+        test_support.write_text(new, "new")
+        ui_helpers.copy_files([self.plate, new])
+        self._show_b()
+        del self.shown[:]
+        with self._answering(choice):
+            self.section.menu_paste([], None)
+            self._finish()
+        self.assertEqual([(messages.PASTE_ASK % ("plate.exr", "b"),
+                           messages.BUTTONS_OVERWRITE_OR_SKIP)], self.asked)
+        self.assertEqual("plate", _read(self.plate))
+        return sorted(os.listdir(self.b)), _read(self.moved_to)
+
+    def test_overwrite_replaces_the_file_of_that_name(self):
+        self.assertEqual((["new.exr", "plate.exr"], "plate"),
+                         self._paste_two_onto_a_name_in_use(0))
+        self.assertEqual(messages.PASTE_DONE % ("2 files", "b"), self.shown[-1])
+
+    def test_skip_pastes_the_others_and_leaves_that_file(self):
+        self.assertEqual((["new.exr", "plate.exr"], "other"),
+                         self._paste_two_onto_a_name_in_use(1))
+        self.assertEqual(messages.PASTE_DONE % ("1 file", "b"), self.shown[-1])
+
+    def test_cancel_pastes_nothing(self):
+        self.assertEqual((["plate.exr"], "other"), self._paste_two_onto_a_name_in_use(2))
+        self.assertEqual([], self.shown)
+
+    def test_without_a_ui_a_name_in_use_is_skipped(self):
+        test_support.write_text(self.moved_to, "other")
+        self._copy_plate()
+        self._show_b()
+        self.assertFalse(hasattr(hou, "ui"), "this host HAS a ui, so the skip is untested")
+        self.section.menu_paste([], None)
+        self._finish()
+        self.assertEqual("other", _read(self.moved_to))
+
+    def test_a_folder_on_the_clipboard_is_named_and_not_pasted(self):
+        ui_helpers.copy_files([self.a, self.plate])
+        self._show_b()
+        self.section.menu_paste([], None)
+        self._finish()
+        self.assertEqual(["plate.exr"], os.listdir(self.b))
+        self.assertEqual("%s %s" % (messages.PASTE_DONE % ("1 file", "b"),
+                                    messages.PASTE_FOLDER % "a"), self.shown[-1])
+
+    def test_a_paste_keeps_the_last_move_undoable(self):
+        self.section._last_move = ((self.plate, self.moved_to),)
+        self._copy_plate()
+        self._show_b()
+        self.section.menu_paste([], None)
+        self._finish()
+        self.assertEqual(((self.plate, self.moved_to),), self.section._last_move)
+
+    def test_the_grid_menu_lists_copy_and_paste_under_new_folder(self):
+        labels = [entry.label for entry in self.section.GRID_MENU]
+        start = labels.index("New Folder")
+        self.assertEqual(["New Folder", "", "Copy", "Paste", "", "Open Scene"],
+                         labels[start:start + 6])
+
+
+class TheFileTabMovesWhatIsDroppedOnAFolderTest(_FileTabShowingA):
+    """A release over a folder row moves the selected files there; Undo Move puts them back."""
 
     def _release_over(self, folder):
         tile = self._tile("plate.exr")

@@ -1,4 +1,4 @@
-"""Move files between folders on disk, never replacing an existing file. ▸r/cross-volume-move"""
+"""Move and copy files between folders; only a copy told to replaces a file. ▸r/cross-volume-move"""
 
 import collections
 import errno
@@ -110,11 +110,10 @@ def _unclaim(dest: str, mine) -> None:
         _remove(dest)
 
 
-def copy_across(source: str, dest: str, tick=None, stopped=lambda: False) -> bool:
-    """Copy `source` to a part file, rename it to `dest`, delete `source`; False if `dest` exists."""
-    if os.path.lexists(dest):
+def write_copy(source: str, dest: str, tick=None, stopped=lambda: False, replace=False) -> bool:
+    """Copy `source` to a part file, rename it to `dest`; False if `dest` exists and not `replace`."""
+    if os.path.lexists(dest) and not replace:
         return False
-    _patiently(hostos.check_deletable, source)    # open elsewhere on Windows: the copy would leave two files
     part = hostos.unique_scratch(    # a new name per copy: a part file left by an interrupted copy is no conflict
         os.path.join(os.path.dirname(dest), "." + os.path.basename(dest)), PART, create=False)
     made = False
@@ -136,12 +135,24 @@ def copy_across(source: str, dest: str, tick=None, stopped=lambda: False) -> boo
             shutil.copystat(source, part)
         except OSError as exc:    # the content is complete; missing dates and flags do not stop the move
             debug.event("move", "dates not copied", file=source, error=str(exc))
-        if not place(part, dest):
+        if replace:
+            _patiently(os.replace, part, dest)
+        elif not place(part, dest):
             return False
         made = False
     finally:
         if made:
             _remove(part)
+    return True
+
+
+def copy_across(source: str, dest: str, tick=None, stopped=lambda: False) -> bool:
+    """Copy `source` to `dest` with `write_copy`, then delete `source`; False if `dest` exists."""
+    if os.path.lexists(dest):
+        return False
+    _patiently(hostos.check_deletable, source)    # open elsewhere on Windows: the copy would leave two files
+    if not write_copy(source, dest, tick, stopped):
+        return False
     try:
         hostos.remove_file(source)    # a read-only source is removed too, as on POSIX
     except OSError as exc:
@@ -170,12 +181,34 @@ def _move_one(source: str, dest: str, tick, stopped) -> bool:
 
 def move(pairs, tick=None, stopped=lambda: False) -> Result:
     """Move each (source, destination) in turn: renamed within one drive, copied across two."""
+    return _each(pairs, _move_one, tick, stopped)
+
+
+def copy(pairs, tick=None, stopped=lambda: False, replace=False) -> Result:
+    """Copy each (source, destination) in turn; a file onto itself is skipped, `replace` or not."""
+    def one(source, dest, tick, stopped):
+        if same_file(source, dest):
+            return False
+        return write_copy(source, dest, tick, stopped, replace)
+    return _each(pairs, one, tick, stopped)
+
+
+def same_file(one: str, other: str) -> bool:
+    """Whether both paths are one file on disk; False when either is missing."""
+    try:
+        return os.path.samefile(one, other)
+    except OSError:    # `other` is not there
+        return False
+
+
+def _each(pairs, one, tick, stopped) -> Result:
+    """`one(source, dest, tick, stopped)` per pair: done, skipped for a name in use, or failed."""
     moved, skipped, failed = [], [], []
     for source, dest in pairs:
         if stopped():
             break
         try:
-            was_moved = _move_one(source, dest, tick, stopped)
+            was_moved = one(source, dest, tick, stopped)
         except Stopped:
             break
         except OSError as exc:
@@ -216,14 +249,15 @@ def _size(path: str) -> int:
 
 
 class _MoveWorker(QtCore.QThread):
-    """Moves one batch off the GUI thread; when stopped, the file being copied stays at its source."""
+    """Moves or copies one batch off the GUI thread; a stopped copy leaves nothing at its destination."""
 
     ticked = QtCore.Signal(object, object)    # (bytes copied, bytes to copy)
     move_finished = QtCore.Signal(object)    # the Result
 
-    def __init__(self, pairs) -> None:
+    def __init__(self, pairs, copying=False, replace=False) -> None:
         super().__init__()
         self.pairs = list(pairs)
+        self.copying, self.replace = copying, replace
         self._canceled = False
 
     def cancel(self) -> None:
@@ -234,7 +268,7 @@ class _MoveWorker(QtCore.QThread):
 
     def run(self) -> None:
         total = sum(_size(source) for source, dest in self.pairs
-                    if not same_drive(source, os.path.dirname(dest)))
+                    if self.copying or not same_drive(source, os.path.dirname(dest)))
         done = [0]
 
         def tick(count) -> None:
@@ -242,7 +276,10 @@ class _MoveWorker(QtCore.QThread):
             self.ticked.emit(done[0], total)
 
         try:
-            result = move(self.pairs, tick, self._stopped)
+            if self.copying:
+                result = copy(self.pairs, tick, self._stopped, self.replace)
+            else:
+                result = move(self.pairs, tick, self._stopped)
         except Exception as exc:                          # noqa: BLE001 - logged; `move_finished` is still emitted
             debug.event("move", "move failed", error=str(exc))
             result = Result([], [], [(source, str(exc)) for source, _dest in self.pairs])
@@ -255,20 +292,20 @@ class _MoveEngine(QtCore.QObject):
     def __init__(self) -> None:
         super().__init__()
         self._worker = None    # a running QThread must keep a reference until it ends ▸r/model-contracts
-        self._job = None    # (preferences, ticked, on_finished) of the running move
+        self._job = None    # (preferences, ticked, on_finished, copying) of the running move or copy
 
     def busy(self) -> bool:
         return self._worker is not None
 
-    def start(self, pairs, preferences, ticked, on_finished) -> bool:
-        """Move `pairs` on a worker: `ticked(done, total)`, then `on_finished(result)`; False while busy."""
+    def start(self, pairs, preferences, ticked, on_finished, copying=False, replace=False) -> bool:
+        """Move or copy `pairs` on a worker: `ticked(done, total)`, `on_finished(result)`; False if busy."""
         if self._worker is not None:
             return False
-        worker = _MoveWorker(pairs)
+        worker = _MoveWorker(pairs, copying, replace)
         worker.ticked.connect(self._ticked)    # BOUND slots, so each call runs on this object's thread
         worker.move_finished.connect(self._on_move_finished)
         worker.finished.connect(self._finished)
-        self._worker, self._job = worker, (preferences, ticked, on_finished)
+        self._worker, self._job = worker, (preferences, ticked, on_finished, copying)
         worker.start()
         return True
 
@@ -279,8 +316,9 @@ class _MoveEngine(QtCore.QObject):
     def _on_move_finished(self, result) -> None:
         if self._job is None:
             return
-        preferences, _ticked, on_finished = self._job
-        rekey_moved_files(preferences, result.moved)    # on the GUI thread, the one the stores are written from
+        preferences, _ticked, on_finished, copying = self._job
+        if not copying:    # a copy is a new file: what Amaze stores stays with the original
+            rekey_moved_files(preferences, result.moved)    # on the GUI thread, where the stores are written
         try:
             on_finished(result)
         except RuntimeError:    # the calling panel was deleted; the files and their keys have moved

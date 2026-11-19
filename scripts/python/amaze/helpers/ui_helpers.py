@@ -37,6 +37,28 @@ def reveal(path: str) -> None:
     hostos.reveal_path(path)
     debug.event("file", "shown in the file browser", path=path)
 
+def copy_files(paths) -> bool:
+    """Put `paths` on the system clipboard as files, and as text one per line; False without one."""
+    clipboard = QtWidgets.QApplication.clipboard()
+    paths = [path for path in paths if path]
+    if clipboard is None or not paths:
+        return False
+    data = QtCore.QMimeData()
+    data.setUrls([QtCore.QUrl.fromLocalFile(path) for path in paths])
+    data.setText("\n".join(paths))
+    clipboard.setMimeData(data)
+    return True
+
+
+def clipboard_files() -> list:
+    """The paths of the local files and folders on the system clipboard, in its order."""
+    clipboard = QtWidgets.QApplication.clipboard()
+    data = clipboard.mimeData() if clipboard is not None else None
+    if data is None or not data.hasUrls():
+        return []
+    return [url.toLocalFile() for url in data.urls() if url.isLocalFile()]
+
+
 DRAG_TAG_STYLE = (     # the drag name tag, shared by the self-managed and the native drags
     "background-color: #2d2d2d; color: #e6e6e6;"
     " border: 1px solid #555555; padding: %dpx %dpx;"

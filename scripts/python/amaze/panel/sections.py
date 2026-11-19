@@ -1653,43 +1653,101 @@ class FolderSection(Section):
         self._last_move = ()
         self._start_move(pairs, os.path.dirname(pairs[0][1]), [], undo=True)
 
+    def menu_copy(self, indexes, current, payload=None) -> None:
+        """The selected files go on the system clipboard, as files."""
+        paths = [self._path_of(index) for index in indexes]
+        if ui_helpers.copy_files(paths):
+            debug.event("file", "files copied", count=len([path for path in paths if path]))
+
+    def menu_paste_enabled(self, indexes, current) -> bool:
+        """A folder is shown, the clipboard holds files, and no move or paste is running."""
+        return bool(self._shown_folder() and ui_helpers.clipboard_files()
+                    and not file_moves.mover.busy())
+
+    def menu_paste(self, indexes, current, payload=None) -> None:
+        """Copy the clipboard's files into the folder shown; names in use are asked about once."""
+        folder = self._shown_folder()
+        paths = ui_helpers.clipboard_files()
+        if not folder or not paths or file_moves.mover.busy():
+            return
+        notices = [messages.PASTE_FOLDER % os.path.basename(path.rstrip("/\\"))
+                   for path in paths if os.path.isdir(path)]
+        pairs = [(path, os.path.join(folder, os.path.basename(path)))
+                 for path in paths if not os.path.isdir(path)]
+        taken = [pair for pair in pairs
+                 if os.path.lexists(pair[1]) and not file_moves.same_file(*pair)]
+        answer = self._ask_overwrite(taken) if taken else "skip"
+        if answer == "cancel":
+            return
+        if answer == "skip":
+            pairs = [pair for pair in pairs if pair not in taken]
+        if not pairs:
+            if notices:
+                debug.refuse(" ".join(notices))
+            return
+        self._move_job = {"count": len(pairs), "name": self._folder_name(folder),
+                          "notices": notices, "undo": False, "percent": -1, "paste": True}
+        file_moves.mover.start(pairs, self.panel.prefs, self._move_progress, self._move_finished,
+                               copying=True, replace=answer == "overwrite")
+
+    def _ask_overwrite(self, taken) -> str:
+        """`overwrite`, `skip` or `cancel` for the names already in the folder; `skip` without a UI."""
+        ui = getattr(hou, "ui", None)
+        if ui is None:
+            return "skip"
+        lines = self._name_in_use_lines(taken, "asked")
+        choice = ui.displayMessage(
+            " ".join(lines), buttons=messages.BUTTONS_OVERWRITE_OR_SKIP,
+            default_choice=1, close_choice=2,
+            title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
+        return ("overwrite", "skip", "cancel")[choice]
+
     def _start_move(self, pairs, folder: str, notices, undo: bool) -> None:
         self._move_job = {"count": len(pairs), "name": self._folder_name(folder),
-                          "notices": list(notices), "undo": undo, "percent": -1}
+                          "notices": list(notices), "undo": undo, "percent": -1, "paste": False}
         file_moves.mover.start(pairs, self.panel.prefs, self._move_progress, self._move_finished)
 
     def _move_progress(self, done, total) -> None:
-        """A cross-drive copy's progress on the status line, once per whole percent."""
+        """A copy's progress on the status line, once per whole percent."""
         job = self._move_job
         percent = int(done * 100 / total) if total else 100
         if percent != job["percent"]:
             job["percent"] = percent
-            debug.status(messages.MOVE_PROGRESS % (_file_count(job["count"]), job["name"], percent))
+            count, name = _file_count(job["count"]), job["name"]
+            debug.status(messages.PASTE_PROGRESS % (count, name, percent) if job["paste"]
+                         else messages.MOVE_PROGRESS % (count, name, percent))
 
     def _move_finished(self, result) -> None:
-        """Refresh the models of the moved files, offer Undo, and show the result on one line."""
+        """Refresh the models, offer Undo after a move, and show the result on one line."""
         job = self._move_job
         for attr in (self.files_attr, self.folders_attr):
             model = self._p(attr)
             if model is not None:
                 (model.refresh_counts if attr == self.folders_attr
                  else model.refresh_current_folder)()
-        self._last_move = () if job["undo"] else tuple(result.moved)
+        paste = job["paste"]
+        if not paste:    # a paste leaves the last move undoable
+            self._last_move = () if job["undo"] else tuple(result.moved)
         lines = list(job["notices"])
         if result.moved:
             count = _file_count(len(result.moved))
-            lines.insert(0, messages.MOVE_BACK % count if job["undo"]
-                         else messages.MOVE_DONE % (count, job["name"]))
-        lines += self._name_in_use_lines(result.skipped)
-        lines += [messages.MOVE_FAILED % (os.path.basename(source), why)
+            if job["undo"]:
+                lines.insert(0, messages.MOVE_BACK % count)
+            elif paste:
+                lines.insert(0, messages.PASTE_DONE % (count, job["name"]))
+            else:
+                lines.insert(0, messages.MOVE_DONE % (count, job["name"]))
+        lines += self._name_in_use_lines(result.skipped, "pasted" if paste else "moved")
+        lines += [messages.PASTE_FAILED % (os.path.basename(source), why) if paste
+                  else messages.MOVE_FAILED % (os.path.basename(source), why)
                   for source, why in result.failed]
         if job["notices"] or result.skipped or result.failed:
             debug.refuse(" ".join(lines))
         elif lines:
             debug.status(" ".join(lines))
 
-    def _name_in_use_lines(self, skipped) -> list:
-        """One sentence per folder with names already in use: the first three, then a count."""
+    def _name_in_use_lines(self, skipped, said="moved") -> list:
+        """One sentence per folder with names in use, worded as `moved`, `pasted` or `asked`."""
         by_folder = {}
         for _source, dest in skipped:
             by_folder.setdefault(os.path.dirname(dest), []).append(os.path.basename(dest))
@@ -1697,8 +1755,15 @@ class FolderSection(Section):
         for folder, names in by_folder.items():
             shown = names[:3] + ([messages.MOVE_MORE % (len(names) - 3)] if len(names) > 3 else [])
             listed, name = wording.and_list(shown), self._folder_name(folder)
-            lines.append(messages.MOVE_TAKEN % (listed, name) if len(names) == 1
-                         else messages.MOVE_TAKEN_MANY % (listed, name))
+            one, many = {
+                "moved": (messages.MOVE_TAKEN % (listed, name),
+                          messages.MOVE_TAKEN_MANY % (listed, name)),
+                "pasted": (messages.PASTE_TAKEN % (listed, name),
+                           messages.PASTE_TAKEN_MANY % (listed, name)),
+                "asked": (messages.PASTE_ASK % (listed, name),
+                          messages.PASTE_ASK_MANY % (listed, name)),
+            }[said]
+            lines.append(one if len(names) == 1 else many)
         return lines
 
     def _folder_name(self, folder: str) -> str:
@@ -1779,6 +1844,9 @@ class FileSection(FolderSection):
 
     GRID_MENU = UNDO_MOVE + (  # the selection's KINDS decide the actions; no Delete: these are the user's own files
         MenuEntry("New Folder", handler="menu_new_folder", needs="menu_new_enabled"),
+        SEPARATOR,
+        MenuEntry("Copy", handler="menu_copy"),
+        MenuEntry("Paste", handler="menu_paste", needs="menu_paste_enabled"),
         SEPARATOR,
         MenuEntry("Open Scene", handler="menu_load_scene", needs="one",
                   shown="selection_has_scene"),
