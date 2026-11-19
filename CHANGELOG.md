@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.37.1
+
+- Info pane: picture info now shows right away. Amaze reads it from the file with OpenImageIO, so it no longer starts Houdini's `iinfo` for every picture. `.rat`, `.pic` and `.gif` files still go through `iinfo` and take a moment.
+- Info pane: **MIP Maps** said Yes for EXR files with no MIP maps. That is fixed. **Channels** now lists all the channels in the file, and **Color Space** shows the color space the file is tagged with.
+
 ## 1.37.0
 
 - New **Info pane**. The Info button in the toolbar opens a pane that lists facts about the selected tile: an image's dimensions, bit depth and color space, a geometry file's point count and attributes, a USD file's prims and frame range, a material's textures, and each file's dates, size and folder. It sits where the Comments pane sits, and opening one closes the other. Files are read while the pane is open.
