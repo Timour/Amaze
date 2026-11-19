@@ -43,6 +43,7 @@ REAL_LEAK_CHECK = os.path.join(
 
 RUNNER_REL = os.path.join("scripts", "python", "amaze", "tests",
                           "start_test.sh")
+BRANDING_REL = os.path.join("scripts", "python", "amaze", "branding.py")
 
 SYNC_SHIPPED_MSG = "is identical to the repo"
 SYNC_END = "sync-install: DONE"
@@ -221,11 +222,26 @@ class GateFixture(unittest.TestCase):
             "the fixture range is not what we set up")
         return self._git("rev-parse", "HEAD")
 
+    def _versions(self, checkout, installed):
+        """Commit `checkout` as the repo's `APP_VERSION` and put `installed` in the install."""
+        _write(os.path.join(self.repo, BRANDING_REL), 'APP_VERSION = "%s"\n' % checkout)
+        self._git("add", "-A")
+        self._git("commit", "-q", "-m", "version " + checkout)
+        self._install_holds(installed)
+
+    def _install_holds(self, version):
+        _write(os.path.join(self.install, BRANDING_REL), 'APP_VERSION = "%s"\n' % version)
+
+    def _installed_version(self):
+        """The version in the install's `branding.py`, as the file spells it."""
+        with open(os.path.join(self.install, BRANDING_REL), encoding="utf-8") as handle:
+            return handle.read().split('"')[1]
+
     def _env(self, mode, **extra):
         """Never inherits a real bypass variable, or the pushing repository, from the calling suite."""
         env = dict(os.environ)
         env.update(self.git_env)    # a copy of the environment too, so the removals below come after it
-        for name in ("AMAZE_SYNC_NO_VERIFY", "AMAZE_SKIP_TESTS",
+        for name in ("AMAZE_SYNC_NO_VERIFY", "AMAZE_SKIP_TESTS", "AMAZE_REPLACE_INSTALLED",
                      "AMAZE_SCRATCH_INSTALL", "AMAZE_HOUDINI", "AMAZE_SKIP_REPORT",
                      "GIT_DIR", "GIT_WORK_TREE"):    # a worktree's pre-push sets GIT_DIR ▸r/git-hook-surface
             env.pop(name, None)
@@ -362,6 +378,43 @@ class SyncInstallGateTest(GateFixture):
         self.assertIn("cannot find the install", result.stderr)
         self.assertFalse(os.path.exists(missing))
         self.assertEqual(self.suite_calls(), [])
+
+    def test_an_install_that_holds_a_newer_version_is_left_as_it_is(self):
+        """Every machine shares the install, so one that is behind must not copy over it."""
+        self._versions(checkout="1.35.1", installed="1.36.0")
+
+        result = self.sync("green")
+
+        self.assertEqual(result.returncode, 3, self.both(result))
+        self.assertIn("the install holds Amaze 1.36.0", result.stderr)
+        self.assertIn("this checkout is 1.35.1", result.stderr)
+        self.assertEqual("1.36.0", self._installed_version())
+        self.assertFalse(os.path.exists(os.path.join(self.install, "OPmenu.xml")),
+                         "it refused and copied to the install anyway")
+
+    def test_newer_is_read_as_numbers_and_the_same_or_an_older_install_is_copied(self):
+        self._versions(checkout="1.9.12", installed="1.10.0")    # as text, "1.9.12" sorts last
+        self.assertEqual(3, self.sync("green").returncode, "1.10.0 was read as older than 1.9.12")
+        for installed in ("1.9.12", "1.9.2", "1.8.40"):
+            with self.subTest(installed=installed):
+                self._install_holds(installed)
+                result = self.sync("green")
+                self.assertEqual(result.returncode, 0, self.both(result))
+                self.assertReachedEnd(result, SYNC_END)
+                self.assertEqual("1.9.12", self._installed_version())
+
+    def test_an_older_build_goes_over_a_newer_one_only_when_that_version_is_named(self):
+        """Not a boolean: the variable names the version it replaces, so it ends with that version."""
+        self._versions(checkout="1.35.1", installed="1.36.0")
+
+        stale = self.sync("green", AMAZE_REPLACE_INSTALLED="1.35.9")
+        self.assertEqual(stale.returncode, 3, self.both(stale))
+        self.assertEqual("1.36.0", self._installed_version())
+
+        result = self.sync("green", AMAZE_REPLACE_INSTALLED="1.36.0")
+        self.assertEqual(result.returncode, 0, self.both(result))
+        self.assertReachedEnd(result, SYNC_END)
+        self.assertEqual("1.35.1", self._installed_version())
 
 
 class PrePushGateTest(GateFixture):

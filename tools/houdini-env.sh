@@ -101,6 +101,13 @@ amaze_plain_python() {
     return 1
 }
 
+# APP_VERSION of the Amaze under a root, a checkout or an install; nothing when it has none.
+amaze_app_version() {
+    local file="${1:-}/scripts/python/amaze/branding.py"
+    [ -f "$file" ] || return 0
+    awk -F'"' '/^APP_VERSION *= *"/ { print $2; exit }' "$file"
+}
+
 # Package files that may define $AMAZE, one list for every platform, most authoritative LAST.
 # Keep ~/Library last: on macOS it is the real pref dir and outranks a stray ~/houdini*.
 amaze_package_files() {

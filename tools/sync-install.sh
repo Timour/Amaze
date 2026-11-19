@@ -111,6 +111,25 @@ else
     echo "sync-install: no git repo here, so the commit check was skipped" >&2
 fi
 
+# The real install is one folder for every machine. When it holds a NEWER Amaze, a machine
+# ahead of this checkout copied it there, and it is left alone. Exit 3 means only this.
+if [ -z "$scratch" ]; then
+    mine="$(amaze_app_version "$repo")"
+    theirs="$(amaze_app_version "$install")"
+    if [ -n "$mine" ] && [ -n "$theirs" ] && [ "$mine" != "$theirs" ] \
+       && [ "$(printf '%s\n%s\n' "$mine" "$theirs" | sort -V | tail -1)" = "$theirs" ] \
+       && [ "${AMAZE_REPLACE_INSTALLED:-}" != "$theirs" ]; then
+        echo "sync-install: REFUSING - the install holds Amaze $theirs and" >&2
+        echo "  this checkout is $mine, so the copy would put an older build" >&2
+        echo "  over a newer one. Another machine that shares the install is" >&2
+        echo "  ahead: pull its commits, then run this again." >&2
+        echo "    $install" >&2
+        echo "  To go back to $mine on purpose, name the version it replaces:" >&2
+        echo "    AMAZE_REPLACE_INSTALLED=$theirs tools/sync-install.sh" >&2
+        exit 3
+    fi
+fi
+
 amaze_mirror "$repo/scripts" "$install/scripts" '__pycache__'
 amaze_mirror "$repo/python_panels" "$install/python_panels"
 amaze_mirror "$repo/toolbar" "$install/toolbar"

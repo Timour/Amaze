@@ -299,6 +299,19 @@ class RunTestsWrapperTest(GateFixture):
             self.install, "scripts", "python", "amaze", "widget.py")),
             "run-tests.sh did not sync before testing")
 
+    def test_a_green_whole_run_leaves_a_newer_install_as_it_is_and_stays_green(self):
+        """The run proved the commit, so a push goes on; only the copy into the install is left out."""
+        self._versions(checkout="1.35.1", installed="1.36.0")
+        result = self._run(os.path.join("tools", "run-tests.sh"), "green", cwd=self.tmp)
+        self.assertEqual(result.returncode, 0, self.both(result))
+        self.assertEqual(len(self.suite_calls()), 1, "the suite ran %r times" % self.suite_calls())
+        self.assertIn("the live install holds a newer Amaze and was left as it is", result.stdout)
+        self.assertIn("the install holds Amaze 1.36.0", result.stderr)
+        self.assertEqual("1.36.0", self._installed_version())
+        self.assertFalse(os.path.isfile(os.path.join(
+            self.install, "scripts", "python", "amaze", "widget.py")),
+            "a checkout that is behind was copied over the newer install")
+
     def test_it_passes_its_arguments_through(self):
         script = os.path.join(self.repo, "tools", "run-tests.sh")
         result = subprocess.run([test_support.bash(), script, "--isolated"],

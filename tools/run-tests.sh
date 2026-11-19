@@ -38,10 +38,17 @@ promote() {
         echo "  what would ship. The live install is unchanged; run again." >&2
         return 1
     fi
-    if AMAZE="$live_amaze" AMAZE_SYNC_NO_VERIFY=1 \
-       HOUDINI_PACKAGE_SKIPLIST="" HOUDINI_PATH="" \
-       "$repo/tools/sync-install.sh" >/dev/null; then
+    local synced=0
+    AMAZE="$live_amaze" AMAZE_SYNC_NO_VERIFY=1 \
+        HOUDINI_PACKAGE_SKIPLIST="" HOUDINI_PATH="" \
+        "$repo/tools/sync-install.sh" >/dev/null || synced=$?
+    if [ "$synced" -eq 0 ]; then
         echo "run-tests: green — the live install now holds this build"
+        return 0
+    fi
+    # Exit 3: the install is newer. The suite still proved HEAD, so the run stays green.
+    if [ "$synced" -eq 3 ]; then
+        echo "run-tests: green — the live install holds a newer Amaze and was left as it is"
         return 0
     fi
     echo "run-tests: suite GREEN but the live sync REFUSED (dirty" >&2
