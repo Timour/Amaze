@@ -702,13 +702,19 @@ A file gets more rows by its kind:
 | Geometry, `.obj` | Points, Vertices, Primitives, Dimensions |
 | USD | Prims, Layers, Default Prim, Up Axis, Meters Per Unit, Frames |
 
-A row appears when the file holds that fact: **Compression** for an
-EXR or a TIFF, **MIP Maps** for an EXR or a RAT, **Frames** for a USD
-file with a frame range. A scene file and any other file show the six
-rows every file has.
+Some rows only show when they apply: **Compression** on EXR and TIFF
+files, **MIP Maps** on EXR files and on other pictures that have MIP
+maps, and **Frames** on a USD file with a frame range. Scene files and
+all other files show the six rows every file has.
 
-The image and geometry rows and **Largest Texture** come from Houdini's
-`iinfo` and `ginfo`, and appear a moment after the tile is selected.
+Picture info and a material's **Largest Texture** are read from the file
+with OpenImageIO and show right away. **Channels** lists all the
+channels in the file. **Color Space** is the color space the file is
+tagged with. Without a tag, PNG and JPEG files show sRGB, EXR files
+show Linear, and TIFF files have no Color Space row.
+
+`.rat`, `.pic` and `.gif` pictures and geometry files go through
+Houdini's `iinfo` and `ginfo`, so their rows take a moment to appear.
 Files are read while the pane is open.
 
 ---

@@ -1,4 +1,4 @@
-"""What the info pane shows: a selection's rows, and the facts Houdini's tools report for a file."""
+"""What the info pane shows: a selection's rows, and a file's facts from its header or a tool."""
 
 from __future__ import annotations
 
@@ -226,13 +226,74 @@ def parse_image(text: str) -> list:
     return rows
 
 
-def parse_largest(text: str) -> list:
-    """The `Largest Texture` row of several files' `iinfo` output, by pixel count; [] for none."""
+def parse_sizes(text: str) -> list:
+    """(width, height) of every file in several files' `iinfo` output."""
     sizes = [_resolution(value) for key, value in _lines(text) if key == "Resolution"]
-    sizes = [size for size in sizes if size]
+    return [size for size in sizes if size]
+
+
+def largest_row(sizes) -> list:
+    """The `Largest Texture` row for (width, height) pairs, by pixel count; [] for none."""
     if not sizes:
         return []
     return [("Largest Texture", "%d x %d" % max(sizes, key=lambda size: size[0] * size[1]))]
+
+
+def parse_largest(text: str) -> list:
+    """The `Largest Texture` row of several files' `iinfo` output; [] for none."""
+    return largest_row(parse_sizes(text))
+
+
+MIP_LEVEL_LIMIT = 64    # the most MIP levels counted in one picture
+_FLOAT_FORMATS = ("half", "float", "double")    # OpenImageIO's names for its float pixel types
+
+
+def open_header(path: str):
+    """The picture opened by OpenImageIO, which reads its header only; None when it has no reader."""
+    try:
+        import OpenImageIO
+    except ImportError:
+        return None
+    source = OpenImageIO.ImageInput.open(path)
+    if source is None:
+        OpenImageIO.geterror()    # the reason is kept until it is read
+    return source
+
+
+def header_rows(source) -> list:
+    """The rows of a picture `open_header` returned, its first part's values; does not close it."""
+    spec = source.spec()
+    rows = [("Dimensions", "%d x %d" % (spec.width, spec.height))]
+    space = spec.get_string_attribute("oiio:ColorSpace")
+    if space:
+        rows.append(("Color Space", _COLOR_SPACES.get(space, space)))
+    bits = spec.get_int_attribute("oiio:BitsPerSample") or spec.format.size() * 8
+    kind = "float" if str(spec.format) in _FLOAT_FORMATS else "integer"
+    rows.append(("Bit Depth", "%d bit %s" % (bits, kind)))
+    names = list(spec.channelnames)
+    if names:    # "RGBA" for one-letter names, "R, G, B, depth.Z" otherwise
+        rows.append(("Channels", ("" if all(len(name) == 1 for name in names) else ", ").join(names)))
+    compression = spec.get_string_attribute("compression")
+    if compression:
+        rows.append(("Compression", "None" if compression == "none" else compression.upper()))
+    levels = 0
+    while levels < MIP_LEVEL_LIMIT and source.seek_subimage(0, levels):
+        levels += 1
+    if levels > 1 or source.format_name() == "openexr":    # an EXR says No; other formats say nothing
+        rows.append(("MIP Maps", "Yes" if levels > 1 else "No"))
+    return rows
+
+
+def header_size(path: str):
+    """(width, height) from the picture's header; None when OpenImageIO has no reader for it."""
+    source = open_header(path)
+    if source is None:
+        return None
+    try:
+        spec = source.spec()
+        return spec.width, spec.height
+    finally:
+        source.close()
 
 
 _COUNT = re.compile(r"^([\d,]+) (Points|Vertices|Primitives)$")
@@ -318,19 +379,37 @@ def _read_usd(path: str, cancelled) -> list:
         return []
 
 
+def _read_image(path: str, hfs: str, cancelled) -> list:
+    """A picture's rows from its header; from `iinfo` when OpenImageIO has no reader for it."""
+    source = open_header(path)
+    if source is None:
+        return _read_one("iinfo", [path], parse_image, hfs, cancelled)
+    try:
+        return header_rows(source)
+    finally:
+        source.close()
+
+
 def _read_largest(paths, hfs: str, cancelled) -> list:
-    """The `Largest Texture` row over every existing file in `paths`, PATHS_PER_CALL per `iinfo`."""
-    iinfo = hostos.bundled_binary(hfs, "iinfo")
-    found = [path for path in paths if os.path.isfile(path)]
-    if iinfo is None or not found:
-        return []
-    texts = []
-    for start in range(0, len(found), PATHS_PER_CALL):
-        text = run_tool(iinfo, found[start:start + PATHS_PER_CALL], cancelled)
+    """The `Largest Texture` row over every existing file: headers first, the rest by `iinfo`."""
+    sizes, rest = [], []
+    for path in paths:
         if cancelled():
             return []
-        texts.append(text or "")
-    return parse_largest("\n".join(texts))
+        if os.path.isfile(path):
+            size = header_size(path)
+            if size:
+                sizes.append(size)
+            else:
+                rest.append(path)
+    iinfo = hostos.bundled_binary(hfs, "iinfo") if rest else None
+    if iinfo is not None:
+        for start in range(0, len(rest), PATHS_PER_CALL):
+            text = run_tool(iinfo, rest[start:start + PATHS_PER_CALL], cancelled)
+            if cancelled():
+                return []
+            sizes.extend(parse_sizes(text or ""))
+    return largest_row(sizes)
 
 
 def _read_sizes(paths, cancelled) -> list:
@@ -363,7 +442,7 @@ def read(request: Request, hfs: str = "", cancelled=None) -> list:
     paths = list(request.paths)
     try:
         if request.kind == KIND_IMAGE and paths:
-            rows = _read_one("iinfo", paths[:1], parse_image, hfs, cancelled)
+            rows = _read_image(paths[0], hfs, cancelled)
         elif request.kind == KIND_GEOMETRY and paths:
             rows = _read_one("ginfo", ["-S", paths[0]], parse_geometry, hfs, cancelled)
         elif request.kind == KIND_USD and paths:

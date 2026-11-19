@@ -61,7 +61,7 @@ MODULE_LAYER = {    # one row per module in core/, helpers/ and the top level
 
 HOUDINI = {"hou", "husd", "toolutils", "loputils", "voptoolutils", "nodegraphutils",
            "hdefereval", "stateutils", "viewerstate", "soptoolutils", "objecttoolutils"}
-HOUDINI_LIBS = {"pxr", "MaterialX"}    # Houdini's Python libraries, no session needed
+HOUDINI_LIBS = {"pxr", "MaterialX", "OpenImageIO"}    # Houdini's Python libraries, no session needed
 UI_CALLS = {"displayMessage", "displayConfirmation", "displayCustomConfirmation", "readInput",
             "readMultiInput", "selectFile", "selectFromList", "selectFromTree", "selectColor",
             "selectNode", "selectMultipleNodes", "setStatusMessage"}

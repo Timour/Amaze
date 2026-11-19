@@ -367,6 +367,257 @@ class ReadWithAFakeRunner(unittest.TestCase):
         self.assertEqual(file_info.read(file_info.Request("usd", (path,))), [])
 
 
+class _FakeFormat:
+    """A pixel type as OpenImageIO names it, with its size in bytes."""
+
+    def __init__(self, name, size):
+        self._name, self._size = name, size
+
+    def size(self):
+        return self._size
+
+    def __str__(self):
+        return self._name
+
+
+class _FakeSpec:
+    """The part of an OpenImageIO `ImageSpec` that `header_rows` reads."""
+
+    def __init__(self, width, height, pixel, size, names, **attributes):
+        self.width, self.height, self.channelnames = width, height, tuple(names)
+        self.format = _FakeFormat(pixel, size)
+        self._attributes = {key.replace("__", ":"): value for key, value in attributes.items()}
+
+    def get_string_attribute(self, name, default=""):
+        return str(self._attributes.get(name, default))
+
+    def get_int_attribute(self, name, default=0):
+        return int(self._attributes.get(name, default))
+
+
+class _FakeSource:
+    """An opened picture with `levels` MIP levels; None for levels gives a thousand of them."""
+
+    def __init__(self, spec, reader="openexr", levels=1):
+        self._spec, self._reader, self._levels = spec, reader, levels
+        self.seeks, self.closed = 0, False
+
+    def spec(self):
+        return self._spec
+
+    def format_name(self):
+        return self._reader
+
+    def seek_subimage(self, part, level):
+        self.seeks += 1
+        return part == 0 and level < (1000 if self._levels is None else self._levels)
+
+    def close(self):
+        self.closed = True
+
+
+class TheHeaderRows(unittest.TestCase):
+    """An opened picture's header to rows, without OpenImageIO."""
+
+    def test_an_exr_with_one_level(self):
+        spec = _FakeSpec(800, 600, "half", 2, "RGBA", oiio__ColorSpace="Linear", compression="zip")
+        self.assertEqual(file_info.header_rows(_FakeSource(spec)), [
+            ("Dimensions", "800 x 600"), ("Color Space", "Linear"), ("Bit Depth", "16 bit float"),
+            ("Channels", "RGBA"), ("Compression", "ZIP"), ("MIP Maps", "No")])
+
+    def test_an_exr_with_mip_levels(self):
+        spec = _FakeSpec(2048, 1024, "float", 4, "RGB", compression="dwaa")
+        rows = dict(file_info.header_rows(_FakeSource(spec, levels=12)))
+        self.assertEqual((rows["MIP Maps"], rows["Bit Depth"], rows["Compression"]),
+                         ("Yes", "32 bit float", "DWAA"))
+
+    def test_a_tiff_has_a_mip_row_only_with_levels(self):
+        spec = _FakeSpec(8, 8, "uint16", 2, "RGB", oiio__BitsPerSample=16, compression="lzw")
+        self.assertEqual(file_info.header_rows(_FakeSource(spec, reader="tiff")), [
+            ("Dimensions", "8 x 8"), ("Bit Depth", "16 bit integer"), ("Channels", "RGB"),
+            ("Compression", "LZW")])
+        rows = file_info.header_rows(_FakeSource(spec, reader="tiff", levels=4))
+        self.assertEqual(rows[-1], ("MIP Maps", "Yes"))
+
+    def test_the_bits_the_file_states_are_shown_not_the_stored_size(self):
+        spec = _FakeSpec(8, 8, "uint16", 2, "RGB", oiio__BitsPerSample=10)
+        self.assertEqual(dict(file_info.header_rows(_FakeSource(spec, reader="dpx")))["Bit Depth"],
+                         "10 bit integer")
+
+    def test_longer_channel_names_are_listed_with_commas(self):
+        spec = _FakeSpec(8, 8, "half", 2, ("R", "G", "B", "depth.Z"))
+        self.assertEqual(dict(file_info.header_rows(_FakeSource(spec)))["Channels"],
+                         "R, G, B, depth.Z")
+        five = _FakeSpec(8, 8, "half", 2, "RGBAZ")
+        self.assertEqual(dict(file_info.header_rows(_FakeSource(five)))["Channels"], "RGBAZ")
+
+    def test_an_uncompressed_file_reads_none(self):
+        spec = _FakeSpec(8, 8, "float", 4, "RGB", compression="none")
+        self.assertEqual(dict(file_info.header_rows(_FakeSource(spec)))["Compression"], "None")
+
+    def test_a_color_space_is_shown_as_the_header_names_it(self):
+        for stated, shown in (("lin_srgb", "lin_srgb"), ("Linear Rec.709 (sRGB)",
+                                                         "Linear Rec.709 (sRGB)"),
+                              ("sRGB", "sRGB"), ("linear", "Linear")):
+            spec = _FakeSpec(8, 8, "uint8", 1, "RGB", oiio__ColorSpace=stated)
+            rows = dict(file_info.header_rows(_FakeSource(spec, reader="targa")))
+            self.assertEqual(rows["Color Space"], shown)
+
+    def test_the_level_count_ends_at_its_limit(self):
+        source = _FakeSource(_FakeSpec(8, 8, "half", 2, "RGB"), levels=None)
+        self.assertEqual(file_info.header_rows(source)[-1], ("MIP Maps", "Yes"))
+        self.assertEqual(source.seeks, file_info.MIP_LEVEL_LIMIT)
+
+
+class ReadThroughTheHeader(unittest.TestCase):
+    """`read` asks the header first and runs `iinfo` only for a picture without a reader."""
+
+    def setUp(self):
+        self.hfs = _FakeHoudini(self).hfs
+        self.calls, self.sources = [], {}
+        self.folder = tempfile.mkdtemp(prefix="amaze_header_")
+        self.addCleanup(shutil.rmtree, self.folder, True)
+        for patch in (mock.patch.object(file_info, "run_tool", self._run_tool),
+                      mock.patch.object(file_info, "open_header", self.sources.get)):
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def _run_tool(self, program, args, cancelled):
+        self.calls.append((os.path.basename(program), list(args)))
+        return RAT_TEXT
+
+    def _file(self, name, width=0, height=0):
+        """An empty file; with a size, one whose header the fake reader opens."""
+        path = os.path.join(self.folder, name)
+        open(path, "w").close()
+        if width:
+            self.sources[path] = _FakeSource(_FakeSpec(width, height, "uint8", 1, "RGB"), "png")
+        return path
+
+    def test_a_picture_with_a_reader_runs_no_tool_and_is_closed(self):
+        path = self._file("a.png", 32, 16)
+        rows = file_info.read(file_info.Request("image", (path,)), self.hfs)
+        self.assertEqual(rows, [("Dimensions", "32 x 16"), ("Bit Depth", "8 bit integer"),
+                                ("Channels", "RGB")])
+        self.assertEqual(self.calls, [])
+        self.assertTrue(self.sources[path].closed)
+
+    def test_a_picture_without_a_reader_goes_to_iinfo(self):
+        path = self._file("a.rat")
+        rows = file_info.read(file_info.Request("image", (path,)), self.hfs)
+        self.assertEqual(rows[0], ("Dimensions", "256 x 256"))
+        self.assertEqual(self.calls, [("iinfo", [path])])
+
+    def test_a_header_that_cannot_be_read_gives_no_rows_and_is_closed(self):
+        path = self._file("a.png", 32, 16)
+        self.sources[path].spec = mock.Mock(side_effect=RuntimeError("broken header"))
+        self.assertEqual(file_info.read(file_info.Request("image", (path,)), self.hfs), [])
+        self.assertTrue(self.sources[path].closed)
+
+    def test_textures_send_only_the_pictures_without_a_reader_to_iinfo(self):
+        small, rat = self._file("small.png", 64, 64), self._file("a.rat")
+        wide = self._file("wide.exr", 1024, 100)
+        rows = file_info.read(file_info.Request("textures", (small, rat, wide)), self.hfs)
+        self.assertEqual(rows, [("Largest Texture", "1024 x 100")])
+        self.assertEqual(self.calls, [("iinfo", [rat])])
+        self.assertTrue(self.sources[small].closed and self.sources[wide].closed)
+
+    def test_the_largest_can_be_the_one_iinfo_read(self):
+        small, rat = self._file("small.png", 64, 64), self._file("a.rat")
+        rows = file_info.read(file_info.Request("textures", (small, rat)), self.hfs)
+        self.assertEqual(rows, [("Largest Texture", "256 x 256")])
+
+    def test_textures_that_all_have_a_reader_run_no_tool(self):
+        paths = (self._file("a.png", 64, 64), self._file("b.png", 128, 48))
+        rows = file_info.read(file_info.Request("textures", paths), self.hfs)
+        self.assertEqual((rows, self.calls), ([("Largest Texture", "128 x 48")], []))
+
+
+def _openimageio():
+    """Houdini's OpenImageIO module, or None where its Python has none."""
+    try:
+        import OpenImageIO
+    except ImportError:
+        return None
+    return OpenImageIO
+
+
+@unittest.skipIf(_openimageio() is None, "this Python has no OpenImageIO")
+class TheRealHeader(unittest.TestCase):
+    """`read` with OpenImageIO itself, on pictures it writes here; no tool may run."""
+
+    def setUp(self):
+        self.oiio = _openimageio()
+        self.folder = tempfile.mkdtemp(prefix="amaze_oiio_")
+        self.addCleanup(shutil.rmtree, self.folder, True)
+        patch = mock.patch.object(file_info, "run_tool",
+                                  mock.Mock(side_effect=AssertionError("a tool was run")))
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def _picture(self, name, width, height, channels, pixel, **attributes):
+        """Write a flat picture of that size and pixel type and return its path."""
+        spec = self.oiio.ImageSpec(width, height, channels, pixel)
+        for key, value in attributes.items():
+            spec.attribute(key, value)
+        buffer = self.oiio.ImageBuf(spec)
+        self.oiio.ImageBufAlgo.fill(buffer, (0.5,) * channels)
+        path = os.path.join(self.folder, name)
+        self.assertTrue(buffer.write(path), buffer.geterror())
+        return path
+
+    def _rows(self, path):
+        return dict(file_info.read(file_info.request_for_file(path)))
+
+    def test_a_png(self):
+        rows = self._rows(self._picture("a.png", 8, 4, 4, "uint8"))
+        self.assertEqual((rows["Dimensions"], rows["Bit Depth"], rows["Channels"]),
+                         ("8 x 4", "8 bit integer", "RGBA"))
+        self.assertNotIn("MIP Maps", rows)
+
+    def test_an_exr_without_mip_levels(self):
+        rows = self._rows(self._picture("b.exr", 16, 8, 3, "half", compression="zip"))
+        self.assertEqual(rows, {"Dimensions": "16 x 8", "Color Space": "Linear",
+                                "Bit Depth": "16 bit float", "Channels": "RGB",
+                                "Compression": "ZIP", "MIP Maps": "No"})
+
+    def test_a_16_bit_tiff(self):
+        rows = self._rows(self._picture("c.tif", 8, 8, 3, "uint16", compression="lzw"))
+        self.assertEqual((rows["Bit Depth"], rows["Compression"]), ("16 bit integer", "LZW"))
+
+    def test_a_mip_mapped_texture(self):
+        source = self.oiio.ImageBuf(self.oiio.ImageSpec(64, 64, 3, "half"))
+        self.oiio.ImageBufAlgo.fill(source, (0.2, 0.4, 0.6))
+        for name in ("e.tx", "f.exr"):
+            path = os.path.join(self.folder, name)
+            self.assertTrue(self.oiio.ImageBufAlgo.make_texture(
+                self.oiio.MakeTxTexture, source, path), name)
+            rows = self._rows(path)
+            self.assertEqual((rows["Dimensions"], rows["MIP Maps"]), ("64 x 64", "Yes"), name)
+
+    def test_the_largest_of_several_textures(self):
+        paths = (self._picture("a.png", 8, 4, 3, "uint8"), self._picture("b.exr", 16, 8, 3, "half"),
+                 os.path.join(self.folder, "missing.png"))
+        self.assertEqual(file_info.read(file_info.request_for_textures(paths)),
+                         [("Largest Texture", "16 x 8")])
+
+    def test_a_file_that_is_no_picture_has_no_reader(self):
+        path = os.path.join(self.folder, "text.png")
+        test_support.write_text(path, "not a picture\n")
+        self.assertIsNone(file_info.open_header(path))
+        self.assertIsNone(file_info.open_header(os.path.join(self.folder, "missing.png")))
+        self.assertIsNone(file_info.header_size(path))
+
+
+class WithoutOpenImageIO(unittest.TestCase):
+    """A Python that cannot import OpenImageIO reads every picture through `iinfo`."""
+
+    def test_no_module_means_no_reader(self):
+        with mock.patch.dict(sys.modules, {"OpenImageIO": None}):    # None makes the import fail
+            self.assertIsNone(file_info.open_header("/x/a.exr"))
+            self.assertIsNone(file_info.header_size("/x/a.exr"))
+
+
 @unittest.skipIf(hostos.is_windows(), "the stand-in tool is a shell script")
 class TheRunner(unittest.TestCase):
     """`run_tool` returns stdout, and stops a tool on timeout or cancel."""
@@ -437,11 +688,18 @@ class TheRealTools(unittest.TestCase):
             ("Dimensions", "256 x 256"), ("Color Space", "sRGB"), ("Bit Depth", "8 bit integer"),
             ("Channels", "RGBA"), ("MIP Maps", "Yes")])
 
-    def test_an_exr(self):
+    @unittest.skipIf(_openimageio() is None, "this Python has no OpenImageIO")
+    def test_a_scanline_exr_has_no_mip_maps(self):
         path = self._sample("pic", "linearly_transformed_cosines", "GGX", "amplitudes.exr")
         self.assertEqual(file_info.read(file_info.request_for_file(path)), [
             ("Dimensions", "64 x 64"), ("Color Space", "Linear"), ("Bit Depth", "16 bit float"),
-            ("Channels", "RGBA"), ("Compression", "ZIP"), ("MIP Maps", "Yes")])
+            ("Channels", "RGBA"), ("Compression", "ZIP"), ("MIP Maps", "No")])
+
+    @unittest.skipIf(_openimageio() is None, "this Python has no OpenImageIO")
+    def test_a_mip_mapped_exr(self):
+        rows = dict(file_info.read(file_info.request_for_file(
+            self._sample("pic", "lookdev", "envmap.exr"))))
+        self.assertEqual((rows["Dimensions"], rows["MIP Maps"]), ("2048 x 1024", "Yes"))
 
     def test_the_largest_of_several_textures(self):
         paths = (self._sample("pic", "Mandril.rat"), self._sample("pic", "Mandril.pic"),
