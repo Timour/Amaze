@@ -99,6 +99,7 @@ class AssetLibrary(grid_engine.GridEngine,
     ActiveVersionRole = QtCore.Qt.ItemDataRole.UserRole + 11  # 267: the active version's name, "" when there are none
 
     CropRole = QtCore.Qt.ItemDataRole.UserRole + 12  # 268 - a capture is viewport-shaped, so it fills the tile
+    TileSubtitleRole = QtCore.Qt.ItemDataRole.UserRole + 14  # 270: the tile's second line; 269 is Color's category label
 
     DB_FILENAME = ""  # the json file in the library dir backing this model; every subclass names its own
 
@@ -460,7 +461,10 @@ class AssetLibrary(grid_engine.GridEngine,
         return True
 
     def renderer_label(self, asset) -> str:
-        return str(asset.renderer or "").strip()  # the tile subtitle: the kind field as it stands; MaterialLibrary overrides it
+        return str(asset.renderer or "").strip()  # the list's Type column: the kind field as it stands; MaterialLibrary overrides it
+
+    def tile_subtitle(self, asset) -> str:
+        return self.renderer_label(asset)    # the tile's second line; MaterialLibrary shortens it
 
     def _drop_content_label_caches(self, mat_id=None) -> None:
         """Evict per-id labels a subclass derives from asset content. The base derives none."""
@@ -472,6 +476,9 @@ class AssetLibrary(grid_engine.GridEngine,
 
         if role == self.RendererLabelRole:
             return self.renderer_label(asset)
+
+        if role == self.TileSubtitleRole:
+            return self.tile_subtitle(asset)
 
         if role == QtCore.Qt.ItemDataRole.DecorationRole:
             return self._decoration_image(row)  # the RAW stored image; the delegate scales it
@@ -1047,6 +1054,10 @@ class MaterialLibrary(AssetLibrary):
             result = ""
         self._shader_type_cache[mid] = result
         return result
+
+    def tile_subtitle(self, asset) -> str:
+        """The renderer's name alone, `Redshift`: the tile's second line shares its line with the icon."""
+        return renderers.label(str(asset.renderer or "").strip())
 
     def renderer_label(self, asset) -> str:
         """'USD ' for a USD-builder type, ':<shader>' where a table names it: `USD Redshift:PBR`."""

@@ -17,12 +17,11 @@ class Badge:
     """One tile badge: its ID, the model role it reads, its click `handler`, its SVGs and tooltips."""
 
     __slots__ = ("name", "svg", "role", "role_attr", "handler", "minimum", "equals", "dims",
-                 "hover_svg", "press_svg", "off_svg", "off_hover_svg", "tip", "off_tip",
-                 "svg_for")
+                 "hover_svg", "press_svg", "off_svg", "off_hover_svg", "tip", "off_tip")
 
     def __init__(self, name, svg, role="", role_attr="", handler="", minimum=0, equals="",
                  dims=False, hover_svg="", press_svg="", off_svg="", off_hover_svg="",
-                 tip="", off_tip="", svg_for=None) -> None:
+                 tip="", off_tip="") -> None:
         self.name = name
         self.svg = svg
         self.role = role              # the model role, by name, whose value decides if it is drawn; "" = always
@@ -37,24 +36,15 @@ class Badge:
         self.off_hover_svg = off_hover_svg    # the off state under the pointer, at full opacity
         self.tip = tip               # the tooltip text, from tooltips.py; "" = no tooltip
         self.off_tip = off_tip        # the tooltip in the off state, where a click does the opposite
-        self.svg_for = svg_for        # returns the SVG name for the role's value, where it differs by value
 
     def is_on(self, value) -> bool:
         """Whether a truthy role value shows this badge's ON state, per `minimum` or `equals`."""
-        if self.svg_for:
-            return bool(self.svg_for(value))
         if self.minimum:
             return int(value) >= self.minimum
         return not self.equals or value == self.equals
 
     def __repr__(self) -> str:                                # pragma: no cover
         return "<Badge %s>" % (self.name,)
-
-
-def _renderer_badge(stored) -> str:
-    """The badge SVG name of a material's renderer; "" for a renderer Amaze does not support."""
-    renderer = renderers.get(stored)
-    return renderer.badge if renderer is not None else ""
 
 
 BADGES = (      # in paint order; art in `ui/badge_*.svg`, one file each ▸r/tile-from-frame
@@ -71,7 +61,6 @@ BADGES = (      # in paint order; art in `ui/badge_*.svg`, one file each ▸r/ti
     Badge("execute", "badge_execute", "RendererRole", "_execute_role", "menu_run",
           equals="Python", hover_svg="badge_execute_hover", press_svg="badge_execute_press",
           tip=tooltips.BADGE_EXECUTE),    # the language role: Run is for Python only
-    Badge("renderer", "", "RendererRole", "_renderer_role", svg_for=_renderer_badge),
 )
 BADGE = {badge.name: badge for badge in BADGES}
 
@@ -245,6 +234,11 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
     GRID_TEXT_INSET = theme.ui_px(_TILE["text_inset"])
     GRID_BOTTOM_PAD = theme.ui_px(_TILE["bottom_pad"])
     GRID_IMG_TEXT_GAP = theme.ui_px(_TILE["img_text_gap"])
+    GRID_LINE_GAP = theme.ui_px(_TILE["line_gap"])    # between the name's line and the subtitle's
+    _RENDERER_ICON = amazetheme.drawn_renderer_icon()    # a material's renderer, at the subtitle's right end
+    RENDERER_ICON_SIDE = theme.ui_px(_RENDERER_ICON["side"])
+    RENDERER_ICON_INSET = theme.ui_px(_RENDERER_ICON["inset"])    # from the card's right edge
+    RENDERER_ICON_BELOW = theme.ui_px(_RENDERER_ICON["below"])    # its bottom, under the subtitle's
 
     CATEGORY_COLOR = QtGui.QColor(amazetheme.LIST_TEXT_COLOR)    # the Category column for a category with no colour
     LIST_TEXT_COLOR = QtGui.QColor(amazetheme.LIST_TEXT_COLOR)    # list mode's text colour, all but Category
@@ -260,7 +254,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         width = ts + cls.WIDTH_EXTRA
         icon_side = max(width - 2 * pad, 1)
         _nf, _rf, fm_name, fm_rend = cls.fonts_for(base_font, False)
-        block_h = fm_name.height() + fm_rend.height()
+        block_h = fm_name.height() + cls.GRID_LINE_GAP + fm_rend.height()
         height = (
             pad
             + icon_side
@@ -354,9 +348,11 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         tile_badges=(),
         tile_model=None,
         on_badge=None,
+        renderer_role=None,
     ):
         """Every role is optional; None means the delegate does not paint that thing."""
         super().__init__(parent)
+        self._renderer_role = renderer_role    # a material's renderer: its icon at the subtitle's right end
         self._active_version_role = active_version_role    # the active version's name, list mode
         self._crop_role = crop_role            # per row: truthy fills and crops the tile; None never crops
         self._subtitle_role = subtitle_role
@@ -643,9 +639,6 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
                 svg, opacity = badge.press_svg, None
             elif badge.hover_svg and hovered:
                 svg, opacity = badge.hover_svg, None
-            elif badge.svg_for:
-                svg = badge.svg_for(index.data(getattr(self, badge.role_attr)))
-                opacity = None
             else:
                 svg = badge.svg
                 opacity = opacity if badge.dims else None    # full opacity, so the on heart keeps its colour
@@ -657,6 +650,16 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
             x, y, _w, _h = self._badge_at(badge.name, area_x, area_y, icon_side,
                                           mark_w, mark_h)
             painter.drawPixmap(x, y, mark)
+
+    def _renderer_icon(self, index, dpr):
+        """The row's renderer icon, or None: no role, no renderer, or one Amaze does not offer."""
+        if self._renderer_role is None:
+            return None
+        renderer = renderers.get(index.data(self._renderer_role))
+        if renderer is None or not renderer.tile_icon:
+            return None
+        mark = self._badge_pixmap(renderer.tile_icon, self.RENDERER_ICON_SIDE, dpr)
+        return None if mark.isNull() else mark
 
     def sizeHint(self, option, index):
         """The view's own `gridSize`, exactly, when it has one; else the base hint."""
@@ -711,8 +714,9 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         pad = self.PAD
         text_x = rect.left() + pad + self.GRID_TEXT_INSET
         text_w = max(rect.width() - 2 * pad - self.GRID_TEXT_INSET, 1)
-        block_h = h_name + h_rend    # both lines, subtitle or not, as `grid_cell_size` reserves
-        name_dy = 0 if renderer else h_rend // 2    # a lone name is centred in the block
+        line_gap = self.GRID_LINE_GAP
+        block_h = h_name + line_gap + h_rend    # both lines, subtitle or not, as `grid_cell_size` reserves
+        name_dy = 0 if renderer else (line_gap + h_rend) // 2    # a lone name is centred in the block
         icon_side = max(rect.width() - 2 * pad, 1)
         icon_x = rect.left() + pad
         icon_y = rect.top() + pad
@@ -754,6 +758,15 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
             ix = rect.left() + (rect.width() - lw) // 2
             painter.drawPixmap(ix, icon_y, scaled)
         self._paint_badges(painter, index, icon_x, icon_y, icon_side, dpr)
+        subtitle_top = text_top + h_name + line_gap
+        subtitle_w = text_w
+        mark = self._renderer_icon(index, dpr)
+        if mark is not None:    # at the subtitle's right end; the subtitle ends a text inset before it
+            mark_w, mark_h = self._logical_size(mark)
+            mark_x = icon_x + icon_side - self.RENDERER_ICON_INSET - mark_w
+            painter.drawPixmap(
+                mark_x, subtitle_top + h_rend + self.RENDERER_ICON_BELOW - mark_h, mark)
+            subtitle_w = max(mark_x - self.GRID_TEXT_INSET - text_x, 1)
         painter.setFont(name_font)
         name_pen = self.SELECTED_TEXT if selected else self.GRID_NAME_COLOR
         subtitle_pen = None
@@ -777,11 +790,11 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
                       else self.GRID_SUBTITLE_COLOR)
             )
             painter.drawText(
-                QtCore.QRect(text_x, text_top + h_name, text_w, h_rend),
+                QtCore.QRect(text_x, subtitle_top, subtitle_w, h_rend),
                 QtCore.Qt.AlignmentFlag.AlignLeft
                 | QtCore.Qt.AlignmentFlag.AlignVCenter,
                 fm_rend.elidedText(
-                    renderer, QtCore.Qt.TextElideMode.ElideRight, text_w
+                    renderer, QtCore.Qt.TextElideMode.ElideRight, subtitle_w
                 ),
             )
 

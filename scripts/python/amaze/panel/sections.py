@@ -863,7 +863,7 @@ class MaterialSection(AssetSection):
     category_attr = "category_model"
     sidebar_attr = "category_sorted_model"
     delegate_attr = "thumb_delegate"
-    tile_badges = ("favourite", "versions", "comment", "renderer")
+    tile_badges = ("favourite", "versions", "comment")
     filter_tooltip = "Show materials for one renderer."
 
     FILTER_ALL_ICON = "filter_all"

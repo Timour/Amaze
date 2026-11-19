@@ -17,7 +17,7 @@ class Renderer(NamedTuple):
     samples_range: tuple
     samples_tip: str
     aliases: tuple = ()
-    badge: str = ""    # the tile badge naming this renderer, an image in `ui/`
+    tile_icon: str = ""    # this renderer's icon on a material's tile, an image in `ui/`
     classic_container: str = ""    # the /mat-only VOP container its plugin makes
     usd_builder: str = ""    # its LOP-capable container, which a classic one is rebuilt as
     builder_mark: str = ""    # user data marking its own builder, a plain subnet ▸r/octane-builder
@@ -26,17 +26,17 @@ class Renderer(NamedTuple):
 KARMA = Renderer("Karma", "MaterialX", "Karma", "filter_materialx", "materialx",
                  "renderer_matx_enabled", "renderer_materialx",
                  "karma_rendersamples", 9, (1, 256), "PREFS_SAMPLES_KARMA",
-                 aliases=("MaterialX", "MtlX"), badge="badge_renderer_materialx")
+                 aliases=("MaterialX", "MtlX"), tile_icon="renderer_materialx")
 REDSHIFT = Renderer("Redshift", "Redshift", "Redshift", "filter_redshift", "redshift",
                     "renderer_redshift_enabled", "renderer_redshift",
                     "rendersamples", 256, (1, 1024), "PREFS_SAMPLES_REDSHIFT",
-                    badge="badge_renderer_redshift",
+                    tile_icon="renderer_redshift",
                     classic_container="redshift_vopnet",
                     usd_builder="rs_usd_material_builder")
 OCTANE = Renderer("Octane", "Octane", "Octane", "filter_octane", "octane",
                   "renderer_octane_enabled", "renderer_octane",
                   "octane_rendersamples", 256, (1, 1024), "PREFS_SAMPLES_OCTANE",
-                  badge="badge_renderer_octane",
+                  tile_icon="renderer_octane",
                   classic_container="octane_vopnet",
                   usd_builder="octane_solaris_material_builder",
                   builder_mark="octane_material_builder")

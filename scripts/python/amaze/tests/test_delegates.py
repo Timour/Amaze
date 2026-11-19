@@ -157,9 +157,6 @@ class TheTileMatchesItsDesignFrame(unittest.TestCase):
             test_support.tile_delegate(
                 {b.name: roles.get(b.role) for b in delegates.BADGES})._paint_badges(
                 painter, model.index(0, 0), self.px(x), self.px(y), self.px(w))
-            values[roles["RendererRole"]] = renderers.ALL[0].key
-            test_support.tile_delegate({"renderer": roles["RendererRole"]})._paint_badges(
-                painter, model.index(0, 0), self.px(x), self.px(y), self.px(w))
         finally:
             painter.end()
         self.assertEqual([self._drawn(b) for b in delegates.BADGES], painted)
@@ -425,6 +422,134 @@ class CardFillsItsCellTest(unittest.TestCase):
             % (without_h - 1 - without))
 
 
+class _TileSpy(QtGui.QPainter):
+    """Records the rectangle of every drawText and of every pixmap drawn, in the order drawn."""
+
+    def __init__(self, device):
+        super().__init__(device)
+        self.texts = []
+        self.pixmaps = []
+
+    def drawText(self, *args):
+        if args and isinstance(args[0], QtCore.QRect):
+            self.texts.append(QtCore.QRect(args[0]))
+        return super().drawText(*args)
+
+    def drawPixmap(self, x, y, pixmap):
+        ratio = pixmap.devicePixelRatio() or 1.0
+        self.pixmaps.append(QtCore.QRect(x, y, round(pixmap.width() / ratio),
+                                         round(pixmap.height() / ratio)))
+        return super().drawPixmap(x, y, pixmap)
+
+
+class TheRendererIconIsOnTheSubtitlesLine(unittest.TestCase):
+    """T24: a material's renderer icon ends the subtitle's line, and the subtitle stops before it."""
+
+    RENDERER = QtCore.Qt.ItemDataRole.UserRole + 5
+    SUBTITLE = QtCore.Qt.ItemDataRole.UserRole + 6
+
+    def _painted(self, renderer, with_role=True):
+        """(name rect, subtitle rect, [pixmap rects], cell rect) of a tile storing `renderer`."""
+        values = {self.RENDERER: renderer, self.SUBTITLE: "a subtitle far too long for its line",
+                  QtCore.Qt.ItemDataRole.DisplayRole: "a_material_with_a_very_long_name"}
+
+        class _Model(QtCore.QAbstractListModel):
+            def rowCount(self, parent=None):
+                return 1
+
+            def data(self, index, role=0):
+                return values.get(role)
+
+        view = QtWidgets.QListView()
+        self.addCleanup(view.deleteLater)
+        model = _Model()
+        delegate = delegates.AssetItemDelegate(
+            self.SUBTITLE, renderer_role=self.RENDERER if with_role else None)
+        cell = delegate.grid_cell_size(amazetheme.TILE_DRAWN_SIZE, view.font())
+        image = QtGui.QImage(cell.width(), cell.height(), QtGui.QImage.Format.Format_ARGB32)
+        painter = _TileSpy(image)
+        option = QtWidgets.QStyleOptionViewItem()
+        option.rect = QtCore.QRect(0, 0, cell.width(), cell.height())
+        option.widget = view
+        option.font = view.font()
+        option.palette = view.palette()
+        try:
+            delegate._paint(painter, option, model.index(0, 0))
+            texts, pixmaps = list(painter.texts), list(painter.pixmaps)
+        finally:
+            painter.end()
+        return texts[0], texts[1], pixmaps, QtCore.QRect(0, 0, cell.width(), cell.height())
+
+    def test_the_icon_is_placed_as_T24_draws_it(self):
+        from amaze.helpers import theme
+        D = delegates.AssetItemDelegate
+        _name, subtitle, pixmaps, cell = self._painted("Redshift")
+        self.assertEqual(1, len(pixmaps), "a material tile does not draw exactly one renderer icon")
+        icon = pixmaps[0]
+        _kind, x, y, w, h, _text = amazetheme.drawn_node("T24", "renderer icon")
+        card = amazetheme.drawn_node("T24", "tile card")
+        sub = amazetheme.drawn_node("T24", "tile subtitle")
+        self.assertEqual((theme.ui_px(w), theme.ui_px(h)), (icon.width(), icon.height()))
+        self.assertEqual(theme.ui_px(card[1] + card[3] - x - w),
+                         cell.right() + 1 - D.PAD - (icon.right() + 1),
+                         "the icon is not the drawn distance from the card's right edge")
+        self.assertEqual(theme.ui_px(y + h - sub[2] - sub[4]),
+                         icon.bottom() - subtitle.bottom(),
+                         "the icon does not sit on the subtitle's line as T24 draws it")
+
+    def test_the_subtitle_ends_a_text_inset_before_the_icon(self):
+        name, subtitle, pixmaps, _cell = self._painted("Redshift")
+        self.assertEqual(pixmaps[0].left() - delegates.AssetItemDelegate.GRID_TEXT_INSET,
+                         subtitle.right() + 1,
+                         "the subtitle runs under the renderer icon, or stops further from it "
+                         "than the tile's text inset")
+        self.assertGreater(name.width(), subtitle.width(),
+                           "the name gave up room too, and it is on the line above the icon")
+
+    def test_each_renderer_has_its_own_icon_and_an_old_name_maps_to_its_renderer(self):
+        asked = []
+        cls = delegates.AssetItemDelegate
+        original = cls.__dict__["_badge_pixmap"]
+        cls._badge_pixmap = staticmethod(
+            lambda name, side, dpr=1.0, opacity=None: asked.append((name, side, opacity))
+            or QtGui.QPixmap())
+        self.addCleanup(setattr, cls, "_badge_pixmap", original)
+        cases = [(r.key, r.tile_icon) for r in renderers.ALL] + [("MaterialX", "renderer_materialx")]
+        for stored, art in cases:
+            with self.subTest(renderer=stored):
+                asked.clear()
+                self._painted(stored)
+                self.assertEqual([(art, cls.RENDERER_ICON_SIDE, None)], asked)
+        self.assertEqual(len(renderers.ALL), len({art for _key, art in cases}),
+                         "two renderers share one icon")
+
+    def test_every_renderers_icon_is_shipped_and_renders(self):
+        for renderer in renderers.ALL:
+            mark = delegates.AssetItemDelegate._badge_pixmap(renderer.tile_icon, 16, 2.0)
+            self.assertFalse(mark.isNull(),
+                             "%s.svg is missing or does not render" % renderer.tile_icon)
+
+    def test_a_tile_with_no_icon_keeps_the_whole_line_for_its_subtitle(self):
+        name, _marked, _pixmaps, _cell = self._painted("Redshift")
+        cases = (("", True), ("Cycles", True),    # no renderer, and one Amaze does not offer
+                 ("Redshift", False))             # a section that gives the delegate no renderer role
+        for stored, with_role in cases:
+            with self.subTest(renderer=stored, with_role=with_role):
+                _name, subtitle, pixmaps, _cell = self._painted(stored, with_role)
+                self.assertEqual([], pixmaps, "an icon was drawn")
+                self.assertEqual(name.width(), subtitle.width(),
+                                 "a tile that draws no icon gave up room for one")
+
+    def test_the_name_is_the_drawn_gap_above_the_subtitle(self):
+        from amaze.helpers import theme
+        name, subtitle, _pixmaps, _cell = self._painted("Redshift")
+        drawn_name = amazetheme.drawn_node("T01", "tile name")
+        drawn_sub = amazetheme.drawn_node("T01", "tile subtitle")
+        gap = drawn_sub[2] - (drawn_name[2] + drawn_name[4])
+        self.assertGreater(gap, 0, "T01 draws no gap between the two lines, so this proves nothing")
+        self.assertEqual(theme.ui_px(gap), subtitle.top() - (name.bottom() + 1))
+
+
 class BandContrastTest(unittest.TestCase):
     """A category colour never makes its own label unreadable; #00ee00 is the case to watch."""
 
@@ -563,7 +688,7 @@ class BadgeFamilyTest(unittest.TestCase):
     """All badges share one art set, `_badge_pixmap` and `_badge_side`, and are never re-tinted."""
 
     NAMES = ("badge_open", "badge_favourite", "badge_favourite_off", "badge_versions",
-             "badge_comment", "badge_execute") + tuple(r.badge for r in renderers.ALL)
+             "badge_comment", "badge_execute")
 
     def test_all_four_svgs_exist_and_render(self):
         for name in self.NAMES:
@@ -626,7 +751,6 @@ class BadgeFamilyTest(unittest.TestCase):
             ("versions", 3, "badge_versions", corner, rest),
             ("comment", True, "badge_comment", corner, None),
             ("execute", "Python", "badge_execute", corner, None),
-            ("renderer", "Redshift", "badge_renderer_redshift", corner, None),
         )
         self.assertEqual(
             len(cases), len(delegates.BADGES),
@@ -638,17 +762,6 @@ class BadgeFamilyTest(unittest.TestCase):
                 [(svg, expected, 2.0, opacity)], asked,
                 "%s is not drawn through `_badge_pixmap`, or the pass "
                 "requested a badge no role was set for" % role_kw)
-
-    def test_the_renderer_badge_draws_each_renderers_own_svg(self):
-        """One badge per renderer, from the renderer table; an old name maps to its renderer."""
-        corner = delegates.AssetItemDelegate._badge_side(128)
-        cases = [(r.key, r.badge) for r in renderers.ALL] + [("MaterialX", "badge_renderer_materialx")]
-        for stored, svg in cases:
-            with self.subTest(renderer=stored):
-                self.assertEqual([(svg, corner, 2.0, None)],
-                                 self._asked_for("renderer", stored, 128))
-        self.assertEqual([], self._asked_for("renderer", "Cycles", 128),
-                         "a renderer Amaze does not offer drew a badge")
 
     def test_every_button_badge_uses_the_one_rest_and_hover_opacity(self):
         """Every button badge uses the rest opacity; hovered, its hover art or hover opacity."""

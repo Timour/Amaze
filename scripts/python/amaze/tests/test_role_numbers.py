@@ -35,6 +35,7 @@ FAMILY_ROLES = {
     "NotesRole": _USER + 10,          # 266  delegate: notes badge
     "ActiveVersionRole": _USER + 11,  # 267
     "CropRole": _USER + 12,           # 268  delegate: a capture fills the tile
+    "TileSubtitleRole": _USER + 14,   # 270  delegate: the tile's second line; 269 is Color's own
 }
 
 FAMILY_MODELS = (

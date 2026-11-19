@@ -403,8 +403,9 @@ class AmazePanel(QtWidgets.QWidget):
         self.material_sorted_model, self.material_selection_model = self._grid_proxy(
             multifilterproxy_model.MultiFilterProxyModel(self), self.material_model)
         self.thumb_delegate = delegates.AssetItemDelegate(
-            self.material_model.RendererLabelRole,
+            self.material_model.TileSubtitleRole,
             self.thumblist,
+            renderer_role=self.material_model.RendererRole,
             category_role=self.material_model.CategoryRole,
             tag_role=self.material_model.TagRole,
             licence_role=self.material_model.LicenceRole,

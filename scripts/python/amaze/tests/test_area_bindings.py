@@ -158,11 +158,10 @@ BADGE_ROLES = {   # badge -> the model role it reads; each exception has its rea
     "versions": "VersionsRole",
     "comment": "NotesRole",
     "execute": "RendererRole",    # the language: drawn for one value, so having the role proves nothing
-    "renderer": "RendererRole",   # drawn for the renderers Amaze offers, each with its own art
 }
 
 EXPECTED_BADGES = {
-    "material": {"favourite", "versions", "comment", "renderer"},
+    "material": {"favourite", "versions", "comment"},
     "cop": {"favourite", "comment"},  # NOT versions: VersionsRole is inherited, and no Node asset keeps any
     "code": {"favourite", "execute", "versions", "comment"},
     "file": {"favourite", "open", "comment"},  # only File has the open badge: only a scene can be the one Houdini has open
@@ -193,8 +192,8 @@ class EveryContextShowsTheBadgesItsModelSupports(AreaBindingCase):
             panel = self.activate(key)
             model = getattr(panel, BINDINGS[key]["grid"]).sourceModel()
             for badge, role_name in BADGE_ROLES.items():
-                if not role_name or delegates.BADGE[badge].equals or delegates.BADGE[badge].svg_for:
-                    continue    # no role, or values of a shared one: a model having it proves nothing
+                if not role_name or delegates.BADGE[badge].equals:
+                    continue    # no role, or one value of a shared one: a model having it proves nothing
                 if not hasattr(model, role_name):
                     continue
                 if badge in expected:
@@ -206,6 +205,18 @@ class EveryContextShowsTheBadgesItsModelSupports(AreaBindingCase):
                     "badge, and that is not one of the exceptions "
                     "this file records a reason for" % (key, role_name,
                                                         badge))
+
+    def test_only_a_material_tile_reads_the_short_text_and_draws_the_renderer_icon(self):
+        panel = self.activate("material")
+        delegate, model = panel.thumblist.itemDelegate(), panel.material_model
+        self.assertEqual(model.TileSubtitleRole, delegate._subtitle_role,
+                         "a material tile's second line is not the renderer's name alone")
+        self.assertEqual(model.RendererRole, delegate._renderer_role,
+                         "a material tile has no role to draw its renderer icon from")
+        for key in ("cop", "code", "file", "gradient"):
+            with self.subTest(section=key):
+                self.assertIsNone(self.activate(key).thumblist.itemDelegate()._renderer_role,
+                                  "%s's tiles draw a renderer icon" % key)
 
     def test_the_online_mode_grid_shows_only_online_badges(self):
         panel = self.panel

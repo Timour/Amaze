@@ -138,9 +138,10 @@ A tile has up to four **badges**, one per corner:
 | <img src="scripts/python/amaze/ui/badge_comment.svg" width="100"> | top-left | Comments: filled when the asset has [comments](#comments). Opens and closes the Comments pane. |
 | <img src="scripts/python/amaze/ui/badge_favourite.svg" width="100"> | top-right | Favorite: an outline heart, filled pink on a favorite. A click toggles it; on a selected tile, it toggles every selected tile. |
 | <img src="scripts/python/amaze/ui/badge_versions.svg" width="100"> | lower-left | [Versions](#versions). Opens the version list. |
-| <img src="scripts/python/amaze/ui/badge_renderer_materialx.svg" width="100"> | lower-right | The renderer a material is for: MaterialX, Redshift or Octane (Material). |
 | <img src="scripts/python/amaze/ui/badge_open.svg" width="100"> | lower-right | The scene that is open in Houdini (File). |
 | <img src="scripts/python/amaze/ui/badge_execute.svg" width="100"> | lower-right | Runs a Python snippet (Code). |
+
+Under the picture, a material tile names its renderer, MaterialX, Redshift or Octane, with the renderer's icon at the right. List mode's **Type** column adds the builder and shader: `USD Redshift:PBR`.
 
 ---
 

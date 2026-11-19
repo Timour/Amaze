@@ -697,7 +697,7 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
         "nodes": (
             ("tile card", 4, 4, 130, 173, None),
             ("thumbnail", 4, 4, 130, 130, None),
-            ("tile name", 9, 142, 74, 15, "brushed_steel"),
+            ("tile name", 9, 139, 74, 15, "brushed_steel"),
             ("tile subtitle", 9, 157, 49, 15, "MaterialX"),
         ),
     },
@@ -707,7 +707,7 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("tile card", 4, 4, 130, 173, None),
             ("thumbnail", 4, 4, 130, 130, None),
             ("face ▸ icon_hip.svg", 4, 4, 130, 130, None),
-            ("tile name", 9, 142, 47, 15, "shot_010"),
+            ("tile name", 9, 139, 47, 15, "shot_010"),
             ("tile subtitle", 9, 157, 18, 15, "HIP"),
         ),
     },
@@ -717,7 +717,7 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("tile card", 4, 4, 130, 173, None),
             ("thumbnail", 4, 4, 130, 130, None),
             ("face ▸ face_code.svg", 4, 4, 130, 130, None),
-            ("tile name", 9, 142, 52, 15, "Mtxl to RS"),
+            ("tile name", 9, 139, 52, 15, "Mtxl to RS"),
             ("tile subtitle", 9, 157, 37, 15, "Python"),
         ),
     },
@@ -726,7 +726,7 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
         "nodes": (
             ("tile card", 4, 4, 130, 173, None),
             ("thumbnail", 4, 4, 130, 130, None),
-            ("tile name", 9, 142, 38, 15, "Badges"),
+            ("tile name", 9, 139, 38, 15, "Badges"),
             ("tile subtitle", 9, 157, 20, 15, "rest"),
             ("badge favourite (top-right) ▸ badge_favourite_off", 110, 6, 22, 22, None),
             ("badge comment (lower-right) ▸ badge_comment", 6, 6, 22, 22, None),
@@ -739,21 +739,21 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
         "nodes": (
             ("tile card", 4, 4, 130, 173, None),
             ("thumbnail", 4, 4, 130, 130, None),
-            ("tile name", 9, 142, 38, 15, "Badges"),
+            ("tile name", 9, 139, 38, 15, "Badges"),
             ("tile subtitle", 9, 157, 14, 15, "on"),
             ("badge favourite (top-right) ▸ badge_favourite", 110, 6, 22, 22, None),
             ("badge comment (lower-right) ▸ badge_comment", 6, 6, 22, 22, None),
             ("badge open (top-left) ▸ badge_open", 110, 110, 22, 22, None),
         ),
     },
-    "T24": {   # the renderer badge, drawn with the MaterialX mark
+    "T24": {   # a material's renderer icon, at the right end of the subtitle's line
         "frame": (138, 177),
         "nodes": (
             ("tile card", 4, 4, 130, 173, None),
             ("thumbnail", 4, 4, 130, 130, None),
-            ("tile name", 9, 142, 38, 15, "Badges"),
-            ("tile subtitle", 9, 157, 97, 15, "renderer MaterialX"),
-            ("badge renderer (lower-right) ▸ badge_renderer", 110, 110, 22, 22, None),
+            ("tile name", 9, 139, 120, 15, "Badges, long name te..."),
+            ("tile subtitle", 9, 157, 49, 15, "MaterialX"),
+            ("renderer icon ▸ renderer_materialx", 112, 156, 16, 16, None),
         ),
     },
     "L01": {   # the list table from the live panel - its header, widths and ticks are read
@@ -1087,9 +1087,21 @@ def drawn_tile(frame_key: str = "T01") -> dict:
         "pad": thumb[1],
         "width_extra": layout["frame"][0] - TILE_DRAWN_SIZE,
         "img_text_gap": name[2] - (thumb[2] + thumb[4]),
+        "line_gap": sub[2] - (name[2] + name[4]),
         "text_inset": name[1] - thumb[1],
         "bottom_pad": layout["frame"][1] - (sub[2] + sub[4]),
         "thumb": thumb[3],
+    }
+
+
+def drawn_renderer_icon(frame_key: str = "T24") -> dict:
+    """A material tile's renderer icon: its side, its inset from the card's right edge, its drop."""
+    card, sub, icon = (drawn_node(frame_key, kind)
+                       for kind in ("tile card", "tile subtitle", "renderer icon"))
+    return {
+        "side": icon[3],
+        "inset": card[1] + card[3] - (icon[1] + icon[3]),
+        "below": icon[2] + icon[4] - (sub[2] + sub[4]),    # its bottom under the subtitle's bottom
     }
 
 

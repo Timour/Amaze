@@ -572,6 +572,39 @@ class ACommaInsideOneCategoryNameStaysWholeTest(unittest.TestCase):
                          "an edit that left Category alone split the name at its comma")
 
 
+class TheTileNamesTheRendererAndTheListTheWholeTypeTest(unittest.TestCase):
+    """A material's tile says `Redshift`; the list's Type column says `USD Redshift:PBR`."""
+
+    def setUp(self):
+        from amaze.core import library as library_mod
+        self.prefs = test_support.fixture_prefs(self)
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        self.model = library_mod.MaterialLibrary(preferences=self.prefs)
+        self.asset = next(a for a in self.model.assets if a.name == "Metal")
+
+    def test_the_two_roles_give_the_short_and_the_whole_text(self):
+        index = self.model.index(self.model.find_asset_row_by_id(self.asset.mat_id), 0)
+        cases = (("Redshift", "Redshift", "USD Redshift:PBR"),
+                 ("Octane", "Octane", "USD Octane:PBR"),
+                 ("Karma", "MaterialX", "USD MaterialX:PBR"))
+        with patch.object(self.model, "is_usd_material", return_value=True), \
+                patch.object(self.model, "shader_type_label", return_value="PBR"):
+            for stored, short, whole in cases:
+                with self.subTest(renderer=stored):
+                    self.asset.renderer = stored
+                    self.assertEqual(short, index.data(self.model.TileSubtitleRole))
+                    self.assertEqual(whole, index.data(self.model.RendererLabelRole))
+        self.assertEqual("RendererLabelRole", self.model.COLUMN_ROLES["type"],
+                         "the list's Type column no longer reads the whole text")
+
+    def test_a_section_with_no_text_of_its_own_shows_its_type_on_the_tile(self):
+        from amaze.core import code_library
+        asset = material.Material(name="snippet", renderer="VEX", mat_id="tile_text_probe")
+        self.assertEqual("VEX", code_library.CodeLibrary.tile_subtitle(
+            code_library.CodeLibrary.__new__(code_library.CodeLibrary), asset))
+
+
 class AnInlineSectionHasNoFilesToMissTest(unittest.TestCase):
     """Code and Colors keep their content IN their database: no row of theirs has files."""
 
