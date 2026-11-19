@@ -943,7 +943,7 @@ class IconAssetsTest(unittest.TestCase):
                 ("d", "fill", "stroke", "stroke-opacity", "stroke-width")}
 
     def test_the_run_button_is_an_outline_that_turns_green_and_fills_when_pressed(self):
-        """T05, T05B and T05C: a white outline, a green outline, then solid green. ▸r/tile-from-frame"""
+        """T20, T21 and T22: a white outline, a green outline, then solid green. ▸r/tile-from-frame"""
         rest = self._play_mark("badge_execute.svg")
         hover = self._play_mark("badge_execute_hover.svg")
         press = self._play_mark("badge_execute_press.svg")

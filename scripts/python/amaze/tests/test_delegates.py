@@ -84,7 +84,7 @@ class TheTileMatchesItsDesignFrame(unittest.TestCase):
         """Two frames disagreeing on a badge's place is a document error, not a choice."""
         from unittest import mock
         from amaze import amazetheme
-        moved = dict(self.layout["T08"])
+        moved = dict(self.layout["T23"])
         moved["nodes"] = tuple(
             ("badge open (top-left) ▸ badge_open", 9, 6, 22, 22, None)
             if n[0].startswith("badge open (") else n for n in moved["nodes"])

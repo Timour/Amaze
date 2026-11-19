@@ -636,8 +636,8 @@ class EveryDrawnNodeIsBoundOrNamed(unittest.TestCase):
             "the frames built almost no pins, so the completeness check's "
             "empty result proves nothing")
         self.assertEqual(
-            {"P03a", "P03b", "T01", "T05", "T08", "L01", "B01", "S01", "G01", "N01",
-             "N01B"},
+            {"P03a", "P03b", "T01", "T05", "T08", "T20", "T23", "T24", "L01", "B01", "S01",
+             "G01", "N01", "N01B"},
             set(amazetheme.DIALOG_LAYOUT)
             - {frame_key for frame_key, _kind, _x, _y in self.pins},
             "P03a and P03b draw only switches and tab strips, and the panel's areas "
