@@ -954,7 +954,19 @@ class IconAssetsTest(unittest.TestCase):
                           hover["stroke-width"]))
         self.assertEqual(("#297D54", "#297D54", "1.3"),
                          (press["fill"], press["stroke"], press["stroke-width"]))
-        self.assertEqual(hover["d"], press["d"], "hover and press draw two different marks")
+        self.assertTrue(self._same_outline(hover["d"], press["d"]),
+                        "hover and press draw two different marks")
+        self.assertFalse(self._same_outline(rest["d"], hover["d"]),
+                         "the mark does not grow under the pointer, so the check above proves nothing")
+
+    @staticmethod
+    def _same_outline(one, other):
+        """Whether two paths are one outline: the same commands, each number within a thousandth."""
+        number = r"-?\d*\.?\d+"
+        if re.sub(number, "#", one) != re.sub(number, "#", other):
+            return False
+        return all(abs(float(a) - float(b)) <= 0.001
+                   for a, b in zip(re.findall(number, one), re.findall(number, other)))
 
     @staticmethod
     def _effective_paint(tag):
