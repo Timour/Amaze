@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.37.0
+
+- New **Info pane**. The Info button in the toolbar opens a pane that lists facts about the selected tile: an image's dimensions, bit depth and color space, a geometry file's point count and attributes, a USD file's prims and frame range, a material's textures, and each file's dates, size and folder. It sits where the Comments pane sits, and opening one closes the other. Files are read while the pane is open.
+- **Generate Material** moved from the toolbar to the top of the Import/Export menu.
+
 ## 1.36.2
 
 - File: on Windows, Houdini crashed when the sidebar listed a folder that has subfolders. The sidebar now draws that folder's arrow.
