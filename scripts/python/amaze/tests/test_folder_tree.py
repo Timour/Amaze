@@ -597,6 +597,28 @@ class TheSidebarTreeView(unittest.TestCase):
         QtTest.QTest.keyClick(view, QtCore.Qt.Key.Key_Right)
         self.assertTrue(view.isExpanded(loc), "Right did not open the folder")
 
+    def test_the_arrow_is_asked_of_the_style_as_qts_own_tree_asks_for_it(self):
+        """Houdini's style ends Houdini on Windows when it gets the base `QStyleOption`."""
+        self._scanned(self.loc)
+        asked = []
+        style = mock.Mock()
+        style.drawPrimitive.side_effect = (
+            lambda element, option, painter, widget: asked.append((element, option, widget)))
+        delegate = self.view.itemDelegate()
+        with mock.patch.object(self.view, "style", return_value=style):
+            delegate._decoration(16, None, "closed")
+            delegate._decoration(16, None, "open")
+        self.assertEqual(2, len(asked), "the arrow was not asked of the view's style")
+        flag = QtWidgets.QStyle.StateFlag
+        for (element, option, widget), is_open in zip(asked, (False, True)):
+            self.assertEqual(QtWidgets.QStyle.PrimitiveElement.PE_IndicatorBranch, element)
+            self.assertIsInstance(option, QtWidgets.QStyleOptionViewItem,
+                                  "the style got an option Qt's own tree never passes")
+            self.assertIs(self.view, widget)
+            self.assertTrue(option.state & flag.State_Children, "not marked as having children")
+            self.assertEqual(is_open, bool(option.state & flag.State_Open))
+            self.assertEqual(delegate.ARROW_BOX, option.rect.width())
+
     def test_qts_own_arrows_are_not_drawn(self):
         self._scanned(self.loc, _child(self.loc, "A"))
         view, model = self.view, self.model
@@ -784,6 +806,45 @@ class TheFileTabBrowsesSubfolders(unittest.TestCase):
         view.setCurrentIndex(self.sub)
         live = ui_helpers.live_current_index(view)
         self.assertEqual(self.sub, live, "the live index lost the subfolder's parent")
+
+
+def _base_style_options(source: str) -> list:
+    """The lines of `source` that build the base `QStyleOption`, not one of its subclasses."""
+    import ast
+    found = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Call):
+            called = node.func
+            name = called.attr if isinstance(called, ast.Attribute) else getattr(called, "id", "")
+            if name == "QStyleOption":
+                found.append(node.lineno)
+    return found
+
+
+class NoCodeBuildsTheBaseStyleOption(unittest.TestCase):
+    """Houdini's style is asked only as Qt's own widgets ask it. ▸r/tree-views"""
+
+    def test_no_module_builds_the_base_style_option(self):
+        """No test reaches Houdini's style, so the source is read: the suite runs on Qt's own."""
+        package = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        found, read = [], 0
+        for root, dirs, files in os.walk(package):
+            dirs[:] = [d for d in dirs if d not in ("tests", "__pycache__")]
+            for name in sorted(n for n in files if n.endswith(".py")):
+                path = os.path.join(root, name)
+                with open(path, encoding="utf-8") as handle:
+                    lines = _base_style_options(handle.read())
+                read += 1
+                found += ["%s:%d" % (test_support.posix_relpath(path, package), line)
+                          for line in lines]
+        self.assertGreater(read, 100, "the walk read almost nothing")
+        self.assertEqual([], found, "a base QStyleOption is built here; give the style the "
+                                    "option class Qt's own widget passes for that element")
+
+    def test_the_scan_tells_the_base_class_from_its_subclasses(self):
+        source = ("a = QtWidgets.QStyleOptionViewItem()\nb = QtWidgets.QStyleOption()\n"
+                  "c = QStyleOption(1)\nd = QStyleOptionHeader()\n")
+        self.assertEqual([2, 3], _base_style_options(source))
 
 
 class EveryModelThatUnfoldsHasABrowseRole(unittest.TestCase):

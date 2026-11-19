@@ -864,8 +864,8 @@ class SidebarItemDelegate(QtWidgets.QStyledItemDelegate):
         if arrow:
             view = self.parent()
             flag = QtWidgets.QStyle.StateFlag
-            option = QtWidgets.QStyleOption()
-            option.initFrom(view)
+            option = QtWidgets.QStyleOptionViewItem()    # as QTreeView asks; the base class ends Houdini on Windows
+            view.initViewItemOption(option)
             option.rect = QtCore.QRect(self.BAR + self.ARROW_GAP, 0, self.ARROW_BOX, side)
             option.state = flag.State_Enabled | flag.State_Item | flag.State_Children
             if arrow == "open":
