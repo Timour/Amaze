@@ -1195,55 +1195,47 @@ class TheOsHandOffsNeverRaise(unittest.TestCase):
                 hostos.reveal_path("/nowhere/amaze_debug.jsonl")
 
 
-class RevealGoesThroughHoudiniFirst(unittest.TestCase):
-    """`hou.ui.showInFileBrowser` on Linux and Windows; hostos on macOS and without a UI."""
+class RevealUsesHoudinisRevealFile(unittest.TestCase):
+    """`ui_helpers.reveal` calls `fileutils.revealFile`, which Houdini ships, on every system."""
 
     def setUp(self):
-        self.shown, self.revealed = [], []
+        self.ran, self.revealed = [], []
         patcher = mock.patch.object(hostos, "reveal_path", self.revealed.append)
         patcher.start()
         self.addCleanup(patcher.stop)
-        self.folder = tempfile.mkdtemp(prefix="amaze_reveal_")
+        self.folder = os.path.realpath(tempfile.mkdtemp(prefix="amaze_reveal_"))
         self.addCleanup(shutil.rmtree, self.folder, ignore_errors=True)
-        self._on_macos(False)
 
-    def _on_macos(self, answer):
-        patcher = mock.patch.object(hostos, "is_macos", lambda: answer)
-        patcher.start()
-        self.addCleanup(patcher.stop)
+    def _commands(self, system):
+        """Houdini's `fileutils` as it runs on `system`, its commands recorded and not run."""
+        import fileutils
+        return mock.patch.multiple(
+            fileutils,
+            subprocess=types.SimpleNamespace(call=self.ran.append),
+            platform=types.SimpleNamespace(system=lambda: system))
 
-    def test_on_macos_finder_is_asked_and_houdini_is_not(self):
-        from amaze.helpers import ui_helpers
-        self._on_macos(True)    # there Houdini's call returns without opening Finder
-        with self._ui():
-            ui_helpers.reveal(self.folder)
-        self.assertEqual([], self.shown)
-        self.assertEqual([self.folder], self.revealed)
-
-    def _ui(self, raising=False):
-        def show(path):
-            if raising:
-                raise hou.OperationFailed("no browser")
-            self.shown.append(path)
-        return mock.patch.object(hou, "ui", types.SimpleNamespace(showInFileBrowser=show),
-                                 create=True)
-
-    def test_a_file_or_a_folder_is_selected_in_its_parent(self):
+    def test_a_file_or_a_folder_is_shown_with_houdinis_command_for_each_system(self):
         from amaze.helpers import ui_helpers
         target = os.path.join(self.folder, "amaze_debug.jsonl")
-        with self._ui():
-            ui_helpers.reveal(target)
-            ui_helpers.reveal(self.folder + "/")
-        self.assertEqual([target, self.folder], self.shown)    # no trailing /: that would select nothing
-        self.assertEqual([], self.revealed)
+        parent = os.path.dirname(self.folder)
+        for system, expected in (
+                ("Darwin", [["open", "-R", target], ["open", "-R", self.folder]]),
+                ("Windows", [["explorer", "/select,", target],
+                             ["explorer", "/select,", self.folder]]),
+                ("Linux", [["xdg-open", self.folder], ["xdg-open", parent]])):
+            with self.subTest(system=system), self._commands(system):
+                del self.ran[:]
+                ui_helpers.reveal(target)
+                ui_helpers.reveal(self.folder + "/")
+                self.assertEqual(expected, self.ran)
+        self.assertEqual([], self.revealed, "Amaze's own reveal_path ran beside Houdini's")
 
-    def test_without_a_ui_or_when_houdini_raises_hostos_reveals(self):
+    def test_when_houdinis_function_raises_nothing_else_is_run(self):
         from amaze.helpers import ui_helpers
-        self.assertFalse(hasattr(hou, "ui"), "this host HAS a ui, so the fallback is untested")
-        ui_helpers.reveal(self.folder)
-        with self._ui(raising=True):
+        import fileutils
+        with mock.patch.object(fileutils, "revealFile", side_effect=OSError("no open")):
             ui_helpers.reveal(self.folder)
-        self.assertEqual([self.folder, self.folder], self.revealed)
+        self.assertEqual([], self.revealed)
 
     def test_every_caller_inside_houdini_uses_houdinis_file_browser(self):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

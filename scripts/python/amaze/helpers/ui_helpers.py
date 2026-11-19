@@ -9,7 +9,7 @@ from PySide6 import QtWidgets, QtCore, QtGui, QtSvg
 import amaze
 from amaze import amazetheme
 from amaze.core import debug
-from amaze.helpers import hostos, theme
+from amaze.helpers import theme
 
 
 @contextlib.contextmanager
@@ -26,15 +26,13 @@ def relayout(*models):
 
 
 def reveal(path: str) -> None:
-    """Show `path` selected in its parent folder; hostos on macOS and without hou.ui."""
-    if not hostos.is_macos():    # there Houdini's call opens nothing ▸r/show-in-file-browser-macos
-        try:
-            import hou
-            hou.ui.showInFileBrowser(path.rstrip("/\\") or path)    # a trailing / would select nothing
-            return
-        except Exception as exc:                         # noqa: BLE001 - no hou.ui headless, or the call failed
-            debug.event("file", "showInFileBrowser failed", error=str(exc))
-    hostos.reveal_path(path)
+    """Show `path` in the system file browser with Houdini's `fileutils.revealFile`; never raises."""
+    try:
+        import fileutils    # ships in Houdini's python libs ▸r/show-in-file-browser-macos
+        fileutils.revealFile(path)
+    except Exception as exc:                             # noqa: BLE001 - the command is missing or failed
+        debug.event("file", "revealFile failed", path=path, error=str(exc))
+        return
     debug.event("file", "shown in the file browser", path=path)
 
 def copy_files(paths) -> bool:
