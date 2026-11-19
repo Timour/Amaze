@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.36.1
+
+- Material: the renderer is no longer a badge on the picture. Its icon sits at the right of the tile's second line, and that line gives only the renderer's name: MaterialX, Redshift or Octane. The full type, such as `USD Redshift:PBR`, is in list mode's Type column.
+- The name on a tile sits a little higher, with more room between it and the line below.
+- File: RAT files have a new rat drawing.
+- The Run badge is redrawn, and so is the versions badge under the pointer.
+
 ## 1.36.0
 
 - File: a RAT file shows a rat and is not converted. **Render RAT Files** in Preferences ▸ Look turns thumbnails for RAT files back on.
