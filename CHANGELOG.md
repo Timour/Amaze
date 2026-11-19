@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.36.0
+
+- File: a RAT file shows a rat and is not converted. **Render RAT Files** in Preferences ▸ Look turns thumbnails for RAT files back on.
+
 ## 1.35.2
 
 - Code: the Run badge is an outline play mark. It turns green under the pointer and fills when you press it.
