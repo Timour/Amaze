@@ -94,6 +94,26 @@ def _hue(png):
     return "neither (%d, %d, %d)" % (r, g, b)
 
 
+LICENSING_ERROR = "Maxon licensing error"    # Redshift prints it at the first frame with no licence
+
+
+def _stops_at_a_licensing_error(testcase):
+    """Cancel a husk that prints Redshift's licensing error; the list returned gets that line."""
+    lines = []
+    handle = husk_job.HuskJob._handle
+
+    def watched(job, line):
+        if LICENSING_ERROR in line and not lines:
+            lines.append(line.strip())
+            job.cancel("Redshift has no licence")
+        handle(job, line)
+
+    patcher = mock.patch.object(husk_job.HuskJob, "_handle", watched)
+    patcher.start()
+    testcase.addCleanup(patcher.stop)
+    return lines
+
+
 class TheCommandAndItsEnvironment(unittest.TestCase):
 
     def _job(self, renderer, count=3):
@@ -333,9 +353,13 @@ class OneHuskRendersEachMaterial(unittest.TestCase):
                          "the Redshift plugin is not loaded")
     def test_two_redshift_materials_are_two_pictures(self):
         """The USD builder and a classic container, one husk through Redshift's delegate."""
+        licensing_error = _stops_at_a_licensing_error(self)
         items = [("RED_RS", _redshift(self, RED)),
                  ("GREEN_RS", _redshift(self, GREEN, classic=True))]
-        self.assertEqual(["red", "green"], self._render("Redshift", items),
+        hues = self._render("Redshift", items)
+        if licensing_error:
+            self.skipTest("Redshift has no licence on this machine")
+        self.assertEqual(["red", "green"], hues,
                          "one Redshift husk did not give each frame its own material")
 
 
