@@ -26,14 +26,16 @@ def relayout(*models):
 
 
 def reveal(path: str) -> None:
-    """Show `path` selected in its parent folder, file or folder alike; hostos without hou.ui."""
-    try:
-        import hou
-        hou.ui.showInFileBrowser(path.rstrip("/\\") or path)    # selects on Linux too; a trailing / would select nothing
-        return
-    except Exception as exc:                             # noqa: BLE001 - no hou.ui headless, or the call failed
-        debug.event("file", "showInFileBrowser failed", error=str(exc))
+    """Show `path` selected in its parent folder; hostos on macOS and without hou.ui."""
+    if not hostos.is_macos():    # there Houdini's call opens nothing ▸r/show-in-file-browser-macos
+        try:
+            import hou
+            hou.ui.showInFileBrowser(path.rstrip("/\\") or path)    # a trailing / would select nothing
+            return
+        except Exception as exc:                         # noqa: BLE001 - no hou.ui headless, or the call failed
+            debug.event("file", "showInFileBrowser failed", error=str(exc))
     hostos.reveal_path(path)
+    debug.event("file", "shown in the file browser", path=path)
 
 DRAG_TAG_STYLE = (     # the drag name tag, shared by the self-managed and the native drags
     "background-color: #2d2d2d; color: #e6e6e6;"

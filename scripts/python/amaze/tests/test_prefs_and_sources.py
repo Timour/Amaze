@@ -1196,7 +1196,7 @@ class TheOsHandOffsNeverRaise(unittest.TestCase):
 
 
 class RevealGoesThroughHoudiniFirst(unittest.TestCase):
-    """`hou.ui.showInFileBrowser` selects on every OS; hostos is the fallback without a UI."""
+    """`hou.ui.showInFileBrowser` on Linux and Windows; hostos on macOS and without a UI."""
 
     def setUp(self):
         self.shown, self.revealed = [], []
@@ -1205,6 +1205,20 @@ class RevealGoesThroughHoudiniFirst(unittest.TestCase):
         self.addCleanup(patcher.stop)
         self.folder = tempfile.mkdtemp(prefix="amaze_reveal_")
         self.addCleanup(shutil.rmtree, self.folder, ignore_errors=True)
+        self._on_macos(False)
+
+    def _on_macos(self, answer):
+        patcher = mock.patch.object(hostos, "is_macos", lambda: answer)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_on_macos_finder_is_asked_and_houdini_is_not(self):
+        from amaze.helpers import ui_helpers
+        self._on_macos(True)    # there Houdini's call returns without opening Finder
+        with self._ui():
+            ui_helpers.reveal(self.folder)
+        self.assertEqual([], self.shown)
+        self.assertEqual([self.folder], self.revealed)
 
     def _ui(self, raising=False):
         def show(path):
