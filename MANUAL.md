@@ -409,7 +409,9 @@ Browses folders on disk.
   field. Formats Qt cannot read are converted in the background, and
   Preferences ▸ Render sets how many convert at once. **Cancel**, at the
   right end of the tab row, stops the conversion and keeps the
-  thumbnails already made.
+  thumbnails already made. A RAT file shows a rat until **Render RAT
+  Files** is switched on in Preferences ▸ Look; then it gets a thumbnail
+  like any other image.
 - **Geometry** (.bgeo, .obj, .fbx, .abc, .usd, .usdz, .glb and more) gets
   viewport-rendered thumbnails, wireframe over shaded. **Double-click**,
   **Load Asset**, or a drag into a network, imports it in context. Esc interrupts a long
@@ -774,8 +776,10 @@ Two sub-tabs set which renderers and sections Amaze shows.
 <img src="docs/images/prefs_look.png" width="440">
 
 **Show Counts on Categories**, **Hide Empty Categories**, **Step Size**
-(the size slider moves in steps of 64 px), **Write Paths As**, **Tile
-Icon Line** (Thin, or Feather's Regular) and **Scroll Speed (%)**.
+(the size slider moves in steps of 64 px), **Render RAT Files** (off:
+RAT files in the File tab show a rat and are not converted), **Write
+Paths As**, **Tile Icon Line** (Thin, or Feather's Regular) and **Scroll
+Speed (%)**.
 
 ### Add-On
 

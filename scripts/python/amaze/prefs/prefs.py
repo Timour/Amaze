@@ -93,6 +93,7 @@ class Prefs(_Persistence):
         self._sidebar_width = 0  # same rule, 220px design width
         self._icon_line_weight = "template"  # "template" (thin 10px stroke) or "feather" (the icon set's default)
         self._sidebar_counts = True  # entry counts on INDIVIDUAL categories/folders; "All" always shows its total regardless
+        self._render_rat_files = False
         self._cache_dir = ""  # "" = this OS's own convention via hostos.cache_root()
         self._libraries: list[str] = []  # the Library list, the most recently opened first
         self._hide_empty_categories = True  # for Materials, "empty" respects the active renderer filter
@@ -461,6 +462,15 @@ class Prefs(_Persistence):
     @sidebar_counts.setter
     def sidebar_counts(self, val: bool) -> None:
         self._sidebar_counts = bool(val)
+
+    @property
+    def render_rat_files(self) -> bool:
+        """Whether a `.rat` file gets a rendered thumbnail; off, it shows the rat face."""
+        return self._render_rat_files
+
+    @render_rat_files.setter
+    def render_rat_files(self, val: bool) -> None:
+        self._render_rat_files = bool(val)
 
     @property
     def ram_cache_mb(self) -> int:

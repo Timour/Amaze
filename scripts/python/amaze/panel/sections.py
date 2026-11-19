@@ -1502,8 +1502,9 @@ class FolderSection(Section):
         return locations.KIND_HIP in self.selected_kinds(indexes)
 
     def menu_offers_preview(self, indexes, current) -> bool:
-        return (self.offers_preview_update    # a capture or an OS icon cannot re-render
-                and self.selection_has_importable(indexes, current))
+        files, rows = self._model_and_rows(indexes)    # a capture, an OS icon and a .rat not rendered cannot re-render
+        return bool(self.offers_preview_update and files is not None
+                    and any(files.renders_thumbnail(row) for row in rows))
 
     def menu_import_enabled(self, indexes, current) -> bool:
         """An image loads onto one node parameter, so images import one at a time; geometry imports all."""

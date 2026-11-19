@@ -41,6 +41,11 @@ def _stat_once(known: dict):
 
 GEO_FAILURE_TAG = "png-scratch"  # untagged failures came from a scratch Qt could not read; retried once
 IMAGE_FAILURE_TAG = "refused"  # untagged failures include converters that only timed out; retried once
+RAT_EXTENSION = ".rat"  # Houdini's own texture format: a generic face unless Render RAT Files is on
+
+
+def _is_rat(name: str) -> bool:
+    return name.lower().endswith(RAT_EXTENSION)
 
 
 def sweep_folder_cache(preferences, folder: str, remaining) -> int:
@@ -438,7 +443,9 @@ class FileFiles(grid_engine.GridEngine,
             row = len(self._files)
             self._files.append((dirpath, name))
             self._kinds.append(kind)
-            if kind == locations.KIND_IMAGE:
+            if kind == locations.KIND_IMAGE and not self._renders(name):
+                self._row_specs.append((None, "face", full))    # a .rat file while Render RAT Files is off
+            elif kind == locations.KIND_IMAGE:
                 key = ("tex", full, image_cache.size)  # no staleness in the key: a requester must discard first or put the mtime in the key
                 self._key_rows.setdefault(key, []).append(row)
                 cached_png = image_cache.valid_path(full, stat=stat_of)
@@ -662,6 +669,8 @@ class FileFiles(grid_engine.GridEngine,
             if not full or not 0 <= row < len(self._kinds):
                 continue
             kind = self._kinds[row]
+            if not self.renders_thumbnail(row):
+                continue
             if kind == locations.KIND_IMAGE:
                 if not queued:
                     self._configure_engine_convert()
@@ -749,8 +758,21 @@ class FileFiles(grid_engine.GridEngine,
         return self._kinds[row] if 0 <= row < len(self._kinds) else ""
 
     def tile_face_art(self, row: int) -> str:
-        """A scene's generic face is T08's Houdini icon, every other file's T11's."""
-        return "icon_hip" if self._kind(row) == locations.KIND_HIP else "face_file"
+        """A scene's generic face is T08's Houdini icon, a `.rat` file's the rat, any other the file."""
+        if self._kind(row) == locations.KIND_HIP:
+            return "icon_hip"
+        return "face_rat" if _is_rat(self._files[row][1]) else "face_file"
+
+    def _renders(self, name: str) -> bool:
+        """Whether an image file named `name` gets a thumbnail: every one but a `.rat` switched off."""
+        return self.preferences.render_rat_files or not _is_rat(name)
+
+    def renders_thumbnail(self, row: int) -> bool:
+        """Whether Render Image has anything to do for `row`: an image or geometry that renders."""
+        kind = self._kind(row)
+        if kind == locations.KIND_IMAGE:
+            return self._renders(self._files[row][1])
+        return kind == locations.KIND_GEO
 
     def can_preview(self, row: int) -> bool:
         """Every file has an image: its capture, else a render, the image, or its type's icon."""
@@ -767,8 +789,8 @@ class FileFiles(grid_engine.GridEngine,
         key, source, payload = self._row_specs[row]
         if source == "os-icon":
             return self._os_icon_image(payload)
-        if source in ("missing", "none"):
-            return tile_icons.generic_image(self.tile_face_art(row))    # unreadable, or a scene
+        if source in ("missing", "none", "face"):
+            return tile_icons.generic_image(self.tile_face_art(row))    # unreadable, a scene, or a .rat not rendered
         if source == "file":
             return thumbnails.engine.request_file(key, payload)
         image = thumbnails.engine.peek(key)    # convert/render rows: what has loaded so far

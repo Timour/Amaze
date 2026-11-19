@@ -933,6 +933,7 @@ class _Prefs:
         self.texture_parallel_conversions = 1
         self.geometry_shading_mode = "hiddenlineghost"
         self.geometry_bg = "black"
+        self.render_rat_files = True    # the tests here that convert a .rat predate the switch
         self._records: dict = {}
         self._order: list = []
         self._favourites: list = []
@@ -1145,6 +1146,55 @@ class AFailedConversionShowsTheFileFaceTest(unittest.TestCase):
         face = model.data(model.index(0, 0), QtCore.Qt.ItemDataRole.DecorationRole)
         self.assertEqual(tile_icons.generic_image("face_file"), face,
                          "a failed conversion left a blank card")
+
+
+class ARatFileShowsItsFaceUnlessRenderedTest(unittest.TestCase):
+    """A `.rat` file shows the rat face and is not converted; Render RAT Files turns rendering on."""
+
+    def _model(self, render):
+        """A folder holding floor.rat and plate.png: (model, {name: row}, names asked to convert)."""
+        from amaze.core import thumbnails
+        tmp = tempfile.mkdtemp(prefix="amaze_rat_")
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        for name in ("floor.rat", "plate.png"):
+            with open(os.path.join(tmp, name), "w") as handle:
+                handle.write("not a picture")
+        prefs = _Prefs([tmp])
+        prefs.render_rat_files = render
+        model = file_library.FileFiles(prefs)
+        with mock.patch.object(thumbnails.engine, "request_convert") as asked:
+            model.set_folder(tmp)
+        rows = {model._files[row][1]: row for row in range(len(model._files))}
+        return model, rows, sorted(os.path.basename(call.args[1]) for call in asked.call_args_list)
+
+    def test_with_the_switch_off_a_rat_file_is_not_converted_and_shows_the_rat_face(self):
+        model, rows, asked = self._model(render=False)
+        self.assertEqual(["plate.png"], asked)
+        face = model.data(model.index(rows["floor.rat"], 0), QtCore.Qt.ItemDataRole.DecorationRole)
+        self.assertEqual(tile_icons.generic_image("face_rat"), face)
+        self.assertNotEqual(tile_icons.generic_image("face_file"), face,
+                            "the rat face is the file face")
+        self.assertEqual(locations_mod.KIND_IMAGE, model._kinds[rows["floor.rat"]],
+                         "a .rat file no longer loads as an image")
+
+    def test_with_the_switch_on_a_rat_file_is_converted_like_any_image(self):
+        _model, _rows, asked = self._model(render=True)
+        self.assertEqual(["floor.rat", "plate.png"], asked)
+
+    def test_render_image_leaves_a_rat_file_alone_while_the_switch_is_off(self):
+        from amaze.core import thumbnails
+        model, rows, _asked = self._model(render=False)
+        with mock.patch.object(thumbnails.engine, "request_convert") as asked:
+            model.rerender_thumbnails([rows["floor.rat"]])
+        asked.assert_not_called()
+        self.assertFalse(model.renders_thumbnail(rows["floor.rat"]))
+        self.assertTrue(model.renders_thumbnail(rows["plate.png"]))
+
+    def test_the_switch_is_off_until_turned_on_and_is_kept_per_user(self):
+        from amaze.prefs import persistence
+        self.assertIs(False, prefs_module.Prefs().render_rat_files)
+        self.assertEqual(("render_rat_files", "_render_rat_files", False),
+                         persistence.USER_KEYS["render_rat_files"])
 
 
 class TheCachePngIsWrittenOffTheGuiThreadTest(unittest.TestCase):

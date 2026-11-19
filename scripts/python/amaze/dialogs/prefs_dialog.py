@@ -1026,6 +1026,12 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._cbx_step_size.setChecked(self._prefs.step_size)
         self._cbx_step_size.toggled.connect(self.set_step_size)
         form.addRow(self._label(""), self._cbx_step_size)
+        self._cbx_render_rat = ui_helpers.ToggleSwitch("Render RAT Files")
+        self._cbx_render_rat.setToolTip(ui_helpers.tooltip_text(
+            tooltips.PREFS_RENDER_RAT_FILES))
+        self._cbx_render_rat.setChecked(self._prefs.render_rat_files)
+        self._cbx_render_rat.toggled.connect(self.set_render_rat_files)
+        form.addRow(self._label(""), self._cbx_render_rat)
 
         self._combo_path_style = self._data_combo((
             ("$HOME", "home"),
@@ -1617,6 +1623,7 @@ class PrefsDialog(base_dialog.AssetDialog):
 
     _USER_ROWS = (    # (row attribute, the per-user setting it shows); sections and scroll are in `_shown_values`
         ("_cbx_sidebar_counts", "sidebar_counts"),
+        ("_cbx_render_rat", "render_rat_files"),
         ("_cbx_hide_empty", "hide_empty_categories"),
         ("_cbx_step_size", "step_size"),
         ("_combo_icon_weight", "icon_line_weight"),
@@ -1860,6 +1867,14 @@ class PrefsDialog(base_dialog.AssetDialog):
     def set_sidebar_counts(self, checked: bool) -> None:
         self._prefs.sidebar_counts = checked
         self._prefs.save()
+
+    def set_render_rat_files(self, checked: bool) -> None:
+        """Store the switch and list the File tab's folder again, so its .rat tiles change at once."""
+        self._prefs.render_rat_files = checked
+        self._prefs.save()
+        files = getattr(self._panel, "file_files_model", None)
+        if files is not None:
+            files.refresh_current_folder()
 
     def _on_section_toggled(self, _checked: bool) -> None:
         """Rebuild enabled_sections in ALL_SECTIONS order, never zero; unregistered keys are kept."""
