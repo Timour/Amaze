@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.35.0
+
+- File: the right-click menu gets **Copy** and **Paste**. Copy puts the selected files on the system clipboard, and Paste copies the files on the clipboard into the folder you are looking at. When a name is already in the folder, Paste asks once: Overwrite, Skip or Cancel.
+- File: **Show Location** opens Finder on macOS again.
+
 ## 1.34.12
 
 - Internal names in the code are reworded.
