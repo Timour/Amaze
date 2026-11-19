@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.35.1
+
+- `.rat` files and other images that need a converter get their thumbnails again after a Redshift render has been started in the viewport.
+- A thumbnail that timed out is tried again the next time you start Houdini. Only a file the converters cannot read is remembered as unreadable, and files marked by earlier versions get one more try.
+- File: Show Location tells you on the status line if the file is gone or the file browser will not open.
+
 ## 1.35.0
 
 - File: the right-click menu gets **Copy** and **Paste**. Copy puts the selected files on the system clipboard, and Paste copies the files on the clipboard into the folder you are looking at. When a name is already in the folder, Paste asks once: Overwrite, Skip or Cancel.
