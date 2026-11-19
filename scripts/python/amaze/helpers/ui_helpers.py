@@ -7,7 +7,7 @@ import re
 from PySide6 import QtWidgets, QtCore, QtGui, QtSvg
 
 import amaze
-from amaze import amazetheme
+from amaze import amazetheme, messages
 from amaze.core import debug
 from amaze.helpers import theme
 
@@ -27,11 +27,14 @@ def relayout(*models):
 
 def reveal(path: str) -> None:
     """Show `path` in the system file browser with Houdini's `fileutils.revealFile`; never raises."""
+    if not os.path.exists(path):    # the system's command fails on it without raising
+        debug.refuse(messages.REVEAL_MISSING % path)
+        return
     try:
         import fileutils    # ships in Houdini's python libs ▸r/show-in-file-browser-macos
         fileutils.revealFile(path)
     except Exception as exc:                             # noqa: BLE001 - the command is missing or failed
-        debug.event("file", "revealFile failed", path=path, error=str(exc))
+        debug.refuse(messages.REVEAL_FAILED % exc)
         return
     debug.event("file", "shown in the file browser", path=path)
 

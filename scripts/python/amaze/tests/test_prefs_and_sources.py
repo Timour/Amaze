@@ -1205,6 +1205,11 @@ class RevealUsesHoudinisRevealFile(unittest.TestCase):
         self.addCleanup(patcher.stop)
         self.folder = os.path.realpath(tempfile.mkdtemp(prefix="amaze_reveal_"))
         self.addCleanup(shutil.rmtree, self.folder, ignore_errors=True)
+        from amaze.core import debug
+        self.said = []
+        previous = debug._ui
+        debug.set_ui(types.SimpleNamespace(status=self.said.append, dialog=self.said.append))
+        self.addCleanup(debug.set_ui, previous)
 
     def _commands(self, system):
         """Houdini's `fileutils` as it runs on `system`, its commands recorded and not run."""
@@ -1217,6 +1222,7 @@ class RevealUsesHoudinisRevealFile(unittest.TestCase):
     def test_a_file_or_a_folder_is_shown_with_houdinis_command_for_each_system(self):
         from amaze.helpers import ui_helpers
         target = os.path.join(self.folder, "amaze_debug.jsonl")
+        test_support.write_text(target, "")
         parent = os.path.dirname(self.folder)
         for system, expected in (
                 ("Darwin", [["open", "-R", target], ["open", "-R", self.folder]]),
@@ -1229,13 +1235,26 @@ class RevealUsesHoudinisRevealFile(unittest.TestCase):
                 ui_helpers.reveal(self.folder + "/")
                 self.assertEqual(expected, self.ran)
         self.assertEqual([], self.revealed, "Amaze's own reveal_path ran beside Houdini's")
+        self.assertEqual([], self.said, "a file browser that opened was reported as a failure")
 
-    def test_when_houdinis_function_raises_nothing_else_is_run(self):
+    def test_when_houdinis_function_raises_the_status_line_says_why(self):
+        from amaze import messages
         from amaze.helpers import ui_helpers
         import fileutils
         with mock.patch.object(fileutils, "revealFile", side_effect=OSError("no open")):
             ui_helpers.reveal(self.folder)
-        self.assertEqual([], self.revealed)
+        self.assertEqual([messages.REVEAL_FAILED % "no open"], self.said)
+        self.assertEqual([], self.revealed, "a second way of opening the file browser was tried")
+
+    def test_a_path_that_is_gone_is_named_and_houdinis_function_is_not_called(self):
+        from amaze import messages
+        from amaze.helpers import ui_helpers
+        import fileutils
+        gone = os.path.join(self.folder, "deleted.exr")
+        with mock.patch.object(fileutils, "revealFile") as shipped:
+            ui_helpers.reveal(gone)
+        shipped.assert_not_called()    # `open -R` on a missing file fails without raising
+        self.assertEqual([messages.REVEAL_MISSING % gone], self.said)
 
     def test_every_caller_inside_houdini_uses_houdinis_file_browser(self):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
