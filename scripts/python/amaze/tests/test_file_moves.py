@@ -792,8 +792,9 @@ class TheFileTabCopiesAndPastesTest(_FileTabShowingA):
     def test_copy_puts_the_file_on_the_clipboard_as_a_file_and_as_text(self):
         self._copy_plate()
         data = QtWidgets.QApplication.clipboard().mimeData()
-        self.assertEqual([self.plate], [url.toLocalFile() for url in data.urls()])
-        self.assertEqual(self.plate, data.text())
+        plate = os.path.normpath(self.plate)    # a Windows path is on the clipboard with `/`
+        self.assertEqual([plate], [os.path.normpath(url.toLocalFile()) for url in data.urls()])
+        self.assertEqual(plate, os.path.normpath(data.text()))
 
     def test_paste_is_offered_only_with_files_copied_and_a_folder_shown(self):
         self.assertFalse(self.section.menu_paste_enabled([], None), "offered with nothing copied")

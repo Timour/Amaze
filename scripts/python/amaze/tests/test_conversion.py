@@ -225,8 +225,11 @@ class AConverterIsStartedWithoutFork(unittest.TestCase):
         os.putenv("AMAZE_SET_AFTER_START", "live")    # the C environment only: os.environ does not see it
         self.addCleanup(os.unsetenv, "AMAZE_SET_AFTER_START")
         self.assertNotIn("AMAZE_SET_AFTER_START", os.environ, "premise: os.environ saw the change")
-        ok, err = conversion._run_process(
-            "/bin/sh", ["-c", 'test "$AMAZE_SET_AFTER_START" = live'], timeout_ms=15000)
+        child = "/bin/sh", ["-c", 'test "$AMAZE_SET_AFTER_START" = live']
+        if hostos.is_windows():    # no /bin/sh there: cmd exits 1 unless the variable reads `live`
+            child = (os.environ.get("COMSPEC", "cmd.exe"),
+                     ["/c", "if not %AMAZE_SET_AFTER_START%==live exit 1"])
+        ok, err = conversion._run_process(*child, timeout_ms=15000)
         self.assertTrue(ok, "the child did not see a variable set after Python started: %r" % err)
 
 
@@ -478,7 +481,7 @@ def _spy_programs(seen, sips_answer=None):
     real = conversion._run_process
 
     def spy(program, args, **kw):
-        name = os.path.basename(program)
+        name = os.path.basename(program).removesuffix(".exe")    # Windows: `iconvert.exe`
         seen.append(name)
         if name == "sips" and sips_answer is not None:
             return sips_answer

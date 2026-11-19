@@ -6,6 +6,7 @@ import io
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -433,6 +434,26 @@ def source_of(relative: str) -> str:
     package = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     with open(os.path.join(package, relative), encoding="utf-8") as handle:
         return handle.read()
+
+
+def refuse_listing(testcase, folder: str) -> None:
+    """Make `folder` refuse to be listed until the test ends; skips as root, who lists it anyway."""
+    if hostos.is_windows():    # its mode bits stop no listing there; a deny rule for Everyone does
+        everyone = "*S-1-1-0"
+        subprocess.run(["icacls", folder, "/deny", everyone + ":(RD)"],
+                       check=True, capture_output=True)
+        testcase.addCleanup(subprocess.run, ["icacls", folder, "/remove:d", everyone],
+                            capture_output=True)
+        return
+    if hasattr(os, "getuid") and os.getuid() == 0:
+        testcase.skipTest("root lists every folder")
+    os.chmod(folder, 0)
+    testcase.addCleanup(os.chmod, folder, 0o755)
+
+
+def bash() -> str:
+    """The `bash` first on PATH; Windows by itself starts System32's, which is WSL's."""
+    return shutil.which("bash") or "bash"
 
 
 def plain_python() -> str:

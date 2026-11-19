@@ -18,6 +18,7 @@ from PySide6 import QtCore, QtWidgets                     # noqa: E402
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])    # the fixture panel is a widget
 
 from amaze.core import debug                             # noqa: E402
+from amaze.helpers import hostos                         # noqa: E402
 from amaze.tests import test_support                      # noqa: E402
 
 
@@ -192,6 +193,10 @@ class DebugRefuseReportsGestureFailuresTest(unittest.TestCase):
             displayMessage=lambda text, *a, **k: self.shown.append(text),
         )
 
+    def _not_windows(self):
+        """The fallback prints on macOS and Linux only; Windows has its own test below."""
+        return mock.patch.object(hostos, "is_windows", lambda: False)
+
     def _fire_deferred(self, singleShot):
         """Run what the dialog branch deferred."""
         for call in singleShot.call_args_list:
@@ -256,7 +261,7 @@ class DebugRefuseReportsGestureFailuresTest(unittest.TestCase):
     def test_without_set_ui_the_log_only_prints(self):
         """The log shows messages in Houdini only through the object given to `set_ui`."""
         debug.set_ui(None)
-        with mock.patch.object(hou, "ui", self._ui(), create=True), \
+        with mock.patch.object(hou, "ui", self._ui(), create=True), self._not_windows(), \
                 mock.patch("builtins.print", self.printed.append):
             debug.refuse("no ramp here")
             debug.refuse(debug.Damage("gone"))
@@ -267,7 +272,7 @@ class DebugRefuseReportsGestureFailuresTest(unittest.TestCase):
     def test_headless_prints_it_and_does_not_raise(self):
         self.assertFalse(hasattr(hou, "ui"),
                          "this host HAS a ui, so the fallback is untested")
-        with mock.patch("builtins.print", self.printed.append):
+        with self._not_windows(), mock.patch("builtins.print", self.printed.append):
             shown = debug.refuse("no ramp here")
             damaged = debug.refuse(debug.Damage("gone"))
         self.assertTrue(shown and damaged,
@@ -277,7 +282,6 @@ class DebugRefuseReportsGestureFailuresTest(unittest.TestCase):
 
     def test_on_windows_the_fallback_prints_nothing(self):
         """A print opens the Windows Console; alert, refuse and note skip it. ▸r/platform-files"""
-        from amaze.helpers import hostos
         debug.set_ui(None)
         self.addCleanup(debug._alerted.clear)
         with mock.patch.object(hostos, "is_windows", lambda: True), \

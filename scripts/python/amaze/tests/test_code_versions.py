@@ -71,7 +71,8 @@ class TheCodeStoreIsBesideTheMaterialStore(_Case):
         for unsafe in ("..", "../..", "../../outside"):
             with self.assertRaises(hostos.PathOutsideBase, msg=unsafe):
                 versions.versions_dir(self.prefs, unsafe, versions.CODE)
-        self.assertEqual(os.path.join(self.prefs.dir, "code", "versions", "X1"),
+        inside = os.path.join(self.prefs.dir, "code", "versions", "X1")
+        self.assertEqual(os.path.normpath(inside),
                          os.path.normpath(versions.versions_dir(self.prefs, "X1", versions.CODE)))
 
     def test_the_material_store_is_in_the_materials_folder(self):

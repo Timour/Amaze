@@ -6,7 +6,7 @@ import subprocess
 import unittest
 
 from amaze.tests import impact_map
-from amaze.tests import test_support  # noqa: F401 - arms the sandbox
+from amaze.tests import test_support  # importing it arms the sandbox
 from amaze.tests.test_shell_gates import (
     GateFixture,
     PUSH_END,
@@ -227,7 +227,8 @@ class PrePushSelectionTest(GateFixture):
         self._mapped()
         script = os.path.join(self.repo, "tools", "run-tests.sh")
         result = subprocess.run(
-            ["bash", script, "--all-versions"], capture_output=True, text=True, cwd=self.tmp,
+            [test_support.bash(), script, "--all-versions"], capture_output=True, text=True,
+            cwd=self.tmp,
             env=self._env("green", FAKE_SKIPPED='[["%s", "needs a GPU"]]' % SIZE))
         self.assertNotEqual(result.returncode, 0, self.both(result))
         self.assertIn("DEAD COVER", result.stdout + result.stderr)
@@ -300,7 +301,7 @@ class RunTestsWrapperTest(GateFixture):
 
     def test_it_passes_its_arguments_through(self):
         script = os.path.join(self.repo, "tools", "run-tests.sh")
-        result = subprocess.run(["bash", script, "--isolated"],
+        result = subprocess.run([test_support.bash(), script, "--isolated"],
                                 capture_output=True, text=True, cwd=self.tmp,
                                 env=self._env("green"))
         self.assertEqual(result.returncode, 0, self.both(result))

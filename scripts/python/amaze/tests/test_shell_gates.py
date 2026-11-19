@@ -14,7 +14,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.tests import test_support  # noqa: F401 - redirects the log
+from amaze.tests import test_support  # importing it redirects the log
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))))))
@@ -244,7 +244,7 @@ class GateFixture(unittest.TestCase):
         self.assertNotIn(REPO, os.path.realpath(script),
                          "refusing to run the REAL gate script")
         env = self._env(mode, **extra)
-        return subprocess.run(["bash", script], capture_output=True,
+        return subprocess.run([test_support.bash(), script], capture_output=True,
                               text=True, cwd=cwd or self.tmp, input=stdin,
                               env=env)
 
@@ -418,7 +418,7 @@ class TargetedRunTest(unittest.TestCase):
     def _run(self, *args):
         """The timeout matters: a broken argument check starts the whole suite recursively."""
         try:
-            return subprocess.run(["bash", self._script(), *args],
+            return subprocess.run([test_support.bash(), self._script(), *args],
                                   capture_output=True, text=True,
                                   timeout=60)
         except subprocess.TimeoutExpired:
@@ -693,7 +693,8 @@ class TheSuiteRunsOnTheProductionBuild(unittest.TestCase):
         fake = " ".join("'%s'" % root for root in roots)
         script = (". '%s'\namaze_houdini_roots() { [ -z \"%s\" ] || printf '%%s\\n' %s; }\n"
                   "amaze_houdini\n" % (resolver, fake, fake))
-        result = subprocess.run(["bash", "-c", script], capture_output=True, text=True)
+        result = subprocess.run([test_support.bash(), "-c", script],
+                                capture_output=True, text=True)
         self.assertEqual(0, result.returncode, result.stderr)
         return result.stdout.strip()
 

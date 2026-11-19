@@ -308,10 +308,7 @@ class EverySentenceOfTheReportTest(_Library):
         self.assertIn("The other databases read fine: 0 users.", self.text())
 
     def test_a_folder_that_cannot_be_listed(self):
-        if hasattr(os, "getuid") and os.getuid() == 0:
-            self.skipTest("root lists every folder")
-        os.chmod(self.materials, 0)
-        self.addCleanup(os.chmod, self.materials, 0o755)
+        test_support.refuse_listing(self, self.materials)
         self.assertIn("Amaze could not look inside the materials folder, so it cannot say "
                       "whether there are orphaned files in there.", self.text())
 
@@ -467,6 +464,8 @@ class TheOtherFixesTest(_Library):
         from amaze import package_file
         from amaze.helpers import hostos
         carrier = os.path.join(self.dir, hostos.FOLDER_ICON_FILE)
+        if hostos.is_windows():
+            self.skipTest("Windows refuses a file name with a carriage return in it")
         if hostos.is_macos():
             self.assertTrue(hostos.give_folder_icon(self.dir, package_file(
                 "ui", "library_folder")), "the folder was given no icon")
@@ -512,7 +511,7 @@ class TheOtherFixesTest(_Library):
     def test_stars_on_files_that_are_gone_are_removed(self):
         prefs, folder = self.files_prefs()
         prefs.add_file_folder(folder)
-        star = _make(os.path.join(folder, "shot.exr"))
+        star = test_support.posix_path(_make(os.path.join(folder, "shot.exr")))    # as stars are stored
         prefs.add_file_favorite(star)
         os.remove(star)
         findings = repair.survey(prefs)
@@ -619,10 +618,7 @@ class TheThreeLightsTest(_Library):
         self.assertEqual(before, _read(self.dir, MATERIALS))
 
     def test_a_folder_that_cannot_be_listed_leaves_the_files_unchecked(self):
-        if hasattr(os, "getuid") and os.getuid() == 0:
-            self.skipTest("root lists every folder")
-        os.chmod(self.materials, 0)
-        self.addCleanup(os.chmod, self.materials, 0o755)
+        test_support.refuse_listing(self, self.materials)
         found = self.lights()
         self.assertEqual((library_check.UNCHECKED, None), found["lights"][library_check.FILES])
         self.assertEqual("The materials folder cannot be read.", found["info"])
