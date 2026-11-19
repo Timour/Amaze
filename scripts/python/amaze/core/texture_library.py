@@ -61,6 +61,7 @@ class ThumbnailCache:
         self.manifest_path = os.path.join(self.cache_dir, "manifest.json")
         os.makedirs(self.cache_dir, exist_ok=True)
         self._manifest: dict = self._load_manifest()
+        self._session_failures: dict = {}    # path -> (mtime, size): failures never written to the manifest
         self._dirty = False
         _LIVE.add(self)
 
@@ -227,12 +228,15 @@ class ThumbnailCache:
         self._manifest[full_path] = {"mtime": st.st_mtime, "size": st.st_size}
         self._dirty = True
 
-    def remember_failure(self, full_path: str) -> None:
-        """Record that nothing could read this file as it is now; `invalidate` retries it."""
+    def remember_failure(self, full_path: str, lasting: bool = True) -> None:
+        """Record that this file gave no thumbnail; `lasting=False` keeps it for this session only."""
         full_path = self._key(full_path)
         try:
             st = os.stat(full_path)
         except OSError:
+            return
+        if not lasting:
+            self._session_failures[full_path] = (st.st_mtime, st.st_size)
             return
         self._manifest[full_path] = {"mtime": st.st_mtime,
                                      "size": st.st_size,
@@ -242,18 +246,21 @@ class ThumbnailCache:
         self._dirty = True
 
     def known_failure(self, full_path: str, stat=None) -> bool:
-        """True when every converter has already failed on this exact file."""
-        entry = self._manifest.get(self._key(full_path))
-        if not entry or not entry.get("failed"):
-            return False
-        if entry.get("tag", "") != self._failure_tag:
+        """True when this exact file already gave no thumbnail, in the manifest or this session."""
+        key = self._key(full_path)
+        entry = self._manifest.get(key)
+        lasting = bool(entry and entry.get("failed")
+                       and entry.get("tag", "") == self._failure_tag)
+        session = self._session_failures.get(key)
+        if not lasting and session is None:
             return False
         try:
             st = (stat or os.stat)(full_path)
         except OSError:
             return False
-        return (entry.get("mtime") == st.st_mtime
-                and entry.get("size") == st.st_size)
+        if lasting and (entry.get("mtime"), entry.get("size")) == (st.st_mtime, st.st_size):
+            return True
+        return session == (st.st_mtime, st.st_size)
 
     def reconcile(self, folder: str, current_names: list) -> None:
         """Drop this folder's cache entries whose source file is gone or changed."""
@@ -300,6 +307,7 @@ class ThumbnailCache:
     def invalidate(self, full_path: str, flush: bool = True) -> None:
         """Evict one cache entry, valid or not; in a loop pass `flush=False` and save() once after."""
         full_path = self._key(full_path)
+        self._session_failures.pop(full_path, None)
         if full_path not in self._manifest:
             return
         cache_path = self._cache_path(full_path)

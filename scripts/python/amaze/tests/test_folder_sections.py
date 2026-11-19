@@ -105,6 +105,31 @@ class ProgressAccountingTest(unittest.TestCase):
         self.model = file_library.FileFiles(self.prefs)
         self.addCleanup(thumbnails.engine.cancel_pending_converts)
 
+    def _attempt_without_an_image(self, unfinished):
+        """One key reports back with no image; returns whether a NEW session still skips its file."""
+        from amaze.core import file_library
+        self.model._load([self.root, self.sub])
+        key = next(iter(self.model._progress_keys))
+        path = self.model._pending_writes[key]
+        thumbnails.engine._unfinished.discard(key)
+        if unfinished:
+            thumbnails.engine._unfinished.add(key)
+            self.addCleanup(thumbnails.engine._unfinished.discard, key)
+        self.model._on_convert_attempted(key)
+        self.assertTrue(self.model._image_cache.known_failure(path),
+                        "the file would be converted again on this same visit")
+        self.model._image_cache.save()
+        fresh = texture_library.ThumbnailCache(
+            self.model._image_cache.size, failure_tag=file_library.IMAGE_FAILURE_TAG)
+        return fresh.known_failure(path)
+
+    def test_a_refused_file_is_skipped_in_later_sessions(self):
+        self.assertTrue(self._attempt_without_an_image(unfinished=False))
+
+    def test_a_converter_that_did_not_finish_is_tried_again_next_session(self):
+        self.assertFalse(self._attempt_without_an_image(unfinished=True),
+                         "a timeout was stored as a file no converter can read")
+
     def test_the_bar_can_actually_complete(self):
         """The total counts KEYS, not rows, so a pass where each key reports once completes it."""
         self.model._load([self.root, self.sub])

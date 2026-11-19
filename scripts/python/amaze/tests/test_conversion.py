@@ -92,96 +92,55 @@ def oversized_for_qt(target, declared=OVERSIZED, only_first=False):
     return mock.patch.object(conversion, "_read_qt", fake)
 
 
-class _StubSignal:
-    def __init__(self):
-        self.slots = []
+class _StubChild:
+    """A stub killed converter: `wait` returns at once, or raises as a child in a stuck read does."""
 
-    def connect(self, slot):
-        self.slots.append(slot)
+    args = ["/usr/bin/stub", "/a/stub/source.exr"]
 
-
-class _StubProcess:
-    """A stub killed child: exits in `waitForFinished`, or outlives SIGKILL like stuck disk I/O."""
-
-    def __init__(self, reaps=True, running=True):
-        self._reaps = reaps
-        self._running = running
+    def __init__(self, dies=True):
+        self._dies = dies
         self.killed = False
-        self.deleted = False
-        self.finished = _StubSignal()
-
-    def state(self):
-        running = QtCore.QProcess.ProcessState.Running
-        gone = QtCore.QProcess.ProcessState.NotRunning
-        return running if self._running else gone
+        self.exited = False
 
     def kill(self):
         self.killed = True
 
-    def waitForFinished(self, _ms):
-        if self._reaps:
-            self._running = False
-            return True
-        return False
+    def wait(self, timeout=None):
+        import subprocess
+        if not self._dies:
+            raise subprocess.TimeoutExpired(self.args, timeout)
+        self.exited = True
+        return -9
 
-    def program(self):
-        return "/usr/bin/stub"
-
-    def arguments(self):
-        return ["/a/stub/source.exr"]
-
-    def moveToThread(self, thread):
-        self.thread_moved_to = thread
-        return True
-
-    def deleteLater(self):
-        self.deleted = True
+    def poll(self):
+        return -9 if self.exited else None
 
 
 class AbandoningAChildLimitsTheWait(unittest.TestCase):
-    """A child outliving SIGKILL costs half a second, not thirty: it waits in `_ABANDONED`."""
+    """A child outliving its kill costs half a second, not thirty: it is kept in `_ABANDONED`."""
 
     def tearDown(self):
         conversion._ABANDONED.clear()
 
-    def test_a_child_that_exits_in_time_is_simply_reaped(self):
-        for child, killed in ((_StubProcess(reaps=True), True),
-                              (_StubProcess(running=False), False)):
-            with self.subTest(killed=killed):
-                self.assertTrue(conversion._reap_or_abandon(child))
-                self.assertEqual(killed, child.killed,
-                                 "a dead child was killed, or a live one "
-                                 "was left running")
-                self.assertEqual([], conversion._ABANDONED)
+    def test_a_child_that_exits_in_time_is_not_kept(self):
+        child = _StubChild(dies=True)
+        self.assertTrue(conversion._stop(child))
+        self.assertTrue(child.killed, "the child was not killed")
+        self.assertEqual([], conversion._ABANDONED)
 
-    def test_a_sigkill_deferring_child_is_abandoned_not_awaited(self):
-        child = _StubProcess(reaps=False)
-        self.assertFalse(conversion._reap_or_abandon(child))
+    def test_a_child_that_outlives_the_kill_is_kept_then_dropped_once_it_exits(self):
+        child = _StubChild(dies=False)
+        self.assertFalse(conversion._stop(child))
         self.assertIn(child, conversion._ABANDONED)
-        self.assertTrue(child.finished.slots,
-                        "no `finished` slot deletes the process later")
-        child._running = False  # exited: the slot removes it from `_ABANDONED` and deletes the Qt object
-        child.finished.slots[0]()
+        conversion._collect_abandoned()
+        self.assertIn(child, conversion._ABANDONED, "a child still running was dropped")
+        child.exited = True
+        conversion._collect_abandoned()
         self.assertNotIn(child, conversion._ABANDONED)
-        self.assertTrue(child.deleted)
-
-    def test_a_child_exiting_during_the_handover_is_still_collected(self):
-        child = _StubProcess(reaps=False)
-        original_wait = child.waitForFinished  # exits before the post-connect check: `finished` was emitted and is not emitted again
-
-        def wait_then_exit(ms):
-            result = original_wait(ms)
-            child._running = False
-            return result
-
-        child.waitForFinished = wait_then_exit
-        self.assertFalse(conversion._reap_or_abandon(child))
-        self.assertNotIn(child, conversion._ABANDONED)
-        self.assertTrue(child.deleted)
 
 
 class ACompletionReapedElsewhere(unittest.TestCase):
-    """Qt sees exits via SIGCHLD; a missing pid while Running means reaped elsewhere: stop waiting."""
+    """With SIGCHLD ignored the kernel collects the child itself; the converter still counts as run."""
 
     @unittest.skipUnless(os.name == "posix", "SIGCHLD is POSIX-only")
     def test_a_reaped_child_returns_within_the_watchdog(self):
@@ -192,8 +151,7 @@ class ACompletionReapedElsewhere(unittest.TestCase):
         libc = ctypes.CDLL(None)
         libc.signal.restype = ctypes.c_void_p
         libc.signal.argtypes = [ctypes.c_int, ctypes.c_void_p]
-        ok, err = conversion._run_process("/bin/echo", ["prime"],  # prime first: Qt installs its child-exit handler on the first QProcess start
-                                          timeout_ms=15000)
+        ok, err = conversion._run_process("/bin/echo", ["prime"], timeout_ms=15000)
         self.assertTrue(ok, "the priming call itself failed: %r" % err)
         parked_before = len(conversion._ABANDONED)
         previous = libc.signal(int(pysignal.SIGCHLD), ctypes.c_void_p(1))
@@ -215,14 +173,100 @@ class ACompletionReapedElsewhere(unittest.TestCase):
             "exited (%.2fs)" % elapsed)
         self.assertEqual(
             parked_before, len(conversion._ABANDONED),
-            "an exited child was added to `_ABANDONED` - deleting it "
-            "will stall shutdown")
+            "an exited child was added to `_ABANDONED`")
+
+
+@unittest.skipUnless(os.name == "posix", "SIGCHLD is POSIX-only")
+class AChildNobodyReapsIsStillNoticed(unittest.TestCase):
+    """With SIGCHLD taken from Qt and nothing reaping, an exited converter is seen at once."""
+
+    def _with_no_handler(self, call):
+        """`call()` while SIGCHLD has its default action, as when Houdini's `UT_Signal` holds it."""
+        import ctypes
+        import signal as pysignal
+        libc = ctypes.CDLL(None)
+        libc.signal.restype = ctypes.c_void_p
+        libc.signal.argtypes = [ctypes.c_int, ctypes.c_void_p]
+        previous = libc.signal(int(pysignal.SIGCHLD), ctypes.c_void_p(0))
+        try:
+            return call()
+        finally:
+            libc.signal(int(pysignal.SIGCHLD), ctypes.c_void_p(previous or 0))
+
+    def test_an_exited_child_is_noticed_with_the_handler_taken_away(self):
+        import time
+        ok, err = conversion._run_process("/bin/echo", ["prime"], timeout_ms=15000)
+        self.assertTrue(ok, "the priming call itself failed: %r" % err)
+        start = time.monotonic()
+        ok, err = self._with_no_handler(
+            lambda: conversion._run_process("/bin/echo", ["done"], timeout_ms=4000))
+        elapsed = time.monotonic() - start
+        self.assertTrue(ok, "a child that ran to completion was reported as a failure: %r" % err)
+        self.assertLess(elapsed, 2.0, "the wait ran %.2fs on a child that had exited" % elapsed)
+
+    def test_its_exit_code_and_error_text_are_still_read(self):
+        ok, err = self._with_no_handler(lambda: conversion._run_process(
+            "/bin/sh", ["-c", "echo cannot read it >&2; exit 3"], timeout_ms=4000))
+        self.assertEqual((False, "exit 3: cannot read it"), (ok, err))
+
+
+class AConverterIsStartedWithoutFork(unittest.TestCase):
+    """On macOS the child is started by posix_spawn: a fork from a worker thread can freeze there."""
+
+    @unittest.skipUnless(sys.platform == "darwin", "the fork hazard and this spawn path are macOS's")
+    def test_a_converter_never_goes_through_fork_exec(self):
+        import subprocess
+        with mock.patch.object(subprocess, "_fork_exec",
+                               side_effect=AssertionError("fork_exec was used")):
+            ok, err = conversion._run_process("/bin/echo", ["spawned"], timeout_ms=15000)
+        self.assertTrue(ok, err)
+
+    def test_the_child_gets_houdinis_live_environment(self):
+        os.putenv("AMAZE_SET_AFTER_START", "live")    # the C environment only: os.environ does not see it
+        self.addCleanup(os.unsetenv, "AMAZE_SET_AFTER_START")
+        self.assertNotIn("AMAZE_SET_AFTER_START", os.environ, "premise: os.environ saw the change")
+        ok, err = conversion._run_process(
+            "/bin/sh", ["-c", 'test "$AMAZE_SET_AFTER_START" = live'], timeout_ms=15000)
+        self.assertTrue(ok, "the child did not see a variable set after Python started: %r" % err)
+
+
+@unittest.skipUnless(os.name == "posix", "the stand-in children are /bin/sleep and /bin/sh")
+class AConverterThatDidNotFinishIsNotAVerdict(unittest.TestCase):
+    """A timeout says nothing about the file: the result carries `unfinished`, a refusal does not."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp(prefix="amaze_unfinished_")
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+        self.source = os.path.join(self.dir, "tex.rat")
+        with open(self.source, "wb") as handle:
+            handle.write(b"not a picture Qt can read")
+
+    def _convert(self, adapter):
+        with mock.patch.object(conversion, "_FORMAT_ADAPTERS", (("only", adapter),)):
+            return conversion.convert_image(self.source, 64)
+
+    def test_a_timeout_marks_the_result_unfinished(self):
+        result = self._convert(lambda source, out, ctx: conversion._run_process(
+            "/bin/sleep", ["5"], timeout_ms=300, cancelled=ctx.cancelled))
+        self.assertEqual((conversion.REASON_UNREADABLE, True), (result.reason, result.unfinished))
+
+    def test_a_converter_that_cannot_start_marks_it_unfinished(self):
+        result = self._convert(lambda source, out, ctx: conversion._run_process(
+            os.path.join(self.dir, "no-such-converter"), [source], cancelled=ctx.cancelled))
+        self.assertEqual((conversion.REASON_UNREADABLE, True), (result.reason, result.unfinished))
+
+    def test_a_refusal_by_every_converter_is_a_verdict(self):
+        result = self._convert(lambda source, out, ctx: conversion._run_process(
+            "/bin/sh", ["-c", "exit 13"], cancelled=ctx.cancelled))
+        self.assertEqual((conversion.REASON_UNREADABLE, False), (result.reason, result.unfinished))
 
 
 def _sigkill_deferred():
-    """The killed child stays Running past the grace, as uninterruptible disk I/O keeps it."""
-    return mock.patch.object(conversion._Child, "waitForFinished",
-                             lambda self, msecs=30000: False)
+    """The kill is sent, but the exit counts as not seen within the grace, as a stuck read keeps it."""
+    def not_yet(process):
+        process.kill()
+        return False
+    return mock.patch.object(conversion, "_gone_after_kill", not_yet)
 
 
 def _abandoned_since(before) -> list:
@@ -230,25 +274,24 @@ def _abandoned_since(before) -> list:
 
 
 def _collect(children, seconds=5.0) -> list:
-    """Process events until `children` leave `_ABANDONED`; returns those left, removed unawaited."""
+    """Collect until `children` leave `_ABANDONED`; returns those left, which are removed."""
     import time
     deadline = time.monotonic() + seconds
     while (any(p in conversion._ABANDONED for p in children)
            and time.monotonic() < deadline):
-        _app.processEvents()
+        conversion._collect_abandoned()
         time.sleep(0.01)
     left = [p for p in children if p in conversion._ABANDONED]
-    for process in left:    # its exit was not detected; once marked, its destructor does not wait 30 s
-        process.mark_reaped_elsewhere()
+    for process in left:
         conversion._ABANDONED.remove(process)
     return left
 
 
 @unittest.skipUnless(os.name == "posix", "the stand-in children are /bin/sleep and /bin/sh")
 class AChildAbandonedByAWorkerIsStillCollected(unittest.TestCase):
-    """A worker has no event loop after run(), so the main loop reaps its last abandoned child."""
+    """A child abandoned on a worker thread is dropped from any thread once it has exited."""
 
-    def test_a_child_abandoned_from_a_worker_thread_is_reaped_on_the_main_loop(self):
+    def test_a_child_abandoned_from_a_worker_thread_is_collected_afterwards(self):
         before = list(conversion._ABANDONED)
 
         class Worker(QtCore.QThread):
@@ -1084,18 +1127,15 @@ class TheUniformCheck(ConversionCase):
                     "low-contrast picture is not blank")
 
 
-class TheWatchdogNeverSignalsOnWindows(unittest.TestCase):
-    """`os.kill(pid, 0)` probes liveness on POSIX but terminates on Windows ▸r/os-kill-windows"""
+class TheEngineAsksTheSystemAboutItsOwnChild(unittest.TestCase):
+    """No QProcess and no `os.kill` probe: a child's exit is read with `Popen.wait` alone."""
 
-    def test_the_source_checks_the_platform_before_the_signal(self):
+    def test_the_source_has_neither_qprocess_nor_a_kill_probe(self):
+        import re
         source = inspect.getsource(conversion)
-        head = source[:source.index("os.kill(pid, 0)")]
-        gate = head.rindex("hostos.is_windows()")
-        guard = head.rindex("if (pid")
-        self.assertLess(
-            guard, gate,
-            "os.kill is reached without checking the platform first, so on "
-            "Windows the watchdog terminates the process it is checking")
+        self.assertIsNone(re.search(r"QProcess(?!Environment)", source),
+                          "a converter is started or watched through QProcess again")
+        self.assertNotIn("os.kill(", source)    # os.kill(pid, 0) terminates on Windows ▸r/os-kill-windows
 
 
 if __name__ == "__main__":

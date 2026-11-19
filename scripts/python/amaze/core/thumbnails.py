@@ -65,6 +65,7 @@ class _ConvertLoader(QtCore.QThread):
     loaded = QtCore.Signal(object, QtGui.QImage, int, object)    # (key, image, token, (scratch, dest) or None)
     attempted = QtCore.Signal(object, int)    # after EVERY item, or the progress bar stops before 100%
     failed = QtCore.Signal(object, int)
+    unfinished = QtCore.Signal(object, int)    # no image, and no converter gave a verdict on the file
 
     def __init__(self, items, hfs) -> None:
         super().__init__()
@@ -91,18 +92,20 @@ class _ConvertLoader(QtCore.QThread):
                 result = conversion.convert_image(
                     full_path, size, cancelled=self._cancelled,
                     hfs=self._hfs)
-                image = result.image
+                image, unfinished = result.image, result.unfinished
             except Exception as exc:                          # noqa: BLE001 - a last-resort catch only
                 debug.event(
                     "texture", "thumbnail failed", file=full_path, error=str(exc)
                 )
-                image = None
+                image, unfinished = None, True    # an error in the engine is no verdict on the file
             if self._canceled:
                 return
             if image is not None:
                 self.loaded.emit(key, image, token,
                                  _encoded(image, dest, full_path) if dest else None)
             else:
+                if unfinished:
+                    self.unfinished.emit(key, token)    # before `failed` and `attempted`, which read it
                 self.failed.emit(key, token)
             self.attempted.emit(key, token)
 
@@ -126,7 +129,16 @@ class ThumbnailEngine(QtCore.QObject):
         self._convert_scheduled = False
         self._convert_hfs = ""    # convert options, set by the texture model per batch
         self._convert_parallel = 4
+        self._unfinished = set()    # keys whose last conversion gave no image and no verdict
         self._threads = []    # threads stay referenced until finished ▸r/model-contracts
+
+    def unfinished(self, key) -> bool:
+        """Whether `key`'s last conversion was cancelled, timed out or did not start."""
+        return key in self._unfinished
+
+    def _on_unfinished(self, key, token) -> None:
+        if self._current(key, token):
+            self._unfinished.add(key)
 
     def set_budget_mb(self, budget_mb) -> None:
         try:
@@ -201,6 +213,7 @@ class ThumbnailEngine(QtCore.QObject):
         if old is not None:
             self._bytes -= old[1]
         self._states.pop(key, None)
+        self._unfinished.discard(key)
         self._generations[key] = self._generations.get(key, 0) + 1    # a load already running is now stale
 
     def clear(self) -> None:
@@ -262,6 +275,7 @@ class ThumbnailEngine(QtCore.QObject):
         for chunk in chunks:
             loader = _ConvertLoader(chunk, self._convert_hfs)
             loader.loaded.connect(self._on_loaded)
+            loader.unfinished.connect(self._on_unfinished)
             loader.failed.connect(self._on_failed)
             loader.attempted.connect(self._on_convert_attempted)
             loader.finished.connect(    # the finished loader is passed explicitly
@@ -335,6 +349,7 @@ class ThumbnailEngine(QtCore.QObject):
         self._bytes = 0
         self._states = {}
         self._generations = {}
+        self._unfinished.clear()
         self._file_queue = []
         self._convert_queue = []
         self._dispatch_scheduled = False

@@ -40,6 +40,7 @@ def _stat_once(known: dict):
 
 
 GEO_FAILURE_TAG = "png-scratch"  # untagged failures came from a scratch Qt could not read; retried once
+IMAGE_FAILURE_TAG = "refused"  # untagged failures include converters that only timed out; retried once
 
 
 def sweep_folder_cache(preferences, folder: str, remaining) -> int:
@@ -299,7 +300,8 @@ class FileFiles(grid_engine.GridEngine,
         """The texture pipeline's cache, rebuilt when the cache generation or the size changes."""
         key = (self.preferences.rendersize, hostos.cache_generation())
         if self._image_cache is None or self._image_cache_key != key:
-            self._image_cache = texture_library.ThumbnailCache(key[0])
+            self._image_cache = texture_library.ThumbnailCache(
+                key[0], failure_tag=IMAGE_FAILURE_TAG)
             self._image_cache_key = key
         return self._image_cache
 
@@ -514,7 +516,8 @@ class FileFiles(grid_engine.GridEngine,
         failed_path = self._pending_writes.pop(key, None)  # no image is a failure, remembered so the next visit skips it
         if (failed_path is not None and self._image_cache is not None
                 and thumbnails.engine.peek(key) is None):
-            self._image_cache.remember_failure(failed_path)
+            self._image_cache.remember_failure(    # a converter that did not finish: this session only
+                failed_path, lasting=not thumbnails.engine.unfinished(key))
         self._progress_done += 1
         self.progress_changed.emit(
             self._progress_done, self._progress_total)

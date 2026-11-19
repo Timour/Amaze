@@ -593,7 +593,7 @@ class ParallelConversionsIsALiveCap(unittest.TestCase):
             def connect(self, *a, **kw):
                 pass
 
-        for name in ("loaded", "failed", "attempted", "finished"):
+        for name in ("loaded", "failed", "unfinished", "attempted", "finished"):
             setattr(_Loader, name, Signal())
 
         real = thumbnails._ConvertLoader
@@ -681,6 +681,35 @@ class UpdatePreviewWritesTheManifestOnce(unittest.TestCase):
             cache.known_failure(broken),
             "the failure is still remembered for a replaced file - a fixed "
             "image would never get its thumbnail")
+
+    def _unreadable(self):
+        folder = tempfile.mkdtemp(prefix="amaze_failmem_")
+        self.addCleanup(shutil.rmtree, folder, ignore_errors=True)
+        broken = os.path.join(folder, "tex.rat")
+        with open(broken, "wb") as handle:
+            handle.write(b"\x00" * 2048)
+        return broken
+
+    def test_a_converter_that_did_not_finish_is_remembered_for_this_session_only(self):
+        """A timeout says nothing about the file: skipped until restart, never written to disk."""
+        cache = texture_library.ThumbnailCache(size=256)
+        broken = self._unreadable()
+        cache.remember_failure(broken, lasting=False)
+        self.assertTrue(cache.known_failure(broken), "it would be converted again on this visit")
+        cache.save()
+        self.assertFalse(texture_library.ThumbnailCache(size=256).known_failure(broken),
+                         "a converter's timeout was stored as a property of the file")
+        cache.invalidate(broken)
+        self.assertFalse(cache.known_failure(broken), "Render Image did not clear it")
+
+    def test_failures_stored_before_the_tag_are_retried_once(self):
+        """An untagged failure may be a timeout an older build stored; a tagged one is a refusal."""
+        broken = self._unreadable()
+        texture_library.ThumbnailCache(size=256).remember_failure(broken)
+        tagged = texture_library.ThumbnailCache(size=256, failure_tag="refused")
+        self.assertFalse(tagged.known_failure(broken), "an old failure is still skipped")
+        tagged.remember_failure(broken)
+        self.assertTrue(tagged.known_failure(broken), "a refusal is not remembered")
 
     def test_a_single_invalidate_still_writes(self):
         cache = texture_library.ThumbnailCache(size=256)

@@ -6,8 +6,10 @@ import locale
 import os
 import shutil
 import struct
+import subprocess
 import tempfile
 import threading
+import time
 
 from PySide6 import QtCore, QtGui
 
@@ -33,16 +35,17 @@ READ_PROBE_SECONDS = 2.0    # how long a raw read of the file may take before it
 class Conversion:
     """What :func:`convert_image` returns: truthy with an image, else `reason` is a REASON_*."""
 
-    __slots__ = ("image", "via", "need", "reason", "attempts", "uniform")
+    __slots__ = ("image", "via", "need", "reason", "attempts", "uniform", "unfinished")
 
     def __init__(self, image=None, via="", need="", reason=REASON_UNREADABLE,
-                 attempts=(), uniform=False) -> None:
+                 attempts=(), uniform=False, unfinished=False) -> None:
         self.image = image
         self.via = via
         self.need = need
         self.reason = REASON_NONE if image is not None else reason
         self.attempts = tuple(attempts)
         self.uniform = uniform    # returned although every pixel is identical ▸p/conversion-shape
+        self.unfinished = image is None and unfinished    # no image, and a converter gave no verdict
 
     def __bool__(self) -> bool:
         return self.image is not None
@@ -153,154 +156,91 @@ def _scratch_png():
                 debug.event("convert", "temp png cleanup skipped", path=path)
 
 
-class _Child(QtCore.QProcess):
-    """A QProcess that can be marked exited when its exit was reaped elsewhere. ▸r/conversion-internals"""
-
-    def mark_reaped_elsewhere(self):
-        self.setProcessState(QtCore.QProcess.ProcessState.NotRunning)
-
-
+CANCELLED = "cancelled"    # what `_run_process` answers besides a converter's own error text
+TIMED_OUT = "timed out"
 ABANDONED = "timed out, and its child outlived the kill - the file's reads are stuck"
+FAILED_TO_START = "failed to start"
+UNFINISHED = (TIMED_OUT, ABANDONED, FAILED_TO_START)    # the converter gave no verdict on the file
+
+POLL_SECONDS = 0.1    # how often a running converter's exit and the cancel callback are read
+KILL_GRACE_SECONDS = 0.5    # how long a killed converter may take to exit before it is abandoned
+
+_ABANDONED: list = []    # killed converters still running after the grace; `_collect_abandoned` drops them
+_ABANDONED_GUARD = threading.Lock()    # converters run on several worker threads
+
+
+def _spawn(program: str, args: list, errors):
+    """Start a converter with its stderr in `errors`; posix_spawn on macOS. ▸r/qprocess-sigchld"""
+    live = QtCore.QProcessEnvironment.systemEnvironment()    # os.environ misses what Houdini set later
+    return subprocess.Popen(
+        [program] + list(args), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+        stderr=errors, env={key: live.value(key) for key in live.keys()},
+        close_fds=not hostos.is_macos(),    # False is what makes Python use posix_spawn there
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))    # Windows: no console
 
 
 def _run_process(program: str, args: list, timeout_ms: int = CONVERT_TIMEOUT_MS,
                  cancelled=None) -> tuple:
-    """(success, stderr_text) from `_wait_for`, or (False, ABANDONED) if its child is in `_ABANDONED`."""
-    process = _Child()
-    answer = _wait_for(process, program, args, timeout_ms, cancelled)
-    if answer[1] != "cancelled" and process in _ABANDONED:
-        return False, ABANDONED
-    return answer
-
-
-def _wait_for(process, program: str, args: list, timeout_ms: int,
-              cancelled) -> tuple:
-    """Run a subprocess to completion; returns (success, stderr_text). ▸r/conversion-internals"""
-    loop = QtCore.QEventLoop()
-    state = {"timed_out": False, "cancelled": False}
-
-    def _quit():
-        if loop.isRunning():
-            loop.quit()
-
-    process.finished.connect(_quit)
-    process.errorOccurred.connect(_quit)
-
-    timer = QtCore.QTimer()
-    timer.setSingleShot(True)
-
-    def _on_timeout():
-        state["timed_out"] = True
-        _quit()
-
-    timer.timeout.connect(_on_timeout)
-
-    def _check():    # runs every 100 ms: checks cancel and whether the child exists ▸r/conversion-internals
-        if cancelled is not None and cancelled():
-            state["cancelled"] = True
-            _quit()
-            return
-        pid = int(process.processId() or 0)
-        if (pid and not hostos.is_windows()    # `os.kill(pid, 0)` kills on Windows ▸r/os-kill-windows
-                and process.state() != QtCore.QProcess.ProcessState.NotRunning):
-            try:
-                os.kill(pid, 0)
-            except ProcessLookupError:
-                state["vanished"] = True
-                _quit()
-            except OSError:
-                pass          # alive, but this process may not signal it
-
-    watchdog = QtCore.QTimer()
-    watchdog.setInterval(100)
-    watchdog.timeout.connect(_check)
-
-    process.start(program, args)
-    timer.start(timeout_ms)
-    watchdog.start()
-    try:
-        loop.exec()
-        timer.stop()
-        watchdog.stop()
-        if state.get("cancelled"):
-            return (False, "cancelled")
-
-        if state.get("vanished"):
-            debug.event("convert", "a child's exit was reaped elsewhere",    # the child's output decides the result; marked NotRunning ▸r/conversion-internals
-                        program=program, waited_ms=timeout_ms)
-            process.mark_reaped_elsewhere()
-            return (True, "")
-
-        if state["timed_out"]:
-            already_gone = (process.state()    # Running is stuck; NotRunning exited without `finished` ▸p/conversion-shape
-                            == QtCore.QProcess.ProcessState.NotRunning)
-            debug.event("convert", "a converter hit its timeout",    # the FULL path, not a basename: a source scan bans name-reading calls here ▸r/conversion-internals
-                        program=program,
-                        args=args,
-                        timeout_ms=timeout_ms,
-                        child_already_exited=already_gone,
-                        exit_code=(process.exitCode() if already_gone
-                                   else None))
-            return False, ("timed out (the child had already exited)"
-                           if already_gone else "timed out")
-
-        if process.error() == QtCore.QProcess.ProcessError.FailedToStart:
-            return False, "failed to start"
-
-        if (
-            process.exitStatus() == QtCore.QProcess.ExitStatus.CrashExit
-            and process.exitCode() == 0
-        ):
-            debug.event("convert", "a child's exit was reaped elsewhere",    # CrashExit with exitCode 0, Linux only ▸r/conversion-internals
-                        program=program, waited_ms=timeout_ms,
-                        via="crashexit0")
-            return (True, "")
-
-        if (
-            process.exitStatus() != QtCore.QProcess.ExitStatus.NormalExit
-            or process.exitCode() != 0
-        ):
-            raw = bytes(process.readAllStandardError())    # iconvert's stderr is the ANSI codepage on Windows ▸r/conversion-internals
-            try:
-                stderr = raw.decode(
-                    locale.getpreferredencoding(False)).strip()
-            except (UnicodeDecodeError, LookupError):
-                stderr = raw.decode("utf-8", "replace").strip()
-            return False, f"exit {process.exitCode()}: {stderr}"
-
-        return True, ""
-    finally:
-        _reap_or_abandon(process)    # the child has exited before this returns, on every path ▸r/conversion-internals
-
-
-_ABANDONED: list = []    # killed child processes that did not exit in time, kept ▸r/conversion-internals
-
-
-def _reap_or_abandon(process) -> bool:
-    """True when exited and reaped; False when kept in `_ABANDONED`. ▸r/conversion-internals"""
-    if process.state() == QtCore.QProcess.ProcessState.NotRunning:
-        return True
-    process.kill()
-    if process.waitForFinished(500):
-        return True
-
-    def _release_abandoned(*_args, process=process):
+    """(True, "") or (False, why): CANCELLED, one of UNFINISHED, or `exit N: <stderr>`."""
+    _collect_abandoned()
+    with tempfile.TemporaryFile() as errors:    # a file, so a converter that writes much never blocks on a pipe
         try:
-            _ABANDONED.remove(process)
-        except ValueError:
-            return                      # already collected once
-        process.deleteLater()
+            process = _spawn(program, args, errors)
+        except OSError as exc:
+            debug.event("convert", "a converter did not start", program=program, error=str(exc))
+            return False, FAILED_TO_START
+        deadline = time.monotonic() + timeout_ms / 1000.0
+        while True:
+            try:
+                code = process.wait(POLL_SECONDS)    # asks the system about this one child
+                break
+            except subprocess.TimeoutExpired:
+                pass
+            if cancelled is not None and cancelled():
+                _stop(process)
+                return False, CANCELLED
+            if time.monotonic() >= deadline:
+                debug.event("convert", "a converter hit its timeout",    # the FULL path ▸r/conversion-internals
+                            program=program, args=args, timeout_ms=timeout_ms)
+                return False, TIMED_OUT if _stop(process) else ABANDONED
+        if code == 0:
+            return True, ""
+        errors.seek(0)
+        raw = errors.read()    # iconvert's stderr is the ANSI codepage on Windows ▸r/conversion-internals
+    try:
+        stderr = raw.decode(locale.getpreferredencoding(False)).strip()
+    except (UnicodeDecodeError, LookupError):
+        stderr = raw.decode("utf-8", "replace").strip()
+    return False, f"exit {code}: {stderr}"
 
-    _ABANDONED.append(process)
-    app = QtCore.QCoreApplication.instance()
-    if app is not None:    # a finished worker runs no event loop, so `finished` would never arrive there
-        process.moveToThread(app.thread())
-    process.finished.connect(_release_abandoned)
+
+def _stop(process) -> bool:
+    """Kill a converter; True once it has exited, False when it is kept in `_ABANDONED`."""
+    if _gone_after_kill(process):
+        return True
+    with _ABANDONED_GUARD:
+        _ABANDONED.append(process)
     debug.event("convert", "helper kept in _ABANDONED until it exits",
-                program=process.program(), args=process.arguments())
-    if process.state() == QtCore.QProcess.ProcessState.NotRunning:    # it may have exited between the failed wait and the connect, so `finished` will not come
-        _release_abandoned()
+                program=process.args[0], args=list(process.args[1:]))
     return False
+
+
+def _gone_after_kill(process) -> bool:
+    """Kill, then wait KILL_GRACE_SECONDS for the exit; a child in a stuck read outlives it."""
+    try:
+        process.kill()
+        process.wait(KILL_GRACE_SECONDS)
+    except subprocess.TimeoutExpired:
+        return False
+    except OSError:
+        pass    # it had exited already
+    return True
+
+
+def _collect_abandoned() -> None:
+    """Drop from `_ABANDONED` every converter that has exited since it was put there."""
+    with _ABANDONED_GUARD:
+        _ABANDONED[:] = [process for process in _ABANDONED if process.poll() is None]
 
 
 @functools.cache
@@ -420,6 +360,7 @@ class _Ctx:
         self._cancelled = cancelled
         self.hfs = hfs if hfs is not None else os.environ.get("HFS", "")
         self.attempts = []
+        self.unfinished = False    # a converter was cancelled, timed out or did not start
         self.need = ""    # what this file turned out to need; the first value set is kept ▸r/conversion-internals
         self.fallback = None    # a uniform image kept in case nothing does better ▸p/conversion-shape
         self.fallback_via = ""
@@ -526,10 +467,12 @@ def _run_adapters(adapters, source: str, ctx: _Ctx, need: str,
         with _scratch_png() as out_path:
             wrote, why = produce(source, out_path, ctx)
             if not wrote:
-                if why == "cancelled":
+                if why == CANCELLED:
                     ctx.tried(name, why)
                     return _Step(need=need, reason=REASON_CANCELLED)
                 ctx.tried(name, why)
+                if why in UNFINISHED:
+                    ctx.unfinished = True
                 if why == ABANDONED:    # the FILE is tested: if its reads hang, no second converter runs
                     if not _reads_promptly(source):
                         return _Step(need=need, reason=REASON_STALLED)
@@ -631,7 +574,8 @@ def _not_converted(ctx: _Ctx, need: str, reason: str) -> Conversion:
                           via=ctx.fallback_via, need=need,
                           attempts=ctx.attempts, uniform=True)
     if reason == REASON_CANCELLED:
-        return Conversion(need=need, reason=reason, attempts=ctx.attempts)    # browsing away is not a failure and does not belong in the log ▸p/conversion-shape
+        return Conversion(need=need, reason=reason, attempts=ctx.attempts,    # browsing away is not a failure and is not logged ▸p/conversion-shape
+                          unfinished=True)
     if reason != REASON_TOO_LARGE:
         said = ("no thumbnail - a converter stalled on its reads" if reason == REASON_STALLED
                 else "no thumbnail - nothing could read it")
@@ -641,4 +585,5 @@ def _not_converted(ctx: _Ctx, need: str, reason: str) -> Conversion:
                     tried=ctx.trail(),
                     limit_mb=QtGui.QImageReader.allocationLimit(),
                     macos=hostos.is_macos(), pillow=_have_pillow())
-    return Conversion(need=need, reason=reason, attempts=ctx.attempts)
+    return Conversion(need=need, reason=reason, attempts=ctx.attempts,
+                      unfinished=ctx.unfinished or reason == REASON_STALLED)
