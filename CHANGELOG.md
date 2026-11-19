@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.37.2
+
+- Material: the MaterialX and Redshift icons on a tile have new drawings.
+
 ## 1.37.1
 
 - Info pane: picture info now shows right away. Amaze reads it from the file with OpenImageIO, so it no longer starts Houdini's `iinfo` for every picture. `.rat`, `.pic` and `.gif` files still go through `iinfo` and take a moment.
