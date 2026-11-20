@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.39.1
+
+- Material: the renderer icons on a tile are redrawn. MaterialX is smaller, Redshift is taller, and all three have a darker shadow. Each icon now sits where its own drawing puts it.
+
 ## 1.39.0
 
 - File: the Show submenu is gone from the sidebar's right-click menu. A location lists every file in its own folder, and the Filter menu narrows the list to images, geometry or scenes.
