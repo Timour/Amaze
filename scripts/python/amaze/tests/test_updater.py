@@ -194,6 +194,7 @@ class TheReleaseNamesItsLibraryVersion(_FeedMixin):
         self.assertFalse(updater.updates_library(found, tempfile.gettempdir()))
 
     def test_only_a_newer_library_version_updates_the_library(self):
+        updater._RELEASE_FORMATS.clear()    # what an earlier check read of release 9.9
         library = tempfile.mkdtemp(prefix="amaze_libversion_")
         self.addCleanup(shutil.rmtree, library, ignore_errors=True)
         test_support.set_library_version(library, 2)
@@ -844,6 +845,7 @@ class TheShelfToolAsksTheSameQuestion(unittest.TestCase):
         asked, replies = [], list(answers)
         ui = types.SimpleNamespace(displayMessage=lambda text, **kwargs: (
             asked.append(text), replies.pop(0) if replies else 0)[1])
+        updater._RELEASE_FORMATS.clear()    # what an earlier check read of release 9.9
         found = updater.Update(updater.NEWER, version="9.9", url="https://example.invalid/r.zip",
                                sentence="Amaze 9.9 is available. You are running 1.0.",
                                library_version=library_version, library_since="9.8.0")
