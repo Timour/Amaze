@@ -669,6 +669,11 @@ and closes the **Info pane**. The pane sits where the Comments pane
 sits, and opening one closes the other. The button is yellow while the
 pane is open.
 
+When one image file is selected, the pane shows the picture above the
+rows. The picture fills the width of the pane, and its height depends
+on its aspect ratio. EXR, HDR and other float files are shown with the
+OCIO display view. `.rat` and `.pic` files have no picture.
+
 The pane lists facts about the selected tile, one per row:
 
 | Selection | Rows |

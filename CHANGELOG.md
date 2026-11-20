@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.40.0
+
+- Info pane: when one image file is selected, the pane shows the picture above the rows. The picture fills the width of the pane, and its height depends on its aspect ratio. EXR, HDR and other float files are shown with the OCIO display view. `.rat` and `.pic` files have no picture.
+- Info pane: the row stripes run to the bottom of the pane. The line between the two columns is thinner and also runs to the bottom.
+
 ## 1.39.1
 
 - Material: the renderer icons on a tile are redrawn. MaterialX is smaller, Redshift is taller, and all three have a darker shadow. Each icon now sits where its own drawing puts it.
