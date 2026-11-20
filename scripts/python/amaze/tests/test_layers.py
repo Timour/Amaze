@@ -49,6 +49,7 @@ MODULE_LAYER = {    # one row per module in core/, helpers/ and the top level
     "core.code_library": "models", "core.gradient_library": "models",
     "core.file_library": "models", "core.folders": "models", "core.texture_library": "models",
     "core.matx_library": "models", "core.grid_engine": "models", "core.grid_proxy": "models",
+    "core.sidebar_model": "models",
     "core.multifilterproxy_model": "models", "core.model_registry": "models",
     "core.thumbnails": "models", "core.grid_columns": "models", "core.matx_icon": "models",
     "helpers.vex_syntax": "models",

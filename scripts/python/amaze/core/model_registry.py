@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from PySide6 import QtCore
-
 from amaze.core import (category, code_library, cop_library, debug, file_library,
-                        gradient_library, library, library_db, library_files, locations)
+                        gradient_library, library, library_db, library_files, locations,
+                        sidebar_model)
 
 SOURCE_MODELS = (    # attribute on the panel -> the class that builds it, every one taking `preferences` alone
     ("category_model", category.Categories),
@@ -58,7 +57,7 @@ def apply_merged(preferences, name: str, also=None) -> list:
                 model is held for held in sharing):
             sharing.append(model)
     sharing.sort(key=lambda model: not isinstance(
-        model, QtCore.QAbstractListModel))    # sidebar models first: a grid's signal handler may read one
+        model, sidebar_model.SidebarModel))    # sidebar models first: a grid's signal handler may read one
     moved = []
     for model in sharing:
         apply_refresh = getattr(model, "apply_refresh", None)

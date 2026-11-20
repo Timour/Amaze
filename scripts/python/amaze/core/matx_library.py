@@ -11,7 +11,7 @@ import hashlib
 
 from PySide6 import QtCore, QtGui
 
-from amaze.core import category, debug, matx_sources, renderers, thumbnails, workers
+from amaze.core import category, debug, matx_sources, renderers, sidebar_model, thumbnails, workers
 from amaze.core import grid_engine
 
 PREVIEW_DIR_NAME = "matx_previews"    # a NAME only - its folder is resolved per call in preview_cache(), like CATALOGUE_NAME below
@@ -647,7 +647,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
         return sorted(seen, key=str.lower)
 
 
-class MatxSidebarModel(QtCore.QAbstractListModel):
+class MatxSidebarModel(sidebar_model.SidebarModel):
     """The online browser's sidebar: row 0 is `All`, the rest the selected source's categories."""
 
     def __init__(self, online_model, parent=None):
@@ -662,40 +662,17 @@ class MatxSidebarModel(QtCore.QAbstractListModel):
         if rows != self._rows:
             self.beginResetModel()
             self._rows = rows
+            self._forget_rows()
             self.endResetModel()
 
-    def rowCount(self, parent=None):
-        return len(self._rows)
-
-    def index_of(self, key) -> QtCore.QModelIndex:
-        """The row of category `key`, "" giving All; invalid when the source has no such category."""
-        if key == "":
-            return self.index(0, 0)
-        if key in self._rows[1:]:
-            return self.index(self._rows.index(key, 1), 0)
-        return QtCore.QModelIndex()
+    def top_keys(self) -> list:
+        """The selected source's categories; no row moves, they follow the source."""
+        return self._rows[1:]
 
     def data(self, index, role=0):
-        if not index.isValid() or index.row() >= len(self._rows):
-            return None
+        key = super().data(index, category.SIDEBAR_KEY_ROLE)
+        if key is None or role == category.SIDEBAR_KEY_ROLE:
+            return key
         if role == QtCore.Qt.ItemDataRole.DisplayRole:
-            return self._rows[index.row()]
-        if role == category.SIDEBAR_KEY_ROLE:
-            return "" if index.row() == 0 else self._rows[index.row()]
+            return key or self._rows[0]    # row 0's label, All
         return None
-
-    def movable(self, index) -> bool:
-        """No row moves: the categories follow the selected source."""
-        return False
-
-    def move_row(self, index, to_row: int) -> bool:
-        return False
-
-    def order_snapshot(self):
-        return None
-
-    def restore_order(self, snapshot) -> None:
-        pass
-
-    def commit_order(self) -> None:
-        pass

@@ -4,7 +4,7 @@ from typing import Any
 from PySide6 import QtCore
 
 from amaze.prefs import prefs
-from amaze.core import documents, library_db, library_files, material, renderers
+from amaze.core import documents, library_db, library_files, material, renderers, sidebar_model
 
 SIDEBAR_COUNT_ROLE = int(QtCore.Qt.ItemDataRole.UserRole) + 40  # the ONLY declaration - every sidebar model and SidebarItemDelegate import it from here
 SIDEBAR_COLOR_ROLE = int(QtCore.Qt.ItemDataRole.UserRole) + 41  # a category's colour, for the sidebar's left-edge bar
@@ -33,7 +33,7 @@ def stored_order(held) -> list:
     return [ALL] + names
 
 
-class Categories(QtCore.QAbstractListModel):
+class Categories(sidebar_model.SidebarModel):
     """The category list for one library, backed by DB_FILENAME."""
 
     DB_FILENAME = library_files.MATERIALS  # subclassed by each section over its own database
@@ -50,26 +50,26 @@ class Categories(QtCore.QAbstractListModel):
         self._count_cache = None  # category -> visible count, `_All` = total; cleared on every change
         self.layoutChanged.connect(self.drop_count_cache)
 
-    def rowCount(
-        self, parent: QtCore.QModelIndex | QtCore.QPersistentModelIndex | None = None
-    ) -> int:
-        return len(self._categories)
+    def top_keys(self) -> list:
+        """The stored names below All, in their order; row n shows `_categories[n]`."""
+        return self._categories[1:]
 
     def data(
         self, index: QtCore.QModelIndex | QtCore.QPersistentModelIndex, role: int = 0
     ) -> Any:
-        if role == SIDEBAR_KEY_ROLE:
-            name = self._categories[index.row()]
-            return "" if is_all(name) else name
+        key = super().data(index, SIDEBAR_KEY_ROLE)
+        if key is None or role == SIDEBAR_KEY_ROLE:
+            return key
+        name = key or ALL    # the stored name; All counts every asset as `_All`
 
         if role == QtCore.Qt.ItemDataRole.DisplayRole:
-            return display_name(self._categories[index.row()])
+            return display_name(name)
 
         if role == SIDEBAR_COUNT_ROLE:
-            return self._category_count(self._categories[index.row()])
+            return self._category_count(name)
 
         if role == SIDEBAR_COLOR_ROLE:
-            return self.color_of(self._categories[index.row()])
+            return self.color_of(name)
 
     def set_renderer_filter(self, render_filter: str) -> None:
         """Store the grid's renderer filter, the value MultiFilterProxyModel gets (`all_renderers`)."""
@@ -141,6 +141,7 @@ class Categories(QtCore.QAbstractListModel):
             self._removed = set()
             self._shown = list(self._categories)    # the model reset has already updated the views
             self.drop_count_cache()
+            self._forget_rows()
         finally:
             self.endResetModel()
 
@@ -163,6 +164,7 @@ class Categories(QtCore.QAbstractListModel):
         try:
             self._categories[:] = names
             self._mark_rows_shown()
+            self._forget_rows()
         finally:
             self.endResetModel()
         return True
@@ -179,6 +181,7 @@ class Categories(QtCore.QAbstractListModel):
         self.beginRemoveRows(QtCore.QModelIndex(), row, row)
         try:
             self._categories.pop(row)
+            self._forget_row(self._node_ids.get((None, cat)))
         finally:
             self.endRemoveRows()
         self._removed.add(cat)
@@ -196,10 +199,12 @@ class Categories(QtCore.QAbstractListModel):
                 self.beginRemoveRows(QtCore.QModelIndex(), count, count)
                 try:
                     del self._categories[count]
+                    self._forget_row(self._node_ids.get((None, old)))
                 finally:
                     self.endRemoveRows()
             else:
                 self._categories[count] = new
+                self._rekey_top_row(None, old, new)    # the same row id: a view keeps its selection
                 index = self.index(count, 0)
                 self.dataChanged.emit(index, index)
         if new != old:
@@ -227,6 +232,7 @@ class Categories(QtCore.QAbstractListModel):
             self.beginResetModel()  # a whole-row-set replacement needs a reset pair ▸r/model-contracts
             try:
                 self._categories[:] = cleaned
+                self._forget_rows()
             finally:
                 self.endResetModel()
             self._mark_rows_shown()
@@ -274,6 +280,7 @@ class Categories(QtCore.QAbstractListModel):
         self.beginResetModel()
         try:
             self._categories[:] = list(snapshot)
+            self._forget_rows()
         finally:
             self.endResetModel()
         self._mark_rows_shown()
@@ -338,14 +345,6 @@ class Categories(QtCore.QAbstractListModel):
                 return row
         return None
 
-    def index_of(self, key) -> QtCore.QModelIndex:
-        """The row whose SIDEBAR_KEY_ROLE is `key`, "" giving All; invalid when no row has it."""
-        for row in range(len(self._categories)):
-            index = self.index(row, 0)
-            if self.data(index, SIDEBAR_KEY_ROLE) == key:
-                return index
-        return QtCore.QModelIndex()
-
     def save(self) -> bool:
         """Write the names, order and colours to the database; False when it accepts no change now."""
         if not library_db.accepts(self.preferences, self.DB_FILENAME):
@@ -378,8 +377,14 @@ class CategoriesSidebarProxy(QtCore.QSortFilterProxyModel):
         super().__init__(parent)
         self.hide_empty = True
 
+    @property
+    def unfolds(self) -> bool:
+        """Whether rows may hold rows under them, as its list answers."""
+        model = self.sourceModel()
+        return model is not None and model.unfolds
+
     def index_of(self, key) -> QtCore.QModelIndex:
-        """The shown row keyed `key`, "" giving All; invalid when none has it or it is hidden."""
+        """The shown row keyed `key`, "" giving All, a row under a row too; invalid when hidden."""
         model = self.sourceModel()
         if model is None:
             return QtCore.QModelIndex()
@@ -436,7 +441,7 @@ class CategoriesSidebarProxy(QtCore.QSortFilterProxyModel):
             return True
         if model.showing_all_renderers():  # All shows every category, empty ones included
             return True
-        raw = model.index(source_row, 0).data(SIDEBAR_KEY_ROLE)
+        raw = model.index(source_row, 0, source_parent).data(SIDEBAR_KEY_ROLE)
         if not raw:    # All, keyed ""
             return True
         return model._category_count(raw) > 0

@@ -29,7 +29,6 @@ class TestCategories(unittest.TestCase):
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
         self.prefs = self.prefs_for()
-        self.index = MagicMock()
 
     def prefs_for(self):
         prefs = test_support.fixture_prefs(self)
@@ -50,11 +49,9 @@ class TestCategories(unittest.TestCase):
 
     def test_display_strips_a_leading_underscore_and_the_key_role_does_not(self):
         model = self.model()
-        self.index.row.return_value = 2
-        self.assertEqual("_Hidden", model.data(self.index, role=category.SIDEBAR_KEY_ROLE))
-        self.assertEqual("Hidden", model.data(self.index, role=0))
-        self.index.row.return_value = 1
-        self.assertEqual("Cat1", model.data(self.index, role=0))
+        self.assertEqual("_Hidden", model.data(model.index(2, 0), role=category.SIDEBAR_KEY_ROLE))
+        self.assertEqual("Hidden", model.data(model.index(2, 0), role=0))
+        self.assertEqual("Cat1", model.data(model.index(1, 0), role=0))
 
     def test_a_junk_row_does_not_abort_the_counts(self):
         _write(self.prefs, {"categories": {"Cat1": {"order": 0}},
@@ -174,6 +171,34 @@ class TestCategories(unittest.TestCase):
         proxy.refresh()
         self.assertEqual(["", "Cat2"], shown(),
                          "the refresh kept the old counts or did not refilter")
+
+    def test_a_rename_keeps_the_rows_persistent_index_in_the_list_and_through_the_proxy(self):
+        """A view keeps its selection through a rename: the row's index stays valid, on its row."""
+        model = self.model()
+        proxy = category.CategoriesSidebarProxy()
+        proxy.setSourceModel(model)
+        held = QtCore.QPersistentModelIndex(model.index_of("Cat2"))
+        shown = QtCore.QPersistentModelIndex(proxy.index_of("Cat2"))
+        rows = (held.row(), shown.row())
+        model.rename_category("Cat2", "Second")
+        for holder, index, row in ((model, held, rows[0]), (proxy, shown, rows[1])):
+            name = type(holder).__name__
+            self.assertTrue(index.isValid(), "%s: the renamed row's index went invalid" % name)
+            self.assertEqual(row, index.row(), "%s: the index moved to another row" % name)
+            self.assertEqual("Second", index.data(category.SIDEBAR_KEY_ROLE), name)
+            self.assertEqual(holder.index_of("Second"), QtCore.QModelIndex(index),
+                             "%s: the index is not the renamed row's" % name)
+
+    def test_a_merge_reads_the_category_list_before_the_grid_model(self):
+        """A grid's signal handler may read the sidebar list, so the list is refreshed first."""
+        from amaze.core import library_files, model_registry
+        models = model_registry.models_for(self.prefs)
+        order = []
+        for attr in ("material_model", "category_model"):
+            models[attr].apply_refresh = lambda attr=attr: order.append(attr) or False
+        model_registry.apply_merged(self.prefs, library_files.MATERIALS,
+                                    also=models["material_model"])
+        self.assertEqual(["category_model", "material_model"], order)
 
 
 class NormalizeEmitsAResetPairTest(unittest.TestCase):

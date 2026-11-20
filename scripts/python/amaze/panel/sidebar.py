@@ -25,7 +25,7 @@ class SidebarTreeView(QtWidgets.QTreeView):
         self.setRootIsDecorated(False)    # each row draws its own arrow, after its colour bar
         self.setUniformRowHeights(True)
         self.setIndentation(theme.ui_px(amazetheme.SIDEBAR_INDENT))
-        self._open: dict = {}    # id(model) -> the folder paths open in it
+        self._open: dict = {}    # id(model) -> the keys of the rows open in it
         self._pending_reveal = None    # (model, path) to select once its row is inserted
         self._watched = None
         self._arrow_press = False
@@ -120,27 +120,26 @@ class SidebarTreeView(QtWidgets.QTreeView):
             model.rowsInserted.connect(self._reopen)
             self._reopen()
 
-    def _path(self, index):
-        model = self.model()
-        return index.data(model.BrowseRole) if self._remembers(model) else None
+    def _key(self, index):
+        return index.data(category.SIDEBAR_KEY_ROLE) if self._remembers(self.model()) else None
 
     def _opened(self, index):
-        path = self._path(index)
-        if path:
-            self._open.setdefault(id(self.model()), set()).add(path)
+        key = self._key(index)
+        if key:
+            self._open.setdefault(id(self.model()), set()).add(key)
 
     def _closed(self, index):
-        path = self._path(index)
-        if path:
-            self._open.get(id(self.model()), set()).discard(path)
+        key = self._key(index)
+        if key:
+            self._open.get(id(self.model()), set()).discard(key)
 
     def _reopen(self, *_args):
         """Expand again what was expanded, and select a pending folder once its row exists."""
         model = self.model()
         if not self._remembers(model):
             return
-        for path in sorted(self._open.get(id(model), ()), key=len):    # parents first
-            index = model.index_of(path)
+        for key in sorted(self._open.get(id(model), ()), key=len):    # a folder before its subfolders
+            index = model.index_of(key)
             if index.isValid() and not self.isExpanded(index):
                 self.expand(index)
         pending = self._pending_reveal
@@ -153,9 +152,9 @@ class SidebarTreeView(QtWidgets.QTreeView):
                 self.scrollTo(index)
 
     def reveal(self, path: str) -> None:
-        """Expand every folder above `path` and select it, as their rows are inserted."""
+        """Expand every folder above `path` and select it, as their rows are inserted; File only."""
         model = self.model()
-        if not self._remembers(model) or not path:
+        if not self._remembers(model) or not path or getattr(model, "top_of", None) is None:
             return
         location = model.top_of(path)    # the top row's folder, the scene's row included
         opened = self._open.setdefault(id(model), set())

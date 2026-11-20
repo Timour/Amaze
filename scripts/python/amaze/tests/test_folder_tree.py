@@ -70,6 +70,23 @@ def _child(pointer, *names) -> str:
     return pointer.rstrip("/") + "/" + "/".join(names)
 
 
+def _checker_complaints(testcase, *models) -> list:
+    """What Qt's model checker reports on each model while the test runs. ▸r/tree-views"""
+    checker = getattr(QtTest, "QAbstractItemModelTester", None)
+    if checker is None:
+        testcase.skipTest("this PySide6 has no QAbstractItemModelTester")
+    complaints = []
+
+    def record_failure(_kind, context, message):
+        if context.category == "qt.modeltest" or message.startswith("FAIL"):
+            complaints.append(message)
+    previous = QtCore.qInstallMessageHandler(record_failure)
+    testcase.addCleanup(QtCore.qInstallMessageHandler, previous)
+    watches = [checker(model, checker.FailureReportingMode.Warning) for model in models]
+    testcase.addCleanup(lambda: watches)
+    return complaints
+
+
 class ALocationUnfoldsToItsSubfolders(unittest.TestCase):
     """A location's subfolders are added as its child rows once its row has been shown."""
 
@@ -506,6 +523,31 @@ class _NestedCategories(QtGui.QStandardItemModel):
     BrowseRole = QtCore.Qt.ItemDataRole.UserRole + 40
 
 
+class _NestedCategoryList(category.Categories):
+    """A category list where Wood has Oak under it, as sub-categories would give."""
+
+    unfolds = True
+
+    def child_keys(self, key) -> list:
+        return ["Oak"] if key == "Wood" else []
+
+    def key_above(self, key) -> str:
+        return "Wood" if key == "Oak" else ""
+
+
+class _OnlineCategories(QtCore.QObject):
+    """What MatxSidebarModel reads of the online library: its categories and its reset."""
+
+    modelReset = QtCore.Signal()
+
+    def __init__(self):
+        super().__init__()
+        self.names = []
+
+    def categories(self) -> list:
+        return list(self.names)
+
+
 class TheSidebarTreeView(unittest.TestCase):
     """Rows show colour bar, arrow, name; the delegate draws the arrow, and Qt's is not drawn."""
 
@@ -611,6 +653,42 @@ class TheSidebarTreeView(unittest.TestCase):
         QtTest.QTest.mouseClick(view.viewport(), QtCore.Qt.MouseButton.LeftButton,
                                 QtCore.Qt.KeyboardModifier.NoModifier, arrow.center())
         self.assertTrue(view.isExpanded(wood), "the arrow did not open the row")
+
+    def test_a_category_list_with_a_row_under_a_row_gets_an_arrow_and_stays_open(self):
+        """Any section can have arrows: a category list through its proxy, the File view's code."""
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        nested = _NestedCategoryList(test_support.fixture_prefs(self))
+        nested._categories[:] = ["_All", "Wood", "Metal"]
+        proxy = category.CategoriesSidebarProxy()
+        proxy.setSourceModel(nested)
+        self.assertTrue(proxy.unfolds, "the proxy does not answer `unfolds` as its list does")
+        view = self._view(proxy)
+        wood = proxy.index_of("Wood")
+        arrow = view.arrow_rect(wood)
+        self.assertFalse(arrow.isEmpty(), "a category with a row under it has no arrow")
+        self.assertTrue(view.arrow_rect(proxy.index_of("Metal")).isEmpty(),
+                        "a category with nothing under it has an arrow")
+        image = view.viewport().grab().toImage()
+        ratio = image.devicePixelRatio()
+        end = int((view.visualRect(wood).right() - 2) * ratio)
+        ink = [(x, y) for y in range(int(arrow.top() * ratio), int((arrow.bottom() + 1) * ratio))
+               for x in range(int(arrow.left() * ratio), int((arrow.right() + 1) * ratio))
+               if image.pixelColor(x, y) != image.pixelColor(end, y)]
+        self.assertTrue(ink, "nothing is drawn where the arrow is")
+        QtTest.QTest.mouseClick(view.viewport(), QtCore.Qt.MouseButton.LeftButton,
+                                QtCore.Qt.KeyboardModifier.NoModifier, arrow.center())
+        self.assertTrue(view.isExpanded(wood), "the arrow did not open the row")
+        oak = proxy.index_of("Oak")
+        self.assertEqual(wood, oak.parent(), "the proxy did not map the row under Wood")
+        self.assertEqual("Oak", oak.data())
+        self.assertFalse(view.visualRect(oak).isEmpty(), "the row under Wood is not shown")
+        flat = QtGui.QStandardItemModel()
+        flat.appendRow(QtGui.QStandardItem("Wood"))
+        view.setModel(flat)
+        view.setModel(proxy)
+        self.assertTrue(test_support.pump_until(lambda: view.isExpanded(proxy.index_of("Wood"))),
+                        "another list in the view closed the category that was open")
 
     def test_a_click_on_the_arrow_opens_the_folder_and_selects_nothing(self):
         self._scanned(self.loc)
@@ -1153,6 +1231,98 @@ class EverySidebarListAnswersTheReorder(unittest.TestCase):
         commit.assert_called_once_with(model.preferences)
         model.restore_order(before)
         self.assertEqual(before, list(model._folders()))
+
+
+class EverySidebarListIsOneTreeModel(unittest.TestCase):
+    """Categories, the folder tree and the online list share one tree model and keep its contract."""
+
+    def test_every_list_is_a_sidebar_model_and_the_folder_tree_has_no_tree_of_its_own(self):
+        from amaze.core import matx_library, sidebar_model
+        for cls in (category.Categories, file_library.FileFolders, matx_library.MatxSidebarModel):
+            self.assertTrue(issubclass(cls, sidebar_model.SidebarModel),
+                            "%s is not a SidebarModel" % cls.__name__)
+        for name in ("index", "parent", "rowCount", "columnCount", "hasChildren"):
+            self.assertNotIn(name, vars(folders.FolderTreeModel),
+                             "the folder tree defines its own %s" % name)
+
+    def test_the_base_imports_before_the_category_list_that_subclasses_it(self):
+        """The base loads first, though category.py subclasses it and it reads category's roles."""
+        import importlib
+        import sys
+        from amaze import core
+        names = ("sidebar_model", "category")
+        loaded = {name: sys.modules.pop("amaze.core." + name) for name in names}
+        self.addCleanup(lambda: [(sys.modules.__setitem__("amaze.core." + name, module),
+                                  setattr(core, name, module)) for name, module in loaded.items()])
+        for name in names:
+            delattr(core, name)
+        base = importlib.import_module("amaze.core.sidebar_model")
+        listed = importlib.import_module("amaze.core.category")
+        self.assertTrue(issubclass(listed.Categories, base.SidebarModel))
+
+    def test_a_flat_lists_rows_carry_the_flags_of_a_qt_list_models_rows(self):
+        """Qt's list model marks its rows as never having children; a flat sidebar list does too."""
+        from amaze.core import matx_library
+
+        class _QtList(QtCore.QAbstractListModel):
+            def rowCount(self, parent=QtCore.QModelIndex()):
+                return 0 if parent.isValid() else 2
+
+            def data(self, index, role=0):
+                return None
+        qt_list = _QtList()
+        listed = qt_list.flags(qt_list.index(1, 0))
+        self.assertTrue(listed & QtCore.Qt.ItemFlag.ItemNeverHasChildren,
+                        "premise: Qt's list model does not mark its rows")
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        categories = category.Categories(test_support.fixture_prefs(self))
+        online = _OnlineCategories()
+        online.names = ["Metal"]
+        matx = matx_library.MatxSidebarModel(online)
+        for model in (categories, matx):
+            for row in (0, 1):
+                self.assertEqual(listed, model.flags(model.index(row, 0)),
+                                 "%s row %d" % (type(model).__name__, row))
+        tree, _prefs, _roots = _model(self, {"A": {}})
+        self.assertFalse(tree.flags(tree.index(1, 0)) & QtCore.Qt.ItemFlag.ItemNeverHasChildren,
+                         "a folder is marked as never having subfolders")
+
+    def test_qts_model_checker_finds_nothing_in_a_category_list_or_through_its_proxy(self):
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        model = category.Categories(test_support.fixture_prefs(self))
+        model._categories[:] = ["_All", "Wood", "_WIP", "Metal", "Glass"]
+        proxy = category.CategoriesSidebarProxy()
+        proxy.setSourceModel(model)
+        complaints = _checker_complaints(self, model, proxy)
+        model.check_add_category("Stone")
+        model.rename_category("Glass", "Crystal")
+        self.assertTrue(model.move_category(4, 1), "premise: the move was refused")
+        model.remove_category("Metal")
+        model.set_renderer_filter("karma")    # every category is empty, so the proxy hides them
+        proxy.refresh()
+        self.assertEqual(1, proxy.rowCount(), "premise: the proxy hides no empty category")
+        model.set_renderer_filter("")
+        proxy.refresh()
+        model.sort_categories()
+        self.assertEqual(["", "Crystal", "Stone", "_WIP", "Wood"],
+                         [proxy.index(row, 0).data(category.SIDEBAR_KEY_ROLE)
+                          for row in range(proxy.rowCount())], "premise: not the rows changed")
+        self.assertEqual([], complaints, "QAbstractItemModelTester reported problems")
+
+    def test_qts_model_checker_finds_nothing_in_the_online_list(self):
+        from amaze.core import matx_library
+        online = _OnlineCategories()
+        model = matx_library.MatxSidebarModel(online)
+        complaints = _checker_complaints(self, model)
+        online.names = ["Metal", "Wood", "Fabric"]
+        online.modelReset.emit()
+        self.assertEqual(4, model.rowCount(), "premise: the categories are not rows")
+        online.names = ["Wood"]
+        online.modelReset.emit()
+        self.assertEqual(["All", "Wood"], [model.index(row, 0).data() for row in range(2)])
+        self.assertEqual([], complaints, "QAbstractItemModelTester reported problems")
 
 
 if __name__ == "__main__":
