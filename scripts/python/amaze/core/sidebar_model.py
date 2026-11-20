@@ -198,7 +198,9 @@ class SidebarModel(QtCore.QAbstractItemModel):
                 return self.createIndex(0, 0, 0)
             tops = self.top_keys()
             if row - 1 < len(tops):
-                return self.createIndex(row, 0, self._id(self.top_parent_id(row), tops[row - 1]))
+                pair = (self.top_parent_id(row), tops[row - 1])
+                row_id = self._node_ids.get(pair)    # known after the first ask: no second call per row
+                return self.createIndex(row, 0, self._id(*pair) if row_id is None else row_id)
             return QtCore.QModelIndex()
         if parent.internalId() not in self._nodes:
             return QtCore.QModelIndex()

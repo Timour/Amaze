@@ -515,6 +515,7 @@ class TheGridBrowsesASubfolderByItsLocationsRules(unittest.TestCase):
 
 
 EMPTY_AREA_ROW_COLORS ="QTreeView { paint-alternating-row-colors-for-empty-area: 1; }"    # as Houdini's style
+NO_EMPTY_AREA_ROW_COLORS = "QTreeView { paint-alternating-row-colors-for-empty-area: 0; }"
 
 
 class _NestedCategories(QtGui.QStandardItemModel):
@@ -593,12 +594,17 @@ class TheSidebarTreeView(unittest.TestCase):
         return view.visualRect(model.index(model.rowCount() - 1, 0)).bottom() + 1
 
     @staticmethod
-    def _colours_below(view, top) -> set:
-        """The colours of one pixel column of the viewport, from `top` down."""
+    def _column(view) -> tuple:
+        """(the pixels of the viewport's middle column, top to bottom; the image's pixel ratio)."""
         image = view.viewport().grab().toImage()
-        ratio = image.devicePixelRatio()
-        return {image.pixel(image.width() // 2, y)
-                for y in range(int((top + 2) * ratio), image.height())}
+        return ([image.pixel(image.width() // 2, y) for y in range(image.height())],
+                image.devicePixelRatio())
+
+    @staticmethod
+    def _below(column, top) -> list:
+        """A column's pixels from viewport y `top` down."""
+        pixels, ratio = column
+        return pixels[int((top + 2) * ratio):]
 
     def _scanned(self, *paths):
         for path in paths:
@@ -632,6 +638,24 @@ class TheSidebarTreeView(unittest.TestCase):
         view = self._view(flat)
         deco, _text = self._rects(view, flat.index(0, 0))
         self.assertEqual(bar, deco.width(), "a flat sidebar reserved space for an arrow")
+
+    def test_a_repaint_reads_each_rows_name_once(self):
+        reads = []
+
+        class Counted(QtGui.QStandardItemModel):
+            def data(self, index, role=QtCore.Qt.ItemDataRole.DisplayRole):
+                if role == QtCore.Qt.ItemDataRole.DisplayRole:
+                    reads.append(index.row())
+                return super().data(index, role)
+        names = Counted()
+        for name in ("All", "Wood", "Metal"):
+            names.appendRow(QtGui.QStandardItem(name))
+        view = self._view(names)
+        view.viewport().grab()    # a first paint, so the next one is a repaint and nothing else
+        del reads[:]
+        view.viewport().grab()
+        self.assertEqual([0, 1, 2], sorted(reads),
+                         "a repaint read a row's name more than once, or not at all")
 
     def test_a_model_that_is_not_the_file_folders_gets_arrows_when_it_unfolds(self):
         nested = _NestedCategories()
@@ -797,10 +821,17 @@ class TheSidebarTreeView(unittest.TestCase):
     def test_the_styles_row_colours_fill_the_space_below_the_rows(self):
         self._scanned(self.loc)
         view, loc = self._styled_as_houdini(self.view), self.model.index_of(self.loc)
+        host = view.parentWidget()
         view.setAnimated(True)
         animating = QtWidgets.QAbstractItemView.State.AnimatingState
-        at_rest = self._colours_below(view, self._rows_end(view))
-        self.assertEqual(2, len(at_rest), "at rest the row colours stop at the last row")
+        host.setStyleSheet(NO_EMPTY_AREA_ROW_COLORS)    # the ground with no row colours, whatever the palette
+        test_support.pump_until(lambda: False, timeout=0.05)
+        plain = self._column(view)
+        host.setStyleSheet(EMPTY_AREA_ROW_COLORS)
+        test_support.pump_until(lambda: False, timeout=0.05)
+        rest = self._rows_end(view)
+        self.assertNotEqual(self._below(plain, rest), self._below(self._column(view), rest),
+                            "at rest the row colours stop at the last row")
         view.expand(loc)    # grabbed before the event loop runs, so the animation is at its start
         end = self._rows_end(view)    # with the folder open: the lowest the rows reach
         for change, word in ((None, "opened"), (view.collapse, "closed")):
@@ -808,8 +839,8 @@ class TheSidebarTreeView(unittest.TestCase):
                 test_support.pump_until(lambda: view.state() != animating)
                 change(loc)
             self.assertEqual(animating, view.state(), "premise: it %s without animating" % word)
-            self.assertEqual(at_rest, self._colours_below(view, end), "the space below the rows "
-                             "is not painted as at rest while the folder %s" % word)
+            self.assertNotEqual(self._below(plain, end), self._below(self._column(view), end),
+                                "no row colours below the rows while the folder %s" % word)
 
     def test_what_was_open_reopens_after_a_swap_and_a_reset(self):
         self._scanned(self.loc, _child(self.loc, "A"))

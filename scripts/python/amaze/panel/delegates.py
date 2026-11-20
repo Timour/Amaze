@@ -897,7 +897,7 @@ class SidebarItemDelegate(QtWidgets.QStyledItemDelegate):
     def initStyleOption(self, option, index):
         """The row as view-item fields for the style; `option.text` does not change DisplayRole."""
         super().initStyleOption(option, index)
-        name = str(index.data(QtCore.Qt.ItemDataRole.DisplayRole) or "")
+        name = option.text    # the row's DisplayRole, which the base class has just read
         count = index.data(category.SIDEBAR_COUNT_ROLE)    # read even when hidden; each All row computes its own count
         if not self.show_counts and name != "All":
             count = None

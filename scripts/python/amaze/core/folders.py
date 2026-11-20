@@ -156,6 +156,9 @@ class FolderTreeModel(sidebar_model.SidebarModel):
     scene_folder_changed = QtCore.Signal(str, str)    # (old, new) once the scene row shows another folder
     scene_folder_left = QtCore.Signal(str)    # (old) once the scene row is gone: the scene has no file
     COUNT_ROLE = category.SIDEBAR_COUNT_ROLE    # the ONE definition, shared by every sidebar model
+    ROW_ROLES = frozenset((int(QtCore.Qt.ItemDataRole.DisplayRole), int(QtCore.Qt.ItemDataRole.ToolTipRole),
+                           int(PathRole), int(BrowseRole), COUNT_ROLE, category.SIDEBAR_COLOR_ROLE,
+                           category.SIDEBAR_KEY_ROLE))    # every role a folder row answers
     unfolds = True    # its rows reserve space for an expand arrow ▸r/tree-views
     flags = QtCore.QAbstractItemModel.flags    # Qt's own: the base's override costs a Python call per row
 
@@ -514,6 +517,8 @@ class FolderTreeModel(sidebar_model.SidebarModel):
             (folder for folder in self.top_keys() if folder.rstrip("/") == key), key))
 
     def data(self, index, role: int = 0):
+        if role not in self.ROW_ROLES:
+            return None    # the style asks for six more roles per row on every repaint
         if role == category.SIDEBAR_KEY_ROLE:
             return super().data(index, role)    # the folder the row shows, as BrowseRole; "" on All
         if not index.isValid():

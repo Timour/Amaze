@@ -10,6 +10,9 @@ SIDEBAR_COUNT_ROLE = int(QtCore.Qt.ItemDataRole.UserRole) + 40  # the ONLY decla
 SIDEBAR_COLOR_ROLE = int(QtCore.Qt.ItemDataRole.UserRole) + 41  # a category's colour, for the sidebar's left-edge bar
 SIDEBAR_KEY_ROLE = int(QtCore.Qt.ItemDataRole.UserRole) + 42  # a sidebar row's stored identity, "" on All; `index_of` takes it
 
+ROW_ROLES = frozenset((int(QtCore.Qt.ItemDataRole.DisplayRole), SIDEBAR_COUNT_ROLE,
+                       SIDEBAR_COLOR_ROLE, SIDEBAR_KEY_ROLE))    # every role a category row answers
+
 ALL = "_All"    # the first row: a view of every asset, never stored
 SECTION = "categories"    # {name: {"order": n, "color": c}} in the section's database
 
@@ -57,6 +60,8 @@ class Categories(sidebar_model.SidebarModel):
     def data(
         self, index: QtCore.QModelIndex | QtCore.QPersistentModelIndex, role: int = 0
     ) -> Any:
+        if role not in ROW_ROLES:
+            return None    # the style asks for six more roles per row on every repaint
         key = super().data(index, SIDEBAR_KEY_ROLE)
         if key is None or role == SIDEBAR_KEY_ROLE:
             return key
