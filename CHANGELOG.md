@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.39.0
+
+- File: the Show submenu is gone from the sidebar's right-click menu. A location lists every file in its own folder, and the Filter menu narrows the list to images, geometry or scenes.
+- File: a location no longer lists the files in the folders below it. Each folder has its own row under the location.
+- File: a location is named by its rename or its folder name. Pathname is gone.
+
 ## 1.38.1
 
 - File: a folder in the sidebar opens and closes at once, as in Houdini's Scene Graph Tree. The rows used to slide for a quarter of a second, and the stripes moved with them.

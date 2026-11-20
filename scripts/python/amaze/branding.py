@@ -2,7 +2,7 @@
 
 APP_NAME = "Amaze"    # change this to rename the app
 
-APP_VERSION = "1.38.1"    # the RELEASED version, MAJOR.MINOR.PATCH ▸p/version-scheme
+APP_VERSION = "1.39.0"    # the RELEASED version, MAJOR.MINOR.PATCH ▸p/version-scheme
 
 LIBRARY_FORMAT = 5    # the on-disk stamp; bump only when the on-disk shape changes ▸p/branding-stamps
 
