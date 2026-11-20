@@ -2,11 +2,16 @@
 
 import json
 import os
+import shutil
+import tempfile
 import unittest
+from unittest import mock
 
 from PySide6 import QtWidgets
 
 from amaze.core import category, model_registry
+from amaze.helpers import hostos
+from amaze.prefs import persistence, prefs
 from amaze.tests import test_support
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -192,6 +197,31 @@ class TwoPanelsShareOneLibraryTest(unittest.TestCase):
             heard,
             "a category disappeared from the second panel's sidebar and the "
             "model emitted no signal - its view paints rows that are gone")
+
+    def test_a_location_reorder_in_the_panel_opened_first_is_saved(self):
+        """The shared folder list saves the settings its move staged the order in."""
+        folders = self.a.file_folders_model
+        self.assertIs(folders, self.b.file_folders_model,
+                      "premise: the two panels do not share the folder list")
+        self.assertIs(folders.preferences, self.b.prefs,
+                      "premise: the shared list does not hold the second panel's settings")
+        with mock.patch.object(prefs.Prefs, "save", persistence._Persistence.save):    # the fixture saves nothing
+            for name in ("one", "two"):
+                folder = tempfile.mkdtemp(prefix="amaze_order_%s_" % name)
+                self.addCleanup(shutil.rmtree, folder, ignore_errors=True)
+                self.assertTrue(
+                    folders.add_folder(hostos.canonical_path_key(folder).rstrip("/") + "/"),
+                    "premise: the location was not added")
+            before = list(folders._folders())
+            section = self.a.sections["file"]
+            last = folders.index(folders.rowCount() - 1, 0)
+            self.assertTrue(section.move_sidebar_row(last, folders._offset()),
+                            "premise: the last location did not move to the first row")
+            section.commit_sidebar_order()
+            saved = prefs.Prefs()
+            saved.load()
+        self.assertEqual([before[-1]] + before[:-1], list(saved.file_folders),
+                         "a reorder made in the first of two panels is not in the saved settings")
 
 
 if __name__ == "__main__":
