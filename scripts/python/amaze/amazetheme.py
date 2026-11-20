@@ -761,7 +761,25 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("thumbnail", 4, 4, 130, 130, None),
             ("tile name", 9, 139, 120, 15, "Badges, long name te..."),
             ("tile subtitle", 9, 157, 49, 15, "MaterialX"),
-            ("renderer icon ▸ renderer_materialx", 99, 156, 29, 16, None),
+            ("renderer icon ▸ renderer_materialx", 107, 157, 23, 13, None),
+        ),
+    },
+    "T25": {   # the Redshift icon: its own size and place on the subtitle's line
+        "frame": (138, 177),
+        "nodes": (
+            ("tile card", 4, 4, 130, 173, None),
+            ("thumbnail", 4, 4, 130, 130, None),
+            ("tile subtitle", 9, 157, 43, 15, "Redshift"),
+            ("renderer icon ▸ renderer_redshift", 112, 155, 16, 18, None),
+        ),
+    },
+    "T26": {   # the Octane icon
+        "frame": (138, 177),
+        "nodes": (
+            ("tile card", 4, 4, 130, 173, None),
+            ("thumbnail", 4, 4, 130, 130, None),
+            ("tile subtitle", 9, 157, 37, 15, "Octane"),
+            ("renderer icon ▸ renderer_octane", 112, 156, 16, 16, None),
         ),
     },
     "L01": {   # the list table from the live panel - its header, widths and ticks are read
@@ -1154,6 +1172,13 @@ def drawn_renderer_icon(frame_key: str = "T24") -> dict:
         "inset": card[1] + card[3] - (icon[1] + icon[3]),
         "below": icon[2] + icon[4] - (sub[2] + sub[4]),    # its bottom under the subtitle's bottom
     }
+
+
+def drawn_renderer_icons() -> dict:
+    """{art name: `drawn_renderer_icon` of its frame} for every frame that draws a renderer icon."""
+    return {drawn_name(node)[1]: drawn_renderer_icon(key)
+            for key, layout in DIALOG_LAYOUT.items() for node in layout["nodes"]
+            if drawn_name(node)[0] == "renderer icon"}
 
 
 def drawn_badges() -> dict:

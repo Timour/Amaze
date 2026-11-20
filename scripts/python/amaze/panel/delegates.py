@@ -235,10 +235,9 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
     GRID_BOTTOM_PAD = theme.ui_px(_TILE["bottom_pad"])
     GRID_IMG_TEXT_GAP = theme.ui_px(_TILE["img_text_gap"])
     GRID_LINE_GAP = theme.ui_px(_TILE["line_gap"])    # between the name's line and the subtitle's
-    _RENDERER_ICON = amazetheme.drawn_renderer_icon()    # a material's renderer, at the subtitle's right end
-    RENDERER_ICON_HEIGHT = theme.ui_px(_RENDERER_ICON["height"])    # its width is its art's own
-    RENDERER_ICON_INSET = theme.ui_px(_RENDERER_ICON["inset"])    # from the card's right edge
-    RENDERER_ICON_BELOW = theme.ui_px(_RENDERER_ICON["below"])    # its bottom, under the subtitle's
+    RENDERER_ICONS = {    # art name -> (height, inset from the card's right edge, bottom under the subtitle's)
+        name: tuple(theme.ui_px(drawn[key]) for key in ("height", "inset", "below"))
+        for name, drawn in amazetheme.drawn_renderer_icons().items()}
     RENDERER_ICON_BLEED = theme.ui_px(amazetheme.RENDERER_ICON_BLEED)    # room around it for its shadow
 
     CATEGORY_COLOR = QtGui.QColor(amazetheme.LIST_TEXT_COLOR)    # the Category column for a category with no colour
@@ -657,19 +656,20 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         if self._renderer_role is None:
             return None
         renderer = renderers.get(index.data(self._renderer_role))
-        if renderer is None or not renderer.tile_icon:
+        if renderer is None or renderer.tile_icon not in self.RENDERER_ICONS:
             return None
         mark = self._renderer_pixmap(renderer.tile_icon, dpr)
-        return None if mark.isNull() else mark
+        return None if mark.isNull() else (mark,) + self.RENDERER_ICONS[renderer.tile_icon][1:]
 
     @classmethod
     def _renderer_pixmap(cls, name, dpr=1.0):
         """A renderer's icon at DEVICE resolution: its own shape plus the bleed around it; cached."""
-        key = ("renderer", name, cls.RENDERER_ICON_HEIGHT, round(dpr, 3))
+        height = cls.RENDERER_ICONS[name][0]
+        key = ("renderer", name, height, round(dpr, 3))
         pixmap = cls._badge_cache.get(key)
         if pixmap is None:
             pixmap = ui_helpers.bled_pixmap(amaze.package_file("ui", name + ".svg"),
-                                            cls.RENDERER_ICON_HEIGHT, dpr, cls.RENDERER_ICON_BLEED)
+                                            height, dpr, cls.RENDERER_ICON_BLEED)
             cls._badge_cache[key] = pixmap
         return pixmap
 
@@ -772,13 +772,14 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         self._paint_badges(painter, index, icon_x, icon_y, icon_side, dpr)
         subtitle_top = text_top + h_name + line_gap
         subtitle_w = text_w
-        mark = self._renderer_icon(index, dpr)
-        if mark is not None:    # at the subtitle's right end; the subtitle ends a text inset before it
+        placed = self._renderer_icon(index, dpr)
+        if placed is not None:    # at the subtitle's right end; the subtitle ends a text inset before it
+            mark, inset, below = placed
             bleed = self.RENDERER_ICON_BLEED
             full_w, full_h = self._logical_size(mark)
             mark_w, mark_h = full_w - 2 * bleed, full_h - 2 * bleed    # the icon's own box
-            mark_x = icon_x + icon_side - self.RENDERER_ICON_INSET - mark_w
-            mark_y = subtitle_top + h_rend + self.RENDERER_ICON_BELOW - mark_h
+            mark_x = icon_x + icon_side - inset - mark_w
+            mark_y = subtitle_top + h_rend + below - mark_h
             painter.drawPixmap(mark_x - bleed, mark_y - bleed, mark)
             subtitle_w = max(mark_x - self.GRID_TEXT_INSET - text_x, 1)
         painter.setFont(name_font)

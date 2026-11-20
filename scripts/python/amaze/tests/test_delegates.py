@@ -486,41 +486,42 @@ class TheRendererIconIsOnTheSubtitlesLine(unittest.TestCase):
         bleed = delegates.AssetItemDelegate.RENDERER_ICON_BLEED
         return pixmap_rect.adjusted(bleed, bleed, -bleed, -bleed)
 
-    def test_the_icon_is_placed_as_T24_draws_it(self):
+    def test_each_icon_is_sized_and_placed_as_its_own_frame_draws_it(self):
         from amaze.helpers import theme
         D = delegates.AssetItemDelegate
-        _name, subtitle, pixmaps, cell = self._painted("MaterialX")
-        self.assertEqual(1, len(pixmaps), "a material tile does not draw exactly one renderer icon")
-        icon = self._box(pixmaps[0])
-        _kind, x, y, w, h, _text = amazetheme.drawn_node("T24", "renderer icon")
-        card = amazetheme.drawn_node("T24", "tile card")
-        sub = amazetheme.drawn_node("T24", "tile subtitle")
-        self.assertEqual((theme.ui_px(w), theme.ui_px(h)), (icon.width(), icon.height()))
-        self.assertEqual(theme.ui_px(card[1] + card[3] - x - w),
-                         cell.right() + 1 - D.PAD - (icon.right() + 1),
-                         "the icon is not the drawn distance from the card's right edge")
-        self.assertEqual(theme.ui_px(y + h - sub[2] - sub[4]),
-                         icon.bottom() - subtitle.bottom(),
-                         "the icon does not sit on the subtitle's line as T24 draws it")
+        for stored, frame, size in (("MaterialX", "T24", (23, 13)), ("Redshift", "T25", (16, 18)),
+                                    ("Octane", "T26", (16, 16))):
+            with self.subTest(renderer=stored):
+                _name, subtitle, pixmaps, cell = self._painted(stored)
+                self.assertEqual(1, len(pixmaps), "a material tile does not draw exactly one renderer icon")
+                icon = self._box(pixmaps[0])
+                _kind, x, y, w, h, _text = amazetheme.drawn_node(frame, "renderer icon")
+                card = amazetheme.drawn_node(frame, "tile card")
+                sub = amazetheme.drawn_node(frame, "tile subtitle")
+                self.assertEqual(size, (w, h), "premise: the frame's icon box is another size")
+                self.assertEqual((theme.ui_px(w), theme.ui_px(h)), (icon.width(), icon.height()),
+                                 "the icon is not the size of its drawing")
+                self.assertEqual(theme.ui_px(card[1] + card[3] - x - w),
+                                 cell.right() + 1 - D.PAD - (icon.right() + 1),
+                                 "the icon is not the drawn distance from the card's right edge")
+                self.assertEqual(theme.ui_px(y + h - sub[2] - sub[4]),
+                                 icon.bottom() - subtitle.bottom(),
+                                 "the icon does not sit on the subtitle's line as its frame draws it")
 
-    def test_each_icon_has_its_own_width_at_one_height_and_one_right_edge(self):
-        from amaze.helpers import theme
-        D = delegates.AssetItemDelegate
-        boxes = {stored: self._box(self._painted(stored)[2][0])
-                 for stored in ("MaterialX", "Redshift", "Octane")}
-        self.assertEqual({"MaterialX": theme.ui_px(29), "Redshift": theme.ui_px(16),
-                          "Octane": theme.ui_px(16)},
-                         {stored: box.width() for stored, box in boxes.items()},
-                         "an icon is not as wide as its drawing")
-        self.assertEqual({D.RENDERER_ICON_HEIGHT}, {box.height() for box in boxes.values()})
-        self.assertEqual(1, len({box.right() for box in boxes.values()}),
-                         "the icons do not end at one distance from the card's right edge")
-        self.assertEqual(1, len({box.bottom() for box in boxes.values()}))
+    def test_every_shipped_icon_has_the_proportions_of_its_drawn_box(self):
+        import amaze
+        from amaze.helpers import ui_helpers
+        for name in delegates.AssetItemDelegate.RENDERER_ICONS:
+            frame = next(key for key, layout in amazetheme.DIALOG_LAYOUT.items()
+                         if any(node[0].endswith(name) for node in layout["nodes"]))
+            _kind, _x, _y, w, h, _text = amazetheme.drawn_node(frame, "renderer icon")
+            art = ui_helpers.bled_pixmap(amaze.package_file("ui", name + ".svg"), h, 1.0, 0)
+            self.assertEqual((w, h), (art.width(), art.height()), name)
 
     def test_the_pixmap_is_the_icon_at_device_resolution_plus_its_bleed(self):
         D = delegates.AssetItemDelegate
-        mark = D._renderer_pixmap("renderer_redshift", 2.0)
-        side = (D.RENDERER_ICON_HEIGHT + 2 * D.RENDERER_ICON_BLEED) * 2
+        mark = D._renderer_pixmap("renderer_octane", 2.0)
+        side = (D.RENDERER_ICONS["renderer_octane"][0] + 2 * D.RENDERER_ICON_BLEED) * 2
         self.assertEqual((side, side, 2.0),
                          (mark.width(), mark.height(), mark.devicePixelRatio()))
 
@@ -537,8 +538,9 @@ class TheRendererIconIsOnTheSubtitlesLine(unittest.TestCase):
     def test_every_icon_draws_its_shadow_under_its_own_box(self):
         D = delegates.AssetItemDelegate
         ratio = 4.0
-        under = int((D.RENDERER_ICON_BLEED + D.RENDERER_ICON_HEIGHT) * ratio) + int(ratio)
         for renderer in renderers.ALL:
+            height = D.RENDERER_ICONS[renderer.tile_icon][0]
+            under = int((D.RENDERER_ICON_BLEED + height) * ratio) + int(ratio)
             image = D._renderer_pixmap(renderer.tile_icon, ratio).toImage().convertToFormat(
                 QtGui.QImage.Format.Format_ARGB32)
             shadow = 0
