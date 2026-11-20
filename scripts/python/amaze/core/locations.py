@@ -13,16 +13,12 @@ LOCATIONS, PATHS, FAVORITES, COMMENTS, ICONS = (
     "locations", "paths", "favorites", "comments", "icons")
 LOC_PREFIX = "loc:"    # `loc:<id>[/<relative>]`: a location's own key, and every file key under it
 
-FIELDS = ("registered", "name", "color", "recursive",
-          "kinds", "pathname")  # the record's fields, each with its own branch in normalise()
+FIELDS = ("registered", "name", "color")  # the record's fields, each with its own branch in normalise()
 
-KIND_IMAGE = "image"  # the kinds a record's `kinds` field lists; stored in files.json, so fixed
+KIND_IMAGE = "image"  # what a file is to the File section; written into packages, so fixed
 KIND_GEO = "geometry"
 KIND_HIP = "hip"
-KIND_OTHER = "other"
-KNOWN_KINDS = (KIND_IMAGE, KIND_GEO, KIND_HIP)    # the kinds Amaze makes thumbnails for; Other Files is the rest
-SHOWN_BY_DEFAULT = KNOWN_KINDS + (KIND_OTHER,)    # a new location's Show ▸ ticks
-EVERY_KIND = SHOWN_BY_DEFAULT    # the Import location's ticks: a package may contain any file
+KIND_OTHER = "other"    # every file that is not an image, geometry or a scene
 
 _generation = globals().get("_generation", 0)    # increases on every location write; a token for painting
 _id_map: tuple = ("", -1, {})    # (library, generation, {path identity: smallest id at it})
@@ -41,13 +37,6 @@ def normalise(value) -> dict:
     color = value.get("color")
     if isinstance(color, str) and color.strip():
         record["color"] = color
-    if value.get("recursive"):
-        record["recursive"] = True
-    kinds = value.get("kinds")
-    if isinstance(kinds, (list, tuple)):    # [] is a real value: Show ▸ with no kind ticked
-        record["kinds"] = sorted({kind for kind in kinds if isinstance(kind, str)})
-    if value.get("pathname"):
-        record["pathname"] = True
     return record
 
 

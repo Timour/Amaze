@@ -1395,29 +1395,18 @@ class EveryOldStoreIsConvertedTest(unittest.TestCase):
         files = self.built()[library_files.FILES]
         self.assertEqual({"L1": {"path": "/proj/tex"}, "L3": {"path": "/lib"}}, files["paths"],
                          "two ids at one path were not collapsed to one")
-        every = ["geometry", "hip", "image", "other"]
-        self.assertEqual({self.PEER: {"loc:L1": {"registered": True, "label": "Textures",
-                                                 "kinds": every}},
-                          self.USER: {"loc:L3": {"registered": True, "kinds": every}}},
+        self.assertEqual({self.PEER: {"loc:L1": {"registered": True, "label": "Textures"}},
+                          self.USER: {"loc:L3": {"registered": True}}},
                          files["locations"])
         self.assertEqual(["loc:L1/a.exr", "loc:L1/b.exr"], sorted(files["comments"]))
 
-    def test_a_location_from_before_show_is_given_the_ticks_it_listed_by(self):
-        known = ["geometry", "hip", "image"]
-        for show_all, show_unknown, kinds in ((None, True, known + ["other"]),
-                                              (None, False, known),
-                                              (True, False, known + ["other"]),
-                                              (False, True, known),
-                                              ("ticked", True, ["image"])):
-            with self.subTest(show_all=show_all, show_unknown=show_unknown):
-                record = {"registered": True}
-                if show_all == "ticked":
-                    record["kinds"] = ["image"]
-                elif show_all is not None:
-                    record["show_all"] = show_all
-                self.write_root_file("locations.json", {"locations": {"loc:L3": record}})
-                built = self.built(show_unknown=show_unknown)[library_files.FILES]
-                self.assertEqual(kinds, built["locations"][self.USER]["loc:L3"]["kinds"])
+    def test_what_an_old_location_listed_is_not_carried_over(self):
+        self.write_root_file("locations.json", {"locations": {"loc:L3": {
+            "registered": True, "name": "Lib", "show_all": True, "kinds": ["image"],
+            "recursive": True, "pathname": True}}})
+        built = self.built()[library_files.FILES]
+        self.assertEqual({"registered": True, "name": "Lib"},
+                         built["locations"][self.USER]["loc:L3"])
 
     def test_users(self):
         self.write_root_file("users.json", {"users": {self.PEER: {"name": "  First User "},

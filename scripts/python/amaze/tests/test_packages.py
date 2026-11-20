@@ -572,10 +572,6 @@ class PackageImportTest(unittest.TestCase):
             "the import location was registered without the sidebar "
             "model, so no view received rowsInserted")
         row = folders.row_of(folder)
-        from amaze.core import file_library, locations
-        self.assertEqual(set(locations.EVERY_KIND),
-                         set(file_library.location_kinds(self.panel.prefs, folder)),
-                         "the Import location hides some kinds a package can hold")
 
         def settled_count():
             """The row's count once no walk is queued or running; reading it only requests one."""

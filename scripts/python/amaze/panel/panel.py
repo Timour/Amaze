@@ -672,7 +672,6 @@ class AmazePanel(QtWidgets.QWidget):
             outcome = library_conversion.convert(
                 folder, confirm, progress, user=user,
                 machine_stars=library_conversion.machine_stars(self.prefs),
-                show_unknown=self.prefs.file_show_unknown,
                 classic=classic_rebuild.Rebuilder(at, trash_classic), user_name=user_name)
         library_db.release(at)    # the data read during the conversion no longer matches the disk
         if outcome.status == library_conversion.STOPPED:

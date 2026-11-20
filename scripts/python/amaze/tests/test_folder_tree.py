@@ -21,7 +21,6 @@ from amaze.tests import test_support  # noqa: E402 - arms the sandbox
 from amaze.tests.test_file_section import _Prefs  # noqa: E402
 
 COUNT = category.SIDEBAR_COUNT_ROLE
-KNOWN_KINDS = (locations.KIND_IMAGE, locations.KIND_GEO, locations.KIND_HIP)    # Other Files off
 
 
 def _tree(testcase, layout) -> str:
@@ -45,9 +44,6 @@ def _model(testcase, *layouts):
     """A File sidebar over one fresh location per layout: (model, prefs, pointers)."""
     roots = [_tree(testcase, layout) for layout in layouts]
     prefs = _Prefs(roots)
-    prefs.file_show_unknown = False    # Other Files off for a folder outside every location: the scene's
-    for root in roots:
-        prefs.set_file_folder_kinds(root, KNOWN_KINDS)
     model = file_library.FileFolders(prefs)
     testcase.addCleanup(lambda: test_support.pump_until(lambda: not getattr(model, "_walking", None)))
     return model, prefs, list(model._folders())
@@ -191,20 +187,15 @@ class ALocationUnfoldsToItsSubfolders(unittest.TestCase):
         _shown(model, other)
         self.assertEqual([], complaints, "QAbstractItemModelTester reported problems")
 
-    def test_a_subfolder_counts_by_its_locations_rule(self):
+    def test_a_subfolder_counts_the_files_in_its_own_folder(self):
         model, prefs, roots = _model(self, {"A": {"a.png": None, "b.xyz": None,
                                                   "deeper": {"c.png": None}}})
         loc = roots[0]
         _shown(model, loc)
         test_support.pump_until(lambda: model.rowCount(model.index_of(loc)) == 1)
         child = _shown(model, _child(loc, "A"))
-        self.assertEqual(1, child.data(COUNT), "the subfolder counted a kind its location hides")
-        prefs.set_file_folder_recursive(loc, True)
-        model.refresh_counts()
-        model.data(model.index_of(_child(loc, "A")), COUNT)
-        self.assertTrue(test_support.pump_until(
-            lambda: model.data(model.index_of(_child(loc, "A")), COUNT) == 2),
-            "with Subfolder ticked the count left out the nested file")
+        self.assertEqual(2, child.data(COUNT),
+                         "the subfolder did not count its two files, or counted the one below it")
 
     def test_reading_a_folder_never_happens_on_the_gui_thread(self):
         main = threading.get_ident()
@@ -402,7 +393,7 @@ class TheSceneFolderIsOneMoreTopRow(unittest.TestCase):
         model = self.model
         self._set()
         row = _shown(model, self.hip)
-        self.assertEqual(2, row.data(COUNT), "the scene row counted by another rule")
+        self.assertEqual(3, row.data(COUNT), "the scene row did not count every file in its folder")
         self.assertTrue(test_support.pump_until(lambda: model.rowCount(model.index(1, 0)) == 2),
                         "the scene folder's subfolder rows were never added")
         self.assertEqual(["one", "two"], _names(model, model.index(1, 0)))
@@ -482,28 +473,22 @@ class TheSceneFolderIsOneMoreTopRow(unittest.TestCase):
         self.assertEqual(self.hip, model.scene_folder())
 
 
-class TheGridBrowsesASubfolderByItsLocationsRules(unittest.TestCase):
-    """A subfolder lists what its location's Show ticks show, and follows its Subfolder tick."""
+class TheGridBrowsesASubfolder(unittest.TestCase):
+    """A subfolder lists every file in its own folder, and none of the folders below it."""
 
     def setUp(self):
         self.loc = _tree(self, {"A": {"a.png": None, "b.xyz": None,
                                       "deeper": {"c.png": None}}, "top.png": None})
         self.prefs = _Prefs([self.loc])
-        self.prefs.set_file_folder_kinds(self.loc, KNOWN_KINDS)
         self.files = file_library.FileFiles(self.prefs)
         self.sub = _child(self.loc, "A")
 
     def _listed(self):
         return sorted(name for _folder, name in self.files._files)
 
-    def test_a_subfolder_lists_the_kinds_its_location_shows(self):
+    def test_a_subfolder_lists_its_own_files_of_every_kind(self):
         self.files.set_folder(self.sub)
-        self.assertEqual(["a.png"], self._listed())
-
-    def test_a_subfolder_of_a_recursive_location_lists_what_is_below_it(self):
-        self.prefs.set_file_folder_recursive(self.loc, True)
-        self.files.set_folder(self.sub)
-        self.assertEqual(["a.png", "c.png"], self._listed())
+        self.assertEqual(["a.png", "b.xyz"], self._listed())
 
     def test_owner_of_returns_the_innermost_location(self):
         self.assertEqual(self.loc, locations.owner_of(self.prefs, self.sub))
@@ -1002,10 +987,10 @@ class TheFileTabBrowsesSubfolders(unittest.TestCase):
         location = self.folders.index_of(self.loc)
         self.assertTrue(section.on_a_location([location], location), "premise: a location row")
         self.assertFalse(section.on_a_location([self.sub], self.sub),
-                         "Locate, Rename, Remove, Show and Label stay enabled on a subfolder")
+                         "Locate, Rename, Remove and Label stay enabled on a subfolder")
         greyed = {entry.label for entry in section.SIDEBAR_MENU
                   if entry.needs == "on_a_location"}
-        self.assertEqual({"Locate", "Rename", "Remove", "Show", "Label"}, greyed,
+        self.assertEqual({"Locate", "Rename", "Remove", "Label"}, greyed,
                          "the location entries are not the ones the manual names")
 
     def test_the_file_tab_reopens_on_a_remembered_subfolder(self):

@@ -577,9 +577,7 @@ class ModelRoleTest(unittest.TestCase):
         prefs = _Prefs(self)
         prefs.file_folders = []
         prefs.file_favorites = []
-        prefs.file_recursive_folders = []
         prefs.file_folder_names = {}
-        prefs.file_show_unknown = True
         prefs.last_file_folder = ""
         prefs.rendersize = 256
         prefs.icon_line_weight = "template"

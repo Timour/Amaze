@@ -414,7 +414,6 @@ class FileSidebarTest(_HighlightCase, unittest.TestCase):
         with mock.patch.object(panel, "ask_category_name", lambda *_a, **_k: "Named"):
             self.check("a right press, Rename", right_press_then("Rename", "Edit"), grid=loc)
         self.check("a right press, Label", right_press_then("Label", "Red"), grid=loc)
-        self.check("a right press, Show", right_press_then("Show", "Pathname"), grid=loc)
         picked = tempfile.mkdtemp(prefix="amaze_added_location_")
         self.addCleanup(shutil.rmtree, picked, ignore_errors=True)
         before = self.locations()

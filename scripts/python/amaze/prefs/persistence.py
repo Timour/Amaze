@@ -142,8 +142,6 @@ USER_KEYS = {  # per-user view state under `users.<uid>`: stored key -> (propert
     "accent_color": ("accent_color", "_accent_color", "#5d7abd"),
     "icon_line_weight":
         ("icon_line_weight", "_icon_line_weight", "template"),
-    "file_show_unknown":
-        ("file_show_unknown", "_file_show_unknown", True),
     "debug_mode": ("debug_mode", "_debug_mode", False),
     "addon_betas": ("addon_betas", "_addon_betas", False),
 }  # five more per-user keys are handled separately beside every loop over this table

@@ -1965,16 +1965,9 @@ class FileSection(FolderSection):
         MenuEntry("Sort by name", handler="menu_sort_locations",
                   needs="always"),
         SEPARATOR,
-        MenuEntry("Show", handler="menu_show", children="show_actions",
-                  needs="on_a_location"),
-        SEPARATOR,
         MenuEntry("Label", handler="menu_label_colour", children="label_colours",
                   needs="on_a_location"),
     )
-
-    SHOW_KINDS = (("Images", locations.KIND_IMAGE),    # the Show ▸ submenu's kind checkboxes, in menu order
-                  ("Geometry", locations.KIND_GEO),
-                  ("HIP", locations.KIND_HIP))
 
     def menu_sort_locations(self, indexes, current, payload=None) -> None:
         """Sort by name, once: the locations below All and the scene row, from any row clicked."""
@@ -1996,41 +1989,6 @@ class FileSection(FolderSection):
         named = bool(path and self.panel.prefs.file_folder_names.get(path))
         return (("Edit", "edit", "", True), None,
                 ("Set to Default", "default", "", named))    # disabled with no name set, never hidden
-
-    def show_actions(self, indexes, current) -> tuple:
-        """Show ▸: each entry an independent checkbox for the location under the cursor."""
-        prefs = self.panel.prefs
-        path = self.location_key(current)
-        kinds = file_library.location_kinds(prefs, path) if path else frozenset()
-        record = locations.record(prefs, path) if path else {}
-        return (("Pathname", "pathname", "", True, bool(record.get("pathname"))),
-                ("Subfolder", "subfolder", "", True, bool(record.get("recursive"))),
-                None,
-                ("Other Files", locations.KIND_OTHER, "", True,
-                 locations.KIND_OTHER in kinds),
-                None) + tuple((label, kind, "", True, kind in kinds)
-                              for label, kind in self.SHOW_KINDS)
-
-    def menu_show(self, indexes, current, payload=None) -> None:
-        path = self.location_key(current)
-        if not path or not payload:
-            return
-        what, on = payload
-        prefs = self.panel.prefs
-        folders = self._p(self.sidebar_attr)
-        if what == "pathname":    # the row's name, nothing to rescan
-            prefs.set_file_folder_pathname(path, on)
-            self._repaint_location(path)
-            return
-        if what == "subfolder":
-            prefs.set_file_folder_recursive(path, on)
-        else:
-            kinds = set(file_library.location_kinds(prefs, path))
-            prefs.set_file_folder_kinds(
-                path, kinds | {what} if on else kinds - {what})
-        if folders is not None:
-            folders.refresh_counts()
-        self.panel.update_selected_cat()    # rescan the shown folder with the new settings
 
     def _repaint_location(self, path: str) -> None:
         folders = self._p(self.sidebar_attr)

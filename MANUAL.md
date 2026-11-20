@@ -429,7 +429,6 @@ Browses folders on disk.
   open.
 - **Other files** show their system icon. **Copy Path** copies the path
   to the clipboard, written as set in [Write Paths As](#write-paths-as).
-  A location lists these files when **Show ▸ Other Files** is on.
 - **New Folder** asks for a name and makes that folder in the folder you
   are looking at. **Save Scene** asks for a name and saves the open scene
   as a new file there, with the extension your license writes, and that
@@ -461,38 +460,31 @@ The sidebar's right-click menu:
   keeps its favorites, name and settings.
 - **Rename ▸ Edit** sets a display name. **Set to Default** restores the
   folder's own name.
-- **Remove** unregisters the folder and clears its name, colour, Show
-  settings, favorites, comments, tile icons and cached thumbnails.
-  Captures are kept.
+- **Remove** unregisters the folder and clears its name, colour,
+  favorites, comments, tile icons and cached thumbnails. Captures are
+  kept.
 - **Sort by name** sorts the locations alphabetically by the name each
   shows, below All and $HIP.
-- **Show ▸** sets what the location lists:
-  - **Pathname** shows the full path as the name, written as set in
-    **Write Paths As**.
-  - **Subfolder** includes the folders inside it.
-  - **Other Files**, **Images**, **Geometry** and **HIP** set the kinds
-    of file listed. **Other Files** covers everything except images,
-    geometry and scenes. All four are on for a new location.
 - **Label ▸** colours the location, as on a
   [category](#category-colors).
 
-A new location lists Images, Geometry and HIP, without subfolders.
+A location lists every file in its own folder. The **Filter** menu
+narrows the list to images, geometry or scenes. **All** lists the files
+of every location together.
 
 A location that holds folders has an arrow before its name. Clicking the
 arrow shows the folders inside it, and each of those opens the same way;
 a double-click and the Right and Left arrow keys also open and close a
-folder. Clicking a folder lists its files by its location's Show
-settings, and with **Subfolder** on, the files in the folders below it
-too. Locate, Rename, Remove, Show and Label act on locations and are
-greyed out on the folders inside them. Folders stay open until the panel
-closes, and the File tab reopens on the last folder clicked.
+folder. Clicking a folder lists the files in it. Locate, Rename, Remove
+and Label act on locations and are greyed out on the folders inside
+them. Folders stay open until the panel closes, and the File tab reopens
+on the last folder clicked.
 
 **$HIP** shows the folder of the current open .hip file, once the scene
 has been saved. It is a fixed
-location under All: its folders open as a location's do, it lists
-Images, Geometry and HIP, and inside a registered location it lists what
-that location lists. Locate, Rename, Remove, Show and Label are greyed
-out on it, it cannot be dragged, and All does not include it.
+location under All: its folders open as a location's do. Locate, Rename,
+Remove and Label are greyed out on it, it cannot be dragged, and All
+does not include it.
 
 Dragging files from the grid onto a folder in the sidebar moves them into
 that folder on disk, all the selected files together. A file whose name is
@@ -509,9 +501,8 @@ that is running on another computer shows the removal after a restart.
 
 ### Write Paths As
 
-Preferences ▸ Look ▸ **Write Paths As** sets how Copy Path and **Show ▸
-Pathname** write paths, and how a material imported into the scene refers
-to its textures: **$HOME** (the default), **$JOB**, **$HIP** or
+Preferences ▸ Look ▸ **Write Paths As** sets how Copy Path writes paths,
+and how a material imported into the scene refers to its textures: **$HOME** (the default), **$JOB**, **$HIP** or
 **Absolute**. A variable is used when the path is under it; other paths
 are written in full.
 

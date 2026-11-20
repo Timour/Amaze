@@ -14,62 +14,10 @@ def name_order(names) -> list:
     return sorted(names, key=lambda name: (name.lower(), name))
 
 
-def walk_following_links(root: str):
-    """`os.walk` following symlinked folders, each once; prune `dirnames` in place. ▸r/platform-files"""
-    try:
-        stack = [(root, os.path.realpath(root))]
-    except OSError:
-        return
-    seen = set()
-    while stack:
-        dirpath, real = stack.pop()
-        if real in seen:
-            continue                  # already covered by another path
-        seen.add(real)
-        try:
-            with os.scandir(dirpath) as listing:
-                entries = list(listing)
-        except OSError:
-            continue                  # unreadable, as os.walk skips it
-        dirnames, filenames, reals = [], [], {}
-        for entry in entries:
-            try:
-                is_dir = entry.is_dir()    # follows a link, as followlinks=True does
-            except OSError:
-                is_dir = False
-            if not is_dir:
-                filenames.append(entry.name)
-                continue
-            if hostos.is_link_like(entry):
-                try:
-                    child_real = os.path.realpath(entry.path)
-                except OSError:
-                    continue
-            else:
-                child_real = os.path.join(real, entry.name)
-            if child_real not in seen:
-                dirnames.append(entry.name)
-                reals[entry.name] = child_real
-        yield dirpath, dirnames, filenames
-        for name in reversed(dirnames):    # depth first, in the caller's order, as os.walk goes
-            if name in reals:
-                stack.append((os.path.join(dirpath, name), reals[name]))
-
-
-def scan_folder(path: str, recursive: bool, matches, stopped=lambda: False):
-    """(files the sidebar counts, visible subfolder names), or None once `stopped()`."""
+def scan_folder(path: str, matches, stopped=lambda: False):
+    """(files in this folder the sidebar counts, visible subfolder names), or None once `stopped()`."""
     count, subfolders = 0, []
     try:
-        if recursive:
-            for depth, (_dirpath, dirnames, filenames) in enumerate(walk_following_links(path)):
-                if stopped():
-                    return None
-                dirnames[:] = name_order(d for d in dirnames    # hidden folders pruned, as the grid prunes them
-                                         if not d.startswith("."))
-                if depth == 0:
-                    subfolders = list(dirnames)
-                count += sum(1 for name in filenames if matches(name))
-            return count, subfolders
         with os.scandir(path) as entries:    # one read: the files to count, the folders to unfold
             for entry in entries:
                 if stopped():
@@ -86,14 +34,14 @@ def scan_folder(path: str, recursive: bool, matches, stopped=lambda: False):
 
 
 class _CountWorker(QtCore.QThread):
-    """Reads ONE folder off the GUI thread, with the match rule the GUI thread prepared."""
+    """Reads ONE folder off the GUI thread."""
 
     counted = QtCore.Signal(object, object, object)    # (path, token, (count, subfolders))
 
-    def __init__(self, path, token, recursive, matches) -> None:
+    def __init__(self, path, token, matches) -> None:
         super().__init__()
         self.path, self.token = path, token
-        self._recursive, self._matches = recursive, matches
+        self._matches = matches
         self._canceled = False    # the stop flag workers.stop() sets, the name every engine's worker uses
 
     def cancel(self) -> None:
@@ -104,8 +52,7 @@ class _CountWorker(QtCore.QThread):
 
     def run(self) -> None:
         try:
-            result = scan_folder(self.path, self._recursive, self._matches,
-                                 self._stopped)
+            result = scan_folder(self.path, self._matches, self._stopped)
         except Exception as exc:                          # noqa: BLE001 - logged; the worker still ends
             debug.event("folders", "count failed", folder=self.path,
                         error=str(exc))
@@ -197,12 +144,8 @@ class FolderTreeModel(sidebar_model.SidebarModel):
         self._scene = ""    # the open scene's folder the fixed row shows; "" shows no such row
 
 
-    def matches_in(self, path: str, filename: str) -> bool:
-        """Folder-aware match: the base uses the flat rule; File uses the kinds ticked in Show ▸."""
-        return self.matches(filename)
-
     def matches(self, filename: str) -> bool:
-        """Does this filename belong to the section (by extension)?"""
+        """Whether the sidebar counts this file; it runs on the count's worker, so it reads no settings."""
         raise NotImplementedError
 
 
@@ -386,14 +329,10 @@ class FolderTreeModel(sidebar_model.SidebarModel):
             found = self._records[path] = locations.record(self.preferences, path)
         return found
 
-    def includes_subfolders(self, path: str) -> bool:
-        """Whether this folder's count includes its subfolders; the base returns False. ▸p/folder-sidebar"""
-        return False
-
     def location_of(self, path: str) -> str:
         """The innermost registered location a folder is in, else the folder itself."""
         if not path:
-            return path    # no folder, no location: the global rule applies
+            return path    # no folder, no location
         return locations.innermost(self._folders(), path) or path
 
     def top_of(self, path: str) -> str:
@@ -405,10 +344,6 @@ class FolderTreeModel(sidebar_model.SidebarModel):
     def display_name(self, path: str) -> str:
         """A location's sidebar label: its folder name here; FileFolders adds names and paths."""
         return os.path.basename(path.rstrip("/\\")) or path
-
-    def _matcher_for(self, path: str):
-        """One folder's name test, its rule resolved ONCE here; it runs on the count's worker."""
-        return lambda name: self.matches_in(path, name)
 
     def _shows(self, path: str) -> bool:
         """Whether some row still shows this folder: a top row, or a subfolder already read."""
@@ -430,7 +365,7 @@ class FolderTreeModel(sidebar_model.SidebarModel):
             self._counts_asked.emit()    # one dispatch for all requests of one paint
 
     def _dispatch_counts(self) -> None:
-        """One queued folder per free worker, its rule resolved HERE, on the GUI thread."""
+        """One queued folder per free worker."""
         self._count_scheduled = False
         if self._live >= self.COUNT_WORKERS or not self._queued:
             return    # a worker ending dispatches again
@@ -439,18 +374,10 @@ class FolderTreeModel(sidebar_model.SidebarModel):
             if not self._shows(path):
                 self._walking.pop(path, None)    # gone before its walk began
                 continue
-            try:
-                rule = (bool(self.includes_subfolders(path)),
-                        self._matcher_for(path))
-            except Exception as exc:                          # noqa: BLE001 - a bad record skips one count, not all
-                self._walking.pop(path, None)
-                debug.event("folders", "count rule unreadable", folder=path,
-                            error=str(exc))
-                continue
             token = self._tokens.get(path, 0)
             self._walking[path] = token
             self._live += 1
-            counter.start((path, token) + rule, self._on_counted, self._walk_ended)
+            counter.start((path, token, self.matches), self._on_counted, self._walk_ended)
 
     def _on_counted(self, path, token, result) -> None:
         """A count arrived: kept when still current, requested again when not."""
@@ -459,7 +386,7 @@ class FolderTreeModel(sidebar_model.SidebarModel):
         if not self._shows(path):
             return    # gone while it walked
         if token != self._tokens.get(path, 0):
-            self._ask_count(path)    # changed while it walked: its result used the old rule
+            self._ask_count(path)    # changed while it walked: its result is of the folder as it was
             return
         count, names = result
         self._counts[path] = count

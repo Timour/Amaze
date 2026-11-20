@@ -595,19 +595,6 @@ def _set_mode(path: str, mode: int) -> None:
         pass
 
 
-def is_link_like(entry) -> bool:
-    """Whether an `os.scandir` entry is a symlink or, on Windows, any reparse point; opens nothing."""
-    try:
-        if entry.is_symlink():
-            return True
-        if is_windows():
-            attributes = entry.stat(follow_symlinks=False).st_file_attributes
-            return bool(attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT)
-    except OSError:
-        return True    # unreadable: resolve it rather than guess its real path
-    return False
-
-
 def check_deletable(path: str) -> None:
     """Raise the OSError a delete would hit while another program holds `path`; Windows only."""
     if not is_windows():

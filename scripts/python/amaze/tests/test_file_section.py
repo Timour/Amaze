@@ -94,13 +94,10 @@ class LocationsLiveInTheFilesDatabaseTest(unittest.TestCase):
                          "/models/obj/", "/houdini/exercise/", "/tex/hdr/"],
         "file_favorites": ["/tex/hdr/017.hdr", "/houdini/exercise/a.hiplc"],
         "file_location_records": {    # only the RECORD stores these; the retired decoration-table keys are not used
-            "/tex/img/": {"registered": True, "recursive": True},
-            "/tex/bokeh/": {"registered": True, "recursive": True,
-                            "name": "Bokeh files"},
-            "/photo/2023/": {"registered": True, "recursive": True,
-                             "color": "#134d4d"},
-            "/models/obj/": {"registered": True, "recursive": True,
-                             "kinds": []},
+            "/tex/img/": {"registered": True},
+            "/tex/bokeh/": {"registered": True, "name": "Bokeh files"},
+            "/photo/2023/": {"registered": True, "color": "#134d4d"},
+            "/models/obj/": {"registered": True},
             "/houdini/exercise/": {"registered": True},
             "/tex/hdr/": {"registered": True},
         },
@@ -115,9 +112,9 @@ class LocationsLiveInTheFilesDatabaseTest(unittest.TestCase):
         for path, record in self.REAL_SHAPE["file_location_records"].items():
             self.assertTrue(locations_mod.set_record(prefs, path, record), path)
         self.assertEqual(sorted(self.REAL_SHAPE["file_folders"]), sorted(prefs.file_folders))
-        self.assertEqual({"registered": True, "kinds": [], "recursive": True},
-                         locations_mod.record(prefs, "/models/obj/"),
-                         "Show with no kind ticked was dropped as empty")
+        self.assertEqual({"registered": True, "name": "Bokeh files"},
+                         locations_mod.record(prefs, "/tex/bokeh/"),
+                         "a location's record was not read back as written")
         with open(os.path.join(library, "files.json"), encoding="utf-8") as handle:
             written = json.load(handle)
         mine = written["locations"][test_support.FIXTURE_USER]
@@ -925,7 +922,6 @@ class _Prefs:
     def __init__(self, folders=()):
         self.dir = tempfile.mkdtemp(prefix="amaze_file_lib_")
         self.library_user = test_support.FIXTURE_USER    # a user-tagged store with no user would reject every register call
-        self.file_show_unknown = True
         self.path_style = "home"
         self.last_file_folder = ""
         self.rendersize = 256
@@ -972,11 +968,6 @@ class _Prefs:
         return locations_mod.favourite_paths(self)
 
     @property
-    def file_recursive_folders(self):
-        return [p for p in locations_mod.registered_paths(self)
-                if locations_mod.record(self, p).get("recursive")]
-
-    @property
     def file_folder_names(self):
         return self._table("name")
 
@@ -993,9 +984,7 @@ class _Prefs:
         return table
 
     def add_file_folder(self, path):
-        if locations_mod.register(self, path) and locations_mod.record(
-                self, path).get("kinds") is None:    # created with Show ▸'s default ticks, as in the product
-            self.set_file_folder_kinds(path, locations_mod.SHOWN_BY_DEFAULT)
+        locations_mod.register(self, path)
 
     def remove_file_folder(self, path):
         locations_mod.unregister(self, path)
@@ -1016,15 +1005,6 @@ class _Prefs:
 
     def set_file_folder_color(self, path, color):
         locations_mod.set_field(self, path, "color", str(color or "").strip())
-
-    def set_file_folder_recursive(self, path, on):
-        locations_mod.set_field(self, path, "recursive", bool(on) or None)
-
-    def set_file_folder_kinds(self, path, kinds):
-        locations_mod.set_field(self, path, "kinds", sorted(set(kinds)))
-
-    def set_file_folder_pathname(self, path, on):
-        locations_mod.set_field(self, path, "pathname", bool(on) or None)
 
 
 class FileKeyIsCanonicalTest(unittest.TestCase):
@@ -1536,7 +1516,7 @@ class PrefsComboFocusTest(unittest.TestCase):
 
 
 class LocationManagementTest(unittest.TestCase):
-    """Removal drops thumbnails, recursion is per location, names default to the path and rename."""
+    """Removal drops thumbnails, a location lists its own folder, names default to the path and rename."""
 
     def _folders_model(self, *paths):
         prefs = _Prefs(list(paths))
@@ -1547,31 +1527,29 @@ class LocationManagementTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
         return tmp
 
-    def test_recursion_is_per_location(self):
-        deep = self._tmpdir()
-        flat = self._tmpdir()
-        for base in (deep, flat):
+    def test_a_location_lists_every_file_in_its_own_folder_and_none_below(self):
+        first = self._tmpdir()
+        second = self._tmpdir()
+        for base in (first, second):
             sub = os.path.join(base, "sub")
             os.makedirs(sub)
-            with open(os.path.join(sub, "buried.txt"), "w") as handle:
-                handle.write("x")
-            with open(os.path.join(base, "top.txt"), "w") as handle:
-                handle.write("x")
-        prefs = _Prefs([deep, flat])
-        prefs.set_file_folder_recursive(deep, True)
+            for name in (os.path.join(sub, "buried.txt"), os.path.join(base, "top.txt"),
+                         os.path.join(base, "top.png"), os.path.join(base, ".hidden")):
+                with open(name, "w") as handle:
+                    handle.write("x")
+        prefs = _Prefs([first, second])
         model = file_library.FileFiles(prefs)
-        model.set_folder(deep)
-        self.assertEqual(2, model.rowCount(),
-                         "the recursive location did not descend")
-        model.set_folder(flat)
-        self.assertEqual(1, model.rowCount(),
-                         "the flat location descended anyway - "
-                         "one location's recursion applied to another")
+        model.set_folder(first)
+        self.assertEqual(["top.png", "top.txt"],
+                         sorted(model.data(model.index(row, 0)) for row in range(model.rowCount())),
+                         "a location does not list exactly the files in its own folder")
+        model.set_folder(os.path.join(first, "sub"))
+        self.assertEqual(1, model.rowCount(), "a folder below a location does not list its file")
+        model.set_all_folders()
+        self.assertEqual(4, model.rowCount(), "All does not list each location's own files")
         folders_model = file_library.FileFolders(prefs)
-        counts = _wait_for_counts(folders_model)[1:]
-        self.assertEqual([2, 1], counts,
-                         "the counts do not follow each location's own "
-                         "recursion flag")
+        self.assertEqual([4, 2, 2], _wait_for_counts(folders_model),
+                         "the sidebar counts differ from what the grid lists")
 
     def test_a_sidebar_paint_reads_the_location_list_once(self):
         """One read of the list serves a whole paint, and a write outside the model still shows."""
@@ -1698,12 +1676,11 @@ class LocationManagementTest(unittest.TestCase):
         self.assertIn("textures", label,
                       "clearing the name did not fall back to the path")
 
-    def test_locate_keeps_name_and_recursion(self):
+    def test_locate_keeps_the_name(self):
         old = self._tmpdir()
         new = self._tmpdir()
         model, prefs = self._folders_model(old)
         prefs.set_file_folder_name(old, "Set Dressing")
-        prefs.set_file_folder_recursive(old, True)
         prefs.save = lambda: None
         rewritten = model.relocate_folder(1, new)
         self.assertGreaterEqual(rewritten, 0, "relocate_folder failed")
@@ -1711,8 +1688,6 @@ class LocationManagementTest(unittest.TestCase):
         self.assertEqual({new_key: "Set Dressing"},
                          prefs.file_folder_names,
                          "the custom name was not moved to the new path")
-        self.assertEqual([new_key], prefs.file_recursive_folders,
-                         "the recursion flag was not moved to the new path")
 
     def test_locate_moves_the_pointer_and_the_favourites(self):
         """Locate edits the row's path in place and rewrites favourites under the old path."""
@@ -1854,7 +1829,6 @@ class LocationManagementTest(unittest.TestCase):
         for path, name, colour in ((tmp, "Custom", "#ff8000"), (kept, "Kept", "#0080ff")):
             prefs.set_file_folder_name(path, name)
             prefs.set_file_folder_color(path, colour)
-            prefs.set_file_folder_recursive(path, True)
         prefs.save = lambda: None
         from unittest import mock
         with mock.patch.object(
@@ -1865,9 +1839,6 @@ class LocationManagementTest(unittest.TestCase):
         self.assertEqual({kept: "Kept"}, prefs.file_folder_names,
                          "the custom name was not removed with its folder, or the "
                          "removal changed the location NEXT to it")
-        self.assertEqual([kept], prefs.file_recursive_folders,
-                         "the recursion flag was not removed with its folder, or "
-                         "the removal changed its neighbour")
         self.assertEqual(
             {kept: "#0080ff"}, prefs.file_folder_colors,
             "the location's COLOUR was not removed with its folder, so re-adding "
@@ -1910,20 +1881,16 @@ def _under(path, root) -> bool:
 class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
     """The File sidebar's counts are computed on a worker; a paint returns what is known now."""
 
-    def _model(self, *sizes, recursive=()):
+    def _model(self, *sizes):
         """A sidebar over one fresh location per size, holding that many images each."""
         roots = []
-        for n, size in enumerate(sizes):
+        for size in sizes:
             root = tempfile.mkdtemp(prefix="amaze_walk_")
             self.addCleanup(shutil.rmtree, root, ignore_errors=True)
-            target = os.path.join(root, "sub") if n in recursive else root
-            os.makedirs(target, exist_ok=True)
             for i in range(size):
-                open(os.path.join(target, "f%d.png" % i), "w").close()
+                open(os.path.join(root, "f%d.png" % i), "w").close()
             roots.append(root)
         prefs = _Prefs(roots)
-        for n in recursive:
-            prefs.set_file_folder_recursive(roots[n], True)
         model = file_library.FileFolders(prefs)
         self.addCleanup(lambda: test_support.pump_until(
             lambda: not getattr(model, "_walking", None)))
@@ -1946,7 +1913,7 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
 
     def test_a_paint_walks_no_folder_on_the_gui_thread(self):
         from amaze.panel import delegates
-        model, roots = self._model(2, 3, recursive=(1,))
+        model, roots = self._model(2, 3)
         view = QtWidgets.QListView()
         self.addCleanup(view.deleteLater)
         self.addCleanup(view.close)
@@ -2024,14 +1991,12 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
         self.assertNotIn(removed, model._counts,
                          "the removed location kept the count its walk brought back")
 
-    def test_a_count_walked_under_an_old_rule_is_dropped(self):
-        """The Show ticks change mid-walk: that walk's result is dropped and a new walk counts."""
+    def test_a_count_walked_before_a_refresh_is_dropped(self):
+        """A file arrives mid-walk and the counts are refreshed: that walk's result is dropped."""
         root = tempfile.mkdtemp(prefix="amaze_walk_rule_")
         self.addCleanup(shutil.rmtree, root, ignore_errors=True)
-        for name in ("a.png", "b.xyz"):
-            open(os.path.join(root, name), "w").close()
+        open(os.path.join(root, "a.png"), "w").close()
         prefs = _Prefs([root])
-        prefs.set_file_folder_kinds(root, (locations_mod.KIND_IMAGE,))
         model = file_library.FileFolders(prefs)
         key = model._folders()[0]
         shown = []
@@ -2042,13 +2007,14 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
             model.data(model.index(1, 0), model.COUNT_ROLE)
             self.assertTrue(test_support.pump_until(entered.is_set),
                             "the walk never ran on a worker")
-            prefs.set_file_folder_kinds(root, locations_mod.SHOWN_BY_DEFAULT)
+            real_open = open
+            real_open(os.path.join(root, "b.xyz"), "w").close()
             model.refresh_counts()
             release.set()
             counts = _wait_for_counts(model)
         self.assertEqual([2, 2], counts,
-                         "a count walked under the old rule was kept")
-        self.assertNotIn(1, shown, "the old rule's count was emitted with dataChanged")
+                         "a count walked before the refresh was kept")
+        self.assertNotIn(1, shown, "the earlier walk's count was emitted with dataChanged")
 
     def test_a_relocate_recounts_only_that_location(self):
         model, roots = self._model(1, 2, 3)
@@ -2085,42 +2051,6 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
                         "a count requested from another thread never arrived")
         self.assertEqual([5, 5], _wait_for_counts(model),
                          "the sidebar stopped counting after a request from another thread")
-
-    def test_shutdown_does_not_wait_out_a_walk(self):
-        """The stop flag is read between folders, so quitting mid-walk returns at once."""
-        from amaze.core import folders as folders_mod, workers
-        root = tempfile.mkdtemp(prefix="amaze_walk_deep_")
-        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
-        for i in range(40):
-            os.makedirs(os.path.join(root, "d%02d" % i))
-        prefs = _Prefs([root])
-        prefs.set_file_folder_recursive(root, True)
-        model = file_library.FileFolders(prefs)
-        main = threading.get_ident()
-        entered = threading.Event()
-        real = os.scandir
-
-        def slow(path="."):
-            if threading.get_ident() != main and _under(path, root):
-                entered.set()
-                time.sleep(0.25)    # 41 folders: about 10s for a walk nobody stops
-            return real(path)
-
-        with mock.patch("os.scandir", slow):
-            model.data(model.index(1, 0), model.COUNT_ROLE)
-            self.assertTrue(test_support.pump_until(entered.is_set),
-                            "the walk never ran on a worker")
-            running = list(folders_mod.counter._threads)
-            started = time.monotonic()
-            folders_mod.counter.shutdown()
-            elapsed = time.monotonic() - started
-        test_support.pump_until(lambda: not model._walking)
-        self.assertTrue(running, "premise: no walk was running")
-        self.assertLess(elapsed, 1.0, "shutdown waited %.2fs on a walk" % elapsed)
-        self.assertFalse(any(t.isRunning() for t in running),
-                         "a walk was still running after the shutdown")
-        self.assertEqual([], [t for t in running if t in workers._unstoppable],
-                         "a walk was put in `_unstoppable`, so terminate() was reached")
 
     def test_a_shutdown_starts_none_of_the_queued_walks(self):
         """Stopped walks start no queued walk; a later request still counts every location."""
@@ -2175,8 +2105,6 @@ class RemovingANestedLocationTest(unittest.TestCase):
     def _nested(self, *folders):
         prefs = _Prefs(folders)
         self.addCleanup(shutil.rmtree, prefs.dir, ignore_errors=True)
-        if self.outer in folders:
-            prefs.set_file_folder_recursive(self.outer, True)
         return prefs
 
     def _row(self, prefs, folder):
@@ -2285,9 +2213,9 @@ class RemovingANestedLocationTest(unittest.TestCase):
         self._remove(prefs, self.inner)
 
         self.assertEqual(
-            (True, True, "activity"), self._shown(prefs, self.outer),
+            (True, True, "activity"), self._shown(prefs, self.inner),
             "removing the nested location retired the star, comment or "
-            "icon of a file the outer location still lists")
+            "icon of a file the outer location still covers")
         stars = library_db.document(prefs, locations_mod.FILES).everyones(locations_mod.FAVORITES)
         self.assertIn(key, stars.get(self.OTHER, {}),
                       "another user's star on that file was retired")
@@ -2314,7 +2242,7 @@ class RemovingANestedLocationTest(unittest.TestCase):
             self._remove(prefs, self.inner)
 
         self.assertEqual(
-            (True, True, "activity"), self._shown(prefs, self.outer),
+            (True, True, "activity"), self._shown(prefs, self.inner),
             "a comment that could not move was retired anyway")
 
     def test_a_key_spelled_as_a_path_moves_too(self):
@@ -2671,8 +2599,8 @@ class CheckLibrarySetsAFolderMissingHereAsideTest(unittest.TestCase):
         self.assertEqual("", locations_mod.location_id(self.prefs, self.folder))
 
 
-class ShowTicksTest(unittest.TestCase):
-    """Show ▸'s kinds combine freely: a location lists exactly what is ticked, and counts it."""
+class ALocationListsEveryKindOfFileTest(unittest.TestCase):
+    """A location lists images, geometry, scenes and every other file, and stores no choice of them."""
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="amaze_show_")
@@ -2682,69 +2610,35 @@ class ShowTicksTest(unittest.TestCase):
                 handle.write("x")
         self.prefs = _Prefs([self.tmp])
 
-    def _listed(self, kinds):
-        self.prefs.set_file_folder_kinds(self.tmp, kinds)
+    def test_all_four_kinds_are_listed_and_counted(self):
         model = file_library.FileFiles(self.prefs)
         model.set_folder(self.tmp)
-        names = sorted(model._files[row][1] for row in range(len(model._files)))
-        count = _wait_for_counts(file_library.FileFolders(self.prefs))[1]
-        self.assertEqual(len(names), count, "the sidebar counts what the grid does not list")
-        return names
+        self.assertEqual(["a.png", "b.obj", "c.hip", "d.txt"],
+                         sorted(model._files[row][1] for row in range(len(model._files))))
+        self.assertEqual(4, _wait_for_counts(file_library.FileFolders(self.prefs))[1],
+                         "the sidebar counts what the grid does not list")
 
-    def test_each_combination_lists_exactly_its_kinds(self):
-        image, geo, hip, other = (locations_mod.KIND_IMAGE, locations_mod.KIND_GEO,
-                                  locations_mod.KIND_HIP, locations_mod.KIND_OTHER)
-        for kinds, expected in (
-                ((image,), ["a.png"]),
-                ((image, other), ["a.png", "d.txt"]),
-                ((geo, hip), ["b.obj", "c.hip"]),
-                ((image, geo, hip, other), ["a.png", "b.obj", "c.hip", "d.txt"]),
-                ((), [])):
-            with self.subTest(kinds=kinds):
-                self.assertEqual(expected, self._listed(kinds))
-
-    def test_a_location_with_no_ticks_lists_nothing(self):
-        """Only the recorded Show ticks decide; no ticks recorded is no kind, whatever else is set."""
-        locations_mod.set_field(self.prefs, self.tmp, "kinds", None)
-        for show_unknown in (True, False):
-            with self.subTest(show_unknown=show_unknown):
-                self.prefs.file_show_unknown = show_unknown
-                self.assertIsNone(locations_mod.record(self.prefs, self.tmp).get("kinds"))
-                self.assertEqual(frozenset(), file_library.location_kinds(self.prefs, self.tmp))
-
-    def test_pathname_names_the_row_by_its_path_even_over_a_rename(self):
-        self.prefs.path_style = "absolute"
+    def test_a_record_holding_the_old_show_values_lists_the_same(self):
+        locations_mod.set_record(self.prefs, self.tmp, {
+            "registered": True, "kinds": ["image"], "recursive": True, "pathname": True})
+        model = file_library.FileFiles(self.prefs)
+        model.set_folder(self.tmp)
+        self.assertEqual(4, model.rowCount(), "an old `kinds` value still narrows the location")
         folders = file_library.FileFolders(self.prefs)
-        folder = os.path.basename(self.tmp.rstrip("/\\"))
-        self.assertEqual(folder, folders.display_name(self.tmp))
-        self.prefs.set_file_folder_pathname(self.tmp, True)
-        path = helpers.houdini_path(self.tmp, "absolute")
-        self.assertEqual(path, folders.display_name(self.tmp))
-        self.prefs.set_file_folder_name(self.tmp, "Textures")
-        self.assertEqual(path, folders.display_name(self.tmp),
-                         "a renamed folder kept its name with Pathname ticked")
-        self.prefs.set_file_folder_pathname(self.tmp, False)
-        self.assertEqual("Textures", folders.display_name(self.tmp))
+        self.assertEqual(os.path.basename(self.tmp.rstrip("/\\")), folders.display_name(self.tmp),
+                         "an old `pathname` value still names the row by its path")
 
-
-class ANewLocationStartsWithTheKnownKindsTest(unittest.TestCase):
-    """Add ticks every kind, Other Files included; a folder added again keeps its own ticks."""
-
-    def test_add_ticks_every_kind(self):
+    def test_a_new_location_stores_only_that_it_is_registered(self):
         prefs, _library = _location_prefs(self, {})
-        folder = tempfile.mkdtemp(prefix="amaze_new_loc_")
-        self.addCleanup(shutil.rmtree, folder, ignore_errors=True)
-        prefs.add_file_folder(folder)
-        self.assertEqual(set(locations_mod.SHOWN_BY_DEFAULT),
-                         set(file_library.location_kinds(prefs, folder)))
-        self.assertIn(locations_mod.KIND_OTHER,
-                      file_library.location_kinds(prefs, folder),
-                      "a new location hid other files")
-        prefs.set_file_folder_kinds(folder, (locations_mod.KIND_OTHER,))
-        prefs.add_file_folder(folder)
-        self.assertEqual({locations_mod.KIND_OTHER},
-                         set(file_library.location_kinds(prefs, folder)),
-                         "adding a folder again reset what it shows")
+        prefs.add_file_folder(self.tmp)
+        self.assertEqual({"registered": True}, locations_mod.record(prefs, self.tmp))
+
+    def test_the_sidebar_menu_has_no_show_entry(self):
+        from amaze.panel import sections
+        labels = [entry.label for entry in sections.FileSection.SIDEBAR_MENU if entry.label]
+        self.assertNotIn("Show", labels)
+        self.assertEqual(["Add", "Locate", "Rename", "Remove", "Sort by name", "Label"],
+                         [label for label in labels if "Undo" not in label])
 
 
 class FileSectionScanAndRerenderPinsTest(unittest.TestCase):
@@ -2766,30 +2660,20 @@ class FileSectionScanAndRerenderPinsTest(unittest.TestCase):
                          "the sidebar counts entries the grid never "
                          "shows (subdirectories)")
 
-    def test_hidden_directories_are_pruned_from_the_recursive_scan(self):
-        """The skip-hidden rule prunes directories too, or a recursive scan lists .git internals."""
+    def test_a_hidden_folder_is_no_sidebar_row(self):
         tmp = tempfile.mkdtemp(prefix="amaze_hidden_")
         self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
         with open(os.path.join(tmp, "real.txt"), "w") as handle:
             handle.write("x")
-        git = os.path.join(tmp, ".git", "objects")
-        os.makedirs(git)
-        with open(os.path.join(git, "abc123"), "w") as handle:
-            handle.write("junk")
+        os.makedirs(os.path.join(tmp, ".git", "objects"))
+        os.makedirs(os.path.join(tmp, "shown"))
         prefs = _Prefs([tmp])
-        prefs.set_file_folder_recursive(tmp, True)
-        model = file_library.FileFiles(prefs)
-        model.set_folder(tmp)
-        names = [model.data(model.index(i, 0),
-                            QtCore.Qt.ItemDataRole.DisplayRole)
-                 for i in range(model.rowCount())]
-        self.assertEqual(["real.txt"], names,
-                         "the recursive scan descends into hidden "
-                         "directories: %r" % names)
         folders_model = file_library.FileFolders(prefs)
-        count = _wait_for_counts(folders_model)[1]
-        self.assertEqual(1, count, "the count still includes hidden-"
-                         "directory contents")
+        self.assertEqual(1, _wait_for_counts(folders_model)[1], "the location's count is wrong")
+        location = folders_model.index(1, 0)
+        self.assertEqual(["shown"], [folders_model.index(row, 0, location).data()
+                                     for row in range(folders_model.rowCount(location))],
+                         "a hidden folder is listed under its location")
 
     def test_the_section_toggle_keeps_keys_it_does_not_know(self):
         """The Show/Hide rebuild keeps keys outside this registry, or an older build's tabs are lost."""

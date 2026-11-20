@@ -86,7 +86,6 @@ class Prefs(_Persistence):
         self._file_folders: list[str] = []  # the File section's one folder/favourite/last quartet, and since 2026-08-12 the only one
         self._file_favorites: list[str] = []
         self._last_file_folder = ""
-        self._file_show_unknown = True  # show files Amaze cannot thumbnail (the OS-icon rows)
         self._file_location_records: dict = {}  # last-known copy of the library's location records, path -> record
         self._show_notes = False
         self._show_info = False
@@ -282,16 +281,14 @@ class Prefs(_Persistence):
 
     def add_file_folder(self, path: str) -> None:
         from amaze.core import locations
-        registered = locations.register(self, path)
-        if registered and locations.record(self, path).get("kinds") is None:    # new: Show ▸'s defaults
-            self.set_file_folder_kinds(path, locations.SHOWN_BY_DEFAULT)
+        locations.register(self, path)
 
     def remove_file_folder(self, path: str) -> None:
         from amaze.core import locations
         locations.unregister(self, path)
 
     def relocate_file_folder(self, old: str, new: str) -> bool:
-        """Change a location's path, KEEPING ITS ROW: its name, colour and Show ▸ ticks stay."""
+        """Change a location's path, KEEPING ITS ROW: its name and colour stay."""
         from amaze.core import locations
         if not old or not new or old == new:
             return False
@@ -327,21 +324,6 @@ class Prefs(_Persistence):
         self._last_file_folder = str(val or "")
 
     @property
-    def file_show_unknown(self) -> bool:
-        return self._file_show_unknown
-
-    @file_show_unknown.setter
-    def file_show_unknown(self, val: bool) -> None:
-        self._file_show_unknown = bool(val)
-
-    @property
-    def file_recursive_folders(self) -> list[str]:
-        return self._field_paths("recursive")
-
-    def set_file_folder_recursive(self, path: str, on: bool) -> None:
-        self._set_location_field(path, "recursive", bool(on) or None)
-
-    @property
     def file_folder_names(self) -> dict:
         return self._field_table("name")
 
@@ -352,14 +334,6 @@ class Prefs(_Persistence):
     @property
     def file_folder_colors(self) -> dict:
         return self._field_table("color")
-
-    def set_file_folder_kinds(self, path: str, kinds) -> None:
-        """The file kinds Show ▸ lists for one location, as `locations`' KIND_* values."""
-        self._set_location_field(path, "kinds", sorted(set(kinds)))
-
-    def set_file_folder_pathname(self, path: str, on: bool) -> None:
-        """Show ▸ Pathname: the location is named by its full path."""
-        self._set_location_field(path, "pathname", bool(on) or None)
 
     def set_file_folder_color(self, path: str, color: str) -> None:
         """Colour one location, or clear it with an empty colour - the File section's Label ▸."""
@@ -374,11 +348,6 @@ class Prefs(_Persistence):
             if field in record:
                 table[path] = record[field]
         return table
-
-    def _field_paths(self, field: str) -> list[str]:
-        from amaze.core import locations
-        return [path for path in locations.registered_paths(self)
-                if locations.record(self, path).get(field)]
 
     def _set_location_field(self, path: str, field: str, value) -> None:
         from amaze.core import locations

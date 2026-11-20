@@ -733,16 +733,13 @@ class LocateFolderKeepsEveryPerLocationSetting(unittest.TestCase):
     def test_the_record_names_every_field_once(self):
         """Every field is named once, where the record is defined."""
         self.assertEqual(
-            ("registered", "name", "color", "recursive",
-             "kinds", "pathname"),
+            ("registered", "name", "color"),
             locations.FIELDS,
             "a per-location fact is missing from the one list that "
             "defines a location's record")
 
     def test_a_relocate_keeps_them(self):
         prefs = _location_prefs(self, {"/old/": "Bokeh"}, {"/old/": "#ff8000"}, ["/old/"])
-        locations.set_field(prefs, "/old/", "kinds", ["hip", "image"])
-        locations.set_field(prefs, "/old/", "pathname", True)
         model = file_library.FileFolders.__new__(file_library.FileFolders)
         model.preferences = prefs
         locations.relocate_record(prefs, "/old/", "/new/")    # the product order: the record's path change first, then the hook for other path-keyed data
@@ -751,9 +748,7 @@ class LocateFolderKeepsEveryPerLocationSetting(unittest.TestCase):
         self.assertEqual({}, locations.record(prefs, "/old/"),
                          "the old path kept its record after the move")
         self.assertEqual(
-            {"registered": True, "name": "Bokeh", "color": "#ff8000",
-             "recursive": True,
-             "kinds": ["hip", "image"], "pathname": True},
+            {"registered": True, "name": "Bokeh", "color": "#ff8000", "recursive": True},
             locations.record(prefs, "/new/"),
             "a per-location fact was lost by Locate Folder")
 
@@ -967,7 +962,7 @@ class TheColourBandFollowsTheEnclosingLocation(unittest.TestCase):
         model = file_library.FileFiles(prefs)
         self.assertEqual(
             "#123456", model._folder_colour(sub),
-            "a subfolder row of a recursive location is drawn without its colour band")
+            "a subfolder row of a location is drawn without its colour band")
         self.assertEqual("#123456", model._folder_colour(root))
 
         calls = []

@@ -47,8 +47,6 @@ def render(menu) -> list:
 
 
 LABEL = "Label > [Red, Yellow, Blue, Green, ----, Custom, Remove]"    # the colour submenu
-SHOW_NEW = ("Show > [Pathname[ ], Subfolder[ ], ----, Other Files[x], ----, "
-            "Images[x], Geometry[x], HIP[x]]")    # a newly added location: every kind on
 
 
 class TheTableIsWellFormED(unittest.TestCase):
@@ -117,8 +115,6 @@ class TheSidebarMenusAreWhatSHIPPED(unittest.TestCase):
     FILE_NO_LOCATION = ["Add", "Locate(off)",
                         "Rename > [Edit, ----, Set to Default(off)](off)",
                         "Remove(off)", "----", "Sort by name", "----",
-                        "Show > [Pathname[ ], Subfolder[ ], ----, Other Files[ ], "
-                        "----, Images[ ], Geometry[ ], HIP[ ]](off)", "----",
                         LABEL + "(off)"]
 
     def test_each_sidebar_renders_the_menu_that_shipped(self):
@@ -136,35 +132,13 @@ class TheSidebarMenusAreWhatSHIPPED(unittest.TestCase):
                 ("gradient", (1,), None, self.SPINE),
                 ("file", (0,), None, self.FILE_NO_LOCATION),
                 ("file", (1,), None, self.FILE_NO_LOCATION),    # the scene row: Add only
-                ("file", (2,), self._file_location,
+                ("file", (2,), None,
                  ["Add", "Locate", "Rename > [Edit, ----, Set to Default(off)]",
-                  "Remove", "----", "Sort by name", "----", SHOW_NEW, "----", LABEL])):
+                  "Remove", "----", "Sort by name", "----", LABEL])):
             with self.subTest(section=key, rows=rows):
                 if prepare:
                     prepare()
                 self.assertEqual(expected, self._show(key, rows))
-
-    def _file_location(self):
-        """The fixture's first location, with Show ticked as for a newly added location."""
-        prefs = self.panel.prefs
-        path = prefs.file_folders[0]
-        self.addCleanup(locations.set_field, prefs, path, "kinds",
-                        locations.record(prefs, path).get("kinds"))
-        prefs.set_file_folder_kinds(path, locations.SHOWN_BY_DEFAULT)
-        return path
-
-    def test_file_show_reads_the_location_it_is_on(self):
-        """Each Show tick reads the location's own field, or it shows the wrong state."""
-        prefs = self.panel.prefs
-        path = self._file_location()
-        prefs.set_file_folder_kinds(path, (locations.KIND_OTHER,
-                                           locations.KIND_HIP))
-        self.addCleanup(prefs.set_file_folder_pathname, path, False)
-        prefs.set_file_folder_pathname(path, True)
-        show = [row for row in self._show("file", (2,)) if row.startswith("Show")]    # the first location
-        self.assertEqual(
-            ["Show > [Pathname[x], Subfolder[ ], ----, Other Files[x], ----, "
-             "Images[ ], Geometry[ ], HIP[x]]"], show)
 
 
 class ADismissedSidebarMenuRunsNOTHING(unittest.TestCase):
@@ -263,40 +237,6 @@ class EachSubmenuRowWritesWhatItsLabelNames(unittest.TestCase):
                                lambda *_a: QtGui.QColor("#123456")):
             self._choose("Label", "Custom")
         self.assertEqual("#123456", context.sidebar_colour(name))
-
-    def test_each_show_tick_writes_its_own_field(self):
-        context, path = self._on_row("file")
-        prefs = self.panel.prefs
-        prefs.set_file_folder_kinds(path, (locations.KIND_IMAGE, locations.KIND_GEO,
-                                           locations.KIND_HIP))    # Other Files off to start
-        self._choose("Show", "Images")
-        self._choose("Show", "Other Files")
-        self.assertEqual({locations.KIND_GEO, locations.KIND_HIP,
-                          locations.KIND_OTHER},
-                         set(file_library.location_kinds(prefs, path)))
-        self._choose("Show", "Subfolder")
-        self.assertIn(path, prefs.file_recursive_folders)
-        self._choose("Show", "Pathname")
-        folders = self.panel.file_folders_model
-        self.assertEqual(helpers.houdini_path(path, prefs.path_style),
-                         folders.display_name(path))
-        self._choose("Show", "Pathname")
-        self.assertEqual(os.path.basename(path.rstrip("/\\")),
-                         folders.display_name(path))
-
-    def test_pathname_shows_the_path_on_a_renamed_row(self):
-        """A row the user renamed shows its path once Show ▸ Pathname is ticked."""
-        context, path = self._on_row("file")
-        prefs = self.panel.prefs
-        self.addCleanup(prefs.set_file_folder_name, path, "")
-        self.addCleanup(prefs.set_file_folder_pathname, path, False)
-        prefs.set_file_folder_name(path, "Renamed Location")
-        row = self.panel.cat_list.model().index(self._row, 0)
-        self.assertEqual("Renamed Location", row.data())
-        self._choose("Show", "Pathname")
-        self.assertEqual(helpers.houdini_path(path, prefs.path_style),
-                         row.data(),
-                         "the renamed row kept its name with Pathname ticked")
 
     def test_rename_opens_on_the_folder_name_and_Set_to_Default_goes_back(self):
         context, path = self._on_row("file")

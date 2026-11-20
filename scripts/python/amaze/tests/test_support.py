@@ -571,8 +571,7 @@ def with_fixture_location(library, folder) -> None:
                                    last_known_folders=[folder],
                                    keep_last_known=lambda *_args: None)
     locations.forget()
-    if not locations.set_record(holder, folder, {"registered": True,
-                                                 "kinds": list(locations.SHOWN_BY_DEFAULT)}):
+    if not locations.set_record(holder, folder, {"registered": True}):
         raise RuntimeError("the fixture location could not be registered in %s" % library)
     library_db.flush(holder)
     library_db.release(holder)

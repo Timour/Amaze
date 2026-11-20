@@ -5,7 +5,7 @@ import os
 import hou
 
 from amaze import messages
-from amaze.core import debug, locations
+from amaze.core import debug
 from amaze.helpers import hostos
 from amaze.panel import sections
 
@@ -106,7 +106,6 @@ class PackageImport:
                       for path in self.panel.prefs.file_folders}
             if folder not in listed:
                 self.panel.prefs.set_file_folder_name(folder, "Import")    # before the row is added, and only here: a user rename is kept
-                self.panel.prefs.set_file_folder_kinds(folder, locations.EVERY_KIND)
                 if folders is None:
                     self.panel.prefs.add_file_folder(folder)
                 else:

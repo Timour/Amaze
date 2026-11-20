@@ -1160,18 +1160,10 @@ class TheFileLoaderQueueDoesNotBusySpin(unittest.TestCase):
 
 class OneRuleForWhatBelongsInAFolder(unittest.TestCase):
 
-    def test_matches_in_and_matches_agree(self):
-        class Prefs:
-            file_show_unknown = False
-
-        model = file_library.FileFolders.__new__(file_library.FileFolders)
-        model.preferences = Prefs()
-        for name in ("thing.png", "thing.bgeo.sc", "thing.hip",
-                     "thing.wat", ".hidden"):
-            self.assertEqual(
-                model.matches_in("", name), model.matches(name),
-                "the flat and per-location answers disagree for %r"
-                % name)
+    def test_the_sidebar_counts_every_file_but_a_hidden_one(self):
+        for name, counted in (("thing.png", True), ("thing.bgeo.sc", True), ("thing.hip", True),
+                              ("thing.wat", True), (".hidden", False)):
+            self.assertEqual(counted, file_library.FileFolders.matches(name), name)
 
 
 class TheOsHandOffsNeverRaise(unittest.TestCase):

@@ -6,7 +6,7 @@ import hou
 from PySide6 import QtCore, QtGui
 
 from amaze.core import debug, geo_library, scene_captures, thumbnails
-from amaze.helpers import helpers, hostos
+from amaze.helpers import hostos
 from amaze.render import thumbs
 
 GEO_PASS_LOG = "geo thumbnails"  # per-item records one pass may write; the budget is per pass
@@ -20,7 +20,6 @@ def connect(files_model, folders_model, os_icon=None) -> None:
     files_model.open_scene = lambda: scene_captures.current_scene_path()
     files_model.render_geo = lambda misses: render_geo_misses(files_model, misses)
     files_model.os_icon = os_icon
-    folders_model.write_path = lambda path, style: helpers.houdini_path(path, style)
 
 
 def scene_saved() -> bool:

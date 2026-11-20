@@ -721,12 +721,12 @@ def _remove_empty(folder: str) -> None:
 
 
 def convert(directory: str, confirm, progress=None, user: str = "",
-            machine_stars=(), show_unknown: bool = True, classic=None,
+            machine_stars=(), classic=None,
             user_name: str = "") -> Outcome:
     """Convert an older library to 2.0 whole once `confirm()` says yes; `progress(done, total)`."""
     try:
         return _convert(str(directory or ""), confirm, progress, user, machine_stars,
-                        show_unknown, classic, user_name)
+                        classic, user_name)
     except Stopped as exc:
         return Outcome(STOPPED, str(exc))
     except (OSError, guard.Refused) as exc:
@@ -734,7 +734,7 @@ def convert(directory: str, confirm, progress=None, user: str = "",
         return Outcome(STOPPED, str(exc))
 
 
-def _convert(library_dir: str, confirm, progress, user: str, machine_stars, show_unknown: bool,
+def _convert(library_dir: str, confirm, progress, user: str, machine_stars,
              classic, user_name: str) -> Outcome:
     """`convert`'s work; `Stopped`, OSError or `guard.Refused` when a file cannot be reached."""
     if not needs_conversion(library_dir):
@@ -827,7 +827,7 @@ def _convert(library_dir: str, confirm, progress, user: str, machine_stars, show
         built = build_databases(library_dir, {(one.section, one.asset_id)
                                               for one in set_aside + trashed
                                               if one.row is not None}, user, machine_stars,
-                                show_unknown, user_name)
+                                user_name)
         _write_databases(library_dir, built, user)
         if not _read_back(library_dir, built):
             debug.event("convert", "the new databases did not read back - the old files stay")
@@ -971,21 +971,11 @@ def _categories_of(row: dict) -> list:
     return [one.strip() for one in (found or []) if isinstance(one, str) and one.strip()]
 
 
-PRE_SHOW_KINDS = locations.KNOWN_KINDS    # what a location listed before Show ▸, Other Files aside
-
-
-def _show_ticks(record: dict, show_unknown: bool) -> dict:
-    """A location record with the kinds it showed before Show ▸; Other Files as Show All set it."""
-    record = dict(record)
-    shows_all = record.pop("show_all", None)    # the old override: read here, never carried over
-    if isinstance(record.get("kinds"), (list, tuple)):
-        return record
-    every = show_unknown if shows_all is None else bool(shows_all)
-    return dict(record, kinds=sorted(PRE_SHOW_KINDS + ((locations.KIND_OTHER,) if every else ())))
+RETIRED_LOCATION_KEYS = ("show_all", "kinds", "recursive", "pathname")    # what a location listed, once
 
 
 def build_databases(library_dir: str, set_aside=(), user: str = "", machine_stars=(),
-                    show_unknown: bool = True, user_name: str = "") -> dict:
+                    user_name: str = "") -> dict:
     """The six 2.0 databases, {name: document}, built from every old root file in one pass."""
     sections = {name: {"assets": {}, "categories": {}, "comments": {}, "icons": {}, "favorites": {}}
                 for name, _prefix in OLD_SECTIONS.values()}
@@ -1030,8 +1020,8 @@ def build_databases(library_dir: str, set_aside=(), user: str = "", machine_star
         if not owner or not isinstance(record, dict) or not record:
             continue
         location_key = bare if bare.startswith(LOC) else LOC + paths.id_for(bare)
-        files["locations"].setdefault(owner, {})[paths.file_key(location_key)] = _show_ticks(
-            dict(record), show_unknown)
+        files["locations"].setdefault(owner, {})[paths.file_key(location_key)] = {
+            key: value for key, value in record.items() if key not in RETIRED_LOCATION_KEYS}
     for key, page in _old_table(library_dir, "notes.json").items():
         items = _first_shape(page)
         if items:

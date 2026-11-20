@@ -178,17 +178,8 @@ def move_thumbnails(preferences, pairs) -> int:
 file_moves.move_hooks["thumbnails"] = move_thumbnails    # a file move also moves its cached pictures
 
 
-def location_kinds(preferences, location: str) -> frozenset:
-    """A location's saved Show ▸ kinds, else none; for a folder in no location, the global setting."""
-    record = locations.record(preferences, location) if location else {}
-    if not record:
-        return frozenset(locations.KNOWN_KINDS + (
-            (locations.KIND_OTHER,) if preferences.file_show_unknown else ()))
-    return frozenset(record.get("kinds") or ())
-
-
 class FileFolders(folders.FolderTreeModel):
-    """The File section's sidebar: each location and subfolder counts by its location's ticked kinds."""
+    """The File section's sidebar: each location and subfolder counts every file in its own folder."""
 
     folders_attr = "file_folders"
     favorites_attr = "file_favorites"
@@ -198,32 +189,15 @@ class FileFolders(folders.FolderTreeModel):
     relocate_folder_method = "relocate_file_folder"
     move_folder_method = "move_file_folder"
     color_folder_method = "set_file_folder_color"
-    write_path = None    # Write Paths As, which needs Houdini: the panel sets it, else the plain path
 
-    def matches(self, filename: str) -> bool:
-        """The flat contract: with no location, the global preference applies via matches_in."""
-        return self.matches_in("", filename)
-
-
-    def matches_in(self, path: str, filename: str) -> bool:  # uses the location's rule, so the sidebar count matches the grid
-        if filename.startswith("."):
-            return False
-        return kind_for(filename) in location_kinds(self.preferences, self.location_of(path))
-
-    def _matcher_for(self, path: str):
-        kinds = location_kinds(self.preferences, self.location_of(path))    # once per folder
-        return lambda name: not name.startswith(".") and kind_for(name) in kinds
-
-    def includes_subfolders(self, path: str) -> bool:
-        return bool(self._record(self.location_of(path)).get("recursive"))
+    @staticmethod
+    def matches(filename: str) -> bool:
+        """Every file but a hidden one, as the grid lists them."""
+        return not filename.startswith(".")
 
     def display_name(self, path: str) -> str:
-        """The full path when Pathname is ticked, over any rename; then the rename; else the folder name."""
+        """The name the location was given, else its folder's name."""
         record = self._record(path)
-        if record.get("pathname"):    # written the way Write Paths As writes paths
-            style = getattr(self.preferences, "path_style", "home")
-            return (self.write_path(path, style) if self.write_path is not None
-                    else hostos.canonical_path_key(path))
         if record.get("name"):
             return record["name"]
         return os.path.basename(path.rstrip("/\\")) or path
@@ -356,7 +330,7 @@ class FileFiles(grid_engine.GridEngine,
             self.set_folder(self._folder)
 
     def _scan(self, folder: str) -> list:
-        """(containing dir, name, stat or None) per visible file; a flat scan keeps the stat it made."""
+        """(folder, name, stat) per visible file directly in `folder`, by name."""
         results = []
         if not folder or not os.path.isdir(folder):
             if folder:  # an unreachable folder is recorded, so the empty state can say it is offline
@@ -365,34 +339,23 @@ class FileFiles(grid_engine.GridEngine,
                             "read", folder=folder, reason="not there")
             return results
         self._unreadable_folders.discard(folder)
-        owner = locations.owner_of(self.preferences, folder) or folder    # a subfolder uses its location's setting
-        if locations.record(self.preferences, owner).get("recursive"):
-            for dirpath, dirnames, filenames in \
-                    folders.walk_following_links(folder):
-                dirnames[:] = [d for d in dirnames  # hidden directories are pruned too
-                               if not d.startswith(".")]
-                dirnames.sort(key=str.lower)
-                for name in sorted(filenames, key=str.lower):
-                    if not name.startswith("."):
-                        results.append((dirpath, name, None))
-        else:
+        try:
+            with os.scandir(folder) as listing:
+                entries = sorted(listing, key=lambda entry: entry.name.lower())
+        except OSError as exc:  # present but unreadable: recorded like an unreachable folder
+            self._unreadable_folders.add(folder)
+            debug.event("file", "a registered folder could not be "
+                        "read", folder=folder, error=str(exc))
+            return []
+        for entry in entries:
+            if entry.name.startswith("."):
+                continue
             try:
-                with os.scandir(folder) as listing:
-                    entries = sorted(listing, key=lambda entry: entry.name.lower())
-            except OSError as exc:  # present but unreadable: recorded like an unreachable folder
-                self._unreadable_folders.add(folder)
-                debug.event("file", "a registered folder could not be "
-                            "read", folder=folder, error=str(exc))
-                return []
-            for entry in entries:
-                if entry.name.startswith("."):
-                    continue
-                try:
-                    st = entry.stat()    # from the listing on Windows, where os.stat opens the file; follows a link as os.stat does
-                except (OSError, ValueError):
-                    continue
-                if stat.S_ISREG(st.st_mode):    # `os.path.isfile`, keeping the stat it made
-                    results.append((folder, entry.name, st))
+                st = entry.stat()    # from the listing on Windows, where os.stat opens the file; follows a link as os.stat does
+            except (OSError, ValueError):
+                continue
+            if stat.S_ISREG(st.st_mode):    # `os.path.isfile`, keeping the stat it made
+                results.append((folder, entry.name, st))
         return results
 
     def _load(self, folder_list: list) -> None:
@@ -415,16 +378,10 @@ class FileFiles(grid_engine.GridEngine,
         entries = []
         known: dict = {}    # canonical path -> the one stat this load makes of it
         for folder in folder_list:
-            owner = locations.owner_of(self.preferences, folder) or folder
-            kinds = location_kinds(self.preferences, owner)    # per the location a file came from
             for dirpath, name, st in self._scan(folder):
-                kind = kind_for(name)
-                if kind not in kinds:
-                    continue
                 full = hostos.canonical_path_key(os.path.join(dirpath, name))
-                if st is not None:
-                    known[full] = st
-                entries.append((dirpath, name, kind, full))
+                known[full] = st
+                entries.append((dirpath, name, kind_for(name), full))
         stat_of = _stat_once(known)
 
         image_dirs: dict = {}  # ONE reconcile pass per manifest for every directory at once

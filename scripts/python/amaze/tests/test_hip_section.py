@@ -28,15 +28,12 @@ from amaze.tests import test_support  # noqa: E402,F401
 class _Prefs:
     """Only the prefs the File model's scene rows read; hip rows are handled in FileFiles."""
 
-    def __init__(self, folders=(), favorites=(), subfolders=False,
-                 dir=""):
+    def __init__(self, folders=(), favorites=(), dir=""):
         self.dir = dir or tempfile.mkdtemp(prefix="amaze_hip_prefs_")  # tile_icons reads .dir to find the library's icons.json
         self.file_folders = list(folders)
         self.file_favorites = list(favorites)
-        self.file_recursive_folders = list(folders) if subfolders else []  # recursion is per LOCATION: the stub's flag marks every registered folder recursive
         self.file_folder_names = {}
         self.last_file_folder = ""
-        self.file_show_unknown = True    # a folder no location holds lists by this switch
         self.rendersize = 256
         self.icon_line_weight = "template"
         self.texture_parallel_conversions = 1  # the image/geo pipelines' knobs, read at _load even when the folder holds only scenes

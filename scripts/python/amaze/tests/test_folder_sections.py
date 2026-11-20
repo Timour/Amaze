@@ -90,7 +90,7 @@ class ProgressAccountingTest(unittest.TestCase):
     """The conversion bar reaches 100% when two rows share a path, since that flushes the manifest."""
 
     def setUp(self):
-        self.root = tempfile.mkdtemp(prefix="amaze_overlap_")    # /root and /root/sub both registered with recursion: one file is reached twice
+        self.root = tempfile.mkdtemp(prefix="amaze_overlap_")    # the one file's folder is loaded twice, so two rows share a path
         self.addCleanup(shutil.rmtree, self.root, True)
         self.sub = os.path.join(self.root, "sub")
         os.makedirs(self.sub)
@@ -98,9 +98,8 @@ class ProgressAccountingTest(unittest.TestCase):
             handle.write(b"\x76\x2f\x31\x01" + b"\0" * 256)
 
         self.prefs = test_support.fixture_prefs(self)
-        for folder in (self.root, self.sub):    # through the setter: `file_recursive_folders` is derived from the location store
+        for folder in (self.root, self.sub):
             self.prefs.add_file_folder(folder)
-            self.prefs.set_file_folder_recursive(folder, True)
         from amaze.core import file_library
         self.model = file_library.FileFiles(self.prefs)
         self.addCleanup(thumbnails.engine.cancel_pending_converts)
@@ -108,7 +107,7 @@ class ProgressAccountingTest(unittest.TestCase):
     def _attempt_without_an_image(self, unfinished):
         """One key reports back with no image; returns whether a NEW session still skips its file."""
         from amaze.core import file_library
-        self.model._load([self.root, self.sub])
+        self.model._load([self.sub, self.sub])
         key = next(iter(self.model._progress_keys))
         path = self.model._pending_writes[key]
         thumbnails.engine._unfinished.discard(key)
@@ -132,7 +131,7 @@ class ProgressAccountingTest(unittest.TestCase):
 
     def test_the_bar_can_actually_complete(self):
         """The total counts KEYS, not rows, so a pass where each key reports once completes it."""
-        self.model._load([self.root, self.sub])
+        self.model._load([self.sub, self.sub])
         self.assertEqual(
             2, len(self.model._files),
             "the overlap did not produce two rows - this test is not "
@@ -270,97 +269,8 @@ class ReconcileIsOnePassTest(unittest.TestCase):
         with open(path, encoding="utf-8") as handle:
             unsorted = [n for n, line in enumerate(handle, 1)
                         if re.search(r"sorted\(os\.listdir\([^)]*\)\s*\)", line)]
-        self.assertEqual([], unsorted, "a case-SENSITIVE sorted(os.listdir()) at %s: flat and "
-                         "recursive scans would order one folder differently" % unsorted)
-
-
-class SymlinkedSubfoldersTest(unittest.TestCase):
-    """Include Subfolders follows symlinked directories, which plain os.walk skips silently."""
-
-    def setUp(self):
-        from amaze.core import folders
-
-        self.folders = folders
-        self.base = tempfile.mkdtemp(prefix="amaze_links_")
-        self.addCleanup(shutil.rmtree, self.base, True)
-        real = os.path.join(self.base, "real", "deep")
-        os.makedirs(real)
-        self.root = os.path.join(self.base, "root")
-        os.makedirs(self.root)
-        open(os.path.join(self.root, "top.png"), "wb").close()
-        open(os.path.join(real, "inside.png"), "wb").close()
-        os.symlink(os.path.join(self.base, "real"),
-                   os.path.join(self.root, "linked"))
-
-    def _names(self, walker):
-        return sorted(n for _d, _s, files in walker for n in files)
-
-    def test_a_symlinked_subfolder_is_included_once_and_a_cycle_ends(self):
-        """followlinks=True alone loops forever on a/link -> a, and lists a diamond twice."""
-        self.assertEqual(
-            ["top.png"], self._names(os.walk(self.root)),
-            "plain os.walk started following links - this test is not "
-            "exercising the case it was written for")
-        real = os.path.join(self.base, "real")
-        for shape, link in (("a linked subfolder", None),
-                            ("a cycle", os.path.join(real, "loop")),
-                            ("a diamond", os.path.join(self.root, "also_linked"))):
-            with self.subTest(shape):
-                if link:
-                    os.symlink(real, link)
-                self.assertEqual(
-                    ["inside.png", "top.png"],
-                    self._names(self.folders.walk_following_links(self.root)),
-                    "with %s, a linked file was skipped or listed twice"
-                    % shape)
-
-
-class TheWalkResolvesOnlyWhatIsALinkTest(unittest.TestCase):
-    """`realpath` opens a handle per call on Windows, so only links are resolved, not every child."""
-
-    def setUp(self):
-        from amaze.core import folders
-
-        self.folders = folders
-        self.base = tempfile.mkdtemp(prefix="amaze_walk_links_")
-        self.addCleanup(shutil.rmtree, self.base, True)
-        self.real = os.path.join(self.base, "real")
-        os.makedirs(os.path.join(self.real, "deep"))
-        self.root = os.path.join(self.base, "root")
-        for sub in ("a", os.path.join("a", "b"), "c"):
-            os.makedirs(os.path.join(self.root, sub))
-            open(os.path.join(self.root, sub, "f.png"), "wb").close()
-        open(os.path.join(self.real, "deep", "inside.png"), "wb").close()
-
-    def _walked(self):
-        return [(d, sorted(s), sorted(f)) for d, s, f in
-                self.folders.walk_following_links(self.root)]
-
-    def test_a_tree_with_no_link_resolves_only_its_root(self):
-        real = os.path.realpath
-        calls = []
-
-        def counted(path, *args, **kwargs):
-            calls.append(path)
-            return real(path, *args, **kwargs)
-
-        with unittest.mock.patch("os.path.realpath", counted):
-            walked = self._walked()
-        self.assertEqual([(d, sorted(s), sorted(f)) for d, s, f in os.walk(self.root)],
-                         walked, "the walk no longer lists what os.walk lists")
-        self.assertEqual(1, len(calls), "a plain folder was resolved: %s" % calls)
-
-    @unittest.skipUnless(sys.platform == "win32", "a junction is Windows' own link")
-    def test_a_junction_cycle_ends_and_a_diamond_lists_once(self):
-        """A junction needs no Developer Mode, so it is the link every Windows artist can make."""
-        import _winapi
-        _winapi.CreateJunction(self.real, os.path.join(self.root, "linked"))
-        _winapi.CreateJunction(self.real, os.path.join(self.root, "also_linked"))
-        _winapi.CreateJunction(self.real, os.path.join(self.real, "deep", "loop"))
-        names = sorted(n for _d, _s, files in self.folders.walk_following_links(self.root)
-                       for n in files)
-        self.assertEqual(["f.png"] * 3 + ["inside.png"], names,
-                         "a junction was skipped, followed into a loop, or listed twice")
+        self.assertEqual([], unsorted, "a case-SENSITIVE sorted(os.listdir()) at %s: the grid "
+                         "and the sidebar would order one folder differently" % unsorted)
 
 
 class TheFlatScanStatsFromTheListingTest(unittest.TestCase):
