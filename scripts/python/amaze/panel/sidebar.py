@@ -36,24 +36,6 @@ class SidebarTreeView(QtWidgets.QTreeView):
     def drawBranches(self, painter, rect, index):
         """Draws nothing: no indent-column arrows; the delegate draws each row's arrow."""
 
-    def paintEvent(self, event):
-        if not self.alternatingRowColors():
-            super().paintEvent(event)
-            return
-        rows = QtCore.QRect(0, 0, self.viewport().width(), self._rows_bottom())
-        super().paintEvent(QtGui.QPaintEvent(event.region().intersected(rows)))    # below the last row: the plain background
-
-    def _rows_bottom(self) -> int:
-        """Where the last row on screen ends, 0 with none."""
-        index, bottom = self.indexAt(QtCore.QPoint(0, 0)), 0
-        while index.isValid():
-            rect = self.visualRect(index)
-            bottom = rect.bottom() + 1
-            if bottom > self.viewport().height():
-                break
-            index = self.indexBelow(index)
-        return bottom
-
     def arrow_rect(self, index) -> QtCore.QRect:
         """Where a row's arrow sits in the viewport; empty when the row has none."""
         model = self.model()

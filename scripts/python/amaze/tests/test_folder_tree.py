@@ -499,6 +499,13 @@ class TheGridBrowsesASubfolderByItsLocationsRules(unittest.TestCase):
 EMPTY_AREA_ROW_COLORS ="QTreeView { paint-alternating-row-colors-for-empty-area: 1; }"    # as Houdini's style
 
 
+class _NestedCategories(QtGui.QStandardItemModel):
+    """A sidebar model with rows under a row, as a section other than File could have."""
+
+    unfolds = True
+    BrowseRole = QtCore.Qt.ItemDataRole.UserRole + 40
+
+
 class TheSidebarTreeView(unittest.TestCase):
     """Rows show colour bar, arrow, name; the delegate draws the arrow, and Qt's is not drawn."""
 
@@ -521,6 +528,34 @@ class TheSidebarTreeView(unittest.TestCase):
         view.show()
         test_support.pump_until(lambda: False, timeout=0.05)
         return view
+
+    def _styled_as_houdini(self, view):
+        """Puts the view in a parent whose sheet asks for row colours below the last row."""
+        host = QtWidgets.QWidget()
+        self.addCleanup(host.deleteLater)
+        self.addCleanup(host.close)
+        host.setStyleSheet(EMPTY_AREA_ROW_COLORS)
+        host.resize(view.size())
+        view.setParent(host)
+        view.move(0, 0)
+        host.show()
+        view.show()
+        test_support.pump_until(lambda: False, timeout=0.05)
+        return view
+
+    @staticmethod
+    def _rows_end(view) -> int:
+        """The viewport y where the last row ends."""
+        model = view.model()
+        return view.visualRect(model.index(model.rowCount() - 1, 0)).bottom() + 1
+
+    @staticmethod
+    def _colours_below(view, top) -> set:
+        """The colours of one pixel column of the viewport, from `top` down."""
+        image = view.viewport().grab().toImage()
+        ratio = image.devicePixelRatio()
+        return {image.pixel(image.width() // 2, y)
+                for y in range(int((top + 2) * ratio), image.height())}
 
     def _scanned(self, *paths):
         for path in paths:
@@ -554,6 +589,28 @@ class TheSidebarTreeView(unittest.TestCase):
         view = self._view(flat)
         deco, _text = self._rects(view, flat.index(0, 0))
         self.assertEqual(bar, deco.width(), "a flat sidebar reserved space for an arrow")
+
+    def test_a_model_that_is_not_the_file_folders_gets_arrows_when_it_unfolds(self):
+        nested = _NestedCategories()
+        for name in ("All", "Wood", "Metal"):
+            nested.appendRow(QtGui.QStandardItem(name))
+        nested.item(1).appendRow(QtGui.QStandardItem("Oak"))
+        view = self._view(nested)
+        wood = nested.index(1, 0)
+        arrow = view.arrow_rect(wood)
+        self.assertFalse(arrow.isEmpty(), "a row with rows under it has no arrow")
+        self.assertTrue(view.arrow_rect(nested.index(2, 0)).isEmpty(),
+                        "a row with nothing under it has an arrow")
+        image = view.viewport().grab().toImage()
+        ratio = image.devicePixelRatio()
+        end = int((view.visualRect(wood).right() - 2) * ratio)
+        ink = [(x, y) for y in range(int(arrow.top() * ratio), int((arrow.bottom() + 1) * ratio))
+               for x in range(int(arrow.left() * ratio), int((arrow.right() + 1) * ratio))
+               if image.pixelColor(x, y) != image.pixelColor(end, y)]
+        self.assertTrue(ink, "nothing is drawn where the arrow is")
+        QtTest.QTest.mouseClick(view.viewport(), QtCore.Qt.MouseButton.LeftButton,
+                                QtCore.Qt.KeyboardModifier.NoModifier, arrow.center())
+        self.assertTrue(view.isExpanded(wood), "the arrow did not open the row")
 
     def test_a_click_on_the_arrow_opens_the_folder_and_selects_nothing(self):
         self._scanned(self.loc)
@@ -636,24 +693,44 @@ class TheSidebarTreeView(unittest.TestCase):
                if image.pixelColor(x, y) != image.pixelColor(end, y)]
         self.assertEqual([], ink[:5], "Qt drew an arrow of its own in the indent")
 
-    def test_a_flat_sidebar_paints_as_the_list_did(self):
+    def test_a_flat_sidebar_paints_its_rows_as_the_list_did(self):
         flat = QtGui.QStandardItemModel()
         for name in ("All", "Wood", "Metal"):
             flat.appendRow(QtGui.QStandardItem(name))
-        views = [self._view(flat, QtWidgets.QListView), self._view(flat)]
+        views = [self._styled_as_houdini(self._view(flat, kind))
+                 for kind in (QtWidgets.QListView, sidebar.SidebarTreeView)]
         for view in views:    # same state in both: row 1 current and selected, neither focused
-            view.setStyleSheet(EMPTY_AREA_ROW_COLORS)
             view.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
             view.clearFocus()
             view.selectionModel().setCurrentIndex(
                 flat.index(1, 0), QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
         test_support.pump_until(lambda: False, timeout=0.05)
-        a, b = (view.grab().toImage() for view in views)
-        self.assertEqual(a.size(), b.size(), "premise: the two views differ in size")
-        rows = sorted({y for y in range(a.height()) for x in range(a.width())
+        a, b = (view.viewport().grab().toImage() for view in views)
+        self.assertEqual(a.size(), b.size(), "premise: the two viewports differ in size")
+        ends = {self._rows_end(view) for view in views}
+        self.assertEqual(1, len(ends), "premise: the rows end at different heights: %s" % ends)
+        end = int(ends.pop() * a.devicePixelRatio())
+        rows = sorted({y for y in range(end) for x in range(a.width())
                        if a.pixel(x, y) != b.pixel(x, y)})
-        self.assertEqual([], rows[:5], "a flat sidebar does not paint as the list did, below "
-                         "the rows or on them (%d pixel rows)" % len(rows))
+        self.assertEqual([], rows[:5], "a flat sidebar does not paint its rows as the list "
+                         "did (%d pixel rows)" % len(rows))
+
+    def test_the_styles_row_colours_fill_the_space_below_the_rows(self):
+        self._scanned(self.loc)
+        view, loc = self._styled_as_houdini(self.view), self.model.index_of(self.loc)
+        view.setAnimated(True)
+        animating = QtWidgets.QAbstractItemView.State.AnimatingState
+        at_rest = self._colours_below(view, self._rows_end(view))
+        self.assertEqual(2, len(at_rest), "at rest the row colours stop at the last row")
+        view.expand(loc)    # grabbed before the event loop runs, so the animation is at its start
+        end = self._rows_end(view)    # with the folder open: the lowest the rows reach
+        for change, word in ((None, "opened"), (view.collapse, "closed")):
+            if change is not None:
+                test_support.pump_until(lambda: view.state() != animating)
+                change(loc)
+            self.assertEqual(animating, view.state(), "premise: it %s without animating" % word)
+            self.assertEqual(at_rest, self._colours_below(view, end), "the space below the rows "
+                             "is not painted as at rest while the folder %s" % word)
 
     def test_what_was_open_reopens_after_a_swap_and_a_reset(self):
         self._scanned(self.loc, _child(self.loc, "A"))
@@ -893,6 +970,33 @@ class EveryModelThatUnfoldsHasABrowseRole(unittest.TestCase):
                 hasattr(cls, "BrowseRole"),
                 "%s unfolds but declares no BrowseRole, which the sidebar reads for "
                 "every row it opens" % cls.__name__)
+
+
+class EverySectionsSidebarIsTheOneView(unittest.TestCase):
+    """Each section puts its model in the same view; none changes how the view paints."""
+
+    def test_no_section_changes_the_view_its_row_painter_or_its_row_colours(self):
+        panel = test_support.fixture_panel(self)
+        panel.resize(900, 700)
+        panel.show()
+        self.addCleanup(panel.hide)
+        steps = [(key, lambda key=key: panel.section_tabs.setChecked(key))
+                 for key in test_support.ALL_SECTION_KEYS + ("material",)]
+        steps.append(("online", panel.enter_online_mode))
+        first = None
+        for name, show in steps:
+            show()
+            test_support.pump_until(lambda: False, timeout=0.05)
+            view = panel.cat_list
+            now = (view, type(view), view.itemDelegate(), view.alternatingRowColors(),
+                   view.isAnimated(), view.styleSheet(), view.indentation())
+            first = first or now
+            self.assertEqual(first, now, "%s changed the sidebar's view or its painting" % name)
+        self.assertIs(sidebar.SidebarTreeView, first[1])
+        self.assertTrue(first[3], "the sidebar's row colours are off")
+        self.assertEqual("", first[5], "the sidebar has a style sheet of its own")
+        self.assertNotIn("paintEvent", vars(sidebar.SidebarTreeView),
+                         "the sidebar paints itself, where Qt's tree view should")
 
 
 if __name__ == "__main__":
