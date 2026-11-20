@@ -683,3 +683,19 @@ class MatxSidebarModel(QtCore.QAbstractListModel):
         if role == category.SIDEBAR_KEY_ROLE:
             return "" if index.row() == 0 else self._rows[index.row()]
         return None
+
+    def movable(self, index) -> bool:
+        """No row moves: the categories follow the selected source."""
+        return False
+
+    def move_row(self, index, to_row: int) -> bool:
+        return False
+
+    def order_snapshot(self):
+        return None
+
+    def restore_order(self, snapshot) -> None:
+        pass
+
+    def commit_order(self) -> None:
+        pass

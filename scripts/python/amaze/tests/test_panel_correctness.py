@@ -189,7 +189,7 @@ def _sidebar_row_mappings(text, allowed=()):
 class NoCallerMapsASidebarListsRows(unittest.TestCase):
     """The sidebar list finds its own rows by key; the sections and the panel map no sidebar row."""
 
-    REORDER = ("_sidebar_categories", "move_sidebar_row")
+    REORDER = ()
 
     def test_the_check_tells_a_sidebar_list_from_a_grid_proxy(self):
         sidebar = ("def refresh(self):\n    for proxy in self.sidebar_proxies():\n"

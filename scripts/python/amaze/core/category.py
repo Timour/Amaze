@@ -392,6 +392,38 @@ class CategoriesSidebarProxy(QtCore.QSortFilterProxyModel):
             model.drop_count_cache()
         self.invalidateFilter()
 
+    def movable(self, index) -> bool:
+        """Whether a shown row may be dragged to reorder: every row below All."""
+        if index is None or not index.isValid() or index.row() < 1:
+            return False
+        return bool(self.index(index.row(), 0).data(SIDEBAR_KEY_ROLE))    # "" on All
+
+    def move_row(self, index, to_row: int) -> bool:
+        """Move a shown row to shown row `to_row`, clamped below All, as a move of the stored rows."""
+        model = self.sourceModel()
+        if model is None or index is None or not index.isValid():
+            return False
+        to_row = max(1, min(int(to_row), self.rowCount() - 1))
+        from_source = self.mapToSource(self.index(index.row(), 0)).row()
+        to_source = self.mapToSource(self.index(to_row, 0)).row()
+        return model.move_category(from_source, to_source)
+
+    def order_snapshot(self):
+        """The stored order before a drag, every hidden row included; what Esc restores."""
+        model = self.sourceModel()
+        return None if model is None else model.order_snapshot()
+
+    def restore_order(self, snapshot) -> None:
+        model = self.sourceModel()
+        if model is not None:
+            model.restore_order(snapshot)
+
+    def commit_order(self) -> None:
+        """Save the order, once per drag, on release."""
+        model = self.sourceModel()
+        if model is not None:
+            model.save()
+
     def filterAcceptsRow(
         self,
         source_row: int,

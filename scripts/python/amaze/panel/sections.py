@@ -302,54 +302,33 @@ class Section:
         index = model.index_of(key)
         return index if index.isValid() else None
 
-    reorders_sidebar = False  # the five methods below are the CATEGORY version; File overrides them
-
-    def _sidebar_categories(self):
-        """(proxy, source Categories) behind this sidebar, or (None, None) where it has none."""
-        proxy = self._p(self.sidebar_attr)
-        source = getattr(proxy, "sourceModel", lambda: None)()
-        if source is None:
-            return None, None
-        return proxy, source
+    reorders_sidebar = False  # SidebarReorder acts only where True; the five methods below ask the list
 
     def sidebar_movable(self, index) -> bool:
-        """Whether THIS row can be dragged to reorder; every row below All can."""
-        if not self.reorders_sidebar:
-            return False
-        if index is None or not index.isValid() or index.row() < 1:
-            return False
-        proxy, _source = self._sidebar_categories()
-        if proxy is None:
-            return False
-        return bool(proxy.index(index.row(), 0).data(category.SIDEBAR_KEY_ROLE))    # "" on All
+        """Whether THIS row can be dragged to reorder, as this section's sidebar list answers."""
+        listed = self._p(self.sidebar_attr)
+        return listed is not None and bool(listed.movable(index))
 
     def move_sidebar_row(self, index, to_view_row: int) -> bool:
-        """Move the row at `index` to view row `to_view_row`, clamped to row 1, never above All."""
-        proxy, source = self._sidebar_categories()
-        if proxy is None or index is None or not index.isValid():
-            return False
-        to_view_row = max(1, min(int(to_view_row), proxy.rowCount() - 1))
-        from_source = proxy.mapToSource(
-            proxy.index(index.row(), 0)).row()
-        to_source = proxy.mapToSource(
-            proxy.index(to_view_row, 0)).row()
-        return source.move_category(from_source, to_source)
+        """Move the row at `index` to view row `to_view_row`; the list clamps it to its movable rows."""
+        listed = self._p(self.sidebar_attr)
+        return listed is not None and bool(listed.move_row(index, to_view_row))
 
     def sidebar_order_snapshot(self):
         """The order before the drag, which Esc restores."""
-        _proxy, source = self._sidebar_categories()
-        return None if source is None else source.order_snapshot()
+        listed = self._p(self.sidebar_attr)
+        return None if listed is None else listed.order_snapshot()
 
     def restore_sidebar_order(self, snapshot) -> None:
-        _proxy, source = self._sidebar_categories()
-        if source is not None and snapshot is not None:
-            source.restore_order(snapshot)
+        listed = self._p(self.sidebar_attr)
+        if listed is not None and snapshot is not None:
+            listed.restore_order(snapshot)
 
     def commit_sidebar_order(self) -> None:
         """One write per drag, on mouse release."""
-        _proxy, source = self._sidebar_categories()
-        if source is not None:
-            source.save()
+        listed = self._p(self.sidebar_attr)
+        if listed is not None:
+            listed.commit_order()
 
     def double_click(self, index) -> None:
         """Run `click_on_row` with the row's own DropRule; the online section overrides this."""
@@ -1377,32 +1356,6 @@ class FolderSection(Section):
             proxy.set_kind_filter(value)
 
     reorders_sidebar = True    # the reorder in FOLDER terms: locations only, this machine's own order
-
-    def sidebar_movable(self, index) -> bool:
-        model = self._p(self.sidebar_attr)
-        if model is None or index is None or not index.isValid() or index.parent().isValid():
-            return False    # a subfolder moves with its location, never alone
-        return model._offset() <= index.row() < model.rowCount()    # All and the scene row never move
-
-    def move_sidebar_row(self, index, to_view_row: int) -> bool:
-        model = self._p(self.sidebar_attr)
-        if model is None or index is None or not index.isValid():
-            return False
-        to_view_row = max(model._offset(), min(int(to_view_row), model.rowCount() - 1))    # clamped to below $HIP
-        return model.move_folder(index.row(), to_view_row)
-
-    def sidebar_order_snapshot(self):
-        model = self._p(self.sidebar_attr)
-        return None if model is None else list(model._folders())
-
-    def restore_sidebar_order(self, snapshot) -> None:
-        model = self._p(self.sidebar_attr)
-        if model is not None and snapshot is not None:
-            model.restore_folder_order(snapshot)
-
-    def commit_sidebar_order(self) -> None:
-        from amaze.core import locations
-        locations.commit_registered_order(self.panel.prefs)
 
     def activate(self) -> None:
         panel = self.panel

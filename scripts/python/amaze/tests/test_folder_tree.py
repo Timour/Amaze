@@ -1062,5 +1062,98 @@ class EverySectionsSidebarIsTheOneView(unittest.TestCase):
                                      "%s keys its sidebar rows its own way" % klass.__name__)
 
 
+class EverySidebarListAnswersTheReorder(unittest.TestCase):
+    """Each sidebar list moves its own rows in view rows; Section holds the reorder methods once."""
+
+    CALLS = ("movable", "move_row", "order_snapshot", "restore_order", "commit_order")
+    SECTION_CALLS = ("sidebar_movable", "move_sidebar_row", "sidebar_order_snapshot",
+                     "restore_sidebar_order", "commit_sidebar_order")
+
+    def test_the_list_in_the_view_answers_the_five_calls(self):
+        panel = test_support.fixture_panel(self)
+        steps = [(key, lambda key=key: panel.section_tabs.setChecked(key))
+                 for key in test_support.ALL_SECTION_KEYS]
+        steps.append(("online", panel.enter_online_mode))
+        for name, show in steps:
+            show()
+            test_support.pump_until(lambda: False, timeout=0.05)
+            model = panel.cat_list.model()
+            for call in self.CALLS:
+                with self.subTest(section=name, call=call):
+                    self.assertTrue(callable(getattr(model, call, None)),
+                                    "the %s list has no %s" % (name, call))
+            if name == "online":
+                for row in range(model.rowCount()):
+                    self.assertFalse(model.movable(model.index(row, 0)),
+                                     "an online category row can be dragged")
+
+    def test_no_section_defines_its_own_reorder(self):
+        from amaze.panel import sections
+        for cls in list(sections.SECTION_CLASSES) + [sections.OnlineContext]:
+            for klass in cls.__mro__:
+                if klass in (sections.Section, object):
+                    continue
+                for method in self.SECTION_CALLS:
+                    self.assertNotIn(method, vars(klass),
+                                     "%s reorders its sidebar its own way" % klass.__name__)
+
+    def test_a_category_list_moves_a_shown_row_by_view_rows_past_a_hidden_one(self):
+        prefs = test_support.fixture_prefs(self)
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        model = category.Categories(preferences=prefs)
+        model._categories[:] = ["_All", "a", "hidden", "b", "c"]
+        proxy = category.CategoriesSidebarProxy()
+        proxy.setSourceModel(model)
+        model.set_renderer_filter("karma")    # empty categories hide only under a renderer filter
+        counts = lambda name: 0 if name == "hidden" else 1
+        with mock.patch.object(model, "_category_count", side_effect=counts):
+            proxy.invalidateFilter()
+            self.assertEqual(["All", "a", "b", "c"],
+                             [proxy.index(row, 0).data() for row in range(proxy.rowCount())],
+                             "premise: the empty category is not hidden between two shown ones")
+            self.assertFalse(proxy.movable(proxy.index(0, 0)), "All can be dragged")
+            self.assertTrue(all(proxy.movable(proxy.index(row, 0)) for row in (1, 2, 3)))
+            before = proxy.order_snapshot()
+            self.assertTrue(proxy.move_row(proxy.index(3, 0), 0), "c did not move")
+            self.assertEqual(["_All", "c", "a", "hidden", "b"], model.order_snapshot(),
+                             "the move did not map view rows to stored rows, or went above All")
+            with mock.patch.object(model, "save") as save:
+                proxy.commit_order()
+            save.assert_called_once_with()
+            proxy.restore_order(before)
+            self.assertEqual(["_All", "a", "hidden", "b", "c"], model.order_snapshot())
+
+    def test_in_file_a_location_moves_and_a_subfolder_the_scene_row_and_All_do_not(self):
+        panel = test_support.fixture_panel(self)
+        model = panel.file_folders_model
+        loc = model.registered_at(model._offset())
+        os.makedirs(os.path.join(loc, "a_sub"), exist_ok=True)
+        second = test_support.fresh_files_folder(self)
+        self.assertTrue(model.add_folder(second), "premise: the second location was not added")
+        panel.section_tabs.setChecked("file")
+        QtWidgets.QApplication.processEvents()
+        self.assertIs(model, panel.cat_list.model())
+        _shown(model, loc)
+        sub = model.index_of(_child(loc, "a_sub"))
+        self.assertTrue(sub.isValid(), "premise: the location's subfolder has no row")
+        self.assertTrue(model.is_scene_row(model.index(1, 0)), "premise: no scene row")
+        self.assertFalse(model.movable(model.index(0, 0)), "All can be dragged")
+        self.assertFalse(model.movable(model.index(1, 0)), "the scene row can be dragged")
+        self.assertFalse(model.movable(sub), "a subfolder can be dragged")
+        first = model.index(model._offset(), 0)
+        self.assertTrue(model.movable(first), "a location cannot be dragged")
+        before = model.order_snapshot()
+        self.assertTrue(model.move_row(model.index(model._offset() + 1, 0), 0),
+                        "the second location did not move")
+        self.assertEqual(list(reversed(before[:2])) + before[2:], list(model._folders()),
+                         "the move went above the scene row, or did not move to the first location")
+        with mock.patch.object(locations, "commit_registered_order") as commit:
+            model.commit_order()
+        commit.assert_called_once_with(model.preferences)
+        model.restore_order(before)
+        self.assertEqual(before, list(model._folders()))
+
+
 if __name__ == "__main__":
     unittest.main()

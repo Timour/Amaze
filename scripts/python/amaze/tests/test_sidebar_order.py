@@ -81,7 +81,7 @@ class TheSortActionRestoresTheCurrentSidebarRow(unittest.TestCase):
 
     def _section(self):
         section = self.panel.sections["material"]
-        _proxy, source = section._sidebar_categories()
+        source = self.panel.category_sorted_model.sourceModel()
         self.assertIsNotNone(source, "no Categories behind the sidebar")
         return section, source
 
@@ -134,7 +134,8 @@ class DeletingTheLastOfACategorySelectsAll(unittest.TestCase):
     def test_the_sidebar_selects_all_and_the_grid_shows_everything(self):
         panel = self.panel
         section = panel.sections["material"]
-        proxy, source = section._sidebar_categories()
+        proxy = panel.category_sorted_model
+        source = proxy.sourceModel()
         source.set_renderer_filter("karma")    # empty categories hide only under a renderer filter
         proxy.hide_empty = True
         panel.refresh_sidebar_categories()
@@ -722,7 +723,7 @@ class FolderOrderTest(unittest.TestCase):
 
 
 class EverySidebarSourceMovesCategories(unittest.TestCase):
-    """`_sidebar_categories` returns any source it finds, and the reorder calls `move_category`."""
+    """A sidebar list over a source moves rows through the source's `move_category`."""
 
     @classmethod
     def setUpClass(cls):
@@ -733,7 +734,8 @@ class EverySidebarSourceMovesCategories(unittest.TestCase):
         panel = self.panel
         sourced = []
         for key, context in dict(panel.sections, online=panel.online_context).items():
-            _proxy, source = context._sidebar_categories()
+            listed = getattr(panel, context.sidebar_attr, None)
+            source = getattr(listed, "sourceModel", lambda: None)()
             if source is None:
                 continue
             sourced.append(key)

@@ -738,6 +738,27 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
             lambda: getattr(self.preferences, self.remove_folder_method)(path))
         return path not in after
 
+    def movable(self, index) -> bool:
+        """Whether a row may be dragged: a registered location, never All, the scene row or a subfolder."""
+        if index is None or not index.isValid() or index.parent().isValid():
+            return False    # a subfolder moves with its location, never alone
+        return self._offset() <= index.row() < self.rowCount()
+
+    def move_row(self, index, to_row: int) -> bool:
+        """Move a location to top row `to_row`, clamped to the rows the locations take."""
+        if index is None or not index.isValid():
+            return False
+        to_row = max(self._offset(), min(int(to_row), self.rowCount() - 1))
+        return self.move_folder(index.row(), to_row)
+
+    def order_snapshot(self) -> list:
+        """The locations in their order before a drag; what Esc restores."""
+        return list(self._folders())
+
+    def commit_order(self) -> None:
+        """Save the order the drag staged, once, on release."""
+        locations.commit_registered_order(self.preferences)
+
     def move_folder(self, from_row: int, to_row: int) -> bool:
         """Move one location to another TOP row - the press-hold reorder, persisted on release."""
         if not self.move_folder_method:
@@ -771,10 +792,10 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
         ordered = sorted(current, key=lambda path: str(self.display_name(path)).lower())
         if ordered == current:
             return False
-        self.restore_folder_order(ordered)    # a reset: the caller restores the sidebar's state
+        self.restore_order(ordered)    # a reset: the caller restores the sidebar's state
         return True
 
-    def restore_folder_order(self, paths) -> None:
+    def restore_order(self, paths) -> None:
         """Put a snapshot's order back: the reorder's Esc, a reset. ▸p/folder-sidebar"""
         if not self.move_folder_method:
             return
