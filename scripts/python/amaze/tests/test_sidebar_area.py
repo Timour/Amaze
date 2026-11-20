@@ -48,7 +48,7 @@ class _CatList:
 
 
 class _Panel:
-    """The real `raw_category_name`, given the proxy as in production; it falls back to DisplayRole."""
+    """The real `raw_category_name`, given the proxy as in production; it reads SIDEBAR_KEY_ROLE."""
 
     from amaze.panel.panel import AmazePanel as _Real
     raw_category_name = _Real.raw_category_name

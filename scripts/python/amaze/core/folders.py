@@ -594,9 +594,9 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
         self._kids = {}
 
     def index_of(self, path) -> QtCore.QModelIndex:
-        """The row showing `path`: a top row, the scene's first, or a subfolder already read; else invalid."""
+        """The row showing `path`: All for "", a top row, the scene's first, a subfolder already read."""
         if not path:
-            return QtCore.QModelIndex()
+            return self.createIndex(0, 0, 0)
         key = str(path).rstrip("/")
         fixed = len(self._fixed())
         for row, folder in enumerate(self._tops(), 1):
@@ -661,6 +661,8 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
         if node is None:
             return None
         parent_id, path = node
+        if role == category.SIDEBAR_KEY_ROLE:
+            return path or ""    # the folder the row shows, as BrowseRole; "" on All
         if path is None:
             if role == QtCore.Qt.ItemDataRole.DisplayRole:    # All has no real path ▸p/folder-sidebar
                 return self.ALL_LABEL

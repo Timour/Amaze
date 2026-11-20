@@ -115,6 +115,25 @@ class TestCategories(unittest.TestCase):
         self.assertEqual("#ff0000", stored["Cat1"]["color"])
         self.assertNotIn("_All", stored, "All is a view, never stored")
 
+    def test_the_proxy_finds_a_row_by_its_stored_name_and_not_a_hidden_one(self):
+        """`index_of` maps a shown row through the proxy; a hidden or unknown key gives no row."""
+        _write(self.prefs, {"categories": {"Cat1": {"order": 0}, "_Hidden": {"order": 1}},
+                            "assets": {"a": {"categories": ["_Hidden"], "renderer": "Karma"}}})
+        model = self.model()
+        proxy = category.CategoriesSidebarProxy()
+        proxy.setSourceModel(model)
+        model.set_renderer_filter("karma")    # Cat1 holds no Karma asset, so the proxy hides it
+        proxy.invalidateFilter()
+        self.assertEqual(["All", "Hidden"], [proxy.index(row, 0).data() for row in range(proxy.rowCount())],
+                         "premise: the proxy does not hide the empty category")
+        self.assertEqual(proxy.index(0, 0), proxy.index_of(""))
+        self.assertEqual(proxy.index(1, 0), proxy.index_of("_Hidden"))
+        self.assertEqual("_Hidden", proxy.index_of("_Hidden").data(category.SIDEBAR_KEY_ROLE))
+        self.assertTrue(model.index_of("Cat1").isValid(), "premise: Cat1 is a row of the list")
+        self.assertFalse(proxy.index_of("Cat1").isValid(), "a hidden row was given as shown")
+        self.assertFalse(proxy.index_of("Hidden").isValid(), "a displayed name found a row")
+        self.assertFalse(proxy.index_of("Nothing").isValid())
+
 
 class NormalizeEmitsAResetPairTest(unittest.TestCase):
     """`normalize_categories` emits a reset pair around replacing its rows. ▸r/model-contracts"""

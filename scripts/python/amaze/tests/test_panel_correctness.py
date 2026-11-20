@@ -180,9 +180,9 @@ class ACategoryIsActedOnByItsStoredName(_PanelCase):
 
         self.assertIn(
             "raw_category_name",
-            method_source("panel/sections.py", "AssetSection",
+            method_source("panel/sections.py", "Section",
                           "sidebar_key"),
-            "AssetSection.sidebar_key stopped reading the helper, so "
+            "Section.sidebar_key stopped reading the helper, so "
             "every sidebar handler behind it now acts on the DISPLAYED "
             "name")
         for handler in ("menu_rename_category", "menu_remove_category"):

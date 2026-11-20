@@ -8,6 +8,7 @@ from amaze.core import documents, library_db, library_files, material, renderers
 
 SIDEBAR_COUNT_ROLE = int(QtCore.Qt.ItemDataRole.UserRole) + 40  # the ONLY declaration - every sidebar model and SidebarItemDelegate import it from here
 SIDEBAR_COLOR_ROLE = int(QtCore.Qt.ItemDataRole.UserRole) + 41  # a category's colour, for the sidebar's left-edge bar
+SIDEBAR_KEY_ROLE = int(QtCore.Qt.ItemDataRole.UserRole) + 42  # a sidebar row's stored identity, "" on All; `index_of` takes it
 
 ALL = "_All"    # the first row: a view of every asset, never stored
 SECTION = "categories"    # {name: {"order": n, "color": c}} in the section's database
@@ -60,6 +61,10 @@ class Categories(QtCore.QAbstractListModel):
     ) -> Any:
         if role == self.CatSortRole:
             return self._categories[index.row()]
+
+        if role == SIDEBAR_KEY_ROLE:
+            name = self._categories[index.row()]
+            return "" if is_all(name) else name
 
         if role == QtCore.Qt.ItemDataRole.DisplayRole:
             return display_name(self._categories[index.row()])
@@ -337,6 +342,14 @@ class Categories(QtCore.QAbstractListModel):
                 return row
         return None
 
+    def index_of(self, key) -> QtCore.QModelIndex:
+        """The row whose SIDEBAR_KEY_ROLE is `key`, "" giving All; invalid when no row has it."""
+        for row in range(len(self._categories)):
+            index = self.index(row, 0)
+            if self.data(index, SIDEBAR_KEY_ROLE) == key:
+                return index
+        return QtCore.QModelIndex()
+
     def save(self) -> bool:
         """Write the names, order and colours to the database; False when it accepts no change now."""
         if not library_db.accepts(self.preferences, self.DB_FILENAME):
@@ -368,6 +381,13 @@ class CategoriesSidebarProxy(QtCore.QSortFilterProxyModel):
     def __init__(self, parent: QtCore.QObject | None = None) -> None:
         super().__init__(parent)
         self.hide_empty = True
+
+    def index_of(self, key) -> QtCore.QModelIndex:
+        """The shown row keyed `key`, "" giving All; invalid when none has it or it is hidden."""
+        model = self.sourceModel()
+        if model is None:
+            return QtCore.QModelIndex()
+        return self.mapFromSource(model.index_of(key))
 
     def filterAcceptsRow(
         self,

@@ -1776,15 +1776,10 @@ class AmazePanel(QtWidgets.QWidget):
         return index.data(self.file_files_model.PathRole) or ""
 
     def raw_category_name(self, index) -> str:
-        """The stored name behind a sidebar row, not the displayed one; key every category action on it."""
+        """The stored name behind a sidebar row, not the displayed one, "" on All; key every action on it."""
         if index is None or not index.isValid():
             return ""
-        model = self.cat_list.model() if self.cat_list is not None else None
-        if model is not None and hasattr(model, "sourceModel"):
-            raw = index.data(model.sourceModel().CatSortRole)    # DisplayRole drops a leading "_"
-            if raw:
-                return str(raw)
-        return str(index.data(QtCore.Qt.ItemDataRole.DisplayRole) or "")    # no sourceModel: the displayed name
+        return str(index.data(category.SIDEBAR_KEY_ROLE) or "")    # DisplayRole drops a leading "_"
 
     def selected_category_name(self) -> str:
         """The sidebar's category, "" for All: selection, then current index; no section check."""
@@ -1812,7 +1807,7 @@ class AmazePanel(QtWidgets.QWidget):
         context = self.active_section()
         if context is None or self.cat_list is None:
             return
-        names = [context.sidebar_key(index)    # stored name, or folder path in File
+        names = [context.colour_key(index)    # stored name, or a location's path in File
                  for index in self.cat_list.selectedIndexes()]
         names = [name for name in names    # All is skipped
                  if name and not category.is_all(name)]

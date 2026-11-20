@@ -11,7 +11,7 @@ import hashlib
 
 from PySide6 import QtCore, QtGui
 
-from amaze.core import debug, matx_sources, renderers, thumbnails, workers
+from amaze.core import category, debug, matx_sources, renderers, thumbnails, workers
 from amaze.core import grid_engine
 
 PREVIEW_DIR_NAME = "matx_previews"    # a NAME only - its folder is resolved per call in preview_cache(), like CATALOGUE_NAME below
@@ -667,15 +667,19 @@ class MatxSidebarModel(QtCore.QAbstractListModel):
     def rowCount(self, parent=None):
         return len(self._rows)
 
-    def category_at(self, row):
-        """The category for a row, or None for the `All` row."""
-        if 0 <= row < len(self._rows):
-            return None if row == 0 else self._rows[row]
-        return None
+    def index_of(self, key) -> QtCore.QModelIndex:
+        """The row of category `key`, "" giving All; invalid when the source has no such category."""
+        if key == "":
+            return self.index(0, 0)
+        if key in self._rows[1:]:
+            return self.index(self._rows.index(key, 1), 0)
+        return QtCore.QModelIndex()
 
     def data(self, index, role=0):
         if not index.isValid() or index.row() >= len(self._rows):
             return None
         if role == QtCore.Qt.ItemDataRole.DisplayRole:
             return self._rows[index.row()]
+        if role == category.SIDEBAR_KEY_ROLE:
+            return "" if index.row() == 0 else self._rows[index.row()]
         return None

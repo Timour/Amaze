@@ -38,7 +38,7 @@ def _grid_key(panel) -> str:
 def _row_key(panel, index) -> str:
     """What a click on this sidebar row shows, read from the row: "" for All."""
     if panel._is_online():
-        return panel.matx_source_model.category_at(index.row()) or ""
+        return index.data(category.SIDEBAR_KEY_ROLE) or ""
     model = panel.cat_list.model()
     if panel.current_section == "file":
         return index.data(model.BrowseRole) or ""

@@ -998,6 +998,69 @@ class EverySectionsSidebarIsTheOneView(unittest.TestCase):
         self.assertNotIn("paintEvent", vars(sidebar.SidebarTreeView),
                          "the sidebar paints itself, where Qt's tree view should")
 
+    @staticmethod
+    def _rows(model, parent=QtCore.QModelIndex()):
+        """Every row the list holds now, its read subfolders included, parents first."""
+        for row in range(model.rowCount(parent)):
+            index = model.index(row, 0, parent)
+            yield index
+            if getattr(model, "unfolds", False):    # hasChildren is private on a QAbstractListModel
+                yield from EverySectionsSidebarIsTheOneView._rows(model, index)
+
+    def test_every_list_keys_each_row_and_finds_the_row_again_by_its_key(self):
+        """Each row answers SIDEBAR_KEY_ROLE, "" on All; `index_of` gives that row back."""
+        from amaze.core import matx_sources
+        from amaze.panel import sections
+        panel = test_support.fixture_panel(self)
+        steps = [(key, lambda key=key: panel.section_tabs.setChecked(key))
+                 for key in test_support.ALL_SECTION_KEYS]
+        steps.append(("online", panel.enter_online_mode))
+        for name, show in steps:
+            show()
+            test_support.pump_until(lambda: False, timeout=0.05)
+            model = panel.cat_list.model()
+            if name == "file":    # read every location, so its subfolder rows exist
+                for row in range(1, model.rowCount()):
+                    model.data(model.index(row, 0), COUNT)
+                self.assertTrue(test_support.pump_until(
+                    lambda: any(index.parent().isValid() for index in self._rows(model))),
+                    "premise: the fixture location's subfolder never got a row")
+            if name == "online":    # the suite blocks the network: one record gives the list a row
+                online = panel.matx_online_model
+                previous = online._all
+                online._all = [matx_sources.MatxRecord(
+                    source=online._source_filter, uid="key-probe", title="Key Probe",
+                    category="Metal")]
+                self.addCleanup(setattr, online, "_all", previous)
+                model.refresh()
+            section = panel.active_section()
+            rows = list(self._rows(model))
+            if name in ("material", "file", "online"):    # one of each list class has rows below All
+                self.assertGreater(len(rows), 1, "premise: the %s list has only All" % name)
+            for index in rows:
+                with self.subTest(section=name, row=index.row(), label=index.data()):
+                    key = index.data(category.SIDEBAR_KEY_ROLE)
+                    self.assertIsInstance(key, str, "the row does not answer the key role")
+                    all_row = index == model.index(0, 0)
+                    self.assertEqual(all_row, key == "", "only the All row is keyed \"\"")
+                    self.assertEqual(index, model.index_of(key),
+                                     "index_of does not give back the row keyed %r" % key)
+                    self.assertEqual(key, section.sidebar_key(index))
+            if name == "file":
+                for index in rows:
+                    with self.subTest(location=index.data()):
+                        self.assertEqual(index.data(model.PathRole) or "",
+                                         section.location_key(index),
+                                         "a location action would act on a row that is no location")
+        classes = list(sections.SECTION_CLASSES) + [sections.OnlineContext]
+        for cls in classes:
+            for klass in cls.__mro__:
+                if klass in (sections.Section, object):
+                    continue
+                for method in ("sidebar_key", "_row_keyed"):
+                    self.assertNotIn(method, vars(klass),
+                                     "%s keys its sidebar rows its own way" % klass.__name__)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -296,12 +296,11 @@ class Section:
         view.selectionModel().select(
             index, QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
 
-    def _row_keyed(self, model, key: str):
-        """The sidebar row keyed `key`, or None."""
-        for row in range(model.rowCount()):
-            if self.sidebar_key(model.index(row, 0)) == key:
-                return model.index(row, 0)
-        return None
+    @staticmethod
+    def _row_keyed(model, key: str):
+        """The sidebar row keyed `key`, or None: a category, a folder already read, an online category."""
+        index = model.index_of(key)
+        return index if index.isValid() else None
 
     reorders_sidebar = False  # the five methods below are the CATEGORY version; File overrides them
 
@@ -389,8 +388,12 @@ class Section:
         return True
 
     def sidebar_key(self, index) -> str:
-        """The key of this row, never its label: a category shown "WIP" is stored "_WIP"."""
-        return ""
+        """The key of this row, never its label: a category shown "WIP" is stored "_WIP"; "" on All."""
+        return self.panel.raw_category_name(index)
+
+    def colour_key(self, index) -> str:
+        """The key this row's Label colour is stored under; "" for a row that takes none."""
+        return self.sidebar_key(index)
 
     def sidebar_colour(self, name: str) -> str:
         """This row's colour, "" for none. `name` is the stored name, not the displayed one."""
@@ -686,9 +689,6 @@ class AssetSection(Section):
         st.model.remove_rows([index.row() for index in indexes])    # ONE save for the selection
         self.panel.refresh_sidebar_categories()
 
-    def sidebar_key(self, index) -> str:
-        return self.panel.raw_category_name(index)    # the ONE reader of a category row's stored name; Categories.data strips the underscore
-
     def sidebar_colour(self, name: str) -> str:
         st = self.stack()
         if st is None:
@@ -759,9 +759,9 @@ class AssetSection(Section):
         st = self.stack()
         if st is None:
             return
-        stored = self.panel.raw_category_name(index)    # never index.data(): a category stored `_WIP` displays `WIP`
+        stored = self.sidebar_key(index)    # never index.data(): a category stored `_WIP` displays `WIP`
         st.proxy.setFilter(st.model.CategoryRole,
-                        "" if category.is_all(stored) else stored)    # `""` makes `_All` match everything, not a literal category no asset has
+                        "" if category.is_all(stored) else stored)    # `""` makes All match everything, not a literal category no asset has
 
     def shown_sidebar_key(self) -> str:
         st = self.stack()
@@ -1472,10 +1472,6 @@ class FolderSection(Section):
         files = self._p(self.files_attr)
         return files.browsing() if files is not None else ""
 
-    def _row_keyed(self, model, key: str):
-        index = model.index_of(key)    # a location, or a subfolder already read
-        return index if index.isValid() else None
-
     def select_sidebar_key(self, key: str) -> None:
         """A rowless subfolder selects its location: until its row is read, or always if deleted."""
         view, folders = self._sidebar_view()
@@ -1801,11 +1797,15 @@ class FolderSection(Section):
 
     colour_title = "Location Color"
 
-    def sidebar_key(self, index) -> str:
-        folders = self._p(self.folders_attr)    # a location's key is its PATH; the row may show a custom name, so the label is not the key
+    def location_key(self, index) -> str:
+        """The registered location on this row, by its path; "" on All, the scene row and a subfolder."""
+        folders = self._p(self.folders_attr)
         if folders is None or index is None or not index.isValid():
             return ""
         return str(index.data(folders.PathRole) or "")
+
+    def colour_key(self, index) -> str:
+        return self.location_key(index)    # a colour belongs to a location, never to a subfolder
 
     def sidebar_colour(self, name: str) -> str:
         folders = self._p(self.folders_attr)    # `name` is a registered folder path here, the sidebar's key
@@ -2050,15 +2050,12 @@ class FileSection(FolderSection):
         locations.commit_registered_order(self.panel.prefs)    # one write, as on a drag's release
         self.select_sidebar_key(shown)
 
-    def _selected_location(self, current) -> str:
-        return self.sidebar_key(current) if current is not None else ""
-
     def on_a_location(self, indexes, current) -> bool:
-        return bool(self._selected_location(current))
+        return bool(self.location_key(current))
 
     def rename_actions(self, indexes, current) -> tuple:
         """Edit names the location; Set to Default goes back to the folder's own name."""
-        path = self._selected_location(current)
+        path = self.location_key(current)
         named = bool(path and self.panel.prefs.file_folder_names.get(path))
         return (("Edit", "edit", "", True), None,
                 ("Set to Default", "default", "", named))    # disabled with no name set, never hidden
@@ -2066,7 +2063,7 @@ class FileSection(FolderSection):
     def show_actions(self, indexes, current) -> tuple:
         """Show ▸: each entry an independent checkbox for the location under the cursor."""
         prefs = self.panel.prefs
-        path = self._selected_location(current)
+        path = self.location_key(current)
         kinds = file_library.location_kinds(prefs, path) if path else frozenset()
         record = locations.record(prefs, path) if path else {}
         return (("Pathname", "pathname", "", True, bool(record.get("pathname"))),
@@ -2078,7 +2075,7 @@ class FileSection(FolderSection):
                               for label, kind in self.SHOW_KINDS)
 
     def menu_show(self, indexes, current, payload=None) -> None:
-        path = self._selected_location(current)
+        path = self.location_key(current)
         if not path or not payload:
             return
         what, on = payload
@@ -2106,7 +2103,7 @@ class FileSection(FolderSection):
             folders.dataChanged.emit(index, index)
 
     def menu_rename_location(self, indexes, current, payload=None) -> None:
-        path = self._selected_location(current)
+        path = self.location_key(current)
         if not path:
             return
         if payload == "default":
@@ -2171,9 +2168,6 @@ class OnlineContext(Section):
         panel.matx_online_model.reload()
         panel.sync_list_columns()
 
-    def sidebar_key(self, index) -> str:
-        return self.panel.matx_source_model.category_at(index.row()) or ""
-
     def shown_sidebar_key(self) -> str:
         role = self.panel.matx_online_model.CategoryRole
         return self.panel.matx_sorted_model.filter_value(role) or ""
@@ -2186,10 +2180,10 @@ class OnlineContext(Section):
         """Nothing to do: an online record carries no favourite state."""
 
     def select_category(self, index) -> None:
-        panel = self.panel    # row 0 is the everything-row: remove the filter
-        category = panel.matx_source_model.category_at(index.row())
+        panel = self.panel    # All, keyed "", is the everything-row: remove the filter
+        category = self.sidebar_key(index)
         role = panel.matx_online_model.CategoryRole
-        if category is None:
+        if not category:
             panel.matx_sorted_model.removeFilter(role)
         else:
             panel.matx_sorted_model.setFilter(role, category)

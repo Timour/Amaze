@@ -16,6 +16,7 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 from amaze.tests import test_support  # noqa: E402
+from amaze.core import category  # noqa: E402
 
 
 BINDINGS = {   # context key -> what it binds into each area, by attribute name; a change must be deliberate
@@ -464,7 +465,7 @@ class TheOnlineContextIsCalledLikeAnySection(AreaBindingCase):
         source_model.refresh()
 
         row = next((r for r in range(source_model.rowCount())
-                    if source_model.category_at(r) == "Metal"), None)
+                    if source_model.index(r, 0).data(category.SIDEBAR_KEY_ROLE) == "Metal"), None)
         self.assertIsNotNone(
             row, "the seeded category is not in the online sidebar, "
                  "so clicking it cannot prove anything")
