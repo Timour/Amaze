@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.38.0
+
+- Sidebar: every section's list now runs on the same code. A list in any section can hold rows under a row and show arrows, as File does. Nothing looks or works differently.
+- File: with two Amaze panels open, a new order of the locations is saved whichever panel you made it in. Before, a reorder made in the panel opened first was back in the old order at the next start.
+
 ## 1.37.3
 
 - Material: on a tile, the MaterialX and Redshift icons are now in colour, and the MaterialX one is wider. All three renderer icons have a soft shadow.
