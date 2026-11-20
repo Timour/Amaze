@@ -480,12 +480,18 @@ class TheRendererIconIsOnTheSubtitlesLine(unittest.TestCase):
             painter.end()
         return texts[0], texts[1], pixmaps, QtCore.QRect(0, 0, cell.width(), cell.height())
 
+    @staticmethod
+    def _box(pixmap_rect):
+        """The icon's own box inside the pixmap the delegate drew: the pixmap less its bleed."""
+        bleed = delegates.AssetItemDelegate.RENDERER_ICON_BLEED
+        return pixmap_rect.adjusted(bleed, bleed, -bleed, -bleed)
+
     def test_the_icon_is_placed_as_T24_draws_it(self):
         from amaze.helpers import theme
         D = delegates.AssetItemDelegate
-        _name, subtitle, pixmaps, cell = self._painted("Redshift")
+        _name, subtitle, pixmaps, cell = self._painted("MaterialX")
         self.assertEqual(1, len(pixmaps), "a material tile does not draw exactly one renderer icon")
-        icon = pixmaps[0]
+        icon = self._box(pixmaps[0])
         _kind, x, y, w, h, _text = amazetheme.drawn_node("T24", "renderer icon")
         card = amazetheme.drawn_node("T24", "tile card")
         sub = amazetheme.drawn_node("T24", "tile subtitle")
@@ -497,9 +503,67 @@ class TheRendererIconIsOnTheSubtitlesLine(unittest.TestCase):
                          icon.bottom() - subtitle.bottom(),
                          "the icon does not sit on the subtitle's line as T24 draws it")
 
+    def test_each_icon_has_its_own_width_at_one_height_and_one_right_edge(self):
+        from amaze.helpers import theme
+        D = delegates.AssetItemDelegate
+        boxes = {stored: self._box(self._painted(stored)[2][0])
+                 for stored in ("MaterialX", "Redshift", "Octane")}
+        self.assertEqual({"MaterialX": theme.ui_px(29), "Redshift": theme.ui_px(16),
+                          "Octane": theme.ui_px(16)},
+                         {stored: box.width() for stored, box in boxes.items()},
+                         "an icon is not as wide as its drawing")
+        self.assertEqual({D.RENDERER_ICON_HEIGHT}, {box.height() for box in boxes.values()})
+        self.assertEqual(1, len({box.right() for box in boxes.values()}),
+                         "the icons do not end at one distance from the card's right edge")
+        self.assertEqual(1, len({box.bottom() for box in boxes.values()}))
+
+    def test_the_pixmap_is_the_icon_at_device_resolution_plus_its_bleed(self):
+        D = delegates.AssetItemDelegate
+        mark = D._renderer_pixmap("renderer_redshift", 2.0)
+        side = (D.RENDERER_ICON_HEIGHT + 2 * D.RENDERER_ICON_BLEED) * 2
+        self.assertEqual((side, side, 2.0),
+                         (mark.width(), mark.height(), mark.devicePixelRatio()))
+
+    def test_the_art_is_drawn_inside_the_bleed_not_over_it(self):
+        D = delegates.AssetItemDelegate
+        ratio = 4.0
+        image = D._renderer_pixmap("renderer_materialx", ratio).toImage().convertToFormat(
+            QtGui.QImage.Format.Format_ARGB32)
+        above = int(D.RENDERER_ICON_BLEED * ratio) - int(ratio)
+        solid = [(x, y) for y in range(above) for x in range(image.width())
+                 if image.pixelColor(x, y).alpha() > 200]
+        self.assertEqual([], solid[:3], "the icon is painted over the room kept for its shadow")
+
+    def test_every_icon_draws_its_shadow_under_its_own_box(self):
+        D = delegates.AssetItemDelegate
+        ratio = 4.0
+        under = int((D.RENDERER_ICON_BLEED + D.RENDERER_ICON_HEIGHT) * ratio) + int(ratio)
+        for renderer in renderers.ALL:
+            image = D._renderer_pixmap(renderer.tile_icon, ratio).toImage().convertToFormat(
+                QtGui.QImage.Format.Format_ARGB32)
+            shadow = 0
+            for y in range(under, image.height()):
+                for x in range(image.width()):
+                    colour = image.pixelColor(x, y)
+                    if 0 < colour.alpha() < 90 and max(
+                            colour.red(), colour.green(), colour.blue()) < 24:
+                        shadow += 1
+            self.assertGreater(shadow, 20, "%s.svg draws no shadow under its box: Qt drops a "
+                               "filter it cannot draw whole" % renderer.tile_icon)
+
+    def test_no_shipped_art_holds_the_filter_step_qt_drops(self):
+        folder = os.path.join(os.path.dirname(os.path.abspath(amazetheme.__file__)), "ui")
+        held = []
+        for name in sorted(os.listdir(folder)):
+            if name.endswith(".svg"):
+                with open(os.path.join(folder, name), encoding="utf-8") as handle:
+                    if "<feBlend" in handle.read():
+                        held.append(name)
+        self.assertEqual([], held, "Qt 6.8 draws none of a filter that holds feBlend")
+
     def test_the_subtitle_ends_a_text_inset_before_the_icon(self):
         name, subtitle, pixmaps, _cell = self._painted("Redshift")
-        self.assertEqual(pixmaps[0].left() - delegates.AssetItemDelegate.GRID_TEXT_INSET,
+        self.assertEqual(self._box(pixmaps[0]).left() - delegates.AssetItemDelegate.GRID_TEXT_INSET,
                          subtitle.right() + 1,
                          "the subtitle runs under the renderer icon, or stops further from it "
                          "than the tile's text inset")
@@ -509,23 +573,22 @@ class TheRendererIconIsOnTheSubtitlesLine(unittest.TestCase):
     def test_each_renderer_has_its_own_icon_and_an_old_name_maps_to_its_renderer(self):
         asked = []
         cls = delegates.AssetItemDelegate
-        original = cls.__dict__["_badge_pixmap"]
-        cls._badge_pixmap = staticmethod(
-            lambda name, side, dpr=1.0, opacity=None: asked.append((name, side, opacity))
-            or QtGui.QPixmap())
-        self.addCleanup(setattr, cls, "_badge_pixmap", original)
+        original = cls.__dict__["_renderer_pixmap"]
+        cls._renderer_pixmap = staticmethod(
+            lambda name, dpr=1.0: asked.append(name) or QtGui.QPixmap())
+        self.addCleanup(setattr, cls, "_renderer_pixmap", original)
         cases = [(r.key, r.tile_icon) for r in renderers.ALL] + [("MaterialX", "renderer_materialx")]
         for stored, art in cases:
             with self.subTest(renderer=stored):
                 asked.clear()
                 self._painted(stored)
-                self.assertEqual([(art, cls.RENDERER_ICON_SIDE, None)], asked)
+                self.assertEqual([art], asked)
         self.assertEqual(len(renderers.ALL), len({art for _key, art in cases}),
                          "two renderers share one icon")
 
     def test_every_renderers_icon_is_shipped_and_renders(self):
         for renderer in renderers.ALL:
-            mark = delegates.AssetItemDelegate._badge_pixmap(renderer.tile_icon, 16, 2.0)
+            mark = delegates.AssetItemDelegate._renderer_pixmap(renderer.tile_icon, 2.0)
             self.assertFalse(mark.isNull(),
                              "%s.svg is missing or does not render" % renderer.tile_icon)
 

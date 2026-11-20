@@ -236,9 +236,10 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
     GRID_IMG_TEXT_GAP = theme.ui_px(_TILE["img_text_gap"])
     GRID_LINE_GAP = theme.ui_px(_TILE["line_gap"])    # between the name's line and the subtitle's
     _RENDERER_ICON = amazetheme.drawn_renderer_icon()    # a material's renderer, at the subtitle's right end
-    RENDERER_ICON_SIDE = theme.ui_px(_RENDERER_ICON["side"])
+    RENDERER_ICON_HEIGHT = theme.ui_px(_RENDERER_ICON["height"])    # its width is its art's own
     RENDERER_ICON_INSET = theme.ui_px(_RENDERER_ICON["inset"])    # from the card's right edge
     RENDERER_ICON_BELOW = theme.ui_px(_RENDERER_ICON["below"])    # its bottom, under the subtitle's
+    RENDERER_ICON_BLEED = theme.ui_px(amazetheme.RENDERER_ICON_BLEED)    # room around it for its shadow
 
     CATEGORY_COLOR = QtGui.QColor(amazetheme.LIST_TEXT_COLOR)    # the Category column for a category with no colour
     LIST_TEXT_COLOR = QtGui.QColor(amazetheme.LIST_TEXT_COLOR)    # list mode's text colour, all but Category
@@ -658,8 +659,19 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         renderer = renderers.get(index.data(self._renderer_role))
         if renderer is None or not renderer.tile_icon:
             return None
-        mark = self._badge_pixmap(renderer.tile_icon, self.RENDERER_ICON_SIDE, dpr)
+        mark = self._renderer_pixmap(renderer.tile_icon, dpr)
         return None if mark.isNull() else mark
+
+    @classmethod
+    def _renderer_pixmap(cls, name, dpr=1.0):
+        """A renderer's icon at DEVICE resolution: its own shape plus the bleed around it; cached."""
+        key = ("renderer", name, cls.RENDERER_ICON_HEIGHT, round(dpr, 3))
+        pixmap = cls._badge_cache.get(key)
+        if pixmap is None:
+            pixmap = ui_helpers.bled_pixmap(amaze.package_file("ui", name + ".svg"),
+                                            cls.RENDERER_ICON_HEIGHT, dpr, cls.RENDERER_ICON_BLEED)
+            cls._badge_cache[key] = pixmap
+        return pixmap
 
     def sizeHint(self, option, index):
         """The view's own `gridSize`, exactly, when it has one; else the base hint."""
@@ -762,10 +774,12 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         subtitle_w = text_w
         mark = self._renderer_icon(index, dpr)
         if mark is not None:    # at the subtitle's right end; the subtitle ends a text inset before it
-            mark_w, mark_h = self._logical_size(mark)
+            bleed = self.RENDERER_ICON_BLEED
+            full_w, full_h = self._logical_size(mark)
+            mark_w, mark_h = full_w - 2 * bleed, full_h - 2 * bleed    # the icon's own box
             mark_x = icon_x + icon_side - self.RENDERER_ICON_INSET - mark_w
-            painter.drawPixmap(
-                mark_x, subtitle_top + h_rend + self.RENDERER_ICON_BELOW - mark_h, mark)
+            mark_y = subtitle_top + h_rend + self.RENDERER_ICON_BELOW - mark_h
+            painter.drawPixmap(mark_x - bleed, mark_y - bleed, mark)
             subtitle_w = max(mark_x - self.GRID_TEXT_INSET - text_x, 1)
         painter.setFont(name_font)
         name_pen = self.SELECTED_TEXT if selected else self.GRID_NAME_COLOR

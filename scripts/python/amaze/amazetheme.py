@@ -141,6 +141,7 @@ CODE_TEXT_OPACITY = 0.5         # T05B: a code tile's text at half strength, und
 CODE_TILE_BACKGROUND = "#1b1b1b"    # and the background under it, the same as the default tile faces
 BADGE_REST_OPACITY = 0.75       # every button badge's icon at rest; the backdrop stays as drawn
 BADGE_HOVER_OPACITY = 1.0       # and the icon under the pointer
+RENDERER_ICON_BLEED = 4         # px painted around a renderer icon's own box, for its shadow
 MENU_ICON = 16                  # ▸ C13: a menu entry's icon box, the size Houdini draws it ▸r/menu-checked-look
 LIST_TEXT_COLOR = "#d8d6d4"            # a table is read down its columns, so every column is drawn in this except Category
 LIST_SELECTED_TEXT = "#000000"  # every column of a selected row
@@ -760,7 +761,7 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("thumbnail", 4, 4, 130, 130, None),
             ("tile name", 9, 139, 120, 15, "Badges, long name te..."),
             ("tile subtitle", 9, 157, 49, 15, "MaterialX"),
-            ("renderer icon ▸ renderer_materialx", 112, 156, 16, 16, None),
+            ("renderer icon ▸ renderer_materialx", 99, 156, 29, 16, None),
         ),
     },
     "L01": {   # the list table from the live panel - its header, widths and ticks are read
@@ -1145,11 +1146,11 @@ def drawn_tile(frame_key: str = "T01") -> dict:
 
 
 def drawn_renderer_icon(frame_key: str = "T24") -> dict:
-    """A material tile's renderer icon: its side, its inset from the card's right edge, its drop."""
+    """A material tile's renderer icon: its height, its inset from the card's right edge, its drop."""
     card, sub, icon = (drawn_node(frame_key, kind)
                        for kind in ("tile card", "tile subtitle", "renderer icon"))
     return {
-        "side": icon[3],
+        "height": icon[4],    # each renderer's art gives its own width
         "inset": card[1] + card[3] - (icon[1] + icon[3]),
         "below": icon[2] + icon[4] - (sub[2] + sub[4]),    # its bottom under the subtitle's bottom
     }

@@ -213,6 +213,25 @@ def device_pixmap(path, side, dpr, color_replacements=None, opacity=None):
     return pixmap
 
 
+def bled_pixmap(path, height, dpr, bleed) -> QtGui.QPixmap:
+    """An SVG `height` logical px high in its own shape, `bleed` px of room around it; null if unread."""
+    renderer = QtSvg.QSvgRenderer(path) if path and os.path.exists(path) else None
+    if renderer is None or not renderer.isValid():
+        return QtGui.QPixmap()
+    drawn = renderer.defaultSize()
+    width = max(1, round(height * drawn.width() / max(drawn.height(), 1)))
+    pixmap = QtGui.QPixmap(max(1, round((width + 2 * bleed) * dpr)),
+                           max(1, round((height + 2 * bleed) * dpr)))
+    pixmap.fill(QtCore.Qt.GlobalColor.transparent)
+    painter = QtGui.QPainter(pixmap)
+    try:    # Qt also draws what is outside the art's own box, its shadow ▸r/qt-svg-filters
+        renderer.render(painter, QtCore.QRectF(bleed * dpr, bleed * dpr, width * dpr, height * dpr))
+    finally:
+        painter.end()
+    pixmap.setDevicePixelRatio(dpr)
+    return pixmap
+
+
 def faded_pixmap(pixmap: QtGui.QPixmap, opacity: float, dpr: float) -> QtGui.QPixmap:
     """`pixmap`, made at ratio `dpr`, at `opacity` on a transparent copy; 1 returns it as is."""
     if opacity >= 1.0:
