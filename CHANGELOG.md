@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.37.3
+
+- Material: on a tile, the MaterialX and Redshift icons are now in colour, and the MaterialX one is wider. All three renderer icons have a soft shadow.
+- Sidebar: the row stripes run to the bottom of the sidebar in every section, as in Houdini's Scene Graph Tree. In File they used to flash there while a folder opened or closed.
+
 ## 1.37.2
 
 - Material: the MaterialX and Redshift icons on a tile have new drawings.
