@@ -122,7 +122,7 @@ test_gradient_guard test_cleanup_counts test_check_library test_harness_reset \
 test_stale_proxy_index test_alert_sink \
 test_headless_dialogs test_save_from_node test_node_menu \
 test_versions test_code_versions test_grid_scroll test_file_section test_notes \
-test_file_info test_info_panel test_info_subjects \
+test_file_info test_info_panel test_info_subjects test_image_preview \
 test_repair test_toolbar_filter test_shaderball_assets \
 test_cancel_conversions test_section_tabs test_code_tile \
 test_list_columns test_versions_dialog test_no_live_data test_screen_dpr \

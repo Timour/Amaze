@@ -18,7 +18,7 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 from amaze import amazetheme  # noqa: E402
-from amaze.core import file_info  # noqa: E402
+from amaze.core import file_info, image_preview  # noqa: E402
 from amaze.helpers import theme  # noqa: E402
 from amaze.panel import info_panel  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
@@ -41,6 +41,32 @@ class _Reader(QtCore.QObject):
         self.stops += 1
 
 
+class _Pictures(QtCore.QObject):
+    """A picture reader that records what it is asked and answers at once when it has an `image`."""
+
+    ready = QtCore.Signal(str, object)
+
+    def __init__(self):
+        super().__init__()
+        self.asked = []
+        self.stops = 0
+        self.image = None
+
+    def ask(self, path, width):
+        self.asked.append((path, width))
+        if self.image is not None:
+            self.ready.emit(path, self.image)
+
+    def stop(self):
+        self.stops += 1
+
+
+def _picture(width=900, height=600):
+    image = QtGui.QImage(width, height, QtGui.QImage.Format.Format_RGB888)
+    image.fill(QtGui.QColor("#ff0000"))
+    return image
+
+
 def _prefs():
     return types.SimpleNamespace(notes_panel_width=0)
 
@@ -55,7 +81,8 @@ class _PaneCase(unittest.TestCase):
 
     def setUp(self):
         self.reader = _Reader()
-        self.pane = info_panel.InfoPanel(_prefs(), self.reader)
+        self.pictures = _Pictures()
+        self.pane = info_panel.InfoPanel(_prefs(), self.reader, pictures=self.pictures)
         self.addCleanup(self.pane.deleteLater)
         self.addCleanup(self.pane.hide)
         width, height = amazetheme.DIALOG_LAYOUT["N02"]["frame"]
@@ -65,7 +92,7 @@ class _PaneCase(unittest.TestCase):
 
 
 class TheInfoPaneMatchesItsDesignFrame(_PaneCase):
-    """The pane's width, header, rows, columns and divider are what N02 draws."""
+    """The pane's width, header, preview, rows, columns and divider are what N02 draws."""
 
     def setUp(self):
         super().setUp()
@@ -74,8 +101,11 @@ class TheInfoPaneMatchesItsDesignFrame(_PaneCase):
         rows = []
         for number in range(1, 13):
             rows.append((self.node("label", str(number))[5], self.node("value", str(number))[5]))
-        self.pane.set_subject(file_info.Subject("n02", "brushed_steel", "USD MaterialX",
-                                                tuple(rows[:5]), tuple(rows[5:])))
+        preview = self.node("preview")
+        self.pictures.image = _picture(preview[3] * 2, preview[4] * 2)    # the drawn picture's shape
+        self.pane.set_subject(file_info.Subject(
+            "n02", "brushed_steel", "USD MaterialX", tuple(rows[:5]), tuple(rows[5:]),
+            file_info.Request(file_info.KIND_IMAGE, ("/library/textures/steel.exr",))))
         QtWidgets.QApplication.processEvents()
         self.table = self.pane.table
 
@@ -100,9 +130,15 @@ class TheInfoPaneMatchesItsDesignFrame(_PaneCase):
         self.assertEqual(self.px(icon[1]), self._at(self.pane._icon_label).x())
         self.assertEqual(self.px(name[1]), self._at(self.pane.name_label).x())
 
+    def test_the_preview_is_where_it_is_drawn(self):
+        drawn, preview = self.node("preview"), self.pane.preview
+        self.assertTrue(preview.isVisible())
+        self.assertEqual(tuple(self.px(v) for v in drawn[1:5]),
+                         (self._at(preview).x(), self._at(preview).y(), preview.width(), preview.height()))
+
     def test_every_drawn_row_is_where_the_table_paints_it(self):
         body = self.node("body")
-        self.assertEqual(self.px(body[2]), self._at(self.table).y(), "the table does not start below the header")
+        self.assertEqual(self.px(body[2]), self._at(self.table).y(), "the table does not start below the preview")
         for row in amazetheme.drawn_nodes("N02", "row"):
             index = int(amazetheme.drawn_name(row)[1]) - 1
             with self.subTest(row=index + 1):
@@ -124,7 +160,7 @@ class TheInfoPaneMatchesItsDesignFrame(_PaneCase):
         self.table.render(image)
         return image
 
-    def test_odd_rows_are_filled_and_the_divider_is_three_pixels_on_its_x(self):
+    def test_odd_rows_are_filled_and_the_divider_is_two_pixels_on_its_x(self):
         image = self._painted()
         row_bg, page = (QtGui.QColor(c).name() for c in (amazetheme.INFO_ROW_BG, amazetheme.COMMENT_PAGE_BG))
         divider = QtGui.QColor(amazetheme.INFO_DIVIDER).name()
@@ -133,10 +169,126 @@ class TheInfoPaneMatchesItsDesignFrame(_PaneCase):
         self.assertEqual(row_bg, image.pixelColor(self.px(5), first).name(), "row 1 is not filled")
         self.assertEqual(page, image.pixelColor(self.px(5), second).name(), "row 2 is filled")
         line = self.px(amazetheme.INFO_DIVIDER_WIDTH)
-        start = x - line // 2    # centred: 99, 100 and 101 for a 3px line on x 100
+        self.assertEqual(2, amazetheme.INFO_DIVIDER_WIDTH)
+        start = x - line // 2    # centred: 99 and 100 for a 2px line on x 100
         across = [image.pixelColor(at, first).name() for at in range(start - 1, start + line + 1)]
         self.assertEqual([row_bg] + [divider] * line + [row_bg], across,
                          "the divider is not %dpx centred on x %d" % (line, x))
+
+
+    def test_the_filled_rows_and_the_divider_run_on_to_the_bottom(self):
+        image = self._painted()
+        row_bg, page = (QtGui.QColor(c).name() for c in (amazetheme.INFO_ROW_BG, amazetheme.COMMENT_PAGE_BG))
+        divider = QtGui.QColor(amazetheme.INFO_DIVIDER).name()
+        body, x = self.node("body"), self.px(self.node("divider")[1])
+        self.assertEqual(self.px(body[4]), self.table.height(), "the table does not reach the pane's bottom")
+        below = [row for row in amazetheme.drawn_nodes("N02", "row")
+                 if int(amazetheme.drawn_name(row)[1]) > len(self.table.rows())]
+        self.assertEqual(2, len(below), "the frame draws two filled rows below the last one")
+        for row in below:
+            top = self.px(row[2] - body[2])
+            with self.subTest(row=row[0]):
+                self.assertEqual(row_bg, image.pixelColor(self.px(5), top + self.px(1)).name())
+                self.assertEqual(page, image.pixelColor(self.px(5), top + self.px(row[4]) + self.px(1)).name(),
+                                 "the row after it is filled too")
+                self.assertEqual(divider, image.pixelColor(x - 1, top + self.px(1)).name(),
+                                 "the divider stops above this row")
+        drawn = self.node("divider")
+        self.assertEqual(body[2] + body[4], drawn[2] + drawn[4], "the drawn divider ends above the frame's bottom")
+
+
+class APictureForAnImageFile(_PaneCase):
+    """Only an image file the reader can read gets a preview; everything else is the table alone."""
+
+    def _file(self, path, key="f"):
+        return file_info.Subject(key, "steel", "EXR", (("Name", "steel"),), (),
+                                 file_info.request_for_file(path))
+
+    def test_only_a_readable_image_file_has_a_picture_path(self):
+        path = info_panel.InfoPanel.picture_path
+        for name in ("a.exr", "a.hdr", "a.jpg", "a.jpeg", "a.png", "a.tif", "a.tiff", "a.tga", "a.tx", "a.EXR"):
+            with self.subTest(name=name):
+                self.assertEqual("/lib/" + name, path(self._file("/lib/" + name)))
+        for name in ("a.rat", "a.pic", "a.bgeo.sc", "a.usd", "a.hip", "a.txt"):
+            with self.subTest(name=name):
+                self.assertEqual("", path(self._file("/lib/" + name)))
+        textures = file_info.Subject("m", "steel", "Material", (), (),
+                                     file_info.request_for_textures(("/lib/a.exr",)))
+        self.assertEqual("", path(textures), "a material's texture got a preview")
+        self.assertEqual("", path(file_info.Subject("n", "steel", "Node")))
+
+    def test_an_image_file_is_asked_for_at_the_panes_width_in_screen_pixels(self):
+        self.pane.set_subject(self._file("/lib/a.exr"))
+        width = round(self.pane.body_widget.viewport().width() * theme.screen_ratio(self.pane))
+        self.assertEqual([("/lib/a.exr", width)], self.pictures.asked)
+        self.assertFalse(self.pane.preview.isVisible(), "a preview showed before its picture arrived")
+        self.assertEqual(self.pane.header_widget.height(),
+                         self.pane.table.mapTo(self.pane, QtCore.QPoint(0, 0)).y())
+
+    def test_the_picture_arrives_and_takes_the_width_in_its_own_shape(self):
+        self.pane.set_subject(self._file("/lib/a.exr"))
+        self.pictures.ready.emit("/lib/a.exr", _picture(800, 200))
+        QtWidgets.QApplication.processEvents()
+        preview = self.pane.preview
+        self.assertTrue(preview.isVisible())
+        self.assertEqual(self.pane.body_widget.viewport().width(), preview.width())
+        self.assertEqual(round(preview.width() * 200 / 800), preview.height())
+        self.assertEqual(self.pane.header_widget.height() + preview.height(),
+                         self.pane.table.mapTo(self.pane, QtCore.QPoint(0, 0)).y())
+
+    def test_another_files_picture_is_dropped(self):
+        self.pane.set_subject(self._file("/lib/a.exr", "a"))
+        self.pane.set_subject(self._file("/lib/b.exr", "b"))
+        self.pictures.ready.emit("/lib/a.exr", _picture())
+        self.assertIsNone(self.pane.preview.image())
+
+    def test_the_next_selection_never_shows_the_last_picture(self):
+        self.pictures.image = _picture()
+        self.pane.set_subject(self._file("/lib/a.exr", "a"))
+        self.assertIsNotNone(self.pane.preview.image())
+        self.pictures.image = None
+        for subject in (self._file("/lib/b.exr", "b"), self._file("/lib/c.bgeo.sc", "c")):
+            self.pane.set_subject(subject)
+            QtWidgets.QApplication.processEvents()
+            with self.subTest(key=subject.key):
+                self.assertIsNone(self.pane.preview.image())
+                self.assertFalse(self.pane.preview.isVisible())
+
+    def test_a_file_without_a_preview_asks_for_no_picture(self):
+        self.pane.set_subject(self._file("/lib/c.rat"))
+        self.assertEqual([], self.pictures.asked)
+
+    def test_clearing_and_hiding_stop_the_picture_read_and_drop_the_picture(self):
+        self.pictures.image = _picture()
+        self.pane.set_subject(self._file("/lib/a.exr"))
+        stops = self.pictures.stops
+        self.pane.clear_subject()
+        self.assertGreater(self.pictures.stops, stops)
+        self.assertIsNone(self.pane.preview.image())
+        self.pane.set_subject(self._file("/lib/a.exr"))
+        self.pane.hide()
+        self.assertIsNone(self.pane.preview.image())
+
+    def test_a_pane_dragged_wider_reads_the_picture_wider_once(self):
+        self.pictures.image = _picture(200, 100)
+        self.pane.set_subject(self._file("/lib/a.exr"))
+        self.pictures.asked.clear()
+        self.pane.resize(self.pane.width() + 40, self.pane.height())
+        self.pane.resize(self.pane.width() + 40, self.pane.height())
+        QtWidgets.QApplication.processEvents()
+        self.assertEqual([], self.pictures.asked, "the read did not wait for the drag to rest")
+        test_support.pump_until(lambda: self.pictures.asked, info_panel.WIDER_READ_MS / 100)
+        self.assertEqual(1, len(self.pictures.asked))
+
+    def test_a_picture_that_is_the_whole_file_is_not_read_again(self):
+        whole = _picture(200, 100)
+        whole.setText(image_preview.WHOLE, "1")
+        self.pictures.image = whole
+        self.pane.set_subject(self._file("/lib/a.exr"))
+        self.pictures.asked.clear()
+        self.pane.resize(self.pane.width() + 40, self.pane.height())
+        QtWidgets.QApplication.processEvents()
+        self.assertFalse(self.pane._wider.isActive())
 
 
 class NothingSelected(_PaneCase):

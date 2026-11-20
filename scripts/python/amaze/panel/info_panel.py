@@ -1,17 +1,59 @@
-"""The info pane: a read-only two-column table of facts about the selection, beside the grid."""
+"""The info pane: an image file's picture, then a read-only table of facts about the selection."""
 
 from __future__ import annotations
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from amaze import amazetheme
-from amaze.core import file_info
+from amaze.core import file_info, image_preview
 from amaze.helpers import theme, ui_helpers
 
 HEADER_BG = amazetheme.COMMENT_HEADER_BG    # the comments pane's header and page colours
 PAGE_BG = amazetheme.COMMENT_PAGE_BG
 
 _DRAWN = amazetheme.drawn_info()    # every size and spacing below is from the N02 design frame
+WIDER_READ_MS = 150    # a pane dragged wider reads its picture again this long after the last resize
+
+
+class _Preview(QtWidgets.QWidget):
+    """An image file's picture across the pane's width, its height from its shape; hidden without one."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self._image = None
+        self.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+        ui_helpers.fill_window(self, PAGE_BG)    # shows through a picture with transparency
+        self.hide()
+
+    def image(self):
+        return self._image
+
+    def set_image(self, image) -> None:
+        """Show `image`, a QImage, or None for no picture."""
+        self._image = image
+        self._fit()
+        self.setVisible(image is not None)
+        self.update()
+
+    def _fit(self) -> None:
+        image = self._image
+        height = round(self.width() * image.height() / image.width()) if image is not None else 0
+        if height != self.height() or self.minimumHeight() != height:
+            self.setFixedHeight(height)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._fit()    # the height follows the width; the width is the pane's
+
+    def paintEvent(self, _event) -> None:
+        if self._image is None:
+            return
+        painter = QtGui.QPainter(self)
+        try:
+            painter.setRenderHint(QtGui.QPainter.RenderHint.SmoothPixmapTransform)
+            painter.drawImage(self.rect(), self._image)
+        finally:
+            painter.end()
 
 
 class _InfoTable(QtWidgets.QWidget):
@@ -28,7 +70,7 @@ class _InfoTable(QtWidgets.QWidget):
         return self._rows
 
     def set_rows(self, rows) -> None:
-        """Show `rows`, (label, value) pairs; the table is as tall as its rows."""
+        """Show `rows`, (label, value) pairs; the table is at least as tall as its rows."""
         self._rows = tuple((str(label), str(value)) for label, value in rows)
         self.setMinimumHeight(self._row_top(len(self._rows)))    # the scroll area scrolls past it
         self.update()
@@ -91,17 +133,18 @@ class _InfoTable(QtWidgets.QWidget):
         return super().event(event)
 
     def paintEvent(self, _event) -> None:
-        if not self._rows:
-            return
         row_h = theme.ui_px(_DRAWN["row"])
         align = QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter
         painter = QtGui.QPainter(self)
         try:
             painter.setFont(self.font())
-            for index in range(len(self._rows)):
+            index = 0
+            while self._row_top(index) < self.height():    # the filled rows run on below the last
                 if index % 2 == 0:    # rows 1, 3, 5... are filled; the rows between show the page
                     painter.fillRect(0, self._row_top(index), self.width(), row_h,
                                      QtGui.QColor(amazetheme.INFO_ROW_BG))
+                index += 1
+            for index in range(len(self._rows)):
                 label, value = self.shown_text(index)
                 label_box, value_box = self.text_rects(index)
                 painter.setPen(QtGui.QColor(amazetheme.INFO_TEXT))
@@ -109,7 +152,7 @@ class _InfoTable(QtWidgets.QWidget):
                 painter.drawText(value_box, align, value)
             line = theme.ui_px(amazetheme.INFO_DIVIDER_WIDTH)
             painter.fillRect(theme.ui_px(_DRAWN["divider_x"]) - line // 2, self._row_top(0),
-                             line, self._row_top(len(self._rows)) - self._row_top(0),
+                             line, self.height() - self._row_top(0),    # to the pane's bottom
                              QtGui.QColor(amazetheme.INFO_DIVIDER))
         finally:
             painter.end()
@@ -120,7 +163,7 @@ class InfoPanel(ui_helpers.SavedWidthPane):
 
     shown = QtCore.Signal()    # each show: the panel points it at the selection again
 
-    def __init__(self, preferences, reader=None, parent=None) -> None:
+    def __init__(self, preferences, reader=None, parent=None, pictures=None) -> None:
         super().__init__(preferences, "notes_panel_width",    # the comments pane's place and width
                          theme.ui_px(_DRAWN["width"]), parent)
         if reader is None:
@@ -128,6 +171,16 @@ class InfoPanel(ui_helpers.SavedWidthPane):
             reader.setParent(self)
         self._reader = reader
         self._reader.ready.connect(self._on_ready)
+        if pictures is None:
+            pictures = image_preview.Reader()
+            pictures.setParent(self)
+        self._pictures = pictures
+        self._pictures.ready.connect(self._on_picture)
+        self._picture_path = ""    # the image file the preview is for, "" for none
+        self._wider = QtCore.QTimer(self)
+        self._wider.setSingleShot(True)
+        self._wider.setInterval(WIDER_READ_MS)
+        self._wider.timeout.connect(self._ask_picture)
         self._subject = None
 
         self.setMinimumWidth(theme.ui_px(220))
@@ -154,14 +207,22 @@ class InfoPanel(ui_helpers.SavedWidthPane):
         self.header_widget = header
         outer.addWidget(header)
 
+        self.preview = _Preview()
         self.table = _InfoTable()
         self.table.setFont(self.type_label.font())
+        body = QtWidgets.QWidget()    # the picture, then the table filling what is left
+        ui_helpers.fill_window(body, PAGE_BG)
+        column = QtWidgets.QVBoxLayout(body)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(0)
+        column.addWidget(self.preview)
+        column.addWidget(self.table, 1)
         scroll = QtWidgets.QScrollArea()
         scroll.setFrameStyle(QtWidgets.QFrame.Shape.NoFrame)
         scroll.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
         scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setWidgetResizable(True)    # the table takes the pane's width; long values elide
-        scroll.setWidget(self.table)
+        scroll.setWidgetResizable(True)    # the body takes the pane's width; long values elide
+        scroll.setWidget(body)
         ui_helpers.fill_window(scroll.viewport(), PAGE_BG)
         self.body_widget = scroll
         outer.addWidget(scroll, 1)
@@ -210,6 +271,7 @@ class InfoPanel(ui_helpers.SavedWidthPane):
         self.set_header(subject.name, subject.type)
         self.table.set_rows(tuple(subject.before) + tuple(subject.after))
         self._paint_accents()
+        self._show_picture_of(subject)
         if subject.request is not None:
             self._reader.ask(subject.key, subject.request)
         elif current is not None:
@@ -222,6 +284,45 @@ class InfoPanel(ui_helpers.SavedWidthPane):
             return
         self.table.set_rows(tuple(subject.before) + tuple(rows) + tuple(subject.after))
 
+    @staticmethod
+    def picture_path(subject) -> str:
+        """The file whose picture the pane shows for `subject`: an image file it can read, else ""."""
+        request = subject.request
+        if request is None or request.kind != file_info.KIND_IMAGE or len(request.paths) != 1:
+            return ""
+        return request.paths[0] if image_preview.can_read(request.paths[0]) else ""
+
+    def _show_picture_of(self, subject) -> None:
+        path = self.picture_path(subject)
+        if path == self._picture_path and path:
+            return
+        self._picture_path = path
+        self.preview.set_image(None)    # never another file's picture over these rows
+        self._ask_picture()
+
+    def _picture_width(self) -> int:
+        """The pane's width in screen pixels: the picture is read no wider."""
+        return max(1, round(self.body_widget.viewport().width() * theme.screen_ratio(self)))
+
+    def _ask_picture(self) -> None:
+        self._wider.stop()
+        if not self._picture_path:
+            self._pictures.stop()
+            return
+        self._pictures.ask(self._picture_path, self._picture_width())
+
+    def _on_picture(self, path: str, image) -> None:
+        """A read's picture is shown; another file's is dropped."""
+        if path == self._picture_path:
+            self.preview.set_image(image)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        image = self.preview.image()
+        if (image is not None and image.width() < self._picture_width()
+                and not image.text(image_preview.WHOLE)):
+            self._wider.start()    # dragged wider than the picture read: read it wider, once the drag rests
+
     def clear_subject(self) -> None:
         """Nothing selected: the dimmed header, no rows, and no read on its way."""
         self.stop_reading()
@@ -232,6 +333,10 @@ class InfoPanel(ui_helpers.SavedWidthPane):
         if self._subject is not None:    # a read is only ever asked for a current subject
             self._reader.stop()
         self._subject = None
+        self._wider.stop()
+        self._pictures.stop()
+        self._picture_path = ""
+        self.preview.set_image(None)
 
     def _show_no_selection(self) -> None:
         self._dimmed = True
