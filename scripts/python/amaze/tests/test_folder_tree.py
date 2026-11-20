@@ -822,8 +822,6 @@ class TheSidebarTreeView(unittest.TestCase):
         self._scanned(self.loc)
         view, loc = self._styled_as_houdini(self.view), self.model.index_of(self.loc)
         host = view.parentWidget()
-        view.setAnimated(True)
-        animating = QtWidgets.QAbstractItemView.State.AnimatingState
         host.setStyleSheet(NO_EMPTY_AREA_ROW_COLORS)    # the ground with no row colours, whatever the palette
         test_support.pump_until(lambda: False, timeout=0.05)
         plain = self._column(view)
@@ -831,16 +829,51 @@ class TheSidebarTreeView(unittest.TestCase):
         test_support.pump_until(lambda: False, timeout=0.05)
         rest = self._rows_end(view)
         self.assertNotEqual(self._below(plain, rest), self._below(self._column(view), rest),
-                            "at rest the row colours stop at the last row")
-        view.expand(loc)    # grabbed before the event loop runs, so the animation is at its start
-        end = self._rows_end(view)    # with the folder open: the lowest the rows reach
-        for change, word in ((None, "opened"), (view.collapse, "closed")):
-            if change is not None:
-                test_support.pump_until(lambda: view.state() != animating)
-                change(loc)
-            self.assertEqual(animating, view.state(), "premise: it %s without animating" % word)
-            self.assertNotEqual(self._below(plain, end), self._below(self._column(view), end),
-                                "no row colours below the rows while the folder %s" % word)
+                            "with the folder closed the row colours stop at the last row")
+        view.expand(loc)
+        end = self._rows_end(view)
+        self.assertGreater(end, rest, "premise: opening the folder added no rows")
+        self.assertNotEqual(self._below(plain, end), self._below(self._column(view), end),
+                            "with the folder open the row colours stop at the last row")
+
+    def test_the_view_turns_qts_open_and_close_animation_off(self):
+        with mock.patch.object(sidebar.SidebarTreeView, "setAnimated") as asked:
+            view = sidebar.SidebarTreeView()
+            self.addCleanup(view.deleteLater)
+        asked.assert_called_once_with(False)    # Houdini's style builds a QTreeView with it on
+        self.assertFalse(self.view.isAnimated(), "the sidebar animates a folder opening and closing")
+
+    @staticmethod
+    def _edge_column(view) -> list:
+        """The viewport's pixels down a column right of every row's text: the row colours alone."""
+        image = view.viewport().grab().toImage()
+        return [image.pixel(image.width() - 3, y) for y in range(image.height())]
+
+    def test_a_folder_opens_and_closes_in_one_frame_and_the_row_colours_stay(self):
+        self._scanned(self.loc)
+        loc = self.model.index_of(self.loc)
+        self.assertGreater(self.model.rowCount(loc), 0, "premise: the location has no folders to show")
+        animating = QtWidgets.QAbstractItemView.State.AnimatingState
+        plain = self._styled_as_houdini(self._view(self.model, QtWidgets.QTreeView))
+        plain.setAnimated(True)    # as Houdini's style builds every tree view
+        still = self._edge_column(plain)
+        plain.expand(loc)
+        test_support.pump_until(lambda: False, timeout=0.1)    # part of the way through Qt's 250 ms
+        self.assertEqual(animating, plain.state(), "premise: an animated tree is not animating")
+        self.assertNotEqual(still, self._edge_column(plain),
+                            "premise: the column read does not see row colours that move")
+        view = self._styled_as_houdini(self.view)
+        still = self._edge_column(view)
+        self.assertGreater(len(set(still)), 1, "premise: the column holds one colour, no row colours")
+        for change, word in ((view.expand, "opened"), (view.collapse, "closed")):
+            change(loc)
+            self.assertEqual(word == "opened", view.isExpanded(loc), "premise: the folder never %s" % word)
+            self.assertNotEqual(animating, view.state(), "the folder %s with an animation" % word)
+            self.assertEqual(still, self._edge_column(view),
+                             "the row colours moved in the frame the folder %s" % word)
+            test_support.pump_until(lambda: False, timeout=0.1)
+            self.assertEqual(still, self._edge_column(view),
+                             "the row colours moved after the folder %s" % word)
 
     def test_what_was_open_reopens_after_a_swap_and_a_reset(self):
         self._scanned(self.loc, _child(self.loc, "A"))

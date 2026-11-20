@@ -24,6 +24,7 @@ class SidebarTreeView(QtWidgets.QTreeView):
         self.setHeaderHidden(True)
         self.setRootIsDecorated(False)    # each row draws its own arrow, after its colour bar
         self.setUniformRowHeights(True)
+        self.setAnimated(False)    # a folder opens in one frame: Houdini's style builds the view animated
         self.setIndentation(theme.ui_px(amazetheme.SIDEBAR_INDENT))
         self._open: dict = {}    # id(model) -> the keys of the rows open in it
         self._pending_reveal = None    # (model, path) to select once its row is inserted
