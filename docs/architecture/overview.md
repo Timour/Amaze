@@ -126,7 +126,7 @@ Plus one *view mode*, not a section:
 
 | Method | Called when | 
 |---|---|
-| `activate()` | its tab is selected — point the widgets at its Models |
+| `activate()` | its tab is selected — one implementation: point the widgets at its Models, then select its **Sidebar** row; what differs is a hook a section overrides (`before_sidebar_shown`, `before_columns_synced`, `restore_sidebar_selection`) |
 | `stack()` | returns the **Asset Stack** — `sections.AssetStack`, read by NAME — or None |
 | `filter_text(text)` | the **Filter Box** changes |
 | `filter_favorites(on)` | the **Favourites Star** toggles |
@@ -140,7 +140,7 @@ Plus one *view mode*, not a section:
 | `delete_prompt(count, name)` | what deleting costs, in this section's words — the wording lives in the UI text register |
 | `sidebar_key(index)` | what a **Sidebar** row is keyed by, read from the row's `category.SIDEBAR_KEY_ROLE` — a stored category name, the folder a File row shows, an online category, `""` on All; File reads a registered location through `location_key(index)` |
 | `reorders_sidebar` + `sidebar_movable` / `move_sidebar_row` / `sidebar_order_snapshot` / `restore_sidebar_order` / `commit_sidebar_order` | the press-hold reorder (`sidebar.SidebarReorder` calls them) — one implementation, which asks the section's sidebar list (`movable`, `move_row`, `order_snapshot`, `restore_order`, `commit_order`); in Online `reorders_sidebar` is False |
-| `sidebar_colour(name)` / `set_sidebar_colour(name, colour)` | read and write that row's colour, in whichever store this context keeps it |
+| `sidebar_colour(name)` / `set_sidebar_colour(name, colour)` | read and write that row's colour — one implementation, which asks the section's sidebar list (`color_of`, `set_color`); each list keeps it in its own store (a category's in the section's database, a File location's in its location record), and `repaint_grid_colours()` repaints the tiles after a change |
 | `takes_file_drops` + `accepts_file_drop` / `drop_folder` / `move_files_to` / `can_undo_move` / `menu_undo_move` | a **Grid** tile released on a **Sidebar** folder moves the selected files there on disk (File only; `core/file_moves.py`), and Undo Move puts the last move back |
 | `menu_copy` / `menu_paste` / `menu_paste_enabled` | File's **Grid** menu: Copy puts the selected files on the system clipboard (`ui_helpers.copy_files`); Paste copies the clipboard's files into the folder shown on the same worker (`file_moves.copy`), asking once about names in use |
 | `double_click(index)` | a **Tile** is double-clicked (the *primary action*) — calls `panel.click_on_row` (below) |

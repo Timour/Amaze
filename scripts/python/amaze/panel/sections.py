@@ -81,12 +81,12 @@ class Section:
     empty_noun = "items"  # the noun the shared empty-state texts use for these
     EMPTY: dict = {}      # `nothing-yet`: (headline, sentence, button, handler)
 
-    sidebar_attr = ""
+    sidebar_attr = ""     # the list the sidebar shows
+    proxy_attr = ""       # the grid's proxy, which `activate` binds to the grid views
     delegate_attr = ""
     tile_badges: tuple = ()    # the badge IDs this section's tile shows ▸r/tile-from-frame
     library_model_attrs: tuple = ()  # re-pointed on a library switch; () is a valid value
     selection_attr = ""   # a menu acts on THIS section's selection
-    activate_method = ""  # panel method pointing the widgets at these models
     GRID_MENU: tuple = ()     # MenuEntry rows; empty = no menu opens
     SIDEBAR_MENU: tuple = ()  # same shape, same builder
     DROP = None           # one DropRule, or None for a section that never drags
@@ -118,7 +118,28 @@ class Section:
         return False
 
     def activate(self) -> None:
-        getattr(self.panel, self.activate_method)()
+        """Point the shared widgets at this section's models, then select its sidebar row. ▸o/section-api"""
+        panel = self.panel
+        self.before_sidebar_shown()
+        listed = self._p(self.sidebar_attr)
+        if panel.cat_list and listed is not None:
+            panel.cat_list.setModel(listed)
+        panel.bind_grid_views(self._p(self.proxy_attr),
+                              self._p(self.selection_attr),
+                              self._p(self.delegate_attr))
+        panel.set_conversion_bar_visible(False)  # may be another section's
+        self.before_columns_synced()
+        panel.sync_list_columns()  # different section = different names
+        self.restore_sidebar_selection()
+
+    def before_sidebar_shown(self) -> None:
+        """Runs first on entering, before the list is set on the sidebar. Default: nothing."""
+
+    def before_columns_synced(self) -> None:
+        """Runs on entering, before the list columns are synced. Default: nothing."""
+
+    def restore_sidebar_selection(self) -> None:
+        """Select this section's sidebar row on entering; a `setModel` leaves none. Default: nothing."""
 
     def rc_menu(self) -> None:
         """Build and exec this section's grid right-click menu: ONE builder over GRID_MENU."""
@@ -374,11 +395,20 @@ class Section:
         return self.sidebar_key(index)
 
     def sidebar_colour(self, name: str) -> str:
-        """This row's colour, "" for none. `name` is the stored name, not the displayed one."""
-        return ""
+        """This row's colour, "" for none, as the sidebar list keeps it; `name` is the row's key."""
+        listed = self._p(self.sidebar_attr)
+        return listed.color_of(name) if listed is not None else ""
 
     def set_sidebar_colour(self, name: str, colour: str) -> None:
-        """Colour one sidebar row or clear it with ""; writes the store and repaints the models."""
+        """Colour one sidebar row or clear it with ""; the list stores it, then the grid repaints."""
+        listed = self._p(self.sidebar_attr)
+        if listed is None:
+            return
+        listed.set_color(name, colour)
+        self.repaint_grid_colours()
+
+    def repaint_grid_colours(self) -> None:
+        """A sidebar colour changed: repaint the tiles that show it. Default: nothing."""
 
     def toggle_favourite(self, indexes) -> None:
         """Toggle the favourite on each row in `indexes` (this section's proxy). Base: nothing."""
@@ -480,23 +510,10 @@ class AssetSection(Section):
     delegate_attr = ""
     search_hint = ""    # ":tag" is the only way to reach tags from this box
 
-    def activate(self) -> None:
-        """Point the four shared widgets at this section's models. ▸o/section-api"""
-        panel = self.panel
-        sidebar = self._p(self.sidebar_attr)
-        if panel.cat_list and sidebar is not None:
-            panel.cat_list.setModel(sidebar)
-        panel.bind_grid_views(self._p(self.proxy_attr),
-                              self._p(self.selection_attr),
-                              self._p(self.delegate_attr))
-        panel.set_conversion_bar_visible(False)  # may be another section's
-        panel.sync_list_columns()  # different section = different names
-        self._select_first_sidebar_row()
-
     def library_switched(self) -> None:
-        self._select_first_sidebar_row()
+        self.restore_sidebar_selection()
 
-    def _select_first_sidebar_row(self) -> None:
+    def restore_sidebar_selection(self) -> None:
         """Select the sidebar's first row and filter the grid to it; a select from code fires no click."""
         selected_name = self.panel.select_default_sidebar_row(self._p(self.sidebar_attr))
         model = self._p(self.model_attr)
@@ -667,19 +684,10 @@ class AssetSection(Section):
         st.model.remove_rows([index.row() for index in indexes])    # ONE save for the selection
         self.panel.refresh_sidebar_categories()
 
-    def sidebar_colour(self, name: str) -> str:
-        st = self.stack()
-        if st is None:
-            return ""
-        return st.categories.color_of(name)
-
-    def set_sidebar_colour(self, name: str, colour: str) -> None:
-        st = self.stack()
-        if st is None:
-            return
-        st.categories.set_color(name, colour)
-        if st.model is not None:
-            st.model.repaint_category_colours()    # the grid reads the colour from the same document
+    def repaint_grid_colours(self) -> None:
+        model = self._p(self.model_attr)
+        if model is not None:
+            model.repaint_category_colours()    # the grid reads the colour from the same document
 
     offers_preview_update = True
 
@@ -1299,10 +1307,7 @@ class CodeSection(AssetSection):
 class FolderSection(Section):
     """A folder list and a files model behind TextureFilterProxyModel; stack() is None."""
 
-    files_proxy_attr = ""
-    folders_attr = ""
     files_attr = ""
-    colour_pref_setter = ""    # prefs method that stores a location's colour
     last_folder_pref = ""
     selection_attr = ""    # with delegate_attr, what activate() points the shared grid at
     delegate_attr = ""
@@ -1311,10 +1316,10 @@ class FolderSection(Section):
 
     def __init__(self, panel) -> None:
         super().__init__(panel)
-        changed = getattr(self._p(self.folders_attr), "scene_folder_changed", None)
+        changed = getattr(self._p(self.sidebar_attr), "scene_folder_changed", None)
         if changed is not None:
             changed.connect(self._scene_moved)
-        left = getattr(self._p(self.folders_attr), "scene_folder_left", None)
+        left = getattr(self._p(self.sidebar_attr), "scene_folder_left", None)
         if left is not None:
             left.connect(self._scene_left)
 
@@ -1341,34 +1346,29 @@ class FolderSection(Section):
             self._browse(new, remember=folders.SCENE_LABEL)
 
     def filter_text(self, text: str) -> None:
-        proxy = self._p(self.files_proxy_attr)
+        proxy = self._p(self.proxy_attr)
         if proxy is not None:
             proxy.set_name_filter(text)
 
     def filter_favorites(self, on: bool) -> None:
-        proxy = self._p(self.files_proxy_attr)
+        proxy = self._p(self.proxy_attr)
         if proxy is not None:
             proxy.set_favorites_only(on)
 
     def apply_filter(self, value) -> None:
-        proxy = self._p(self.files_proxy_attr)
+        proxy = self._p(self.proxy_attr)
         if proxy is not None:
             proxy.set_kind_filter(value)
 
     reorders_sidebar = True    # the reorder in FOLDER terms: locations only, this machine's own order
 
-    def activate(self) -> None:
-        panel = self.panel
-        folders = self._p(self.folders_attr)
-        folders.refresh_counts()
-        if panel.cat_list:
-            panel.cat_list.setModel(folders)
-        panel.bind_grid_views(self._p(self.files_proxy_attr),
-                              self._p(self.selection_attr),
-                              self._p(self.delegate_attr))
-        panel.set_conversion_bar_visible(False)  # may be another section's
-        panel.sync_list_columns()  # different section = different names
+    def before_sidebar_shown(self) -> None:
+        self._p(self.sidebar_attr).refresh_counts()    # every count is read again on entering
 
+    def restore_sidebar_selection(self) -> None:
+        """Select the remembered folder: All, the scene row, a location, or a subfolder inside one."""
+        panel = self.panel
+        folders = self._p(self.sidebar_attr)
         last = getattr(panel.prefs, self.last_folder_pref, "")
         if last == folders.ALL_LABEL:
             target_row = 0
@@ -1406,7 +1406,7 @@ class FolderSection(Section):
     def _browse(self, path, remember=None) -> None:
         """Point the files model at a folder path (None = the 'All' row), remember it, and persist."""
         files = self._p(self.files_attr)
-        folders = self._p(self.folders_attr)
+        folders = self._p(self.sidebar_attr)
         if path is None:
             setattr(self.panel.prefs, self.last_folder_pref, folders.ALL_LABEL)
             files.set_all_folders()
@@ -1416,7 +1416,7 @@ class FolderSection(Section):
         self.panel.prefs.save()
 
     def select_category(self, index) -> None:
-        folders = self._p(self.folders_attr)
+        folders = self._p(self.sidebar_attr)
         remember = folders.SCENE_LABEL if folders.is_scene_row(index) else None    # by SCENE_LABEL: the scene's folder can change
         self._browse(index.data(folders.BrowseRole), remember)    # a location's path, or a subfolder's
 
@@ -1448,11 +1448,11 @@ class FolderSection(Section):
                 and not folders.index_of(path).isValid())
 
     def shows_empty_state(self, source) -> bool:
-        folders = self._p(self.folders_attr)    # the grid lists one location; the empty state means none
+        folders = self._p(self.sidebar_attr)    # the grid lists one location; the empty state means none
         return folders is None or not folders._folders()
 
     def tile_models(self):
-        return self._p(self.files_attr), self._p(self.files_proxy_attr)
+        return self._p(self.files_attr), self._p(self.proxy_attr)
 
     def selected_kinds(self, indexes) -> set:
         """Every kind in the selection, read once for the whole Grid menu."""
@@ -1575,7 +1575,7 @@ class FolderSection(Section):
 
     def _refresh_shown(self) -> None:
         """The grid lists the folder again; the sidebar re-reads it, so a new subfolder gets its row."""
-        folders, files = self._p(self.folders_attr), self._p(self.files_attr)
+        folders, files = self._p(self.sidebar_attr), self._p(self.files_attr)
         if files is not None:
             files.refresh_current_folder()
         if folders is not None:
@@ -1594,7 +1594,7 @@ class FolderSection(Section):
         return bool(self.drop_folder(index))
 
     def drop_folder(self, index) -> str:
-        folders = self._p(self.folders_attr)
+        folders = self._p(self.sidebar_attr)
         return str(index.data(folders.BrowseRole) or "") if folders is not None else ""
 
     def move_files_to(self, folder: str) -> bool:
@@ -1694,10 +1694,10 @@ class FolderSection(Section):
     def _move_finished(self, result) -> None:
         """Refresh the models, offer Undo after a move, and show the result on one line."""
         job = self._move_job
-        for attr in (self.files_attr, self.folders_attr):
+        for attr in (self.files_attr, self.sidebar_attr):
             model = self._p(attr)
             if model is not None:
-                (model.refresh_counts if attr == self.folders_attr
+                (model.refresh_counts if attr == self.sidebar_attr
                  else model.refresh_current_folder)()
         paste = job["paste"]
         if not paste:    # a paste leaves the last move undoable
@@ -1742,7 +1742,7 @@ class FolderSection(Section):
 
     def _folder_name(self, folder: str) -> str:
         """A folder as the sidebar names it, else its own name."""
-        folders = self._p(self.folders_attr)
+        folders = self._p(self.sidebar_attr)
         index = folders.index_of(folder) if folders is not None else QtCore.QModelIndex()
         shown = index.data() if index.isValid() else ""
         return str(shown or os.path.basename(folder.rstrip("/\\")) or folder)
@@ -1751,7 +1751,7 @@ class FolderSection(Section):
 
     def location_key(self, index) -> str:
         """The registered location on this row, by its path; "" on All, the scene row and a subfolder."""
-        folders = self._p(self.folders_attr)
+        folders = self._p(self.sidebar_attr)
         if folders is None or index is None or not index.isValid():
             return ""
         return str(index.data(folders.PathRole) or "")
@@ -1759,22 +1759,8 @@ class FolderSection(Section):
     def colour_key(self, index) -> str:
         return self.location_key(index)    # a colour belongs to a location, never to a subfolder
 
-    def sidebar_colour(self, name: str) -> str:
-        folders = self._p(self.folders_attr)    # `name` is a registered folder path here, the sidebar's key
-        return folders.folder_color(name) if folders is not None else ""
-
-    def set_sidebar_colour(self, name: str, colour: str) -> None:
-        folders = self._p(self.folders_attr)
+    def repaint_grid_colours(self) -> None:
         files = self._p(self.files_attr)
-        setter = getattr(self.panel.prefs, self.colour_pref_setter, None)
-        if setter is None:
-            return
-        setter(name, colour)
-        if folders is not None:
-            row = folders.row_of(name)
-            if row is not None:
-                index = folders.index(row, 0)
-                folders.dataChanged.emit(index, index)
         if files is not None and files.rowCount():    # every tile from that location repaints, role-scoped
             files.colours_changed()    # drop the colour cache before the repaint
             files.dataChanged.emit(
@@ -1992,14 +1978,13 @@ class FileSection(FolderSection):
 
     def menu_sort_locations(self, indexes, current, payload=None) -> None:
         """Sort by name, once: the locations below All and the scene row, from any row clicked."""
-        from amaze.core import locations
         folders = self._p(self.sidebar_attr)
         if folders is None:
             return
         shown = self.shown_sidebar_key()    # the grid's folder: a right press moved only the sidebar
         if not folders.sort_folders():    # a model reset, which clears the sidebar's selection
             return
-        locations.commit_registered_order(self.panel.prefs)    # one write, as on a drag's release
+        folders.commit_order()    # one write, as on a drag's release
         self.select_sidebar_key(shown)
 
     def on_a_location(self, indexes, current) -> bool:
@@ -2032,7 +2017,7 @@ class FileSection(FolderSection):
             return
         what, on = payload
         prefs = self.panel.prefs
-        folders = self._p(self.folders_attr)
+        folders = self._p(self.sidebar_attr)
         if what == "pathname":    # the row's name, nothing to rescan
             prefs.set_file_folder_pathname(path, on)
             self._repaint_location(path)
@@ -2048,7 +2033,7 @@ class FileSection(FolderSection):
         self.panel.update_selected_cat()    # rescan the shown folder with the new settings
 
     def _repaint_location(self, path: str) -> None:
-        folders = self._p(self.folders_attr)
+        folders = self._p(self.sidebar_attr)
         row = folders.row_of(path) if folders is not None else None
         if row is not None:
             index = folders.index(row, 0)
@@ -2077,20 +2062,18 @@ class FileSection(FolderSection):
         self.reselect_after_removal(self.panel.remove_file_folder_user())
 
     def menu_locate_location(self, indexes, current, payload=None) -> None:
-        self.panel.locate_folder_user(self._p(self.folders_attr))
+        self.panel.locate_folder_user(self._p(self.sidebar_attr))
 
-    files_proxy_attr = "file_sorted_model"
+    proxy_attr = "file_sorted_model"
     selection_attr = "file_selection_model"
     delegate_attr = "file_delegate"
     tile_badges = ("open", "favourite", "comment")
     sidebar_attr = "file_folders_model"
-    colour_pref_setter = "set_file_folder_color"
-    folders_attr = "file_folders_model"
     files_attr = "file_files_model"
     last_folder_pref = "last_file_folder"
 
     def prefs_changed(self) -> None:
-        folders, files = self._p(self.folders_attr), self._p(self.files_attr)
+        folders, files = self._p(self.sidebar_attr), self._p(self.files_attr)
         if folders is not None:
             folders.refresh_counts()    # Show Unknown Files changes what counts as a row
         if files is not None:
@@ -2109,16 +2092,8 @@ class OnlineContext(Section):
     delegate_attr = "matx_delegate"    # its own delegate, carrying only the roles matx_library has
     search_hint = ""    # empty, as on every tab; the tooltip explains the tag search
 
-    def activate(self) -> None:
-        panel = self.panel
-        if panel.cat_list:
-            panel.cat_list.setModel(self._p(self.sidebar_attr))
-        panel.bind_grid_views(self._p(self.proxy_attr),
-                              self._p(self.selection_attr),
-                              self._p(self.delegate_attr))
-        panel.set_conversion_bar_visible(False)
-        panel.matx_online_model.reload()
-        panel.sync_list_columns()
+    def before_columns_synced(self) -> None:
+        self.panel.matx_online_model.reload()    # the catalogue of the source the tabs show
 
     def shown_sidebar_key(self) -> str:
         role = self.panel.matx_online_model.CategoryRole

@@ -53,6 +53,13 @@ class SidebarModel(QtCore.QAbstractItemModel):
     def commit_order(self) -> None:
         pass
 
+    def color_of(self, key) -> str:
+        """The colour of the row keyed `key`, "" for none; no row has one here."""
+        return ""
+
+    def set_color(self, key, color: str) -> None:
+        """Colour the row keyed `key`, or clear it with ""; the list keeps it in its own store."""
+
     @staticmethod
     def _is_top(parent_id) -> bool:
         return parent_id is None or parent_id < 0

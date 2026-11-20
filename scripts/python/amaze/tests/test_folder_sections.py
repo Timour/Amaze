@@ -430,7 +430,7 @@ class TheFilesAndProxyArePairedOnce(unittest.TestCase):
                    for scope in klass.body if isinstance(scope, ast.FunctionDef)]
         self.assertTrue(methods, "premise: the scan reads FolderSection")
         pairs = sorted(scope.name for scope in methods if scope.name != "tile_models"
-                       and {"files_attr", "files_proxy_attr"}
+                       and {"files_attr", "proxy_attr"}
                        <= {n.attr for n in ast.walk(scope) if isinstance(n, ast.Attribute)})
         maps = sorted(scope.name for scope in methods
                       if scope.name != "comment_subject"

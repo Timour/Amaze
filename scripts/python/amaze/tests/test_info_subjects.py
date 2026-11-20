@@ -48,7 +48,7 @@ def _section(cls, model, **attrs):
     panel = types.SimpleNamespace(**attrs)
     if issubclass(cls, sections.FolderSection):
         setattr(panel, cls.files_attr, model)
-        setattr(panel, cls.files_proxy_attr, proxy)
+        setattr(panel, cls.proxy_attr, proxy)
     else:
         setattr(panel, cls.model_attr, model)
         setattr(panel, cls.proxy_attr, proxy)

@@ -1095,8 +1095,8 @@ class SectionRegistrationTest(unittest.TestCase):
         """Each attribute name is looked up on the panel at runtime, so a typo shows only on click."""
         file_cls = [c for c in sections.SECTION_CLASSES
                     if c.key == "file"][0]
-        for attr in ("files_proxy_attr", "selection_attr", "delegate_attr",
-                     "folders_attr", "files_attr"):
+        for attr in ("proxy_attr", "selection_attr", "delegate_attr",
+                     "sidebar_attr", "files_attr"):
             name = getattr(file_cls, attr)
             self.assertTrue(name, "%s is empty" % attr)
             self.assertTrue(name.startswith("file_"),

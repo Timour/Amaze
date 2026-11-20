@@ -166,6 +166,7 @@ class FolderTreeModel(sidebar_model.SidebarModel):
     remove_folder_method = ""
     relocate_folder_method = ""    # changes one folder's path IN ITS OWN ROW ▸p/folder-sidebar
     move_folder_method = ""        # the sidebar reorder; empty = this section's folders do not reorder
+    color_folder_method = ""       # the Label colour; empty = this section's folders take none
     COUNT_WORKERS = 2    # parallel reads: a slow share blocks one; four slowed painting ▸r/count-workers
     SIGNAL_COUNTS_MS = 100    # reads finishing within this window repaint the sidebar once, not each
     _counts_asked = QtCore.Signal()    # queued: a request from ANY thread is handled on the GUI thread
@@ -542,7 +543,7 @@ class FolderTreeModel(sidebar_model.SidebarModel):
         if role == self.BrowseRole:
             return path
         if role == category.SIDEBAR_COLOR_ROLE:    # the asset sidebars' role, so ONE delegate paints it
-            return self.folder_color(path) if location else ""
+            return self.color_of(path) if location else ""
         return None
 
     def _scene_data(self, path: str, role: int):
@@ -562,9 +563,19 @@ class FolderTreeModel(sidebar_model.SidebarModel):
             return tops.index(path) + 1
         return None
 
-    def folder_color(self, path: str) -> str:
+    def color_of(self, path: str) -> str:
         """This location's colour, "" for none - ONE record: this runs per row."""
         return str(self._record(path).get("color", ""))
+
+    def set_color(self, path: str, color: str) -> None:
+        """Colour one location in its record through the prefs method, or clear it with ""."""
+        if not self.color_folder_method:
+            return
+        getattr(self.preferences, self.color_folder_method)(path, color)
+        row = self.row_of(path)
+        if row is not None:
+            index = self.index(row, 0)
+            self.dataChanged.emit(index, index)
 
 
     def is_location(self, path: str, but: str = "") -> bool:

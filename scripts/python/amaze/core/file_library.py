@@ -197,6 +197,7 @@ class FileFolders(folders.FolderTreeModel):
     remove_folder_method = "remove_file_folder"
     relocate_folder_method = "relocate_file_folder"
     move_folder_method = "move_file_folder"
+    color_folder_method = "set_file_folder_color"
     write_path = None    # Write Paths As, which needs Houdini: the panel sets it, else the plain path
 
     def matches(self, filename: str) -> bool:

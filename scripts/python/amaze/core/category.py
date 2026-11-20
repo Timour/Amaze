@@ -429,6 +429,15 @@ class CategoriesSidebarProxy(QtCore.QSortFilterProxyModel):
         if model is not None:
             model.save()
 
+    def color_of(self, key) -> str:
+        model = self.sourceModel()
+        return "" if model is None else model.color_of(key)
+
+    def set_color(self, key, color: str) -> None:
+        model = self.sourceModel()
+        if model is not None:
+            model.set_color(key, color)    # its database and its row's repaint
+
     def filterAcceptsRow(
         self,
         source_row: int,
