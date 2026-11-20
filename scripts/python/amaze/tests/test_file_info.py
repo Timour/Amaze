@@ -648,10 +648,16 @@ class TheRunner(unittest.TestCase):
         self.assertLess(time.monotonic() - start, 3.0)
         self._assert_gone()
 
+    def _started(self):
+        """True once the stand-in tool has written its pid, which a loaded machine delays."""
+        try:
+            return os.path.getsize(self.pid_file) > 0
+        except OSError:
+            return False
+
     def test_a_cancelled_tool_is_killed(self):
         start = time.monotonic()
-        self.assertIsNone(file_info.run_tool(
-            self.tool, [], lambda: time.monotonic() - start > 0.3))
+        self.assertIsNone(file_info.run_tool(self.tool, [], self._started))
         self.assertLess(time.monotonic() - start, 3.0)
         self._assert_gone()
 
