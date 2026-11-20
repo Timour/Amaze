@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.38.1
+
+- File: a folder in the sidebar opens and closes at once, as in Houdini's Scene Graph Tree. The rows used to slide for a quarter of a second, and the stripes moved with them.
+
 ## 1.38.0
 
 - Sidebar: every section's list now runs on the same code. A list in any section can hold rows under a row and show arrows, as File does. Nothing looks or works differently.
