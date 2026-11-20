@@ -1606,7 +1606,7 @@ class AmazePanel(QtWidgets.QWidget):
             return names
         for elem in range(model.rowCount()):    # the source model, never the proxy, which hides empty ones
             cidx = model.index(elem, 0)
-            name = model.data(cidx, model.CatSortRole)    # STORED: "_WIP" displays as WIP
+            name = model.data(cidx, category.SIDEBAR_KEY_ROLE)    # STORED: "_WIP" displays as WIP
             if name and not category.is_all(name):
                 names.append(str(name))
         return sorted(names, key=lambda name: category.display_name(name).lower())
@@ -2397,15 +2397,15 @@ class AmazePanel(QtWidgets.QWidget):
         self._apply_context(self.online_context, self.online_context.key)
 
     def select_default_sidebar_row(self, sidebar_proxy):
-        """Select the sidebar's first row and return its raw name; the caller applies the filter."""
+        """Select the sidebar's All row and return its key, ""; the caller applies the filter."""
         if self.cat_list is None or sidebar_proxy is None:
             return None
-        if sidebar_proxy.rowCount() <= 0:
+        target = sidebar_proxy.index_of("")
+        if not target.isValid():
             return None
         selection_model = self.cat_list.selectionModel()
         if selection_model is None:
             return None
-        target = sidebar_proxy.index(0, 0)
         selection_model.select(    # a `setModel()` leaves nothing selected
             target, QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
         self.cat_list.setCurrentIndex(target)
@@ -3113,8 +3113,7 @@ class AmazePanel(QtWidgets.QWidget):
     def refresh_sidebar_categories(self) -> None:
         """Re-evaluate empty-category hiding and counts, for changes that emit no layoutChanged."""
         for proxy in self.sidebar_proxies():
-            proxy.sourceModel().drop_count_cache()
-            proxy.invalidateFilter()
+            proxy.refresh()
         if self.cat_list is not None:
             self.cat_list.viewport().update()
         self._ensure_sidebar_selection(self.current_section)    # the refilter may hide the grid's row
@@ -3152,53 +3151,29 @@ class AmazePanel(QtWidgets.QWidget):
         shown = stack.proxy.filter_value(stack.model.CategoryRole)    # the grid's filter, never the selection
         if not shown:
             return    # All: every category is a row, and All is always one
-        row = self._sidebar_row_stored(proxy, shown)
-        if row is None:
-            self._select_all_category()
+        row = proxy.index_of(shown)
+        if not row.isValid():
+            self._select_category("")    # the grid's category is hidden: All
             return
         current = ui_helpers.live_current_index(self.cat_list)
         if current is None or current.row() != row.row():
-            self._select_category(row.data())    # the row is still there and the selection moved off it
+            self._select_category(shown)    # the row is still there and the selection moved off it
 
-    @staticmethod
-    def _sidebar_row_stored(proxy, stored: str):
-        """The sidebar row whose stored name is `stored`, or None."""
-        source = proxy.sourceModel()
-        role = getattr(source, "CatSortRole", None)
-        if role is None:
-            return None
-        for row in range(proxy.rowCount()):
-            index = proxy.index(row, 0)
-            if str(index.data(role) or "") == stored:
-                return index
-        return None
-
-    def _select_all_category(self) -> None:
-        """Point the sidebar at All and refilter - the hidden-category fallback."""
-        self._select_category("All")
-
-    def _select_category(self, label: str) -> bool:
-        """Point the sidebar at the row showing display name `label` and refilter; whether it exists."""
+    def _select_category(self, key: str) -> bool:
+        """Point the sidebar at the row keyed `key`, "" for All, and refilter; whether it is shown."""
         view = getattr(self, "cat_list", None)
-        proxy = view.model() if view is not None else None
-        if proxy is None:
+        model = view.model() if view is not None else None
+        if model is None:
             return False
-        selection_model = view.selectionModel()
-        found = False
-        for row in range(proxy.rowCount()):
-            idx = proxy.index(row, 0)
-            if idx.data() == label:
-                view.setCurrentIndex(idx)
-                if selection_model is not None:
-                    selection_model.select(
-                        idx,
-                        QtCore.QItemSelectionModel.SelectionFlag
-                        .ClearAndSelect,
-                    )
-                found = True
-                break
+        index = model.index_of(key)
+        if index.isValid():
+            view.setCurrentIndex(index)
+            selection_model = view.selectionModel()
+            if selection_model is not None:
+                selection_model.select(
+                    index, QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
         self.update_selected_cat()
-        return found
+        return index.isValid()
 
     def clear_favourites_filter(self) -> None:
         """Favourites empty state's Show All: unchecks `cb_favsonly`; `toggled` does the rest."""

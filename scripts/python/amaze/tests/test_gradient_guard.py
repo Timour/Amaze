@@ -1055,11 +1055,11 @@ class TheColorsSidebarIsTheSharedModel(unittest.TestCase):
     def test_the_All_row_is_pinned_first_and_a_row_returns_its_stored_name(self):
         sidebar = self._sidebar()
         self.assertEqual(
-            "_All",
-            sidebar.data(sidebar.index(0, 0), sidebar.CatSortRole),
-            "row 0 is not `_All`, so the section's "
+            "",
+            sidebar.data(sidebar.index(0, 0), category.SIDEBAR_KEY_ROLE),
+            "row 0 is not All, keyed \"\", so the section's "
             "sidebar_key would read a category as All")
-        found = [sidebar.data(sidebar.index(row, 0), sidebar.CatSortRole)
+        found = [sidebar.data(sidebar.index(row, 0), category.SIDEBAR_KEY_ROLE)
                  for row in range(sidebar.rowCount())]
         self.assertIn("Warm", found,
                       "the sidebar cannot name its own category, so a "
@@ -1079,7 +1079,7 @@ class TheColorsSidebarIsTheSharedModel(unittest.TestCase):
         self.assertEqual([4], told,
                          "the sidebar gained a row without emitting rowsInserted")
         self.assertEqual(
-            "Spring", sidebar.data(sidebar.index(3, 0), sidebar.CatSortRole))
+            "Spring", sidebar.data(sidebar.index(3, 0), category.SIDEBAR_KEY_ROLE))
 
     def test_the_counts_come_from_the_shared_walk(self):
         sidebar = self._sidebar()

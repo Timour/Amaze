@@ -414,7 +414,7 @@ class TheCategoryHandlersMoveNoRowInsideALayoutChange(unittest.TestCase):
 
     def _row(self, stored):
         proxy = self.panel.cat_list.model()
-        role = proxy.sourceModel().CatSortRole
+        role = category.SIDEBAR_KEY_ROLE
         for row in range(proxy.rowCount()):
             if proxy.index(row, 0).data(role) == stored:
                 return proxy.index(row, 0)
@@ -472,7 +472,7 @@ class TheCategoryHandlersMoveNoRowInsideALayoutChange(unittest.TestCase):
         self.assertNotIn("usds", [
             self.panel.category_model.data(
                 self.panel.category_model.index(row, 0),
-                self.panel.category_model.CatSortRole)
+                category.SIDEBAR_KEY_ROLE)
             for row in range(self.panel.category_model.rowCount())])
 
 
@@ -521,9 +521,9 @@ class _FourAssetSidebars:
 
     def _row(self, stored):
         proxy = self.panel.cat_list.model()
-        role = proxy.sourceModel().CatSortRole
+        key = "" if category.is_all(stored) else stored    # the key role gives "" on All
         for row in range(proxy.rowCount()):
-            if proxy.index(row, 0).data(role) == stored:
+            if proxy.index(row, 0).data(category.SIDEBAR_KEY_ROLE) == key:
                 return row
         self.fail("premise: no sidebar row is stored %r" % stored)
 
@@ -698,8 +698,8 @@ class ANameThatReadsAsAnotherIsThatCategory(unittest.TestCase):
 
     def _sidebar_row(self, stored):
         proxy = self.panel.cat_list.model()
-        role = proxy.sourceModel().CatSortRole
-        found = [proxy.index(row, 0) for row in range(proxy.rowCount())
+        role = category.SIDEBAR_KEY_ROLE
+        found =[proxy.index(row, 0) for row in range(proxy.rowCount())
                  if proxy.index(row, 0).data(role) == stored]
         self.assertTrue(found, "premise: no sidebar row is stored %r" % stored)
         return found[0]

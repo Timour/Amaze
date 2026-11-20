@@ -46,7 +46,6 @@ class Categories(QtCore.QAbstractListModel):
         self._colour_table = self._read_colours()
         self._removed = set()    # names this model took out, dropped from the database at its save
         self._shown = list(self._categories)    # the rows the views last showed; `apply_refresh` compares
-        self.CatSortRole = QtCore.Qt.ItemDataRole.UserRole  # 256
         self._renderer_filter = ""  # lowercased; empty = no filter. Set by the panel so counts match the grid
         self._count_cache = None  # category -> visible count, `_All` = total; cleared on every change
         self.layoutChanged.connect(self.drop_count_cache)
@@ -59,9 +58,6 @@ class Categories(QtCore.QAbstractListModel):
     def data(
         self, index: QtCore.QModelIndex | QtCore.QPersistentModelIndex, role: int = 0
     ) -> Any:
-        if role == self.CatSortRole:
-            return self._categories[index.row()]
-
         if role == SIDEBAR_KEY_ROLE:
             name = self._categories[index.row()]
             return "" if is_all(name) else name
@@ -389,6 +385,13 @@ class CategoriesSidebarProxy(QtCore.QSortFilterProxyModel):
             return QtCore.QModelIndex()
         return self.mapFromSource(model.index_of(key))
 
+    def refresh(self) -> None:
+        """Drop its list's counts and refilter, for changes that emit no layoutChanged."""
+        model = self.sourceModel()
+        if model is not None:
+            model.drop_count_cache()
+        self.invalidateFilter()
+
     def filterAcceptsRow(
         self,
         source_row: int,
@@ -401,7 +404,7 @@ class CategoriesSidebarProxy(QtCore.QSortFilterProxyModel):
             return True
         if model.showing_all_renderers():  # All shows every category, empty ones included
             return True
-        raw = model.index(source_row, 0).data(model.CatSortRole)
-        if is_all(raw):
+        raw = model.index(source_row, 0).data(SIDEBAR_KEY_ROLE)
+        if not raw:    # All, keyed ""
             return True
         return model._category_count(raw) > 0

@@ -6,7 +6,7 @@ import unittest
 
 from PySide6 import QtWidgets
 
-from amaze.core import model_registry
+from amaze.core import category, model_registry
 from amaze.tests import test_support
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -183,7 +183,7 @@ class TwoPanelsShareOneLibraryTest(unittest.TestCase):
             lambda *a: heard.append("layout"))
 
         name = categories.data(categories.index(before - 1, 0),
-                               categories.CatSortRole)
+                               category.SIDEBAR_KEY_ROLE)
         categories.remove_category(name)    # the SIDEBAR's method; the library model's same-named one only strips the category off assets
 
         self.assertEqual(before - 1, self.b.category_model.rowCount(),

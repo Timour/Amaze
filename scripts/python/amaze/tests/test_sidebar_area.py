@@ -83,7 +83,7 @@ class ARowActsOnTheNameItStores(unittest.TestCase):
         # The sidebar shows the PROXY, exactly as the panel wires it.
         self.sidebar = category.CategoriesSidebarProxy()
         self.sidebar.setSourceModel(self.categories)
-        self.sidebar.setSortRole(self.categories.CatSortRole)
+        self.sidebar.setSortRole(category.SIDEBAR_KEY_ROLE)
         self.sidebar.sort(0)
         self.proxy = _Recorder()
         self.section = _Section(self.categories, self.proxy, self.sidebar)

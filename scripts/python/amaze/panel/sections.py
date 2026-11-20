@@ -318,11 +318,10 @@ class Section:
             return False
         if index is None or not index.isValid() or index.row() < 1:
             return False
-        proxy, source = self._sidebar_categories()
+        proxy, _source = self._sidebar_categories()
         if proxy is None:
             return False
-        raw = proxy.index(index.row(), 0).data(source.CatSortRole)
-        return bool(raw) and not category.is_all(raw)
+        return bool(proxy.index(index.row(), 0).data(category.SIDEBAR_KEY_ROLE))    # "" on All
 
     def move_sidebar_row(self, index, to_view_row: int) -> bool:
         """Move the row at `index` to view row `to_view_row`, clamped to row 1, never above All."""
@@ -642,11 +641,11 @@ class AssetSection(Section):
 
     def menu_sort_categories(self, indexes, current, payload=None) -> None:
         """The one-off Sort by name: sorts every row below All, whichever row was clicked."""
-        _proxy, source = self._sidebar_categories()
-        if source is None:
+        st = self.stack()
+        if st is None:
             return
         shown = self.shown_sidebar_key()    # the grid's row: a right press moved only the sidebar
-        source.sort_categories()    # a model reset, which clears the sidebar's selection
+        st.categories.sort_categories()    # a model reset, which clears the sidebar's selection
         self.select_sidebar_key(shown)
 
     def tile_models(self):

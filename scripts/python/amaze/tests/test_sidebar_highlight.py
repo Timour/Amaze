@@ -42,8 +42,7 @@ def _row_key(panel, index) -> str:
     model = panel.cat_list.model()
     if panel.current_section == "file":
         return index.data(model.BrowseRole) or ""
-    stored = index.data(model.sourceModel().CatSortRole)
-    return "" if category.is_all(stored) else str(stored)
+    return str(index.data(category.SIDEBAR_KEY_ROLE) or "")
 
 
 def _pump(seconds=0.05):
@@ -293,8 +292,8 @@ class _AssetSidebarPaths(_HighlightCase):
 
         def second_panel_deletes_it():
             self.select_row()
-            row = second._sidebar_row_stored(getattr(second, theirs.sidebar_attr), "Kept")
-            self.assertIsNotNone(row, "premise: the second panel has no Kept row")
+            row = getattr(second, theirs.sidebar_attr).index_of("Kept")
+            self.assertTrue(row.isValid(), "premise: the second panel has no Kept row")
             theirs.menu_remove_category([row], row)
         self.check("a second panel deletes the row", second_panel_deletes_it, grid="")
 

@@ -479,7 +479,7 @@ class AnEmptyCategoryIsThePlainGrid(unittest.TestCase):
                         "premise: the location registered")
         shutil.rmtree(gone)    # what an unmounted share looks like
         self.assertTrue(
-            panel._select_category(os.path.basename(gone.rstrip("/"))),
+            panel._select_category(gone),
             "premise: the location is a sidebar row")
         QtWidgets.QApplication.processEvents()
         self.assertEqual((empty_state.UNREACHABLE, gone),

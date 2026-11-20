@@ -6,6 +6,8 @@ import sys
 import unittest
 from unittest.mock import MagicMock
 
+from PySide6 import QtCore
+
 sys.path.insert(  # scripts/python: the dev tree, not the install ▸p/checkout-not-install
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
@@ -46,10 +48,10 @@ class TestCategories(unittest.TestCase):
         self.assertEqual(["_All", "Cat1", "_Hidden", "Cat2"], model._categories)
         self.assertEqual(4, model.rowCount())
 
-    def test_display_strips_a_leading_underscore_and_the_sort_role_does_not(self):
+    def test_display_strips_a_leading_underscore_and_the_key_role_does_not(self):
         model = self.model()
         self.index.row.return_value = 2
-        self.assertEqual("_Hidden", model.data(self.index, role=model.CatSortRole))
+        self.assertEqual("_Hidden", model.data(self.index, role=category.SIDEBAR_KEY_ROLE))
         self.assertEqual("Hidden", model.data(self.index, role=0))
         self.index.row.return_value = 1
         self.assertEqual("Cat1", model.data(self.index, role=0))
@@ -133,6 +135,45 @@ class TestCategories(unittest.TestCase):
         self.assertFalse(proxy.index_of("Cat1").isValid(), "a hidden row was given as shown")
         self.assertFalse(proxy.index_of("Hidden").isValid(), "a displayed name found a row")
         self.assertFalse(proxy.index_of("Nothing").isValid())
+
+    def test_the_key_role_is_the_one_stored_name(self):
+        """No second role for the stored name: the key role gives it below All, "" on All."""
+        model = self.model()
+        proxy = category.CategoriesSidebarProxy()
+        proxy.setSourceModel(model)
+        proxy.hide_empty = False
+        for holder in (model, proxy):
+            self.assertFalse(hasattr(holder, "CatSortRole"),
+                             "%s still defines a second stored-name role" % type(holder).__name__)
+        self.assertIsNone(model.data(model.index(2, 0), int(QtCore.Qt.ItemDataRole.UserRole)),
+                          "the list still answers a stored-name role beside SIDEBAR_KEY_ROLE")
+        self.assertEqual(["", "Cat1", "_Hidden", "Cat2"],
+                         [proxy.index(row, 0).data(category.SIDEBAR_KEY_ROLE)
+                          for row in range(proxy.rowCount())])
+
+    def test_the_proxy_refresh_recounts_and_refilters(self):
+        """A category that loses its asset hides and one that gains one shows, on one call."""
+        _write(self.prefs, {"categories": {"Cat1": {"order": 0}, "Cat2": {"order": 1}},
+                            "assets": {"a": {"categories": ["Cat1"], "renderer": "Karma"}}})
+        model = self.model()
+        proxy = category.CategoriesSidebarProxy()
+        proxy.setSourceModel(model)
+        model.set_renderer_filter("karma")
+        proxy.invalidateFilter()
+
+        def shown():
+            return [proxy.index(row, 0).data(category.SIDEBAR_KEY_ROLE)
+                    for row in range(proxy.rowCount())]
+
+        self.assertEqual(["", "Cat1"], shown(), "premise: the empty Cat2 is not hidden")
+        held = model._doc()
+        self.assertTrue(held.drop("assets", "a"), "premise: the asset was not dropped")
+        self.assertTrue(held.put("assets", "b", {"categories": ["Cat2"], "renderer": "Karma"}),
+                        "premise: the asset was not added")
+        self.assertEqual(["", "Cat1"], shown(), "premise: the counts were not cached")
+        proxy.refresh()
+        self.assertEqual(["", "Cat2"], shown(),
+                         "the refresh kept the old counts or did not refilter")
 
 
 class NormalizeEmitsAResetPairTest(unittest.TestCase):

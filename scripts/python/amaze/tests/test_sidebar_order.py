@@ -253,12 +253,12 @@ class SidebarShowsStoredOrderTest(unittest.TestCase):
         model, proxy = self._proxy(["_All", "b", "2", "a"])
 
         def shown():
-            return [proxy.index(r, 0).data(model.CatSortRole)
+            return [proxy.index(r, 0).data(category.SIDEBAR_KEY_ROLE)
                     for r in range(proxy.rowCount())]
 
-        self.assertEqual(["_All", "b", "2", "a"], shown())
+        self.assertEqual(["", "b", "2", "a"], shown())
         model.move_category(1, 3)
-        self.assertEqual(["_All", "2", "a", "b"], shown())
+        self.assertEqual(["", "2", "a", "b"], shown())
 
 
 class PanelWiresNoSidebarSortTest(unittest.TestCase):
@@ -307,8 +307,6 @@ class PanelWiresNoSidebarSortTest(unittest.TestCase):
         from amaze.panel.panel import AmazePanel
 
         class _Stored:    # the three calls `category_names_from` makes on a Categories model
-            CatSortRole = 256
-
             def __init__(self, names):
                 self.names = names
 

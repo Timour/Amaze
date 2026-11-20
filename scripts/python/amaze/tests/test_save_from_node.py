@@ -386,7 +386,7 @@ class AnUnderscoredCategoryKeepsItsStoredName(unittest.TestCase):
         self._assert_filed_under_the_stored_name(seen["saved"])
 
     def test_a_selected_WIP_row_pre_selects_it(self):
-        self.assertTrue(self.panel._select_category("WIP"),
+        self.assertTrue(self.panel._select_category("_WIP"),
                         "premise: no row shows WIP")
         seen = self._save()
         self.assertEqual("WIP", seen["shown"],

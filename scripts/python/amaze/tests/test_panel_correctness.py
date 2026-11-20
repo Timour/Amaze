@@ -22,7 +22,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import file_library, geo_library  # noqa: E402
+from amaze.core import category, file_library, geo_library  # noqa: E402
 from amaze.core import grid_columns, grid_engine  # noqa: E402
 from amaze.core import library_db, locations, notes, tile_icons  # noqa: E402
 from amaze.dialogs import save_dialog  # noqa: E402
@@ -142,6 +142,77 @@ class EveryAssetSidebarFollowsItsFilter(unittest.TestCase):
         return False
 
 
+_ROW_MAPPING = ("sourceModel", "mapToSource", "mapFromSource")
+_SIDEBAR_WORDS = ("sidebar", "SIDEBAR", "cat_list", "category_sorted_model", "matx_source_model")
+
+
+def _sidebar_row_mappings(text, allowed=()):
+    """`name:line` of each sourceModel/mapToSource/mapFromSource call on a sidebar list in `text`."""
+    found = set()
+    for func in ast.walk(ast.parse(text)):
+        if not isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)) or func.name in allowed:
+            continue
+        params = {arg.arg for arg in func.args.args + func.args.kwonlyargs}
+        bound = {}    # a local name -> the source of each expression it is given
+        for node in ast.walk(func):
+            pairs = []
+            if isinstance(node, ast.Assign):
+                pairs = [(target, node.value) for target in node.targets]
+            elif isinstance(node, (ast.For, ast.comprehension)):
+                pairs = [(node.target, node.iter)]
+            for target, value in pairs:
+                for name in ast.walk(target):
+                    if isinstance(name, ast.Name):
+                        bound.setdefault(name.id, []).append(ast.unparse(value))
+        for node in ast.walk(func):
+            if not isinstance(node, ast.Call):
+                continue
+            receiver = None
+            if isinstance(node.func, ast.Attribute) and node.func.attr in _ROW_MAPPING:
+                receiver = node.func.value
+            elif isinstance(node.func, ast.Name) and node.func.id == "getattr" \
+                    and len(node.args) > 1 and isinstance(node.args[1], ast.Constant) \
+                    and node.args[1].value in _ROW_MAPPING:
+                receiver = node.args[0]
+            if receiver is None:
+                continue
+            origins = [ast.unparse(receiver)]
+            if isinstance(receiver, ast.Name):
+                origins += bound.get(receiver.id, [])
+                if receiver.id in params:
+                    origins.append(func.name)
+            if any(word in origin for origin in origins for word in _SIDEBAR_WORDS):
+                found.add("%s:%d" % (func.name, node.lineno))
+    return sorted(found)
+
+
+class NoCallerMapsASidebarListsRows(unittest.TestCase):
+    """The sidebar list finds its own rows by key; the sections and the panel map no sidebar row."""
+
+    REORDER = ("_sidebar_categories", "move_sidebar_row")
+
+    def test_the_check_tells_a_sidebar_list_from_a_grid_proxy(self):
+        sidebar = ("def refresh(self):\n    for proxy in self.sidebar_proxies():\n"
+                   "        proxy.sourceModel().drop_count_cache()\n"
+                   "def name(self):\n    proxy = self.cat_list.model()\n"
+                   "    return proxy.mapToSource(proxy.index(0, 0))\n"
+                   "def _sidebar_row(proxy, key):\n    return proxy.mapFromSource(key)\n")
+        grid = ("def rows(self, indexes):\n    model, proxy = self.tile_models()\n"
+                "    return [proxy.mapToSource(index) for index in indexes]\n"
+                "def tile(self):\n    return self.material_sorted_model.mapToSource(self.index)\n")
+        self.assertEqual(["_sidebar_row:8", "name:6", "refresh:3"], _sidebar_row_mappings(sidebar))
+        self.assertEqual([], _sidebar_row_mappings(grid))
+
+    def test_no_sidebar_row_is_mapped_outside_the_list(self):
+        for relative in ("panel/sections.py", "panel/panel.py", "panel/online_import.py"):
+            with self.subTest(relative):
+                allowed = self.REORDER if relative == "panel/sections.py" else ()
+                self.assertEqual(
+                    [], _sidebar_row_mappings(source_of(relative), allowed),
+                    "%s maps a sidebar list's rows itself; the list's index_of, key role "
+                    "and refresh do that" % relative)
+
+
 class ACategoryIsActedOnByItsStoredName(_PanelCase):
     """`Categories.data` strips a leading underscore for `DisplayRole`."""
 
@@ -150,7 +221,7 @@ class ACategoryIsActedOnByItsStoredName(_PanelCase):
         model.check_add_category("_WIP")
         row = -1
         for i in range(model.rowCount()):
-            if model.data(model.index(i, 0), model.CatSortRole) == "_WIP":
+            if model.data(model.index(i, 0), category.SIDEBAR_KEY_ROLE) == "_WIP":
                 row = i
                 break
         self.assertGreaterEqual(

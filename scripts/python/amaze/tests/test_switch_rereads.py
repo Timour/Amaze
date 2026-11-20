@@ -13,7 +13,7 @@ from PySide6 import QtWidgets  # noqa: E402
 import hou  # noqa: E402
 
 from amaze import messages
-from amaze.core import library_db, library_files, tile_icons
+from amaze.core import category, library_db, library_files, tile_icons
 from amaze.tests import test_support
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
@@ -296,7 +296,7 @@ class AnUnreadableNodeFileDoesNotStopTheSwitch(unittest.TestCase):
                          "still serving the previous library: %s" % stranded)
         sidebar = self.panel.cop_category_model
         self.assertEqual(
-            ["_All"], [sidebar.data(sidebar.index(row, 0), sidebar.CatSortRole)
+            [""], [sidebar.data(sidebar.index(row, 0), category.SIDEBAR_KEY_ROLE)
                        for row in range(sidebar.rowCount())],
             "the Node sidebar shows categories from a file it could not read")
         self.assertEqual(0, self.panel.cop_model.rowCount())
