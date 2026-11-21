@@ -9,6 +9,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from amaze import amazetheme
 from amaze.core import debug, notes
 from amaze.helpers import theme, ui_helpers
+from amaze.panel import side_pane
 from amaze import messages
 from amaze import tooltips
 
@@ -447,14 +448,27 @@ class _NoteEdit(QtWidgets.QTextEdit):
         return items
 
 
-class NotesPanel(ui_helpers.SavedWidthPane):
-    """The dockable page for one asset's notes; saves emit `changed`."""
+def _text_field():
+    edit = _NoteEdit()
+    edit.document().setDocumentMargin(theme.ui_px(_DRAWN["doc_margin"]))    # the inset is the document's
+    return edit
+
+
+DESCRIPTION = side_pane.Page(    # what the page is made of; the engine builds it
+    drawn=_DRAWN,
+    header=side_pane.Header(
+        "icon_comments.svg", amazetheme.COMMENT_ICON_COLOR, _DRAWN["add_pad"],
+        (side_pane.Button("add_button", tuple(_DRAWN["add"]), make=lambda: _AddButton()),)),
+    body=(side_pane.Widget("text_edit", _text_field),))
+
+
+class NotesPanel(side_pane.SidePage):
+    """The side pane's page for one asset's notes; saves emit `changed`."""
 
     changed = QtCore.Signal(str)
 
     def __init__(self, preferences, parent=None) -> None:
-        super().__init__(preferences, "notes_panel_width",
-                         theme.ui_px(_DRAWN["width"]), parent)
+        super().__init__(DESCRIPTION, parent)
         self.preferences = preferences
         self._key = None
         self._library = ""    # the library the page was read from, and so the one its saves write to
@@ -468,78 +482,19 @@ class NotesPanel(ui_helpers.SavedWidthPane):
         if app is not None:
             app.aboutToQuit.connect(self.flush)
 
-        self.setMinimumWidth(theme.ui_px(220))
-        outer = QtWidgets.QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(0)
-
-        page = QtWidgets.QWidget()
-        page_box = QtWidgets.QVBoxLayout(page)
-        page_box.setContentsMargins(0, 0, 0, 0)
-        page_box.setSpacing(0)
-        outer.addWidget(page)
-
-        header = QtWidgets.QWidget()
-        ui_helpers.fill_window(header, HEADER_BG)
-        header.setFixedHeight(theme.ui_px(_DRAWN["header"]))
-        head = QtWidgets.QHBoxLayout(header)    # one row; every item is centred in the drawn height
-        head.setContentsMargins(theme.ui_px(_DRAWN["pad"]), 0,
-                                theme.ui_px(_DRAWN["add_pad"]), 0)
-        head.setSpacing(theme.ui_px(_DRAWN["gap"]))
-        self._icon_label = QtWidgets.QLabel()
-        head.addWidget(self._icon_label, 0,
-                       QtCore.Qt.AlignmentFlag.AlignVCenter)
-
-        self.name_label = QtWidgets.QLabel()
-        self.name_label.setFont(   # the font table in theme sets the weight, not this line
-            theme.font("comments_title", self.name_label.font()))
-        self.name_label.setTextFormat(QtCore.Qt.TextFormat.PlainText)    # the name is an on-disk filename - AutoText would render a tag-shaped one as HTML
-        self.type_label = QtWidgets.QLabel()
-        self.type_label.setFont(theme.ui_font(self.type_label.font()))    # the name's base font, minimum size included
-        self.type_label.setTextFormat(QtCore.Qt.TextFormat.PlainText)
-        head.addWidget(self.name_label, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
-        head.addWidget(self.type_label, 1,    # takes the free space, so the + is at the right
-                       QtCore.Qt.AlignmentFlag.AlignVCenter)
-
-        self.add_button = _AddButton()
         self.add_button.setAutoRaise(True)
-        self.add_button.setFixedSize(*(theme.ui_px(side) for side in _DRAWN["add"]))
         self.add_button.setToolTip(tooltips.NOTES_ADD_TODO)
-        self.add_button.setCursor(
-            QtCore.Qt.CursorShape.PointingHandCursor)
+        self.add_button.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         self._build_add_menu()    # the + opens a menu; InstantPopup never fires `clicked` ▸p/comment-images
-        self._paint_accents()
-        head.addWidget(self.add_button, 0,
-                       QtCore.Qt.AlignmentFlag.AlignVCenter)
-        self.header_widget = header
-        page_box.addWidget(header)
-
-        body = QtWidgets.QWidget()
-        ui_helpers.fill_window(body, PAGE_BG)
-        body_box = QtWidgets.QVBoxLayout(body)
-        body_box.setContentsMargins(0, 0, 0, 0)   # zero layout margins: the inset is the document margin
-        self.text_edit = _NoteEdit()
-        self.text_edit.document().setDocumentMargin(theme.ui_px(_DRAWN["doc_margin"]))
         self.text_edit.textChanged.connect(self._something_changed)
-        body_box.addWidget(self.text_edit, 1)
-        self.body_widget = body
-        page_box.addWidget(body, 1)
-        self._dimmed = True
         self._show_no_selection()
 
     def _paint_accents(self) -> None:
         import amaze
         dpr = theme.screen_ratio(self)
-        side, plus_side = theme.ui_px(_DRAWN["icon"]), theme.ui_px(_DRAWN["plus"])
-        dimmed = getattr(self, "_dimmed", False)    # nothing selected: labels and icons dimmed as in N01B
-        text = amazetheme.COMMENT_DIM_TEXT_OPACITY if dimmed else 1.0
-        ui_helpers.set_text_color(self.name_label, "text_bright", text)
-        ui_helpers.set_text_color(self.type_label, "text", text)
-        self._icon_label.setPixmap(ui_helpers.faded_pixmap(ui_helpers.device_pixmap(
-            amaze.package_file("ui", "icon_comments.svg"), side, dpr,
-            {amazetheme.COMMENT_ICON_ART_COLOR: amazetheme.COMMENT_DIM_ICON_COLOR if dimmed
-             else amazetheme.COMMENT_ICON_COLOR}),
-            amazetheme.COMMENT_DIM_ICON_OPACITY if dimmed else 1.0, dpr))
+        plus_side = theme.ui_px(_DRAWN["plus"])
+        dimmed = self._dimmed    # nothing selected: labels and icons dimmed as in N01B
+        self.paint_header()
         self.add_button.setIcon(QtGui.QIcon(ui_helpers.device_pixmap(
             amaze.package_file("ui", "icon_comments_add.svg"), plus_side, dpr,
             {amazetheme.COMMENT_ADD_COLOR: amazetheme.COMMENT_DIM_ADD_COLOR} if dimmed else None)))
@@ -553,9 +508,7 @@ class NotesPanel(ui_helpers.SavedWidthPane):
                          source.palette().color(
                              QtGui.QPalette.ColorRole.Text))
         self.text_edit.setPalette(palette)
-        base = theme.ui_font(source.font())
-        self.type_label.setFont(base)
-        self.name_label.setFont(theme.font("comments_title", base))
+        self.copy_header_font(source)
 
 
     def set_subject(self, subject) -> None:
@@ -580,11 +533,6 @@ class NotesPanel(ui_helpers.SavedWidthPane):
         self.text_edit.setEnabled(True)
         self.add_button.setEnabled(True)
         self._paint_accents()
-
-    def set_header(self, name: str, type_label: str) -> None:
-        """One line: the asset's name in bold, then its type."""
-        self.name_label.setText(name)
-        self.type_label.setText(type_label)
 
     def clear_subject(self) -> None:
         self.flush()

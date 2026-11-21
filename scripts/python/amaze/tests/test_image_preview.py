@@ -76,6 +76,27 @@ class AFileBecomesAnImage(_Files):
                 self.assertIsNotNone(image)
                 self.assertEqual((100, 50), (image.width(), image.height()))
 
+    def test_a_photo_stored_turned_is_as_wide_as_asked_once_it_is_upright(self):
+        path = os.path.join(self.folder, "turned.jpg")
+        spec = oiio.ImageSpec(400, 200, 3, oiio.UINT8)
+        spec.attribute("Orientation", 6)    # stored lying down, shown turned a quarter: a camera's flag
+        stored = oiio.ImageBuf(spec)
+        oiio.ImageBufAlgo.fill(stored, (0.4, 0.5, 0.6))
+        self.assertTrue(stored.write(path), stored.geterror())
+        turned = QtGui.QImageReader(path).transformation()
+        self.assertEqual(QtGui.QImageIOHandler.Transformation.TransformationRotate90, turned)
+        image = image_preview.read(path, 100)
+        self.assertEqual((100, 200), (image.width(), image.height()))
+
+    def test_a_scaled_picture_keeps_only_the_channels_it_shows(self):
+        for channels, names, form in (
+                (2, ("Y", "A"), QtGui.QImage.Format.Format_Grayscale8),
+                (4, ("R", "G", "B", "Z"), QtGui.QImage.Format.Format_RGB888)):
+            with self.subTest(channels=channels):
+                path = self.file("c%d.exr" % channels, 200, 100, channels, oiio.HALF, names=names)
+                image = image_preview.read(path, 100)
+                self.assertEqual((100, 50, form), (image.width(), image.height(), image.format()))
+
     def test_a_picture_narrower_than_the_width_keeps_its_size(self):
         for name in ("a.exr", "a.png"):
             with self.subTest(name=name):

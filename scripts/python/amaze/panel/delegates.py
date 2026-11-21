@@ -130,6 +130,14 @@ class GridCellDelegate(QtWidgets.QStyledItemDelegate):
         return cls._style(widget).pixelMetric(
             QtWidgets.QStyle.PixelMetric.PM_FocusFrameHMargin, None, widget) + 1
 
+    def sizeHint(self, option, index) -> QtCore.QSize:
+        """The cell's own size, as high as its view's rows are set to be."""
+        size = super().sizeHint(option, index)
+        height = getattr(self.parent(), "row_height", lambda: 0)()
+        if height:
+            size.setHeight(height)
+        return size
+
     def text_shift(self, widget) -> int:
         """How far right of the style's own text margin the text starts, to sit at TEXT_INSET."""
         return max(self.TEXT_INSET - self.text_margin(widget), 0)

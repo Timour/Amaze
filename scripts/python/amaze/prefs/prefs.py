@@ -90,6 +90,7 @@ class Prefs(_Persistence):
         self._show_notes = False
         self._show_info = False
         self._info_preview = True
+        self._info_preview_height = 0
         self._notes_panel_width = 0  # 0 = never dragged, so the 450px launch width applies
         self._sidebar_width = 0  # same rule, 220px design width
         self._icon_line_weight = "template"  # "template" (thin 10px stroke) or "feather" (the icon set's default)
@@ -380,6 +381,15 @@ class Prefs(_Persistence):
     @info_preview.setter
     def info_preview(self, val: bool) -> None:
         self._info_preview = bool(val)
+
+    @property
+    def info_preview_height(self) -> int:
+        """The Info pane's picture area as dragged, in px; 0 until its line is dragged."""
+        return self._info_preview_height
+
+    @info_preview_height.setter
+    def info_preview_height(self, val: int) -> None:
+        self._info_preview_height = max(0, int(val or 0))
 
     @property
     def notes_panel_width(self) -> int:

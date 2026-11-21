@@ -273,10 +273,10 @@ class TheRealPanelInListMode(unittest.TestCase):
         self.assertTrue(checked, "nothing was measured - not a test")
 
     def test_a_list_row_is_a_text_line_tall(self):
-        """A list row fits its 16px thumbnail and one text line, read off the table vertical header."""
+        """A list row fits its 16px thumbnail and one text line, as the view sizes its rows."""
         self._mode("list")
         self.addCleanup(self._mode, "grid")
-        height = self.panel.thumbtable.verticalHeader().defaultSectionSize()
+        height = self.panel.thumbtable.sizeHintForRow(0)
         fm = QtGui.QFontMetrics(self.panel.thumbtable.font())
         self.assertLessEqual(
             height, max(fm.height(), self.panel.LIST_THUMB_SIZE)

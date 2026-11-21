@@ -669,11 +669,13 @@ sits, and opening one closes the other. The button is yellow while the
 pane is open.
 
 When one image file is selected, the pane shows the picture above the
-rows. The picture fills the width of the pane, and its height depends
-on its aspect ratio. EXR, HDR and other float files are shown with the
-OCIO display view. `.rat` and `.pic` files have no picture. The button
-at the right of the header shows and hides the image preview, and the
-choice is remembered.
+rows. The picture is shown whole, centred in its area. Drag the line
+under the picture to set the height of the area; the height is
+remembered. The area stops growing where the picture is as wide as the
+pane. EXR, HDR and other float files are shown with the OCIO display
+view. `.rat` and `.pic` files have no picture. The button at the right
+of the header shows and hides the image preview, and the choice is
+remembered.
 
 The pane lists facts about the selected tile, one per row:
 

@@ -1,4 +1,4 @@
-"""The info pane: an image file's picture, then a read-only table of facts about the selection."""
+"""The info page: an image file's picture, then a read-only table of facts about the selection."""
 
 from __future__ import annotations
 
@@ -7,191 +7,29 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from amaze import amazetheme
 from amaze.core import file_info, image_preview
 from amaze.helpers import theme, ui_helpers
-
-HEADER_BG = amazetheme.COMMENT_HEADER_BG    # the comments pane's header and page colours
-PAGE_BG = amazetheme.COMMENT_PAGE_BG
+from amaze.panel import side_pane
 
 _DRAWN = amazetheme.drawn_info()    # every size and spacing below is from the N02 design frame
 WIDER_READ_MS = 150    # a pane dragged wider reads its picture again this long after the last resize
 
-
-class _Preview(QtWidgets.QWidget):
-    """An image file's picture across the pane's width, its height from its shape; hidden without one."""
-
-    def __init__(self, parent=None) -> None:
-        super().__init__(parent)
-        self._image = None
-        self.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
-        ui_helpers.fill_window(self, PAGE_BG)    # shows through a picture with transparency
-        self.hide()
-
-    def image(self):
-        return self._image
-
-    def set_image(self, image) -> None:
-        """Show `image`, a QImage, or None for no picture."""
-        self._image = image
-        self._fit()
-        self.setVisible(image is not None)
-        self.update()
-
-    def _fit(self) -> None:
-        image = self._image
-        height = round(self.width() * image.height() / image.width()) if image is not None else 0
-        if height != self.height() or self.minimumHeight() != height:
-            self.setFixedHeight(height)
-
-    def resizeEvent(self, event) -> None:
-        super().resizeEvent(event)
-        self._fit()    # the height follows the width; the width is the pane's
-
-    def paintEvent(self, _event) -> None:
-        if self._image is None:
-            return
-        painter = QtGui.QPainter(self)
-        try:
-            painter.setRenderHint(QtGui.QPainter.RenderHint.SmoothPixmapTransform)
-            painter.drawImage(self.rect(), self._image)
-        finally:
-            painter.end()
+DESCRIPTION = side_pane.Page(    # what the page is made of; the engine builds it
+    drawn=_DRAWN,
+    header=side_pane.Header(
+        "icon_info.svg", amazetheme.INFO_ICON_COLOR, _DRAWN["preview_button_pad"],
+        (side_pane.Button("preview_button", _DRAWN["preview_button"]),)),
+    body=(side_pane.Picture("preview", _DRAWN["preview_height"], amazetheme.INFO_PREVIEW_LEAST),
+          side_pane.DragLine("drag_line", _DRAWN["drag_line"]),
+          side_pane.Rows("table", _DRAWN)))
 
 
-class _InfoRows(QtWidgets.QStyledItemDelegate):
-    """A row's two texts at their drawn places; the row itself is the style's."""
-
-    def sizeHint(self, option, index) -> QtCore.QSize:
-        return QtCore.QSize(0, theme.ui_px(_DRAWN["row"]))
-
-    def paint(self, painter, option, index) -> None:
-        table = self.parent()
-        label, value = table.shown_text(index.row())
-        box = table.text_rects(index.row())[index.column()]
-        painter.save()
-        painter.setFont(table.font())
-        painter.setPen(QtGui.QColor(amazetheme.INFO_TEXT))
-        painter.drawText(box, QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter,
-                         value if index.column() else label)
-        painter.restore()
-
-
-class _InfoTable(QtWidgets.QTreeWidget):
-    """The rows: labels on the left, values on the right, a line between the columns."""
-
-    def __init__(self, parent=None) -> None:
-        super().__init__(parent)
-        ui_helpers.striped_rows(self)
-        self._rows = ()
-        self.setColumnCount(2)
-        self.setIndentation(0)
-        self.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
-        self.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
-        self.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.NoContextMenu)
-        self.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.NoSelection)
-        self.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)    # the pane scrolls
-        self.header().setMinimumSectionSize(1)
-        self.header().setStretchLastSection(True)
-        self.header().resizeSection(0, theme.ui_px(_DRAWN["divider_x"]))
-        self.setItemDelegate(_InfoRows(self))
-
-    def rows(self) -> tuple:
-        return self._rows
-
-    def set_rows(self, rows) -> None:
-        """Show `rows`, (label, value) pairs; the table is at least as tall as its rows."""
-        self._rows = tuple((str(label), str(value)) for label, value in rows)
-        self.clear()
-        for label, value in self._rows:
-            item = QtWidgets.QTreeWidgetItem([label, value])
-            item.setFlags(QtCore.Qt.ItemFlag.ItemIsEnabled)
-            self.addTopLevelItem(item)
-        self.setMinimumHeight(self._row_top(len(self._rows)))    # the scroll area scrolls past it
-
-    @staticmethod
-    def _row_top(index: int) -> int:
-        return theme.ui_px(_DRAWN["first_row"]) + index * theme.ui_px(_DRAWN["row"])
-
-    def _columns(self) -> tuple:
-        """(label x, label width, value x, value width); each column keeps the drawn gaps."""
-        label_x = theme.ui_px(_DRAWN["label_x"])
-        value_x = theme.ui_px(_DRAWN["value_x"])
-        divider_x = theme.ui_px(_DRAWN["divider_x"])
-        label_w = divider_x - (value_x - divider_x) - label_x    # the divider's gap on its left too
-        value_w = self.viewport().width() - value_x - label_x    # the label's inset on the right edge
-        return label_x, max(0, label_w), value_x, max(0, value_w)
-
-    def text_rects(self, index: int) -> tuple:
-        """(label box, value box) of row `index`: the drawn text height, dropped into its row."""
-        label_x, label_w, value_x, value_w = self._columns()
-        text_y = theme.ui_px(_DRAWN["text_y"])
-        top = self._row_top(index) + text_y
-        text_h = theme.ui_px(_DRAWN["row"]) - 2 * text_y    # centred: as much below as above
-        return (QtCore.QRect(label_x, top, label_w, text_h),
-                QtCore.QRect(value_x, top, value_w, text_h))
-
-    def shown_text(self, index: int) -> tuple:
-        """(label, value) of row `index` as painted: label elided right, value in the middle."""
-        label, value = self._rows[index]
-        _label_x, label_w, _value_x, value_w = self._columns()    # the same widths text_rects gives
-        metrics = self.fontMetrics()
-        return (metrics.elidedText(label, QtCore.Qt.TextElideMode.ElideRight, label_w),
-                metrics.elidedText(value, QtCore.Qt.TextElideMode.ElideMiddle, value_w))
-
-    def row_at(self, pos) -> int:
-        """The row under `pos`, or -1."""
-        top = theme.ui_px(_DRAWN["first_row"])
-        if pos.y() < top:
-            return -1
-        index = (pos.y() - top) // theme.ui_px(_DRAWN["row"])
-        return index if index < len(self._rows) else -1
-
-    def tooltip_at(self, pos) -> str:
-        """The whole value of the row under `pos` when it is shown elided, else ""."""
-        index = self.row_at(pos)
-        if index < 0:
-            return ""
-        value = self._rows[index][1]
-        return value if self.shown_text(index)[1] != value else ""
-
-    def _show_tooltip(self, event) -> bool:
-        text = self.tooltip_at(event.pos())
-        if text:
-            QtWidgets.QToolTip.showText(event.globalPos(), ui_helpers.tooltip_text(text), self)
-        else:
-            QtWidgets.QToolTip.hideText()
-            event.ignore()
-        return True
-
-    def event(self, event) -> bool:
-        if event.type() == QtCore.QEvent.Type.ToolTip:
-            return self._show_tooltip(event)
-        return super().event(event)
-
-    def viewportEvent(self, event) -> bool:
-        if event.type() == QtCore.QEvent.Type.ToolTip:
-            return self._show_tooltip(event)
-        return super().viewportEvent(event)
-
-    def paintEvent(self, event) -> None:
-        super().paintEvent(event)    # the rows, striped by the style to the bottom
-        painter = QtGui.QPainter(self.viewport())
-        try:
-            line = theme.ui_px(amazetheme.INFO_DIVIDER_WIDTH)
-            painter.fillRect(theme.ui_px(_DRAWN["divider_x"]) - line // 2, 0, line, self.viewport().height(),
-                             self.palette().brush(QtGui.QPalette.ColorRole.Base))    # the rows' ground
-        finally:
-            painter.end()
-
-
-class InfoPanel(ui_helpers.SavedWidthPane):
-    """The side pane showing a selection's facts; it reads a file only while it is shown."""
+class InfoPanel(side_pane.SidePage):
+    """The side pane's page showing a selection's facts; it reads a file only while it is shown."""
 
     shown = QtCore.Signal()    # each show: the panel points it at the selection again
 
     def __init__(self, preferences, reader=None, parent=None, pictures=None) -> None:
-        super().__init__(preferences, "notes_panel_width",    # the comments pane's place and width
-                         theme.ui_px(_DRAWN["width"]), parent)
+        super().__init__(DESCRIPTION, parent)
+        self._preferences = preferences
         if reader is None:
             reader = file_info.Reader()
             reader.setParent(self)
@@ -208,100 +46,43 @@ class InfoPanel(ui_helpers.SavedWidthPane):
         self._wider.setInterval(WIDER_READ_MS)
         self._wider.timeout.connect(self._ask_picture)
         self._subject = None
-
-        self.setMinimumWidth(theme.ui_px(220))
-        outer = QtWidgets.QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(0)
-
-        header = QtWidgets.QWidget()
-        ui_helpers.fill_window(header, HEADER_BG)
-        header.setFixedHeight(theme.ui_px(_DRAWN["header"]))
-        head = QtWidgets.QHBoxLayout(header)    # one row; every item is centred in the drawn height
-        head.setContentsMargins(theme.ui_px(_DRAWN["pad"]), 0, theme.ui_px(_DRAWN["preview_button_pad"]), 0)
-        head.setSpacing(theme.ui_px(_DRAWN["gap"]))
-        self._icon_label = QtWidgets.QLabel()
-        head.addWidget(self._icon_label, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
-        self.name_label = QtWidgets.QLabel()
-        self.name_label.setFont(theme.font("comments_title", self.name_label.font()))
-        self.name_label.setTextFormat(QtCore.Qt.TextFormat.PlainText)    # a name on disk, not HTML
-        self.type_label = QtWidgets.QLabel()
-        self.type_label.setFont(theme.ui_font(self.type_label.font()))
-        self.type_label.setTextFormat(QtCore.Qt.TextFormat.PlainText)
-        head.addWidget(self.name_label, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
-        head.addWidget(self.type_label, 1, QtCore.Qt.AlignmentFlag.AlignVCenter)
-        self.preview_button = QtWidgets.QToolButton()    # Hide Preview / Show Preview, over an image file
-        self.preview_button.setObjectName("preview_button")
-        self.preview_button.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
-        self.preview_button.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-        self.preview_button.setStyleSheet(    # on the button itself: art only, no frame
-            "QToolButton#preview_button { border: none; background: transparent; padding: 0; }")
-        side = theme.ui_px(_DRAWN["preview_button"])
-        self.preview_button.setFixedSize(side, side)
-        self.preview_button.setIconSize(QtCore.QSize(side, side))
-        self.preview_button.clicked.connect(self.toggle_preview)
-        self.preview_button.hide()
-        head.addWidget(self.preview_button, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
-        self.header_widget = header
-        outer.addWidget(header)
-
-        self.preview = _Preview()
-        self.table = _InfoTable()
         self.table.setFont(self.type_label.font())
-        body = QtWidgets.QWidget()    # the picture, then the table filling what is left
-        ui_helpers.fill_window(body, PAGE_BG)
-        column = QtWidgets.QVBoxLayout(body)
-        column.setContentsMargins(0, 0, 0, 0)
-        column.setSpacing(0)
-        column.addWidget(self.preview)
-        column.addWidget(self.table, 1)
-        scroll = QtWidgets.QScrollArea()
-        scroll.setFrameStyle(QtWidgets.QFrame.Shape.NoFrame)
-        scroll.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
-        scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setWidgetResizable(True)    # the body takes the pane's width; long values elide
-        scroll.setWidget(body)
-        ui_helpers.fill_window(scroll.viewport(), PAGE_BG)
-        self.body_widget = scroll
-        outer.addWidget(scroll, 1)
-        self._dimmed = True
+        self.preview_button.setIconSize(self.preview_button.size())
+        self.preview_button.clicked.connect(self.toggle_preview)
+        self.preview_button.hide()    # only an image file has a picture to hide
+        saved = int(getattr(preferences, "info_preview_height", 0) or 0)
+        if saved:
+            self.body_widget.set_wanted_height(saved)
+        self.body_widget.height_set.connect(self._on_height_set)
         self._show_no_selection()
 
     def copy_font(self, source: QtWidgets.QWidget) -> None:
-        """Take the base font from a .ui-loaded sibling, as the comments pane does."""
-        base = theme.ui_font(source.font())
-        self.type_label.setFont(base)
-        self.name_label.setFont(theme.font("comments_title", base))
-        self.table.setFont(base)
+        """Take the base font from a .ui-loaded sibling."""
+        self.table.setFont(self.copy_header_font(source))
 
     def _paint_accents(self) -> None:
         import amaze
-        dpr = theme.screen_ratio(self)
-        dimmed = self._dimmed    # nothing selected: labels and icon dimmed as the comments pane's
-        text = amazetheme.COMMENT_DIM_TEXT_OPACITY if dimmed else 1.0
-        ui_helpers.set_text_color(self.name_label, "text_bright", text)
-        ui_helpers.set_text_color(self.type_label, "text", text)
-        ink = amazetheme.COMMENT_DIM_ICON_COLOR if dimmed else amazetheme.INFO_ICON_COLOR
+        self.paint_header()
         shown = self.preview_shown()
         self.preview_button.setIcon(QtGui.QIcon(ui_helpers.device_pixmap(
             amaze.package_file("ui", "icon_preview_hide.svg" if shown else "icon_preview_show.svg"),
-            theme.ui_px(_DRAWN["preview_button"]), dpr,
-            {amazetheme.INFO_ICON_ART_COLOR: amazetheme.INFO_ICON_COLOR})))
+            theme.ui_px(_DRAWN["preview_button"]), theme.screen_ratio(self))))
         self.preview_button.setToolTip(ui_helpers.tooltip_text(
             amazetheme.INFO_HIDE_PREVIEW if shown else amazetheme.INFO_SHOW_PREVIEW))
-        self._icon_label.setPixmap(ui_helpers.faded_pixmap(ui_helpers.device_pixmap(
-            amaze.package_file("ui", "icon_info.svg"), theme.ui_px(_DRAWN["icon"]), dpr,
-            {amazetheme.INFO_ICON_ART_COLOR: ink}),
-            amazetheme.COMMENT_DIM_ICON_OPACITY if dimmed else 1.0, dpr))
 
     def rows(self) -> tuple:
         """The rows shown, for tests."""
         return self.table.rows()
 
-    def set_header(self, name: str, type_label: str) -> None:
-        """One line: the selection's name in bold, then its type."""
-        self.name_label.setText(name)
-        self.type_label.setText(type_label)
+    def _save(self) -> None:
+        save = getattr(self._preferences, "save", None)
+        if save is not None:
+            save()
+
+    def _on_height_set(self, height: int) -> None:
+        """A drag of the line ended: the picture area's height is remembered."""
+        self._preferences.info_preview_height = int(height)
+        self._save()
 
     def set_subject(self, subject) -> None:
         """Show a `file_info.Subject`; its read is asked for only while the pane is shown."""
@@ -344,9 +125,7 @@ class InfoPanel(ui_helpers.SavedWidthPane):
     def toggle_preview(self) -> None:
         """Hide or show the picture, remember it, and read the picture again when it is shown."""
         self._preferences.info_preview = not self.preview_shown()
-        save = getattr(self._preferences, "save", None)
-        if save is not None:
-            save()
+        self._save()
         self._paint_accents()
         self.preview.set_image(None)
         self._ask_picture()
@@ -362,7 +141,7 @@ class InfoPanel(ui_helpers.SavedWidthPane):
 
     def _picture_width(self) -> int:
         """The pane's width in screen pixels: the picture is read no wider."""
-        return max(1, round(self.body_widget.viewport().width() * theme.screen_ratio(self)))
+        return max(1, round(self.body_widget.width() * theme.screen_ratio(self)))
 
     def _ask_picture(self) -> None:
         self._wider.stop()

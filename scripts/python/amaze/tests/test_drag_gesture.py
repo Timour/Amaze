@@ -785,10 +785,9 @@ class TheGestureRunsOnBOTHViews(unittest.TestCase):
         self.assertEqual(
             QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows,
             view.selectionBehavior())
-        self.assertFalse(view.verticalHeader().isVisible())
-        self.assertFalse(view.showGrid(),
-                         "the table paints Qt's own grid lines over a "
-                         "row that draws its own dividers")
+        self.assertIsInstance(view, QtWidgets.QTreeView, "list mode is not the app's one kind of row list")
+        self.assertFalse(view.isHeaderHidden(), "list mode has no headline")
+        self.assertTrue(view.alternatingRowColors())
 
     def test_the_debug_helper_does_not_raise_on_a_view_with_no_gridSize(self):
         """A table has no grid size, and this debug helper runs in the scroll path under Debug Mode."""

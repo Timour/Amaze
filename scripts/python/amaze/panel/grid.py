@@ -261,15 +261,10 @@ def show_table(panel, showing: bool) -> None:
     if table is None:
         return
     if showing:
-        header = table.verticalHeader()
-        header.setSectionResizeMode(
-            QtWidgets.QHeaderView.ResizeMode.Fixed)
         model = table.model()
         if model is not None and model.rowCount():
-            hint = sidebar_row_height(panel, table)    # the CATEGORY list sets the row height: two delegates measuring separately differed by 2px
-            header.setMinimumSectionSize(hint)    # the minimum FIRST, or the default is silently clamped to the style's 19 ▸r/min-section-first
-            header.setDefaultSectionSize(hint)
-        table_palette = QtGui.QPalette(panel.thumblist.palette())    # a QTableView brings the platform's palette: white rows on a dark panel without this
+            table.set_row_height(sidebar_row_height(panel, table))    # the CATEGORY list sets the row height: two delegates measuring separately differed by 2px
+        table_palette = QtGui.QPalette(panel.thumblist.palette())
         table_palette.setColor(
             QtGui.QPalette.ColorRole.Text, delegates.AssetItemDelegate.TEXT_COLOR)    # resolved through the module, which is reloaded per Houdini session - never bound at import
         table.setPalette(table_palette)
@@ -366,7 +361,7 @@ def sync_table_columns(panel) -> None:
     source = (inner() if inner is not None else None) or source
     column_role = getattr(source, "_column_role", None)
 
-    header = table.horizontalHeader()
+    header = table.header()
     for column, key in enumerate(grid_columns.KEYS):
         attribute = roles.get(key)
         if attribute is None:
@@ -403,13 +398,13 @@ def sync_sort_indicator(panel) -> None:
     model = proxy.sourceModel() if proxy is not None else None
     if not isinstance(model, grid_engine.GridEngine):
         return
-    table.horizontalHeader().setSortIndicator(    # an unchanged arrow emits nothing
+    table.header().setSortIndicator(    # an unchanged arrow emits nothing
         model.sort_column(), model.sort_order())
 
 
 def style_table_header(panel) -> None:
-    """Style the table header; a heading click sorts, an edge drag resizes."""
-    header = panel.thumbtable.horizontalHeader()
+    """Set up the list's headline, which the style paints; a heading click sorts, an edge drag resizes."""
+    header = panel.thumbtable.header()
     header.setFixedHeight(panel.HEADER_HEIGHT)
     header.setStretchLastSection(False)
     header.setHighlightSections(False)
@@ -423,16 +418,6 @@ def style_table_header(panel) -> None:
     header.setDefaultAlignment(
         QtCore.Qt.AlignmentFlag.AlignLeft
         | QtCore.Qt.AlignmentFlag.AlignVCenter)
-    header.setStyleSheet(
-        "QHeaderView { background-color: %s; border: 0; }"
-        "QHeaderView::section {"
-        "  background-color: %s; color: %s; border: 0;"
-        "  border-right: 1px solid %s; padding-left: %dpx;"
-        "}" % (
-            panel.HEADER_BG.name(), panel.HEADER_BG.name(),
-            delegates.AssetItemDelegate.LIST_TEXT_COLOR.name(),
-            panel.HEADER_DIVIDER.name(), panel.CELL_PAD,
-        ))
 
 
 def apply_view_mode(panel) -> None:
@@ -443,7 +428,7 @@ def apply_view_mode(panel) -> None:
     ts = active_thumbsize(panel)
     try:
         if panel.prefs.view_mode == "list":
-            restore_drag_mode(panel)    # list mode is the table; the QListView stays in IconMode
+            restore_drag_mode(panel)    # list mode is the row list; the QListView stays in IconMode
             show_table(panel, True)    # show_table ends with sync_table_columns
         else:
             panel.thumblist.setViewMode(QtWidgets.QListView.ViewMode.IconMode)

@@ -141,6 +141,19 @@ class TheInfoPaneChoiceIsKept(PerUserCase):
         again.load()
         self.assertFalse(again.info_preview, "info_preview did not load back")
 
+    def test_info_preview_height_is_unset_at_first_and_survives_a_save_and_a_load(self):
+        self.write_settings({"library_user": UID_A, "users": {UID_A: {}}})
+        p = self.prefs()
+        p.load()
+        self.assertEqual(0, p.info_preview_height, "a height is set before the line was ever dragged")
+        p.info_preview_height = 212
+        p.save()
+        self.assertEqual(212, self.read_settings()["users"][UID_A].get("info_preview_height"),
+                         "info_preview_height was not written to the user's block")
+        again = self.prefs()
+        again.load()
+        self.assertEqual(212, again.info_preview_height, "info_preview_height did not load back")
+
 
 class OneLayoutIsReadAndWritten(PerUserCase):
     """With a user picked, view state comes only from their block; unknown keys stay in the file."""

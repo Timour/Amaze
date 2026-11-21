@@ -115,14 +115,9 @@ class TheInfoPaneMatchesItsDesignFrame(_PaneCase):
     def test_drawn_info_reads_the_frame(self):
         self.assertEqual(
             {"width": 450, "header": 30, "pad": 10, "gap": 6, "icon": 20, "row": 19,
-             "first_row": 0, "label_x": 12, "value_x": 109, "text_y": 2, "divider_x": 100,
-             "preview_button": 18, "preview_button_pad": 8},
+             "label_x": 12, "value_x": 109, "text_y": 2, "divider_x": 100,
+             "preview_button": 15, "preview_button_pad": 8, "preview_height": 298, "drag_line": 2},
             amazetheme.drawn_info())
-
-    def test_the_pane_asks_for_the_drawn_width_under_the_comments_key(self):
-        self.assertEqual(self.px(450), self.pane.sizeHint().width())
-        self.pane._preferences.notes_panel_width = 333
-        self.assertEqual(333, self.pane.sizeHint().width(), "the width is not the shared one")
 
     def test_the_header_is_where_it_is_drawn(self):
         header, icon, name = self.node("header"), self.node("icon", "header"), self.node("text", "name")
@@ -138,11 +133,26 @@ class TheInfoPaneMatchesItsDesignFrame(_PaneCase):
                          (self._at(button).x(), self._at(button).y(), button.width(), button.height()))
         self.assertEqual(self.px(drawn[3]), button.iconSize().width())
 
-    def test_the_preview_is_where_it_is_drawn(self):
+    def test_the_picture_is_where_it_is_drawn_whole_and_centred(self):
         drawn, preview = self.node("preview"), self.pane.preview
         self.assertTrue(preview.isVisible())
+        picture = preview.picture_rect().translated(self._at(preview))
         self.assertEqual(tuple(self.px(v) for v in drawn[1:5]),
-                         (self._at(preview).x(), self._at(preview).y(), preview.width(), preview.height()))
+                         (picture.x(), picture.y(), picture.width(), picture.height()))
+        self.assertEqual((0, self.pane.width()), (self._at(preview).x(), preview.width()),
+                         "the picture's area is not the pane's width")
+
+    def test_the_drag_line_is_where_it_is_drawn(self):
+        drawn, line = self.node("line", "drag"), self.pane.drag_line
+        self.assertTrue(line.isVisible())
+        self.assertEqual((self.px(drawn[2]), self.px(drawn[4])), (self._at(line).y() + line.grab, line.line))
+        self.assertEqual(self.pane.width(), line.width())
+        painted = QtGui.QImage(line.size(), QtGui.QImage.Format.Format_ARGB32)
+        painted.fill(QtCore.Qt.GlobalColor.transparent)
+        line.render(painted, QtCore.QPoint(), QtGui.QRegion(), QtWidgets.QWidget.RenderFlag.DrawChildren)
+        rows = [painted.pixelColor(5, y).name() if painted.pixelColor(5, y).alpha() else None
+                for y in range(line.height())]
+        self.assertEqual([None] * line.grab + [amazetheme.DRAG_LINE_COLOR] * line.line + [None] * line.grab, rows)
 
     def test_every_drawn_row_is_where_the_table_paints_it(self):
         body = self.node("body")
@@ -150,8 +160,8 @@ class TheInfoPaneMatchesItsDesignFrame(_PaneCase):
         for row in amazetheme.drawn_nodes("N02", "row"):
             index = int(amazetheme.drawn_name(row)[1]) - 1
             with self.subTest(row=index + 1):
-                self.assertEqual(self.px(row[2] - body[2]), self.table._row_top(index))
-                self.assertEqual(self.px(row[4]), self.table._row_top(index + 1) - self.table._row_top(index))
+                self.assertEqual(self.px(row[2] - body[2]), self.table.row_top(index))
+                self.assertEqual(self.px(row[4]), self.table.row_top(index + 1) - self.table.row_top(index))
 
     def test_every_drawn_text_box_is_where_the_table_paints_it(self):
         body = self.node("body")
@@ -183,14 +193,14 @@ class TheInfoPaneMatchesItsDesignFrame(_PaneCase):
 
     def test_the_style_stripes_the_rows_and_the_divider_is_two_pixels_on_its_x(self):
         image = self._painted()
-        second = self.table.palette().color(QtGui.QPalette.ColorRole.AlternateBase).name()
-        rows = [image.pixelColor(self.px(5), self.table._row_top(i) + self.px(1)).name() for i in range(4)]
-        self.assertEqual([False, True, False, True], [row == second for row in rows],
+        rows = [image.pixelColor(self.px(5), self.table.row_top(i) + self.px(1)).name() for i in range(5)]
+        second = rows[1]    # the style's second row colour, whatever the palette is
+        self.assertEqual([False, True, False, True, False], [row == second for row in rows],
                          "rows 2 and 4, and only they, take the style's second row colour")
         self.assertEqual(2, amazetheme.INFO_DIVIDER_WIDTH)
         line, x = self.px(amazetheme.INFO_DIVIDER_WIDTH), self.px(self.node("divider")[1])
         start = x - line // 2    # centred: 99 and 100 for a 2px line on x 100
-        y = self.table._row_top(1) + self.px(1)    # the line shows on a row of the second colour
+        y = self.table.row_top(1) + self.px(1)    # the line shows on a row of the second colour
         across = [image.pixelColor(at, y).name() == second for at in range(start - 1, start + line + 1)]
         self.assertEqual([True] + [False] * line + [True], across,
                          "the divider is not %dpx centred on x %d" % (line, x))
@@ -223,7 +233,7 @@ class APictureForAnImageFile(_PaneCase):
 
     def test_an_image_file_is_asked_for_at_the_panes_width_in_screen_pixels(self):
         self.pane.set_subject(self._file("/lib/a.exr"))
-        width = round(self.pane.body_widget.viewport().width() * theme.screen_ratio(self.pane))
+        width = round(self.pane.body_widget.width() * theme.screen_ratio(self.pane))
         self.assertEqual([("/lib/a.exr", width)], self.pictures.asked)
         self.assertFalse(self.pane.preview.isVisible(), "a preview showed before its picture arrived")
         self.assertEqual(self.pane.header_widget.height(),
@@ -235,9 +245,10 @@ class APictureForAnImageFile(_PaneCase):
         QtWidgets.QApplication.processEvents()
         preview = self.pane.preview
         self.assertTrue(preview.isVisible())
-        self.assertEqual(self.pane.body_widget.viewport().width(), preview.width())
-        self.assertEqual(round(preview.width() * 200 / 800), preview.height())
-        self.assertEqual(self.pane.header_widget.height() + preview.height(),
+        self.assertEqual(self.pane.body_widget.width(), preview.width())
+        self.assertEqual(round(preview.width() * 200 / 800), preview.height(),
+                         "a wide picture's area is not exactly as tall as the picture")
+        self.assertEqual(self.pane.header_widget.height() + preview.height() + self.pane.drag_line.line,
                          self.pane.table.mapTo(self.pane, QtCore.QPoint(0, 0)).y())
 
     def test_another_files_picture_is_dropped(self):
@@ -312,12 +323,95 @@ class APictureForAnImageFile(_PaneCase):
         self.assertIsNotNone(self.pane.preview.image())
         self.assertTrue(self.pane.preview.isVisible())
 
-    def test_the_button_art_is_the_info_colour(self):
+    def test_the_button_art_is_the_drawn_colour(self):
         self.pane.set_subject(self._file("/lib/a.exr", "a"))
-        image, wanted = self._art(), QtGui.QColor(amazetheme.INFO_ICON_COLOR)
+        image, wanted = self._art(), QtGui.QColor(amazetheme.INFO_BUTTON_COLOR)
         found = {image.pixelColor(x, y).name() for x in range(image.width()) for y in range(image.height())
                  if image.pixelColor(x, y).alpha() == 255}
         self.assertEqual({wanted.name()}, found)
+
+    def _show(self, width, height):
+        self.pictures.image = _picture(width, height)
+        self.pane.set_subject(self._file("/lib/a.exr", "a"))
+        QtWidgets.QApplication.processEvents()
+        return self.pane.preview, self.pane.body_widget
+
+    def test_a_tall_picture_gets_the_drawn_height_and_is_shown_whole_between_the_side_colour(self):
+        preview, body = self._show(400, 1200)
+        self.assertEqual(theme.ui_px(amazetheme.drawn_info()["preview_height"]), preview.height())
+        picture = preview.picture_rect()
+        self.assertEqual((round(preview.height() / 3), preview.height()), (picture.width(), picture.height()))
+        self.assertEqual((preview.width() - picture.width()) // 2, picture.x(), "the picture is not centred")
+        shown = preview.grab().toImage()
+        self.assertEqual(QtGui.QColor(amazetheme.COMMENT_PAGE_BG).name(), shown.pixelColor(3, 3).name())
+
+    def test_dragging_the_line_sets_the_height_and_the_release_remembers_it(self):
+        saves = []
+        self.pane._preferences.save = lambda: saves.append(self.pane._preferences.info_preview_height)
+        preview, body = self._show(400, 1200)
+        self.pane.drag_line.moved.emit(200)
+        self.assertEqual(200, preview.height())
+        self.assertEqual(self.pane.header_widget.height() + 200 + self.pane.drag_line.line,
+                         self.pane.table.mapTo(self.pane, QtCore.QPoint(0, 0)).y())
+        self.assertEqual([], saves, "the height was saved while the drag was still on")
+        self.pane.drag_line.released.emit()
+        self.assertEqual([200], saves)
+
+    def test_the_line_stops_where_the_picture_touches_both_sides(self):
+        preview, body = self._show(900, 600)
+        most = round(preview.width() * 600 / 900)
+        self.pane.drag_line.moved.emit(most + 150)
+        self.assertEqual(most, preview.height(), "the area grew past the picture's full width")
+        self.assertEqual(most, body.wanted_height(), "dragging past the stop was remembered")
+        self.assertEqual(preview.rect(), preview.picture_rect(), "there is a band beside or above the picture")
+
+    def test_the_line_never_takes_the_area_under_two_rows(self):
+        preview, body = self._show(900, 600)
+        self.pane.drag_line.moved.emit(0)
+        self.assertEqual(theme.ui_px(amazetheme.INFO_PREVIEW_LEAST), preview.height())
+
+    def test_a_wide_picture_leaves_the_remembered_height_alone(self):
+        preview, body = self._show(400, 1200)
+        self.pane.drag_line.moved.emit(260)
+        self.pictures.image = _picture(800, 200)
+        self.pane.set_subject(self._file("/lib/wide.exr", "w"))
+        QtWidgets.QApplication.processEvents()
+        self.assertEqual(round(preview.width() * 200 / 800), preview.height())
+        self.assertEqual(260, body.wanted_height())
+
+    def test_a_saved_height_is_the_one_the_pane_opens_with(self):
+        prefs = _prefs()
+        prefs.info_preview_height = 180
+        pane = info_panel.InfoPanel(prefs, _Reader(), pictures=self.pictures)
+        self.addCleanup(pane.deleteLater)
+        pane.resize(self.pane.size())
+        pane.show()
+        self.pictures.image = _picture(400, 1200)
+        pane.set_subject(self._file("/lib/a.exr", "a"))
+        QtWidgets.QApplication.processEvents()
+        self.assertEqual(180, pane.preview.height())
+
+    def test_no_picture_means_no_line_and_the_table_under_the_header(self):
+        self.pane.set_subject(self._file("/lib/a.bgeo.sc", "g"))
+        QtWidgets.QApplication.processEvents()
+        self.assertFalse(self.pane.drag_line.isVisible())
+        self.assertFalse(self.pane.preview.isVisible())
+        self.assertEqual(self.pane.header_widget.height(),
+                         self.pane.table.mapTo(self.pane, QtCore.QPoint(0, 0)).y())
+
+    def test_the_table_scrolls_by_itself_under_a_picture_that_stays(self):
+        self.pictures.image = _picture(900, 600)
+        rows = tuple(("Row %d" % n, "value") for n in range(80))
+        self.pane.set_subject(file_info.Subject("a", "steel", "EXR", rows, (),
+                                                file_info.request_for_file("/lib/a.exr")))
+        QtWidgets.QApplication.processEvents()
+        bar = self.pane.table.verticalScrollBar()
+        self.assertGreater(bar.maximum(), 0, "80 rows do not scroll")
+        before = self.pane.preview.geometry()
+        bar.setValue(bar.maximum())
+        QtWidgets.QApplication.processEvents()
+        self.assertEqual(before, self.pane.preview.geometry())
+        self.assertEqual(self.pane.body_widget.width(), self.pane.width(), "the pane's own width changed")
 
     def test_clearing_and_hiding_stop_the_picture_read_and_drop_the_picture(self):
         self.pictures.image = _picture()
@@ -444,7 +538,7 @@ class ALongValue(_PaneCase):
 
     def _centre(self, index):
         return QtCore.QPoint(self.table.width() // 2,
-                             (self.table._row_top(index) + self.table._row_top(index + 1)) // 2)
+                             (self.table.row_top(index) + self.table.row_top(index + 1)) // 2)
 
     def test_it_is_elided_in_the_middle_and_keeps_both_ends(self):
         shown = self.table.shown_text(1)[1]
@@ -453,9 +547,10 @@ class ALongValue(_PaneCase):
         self.assertTrue(shown.startswith("/Pro") and shown.endswith(".exr"), shown)
 
     def test_its_row_has_the_whole_value_as_a_tooltip_a_short_one_none(self):
-        self.assertEqual(self.LONG, self.table.tooltip_at(self._centre(1)))
-        self.assertEqual("", self.table.tooltip_at(self._centre(2)), "a value that fits has a tooltip")
-        self.assertEqual("", self.table.tooltip_at(self._centre(0)))
+        at = lambda index: self.table.viewport().mapFrom(self.table, self._centre(index))    # noqa: E731
+        self.assertEqual(self.LONG, self.table.tooltip_at(at(1)))
+        self.assertEqual("", self.table.tooltip_at(at(2)), "a value that fits has a tooltip")
+        self.assertEqual("", self.table.tooltip_at(at(0)))
 
     def test_the_tooltip_event_shows_it(self):
         point = self._centre(1)
@@ -517,12 +612,13 @@ class TheInfoPaneOnThePanel(unittest.TestCase):
         self.assertFalse(panel.btn_info.isChecked())
         self.assertEqual((True, False), (panel.prefs.show_notes, panel.prefs.show_info))
 
-    def test_the_pane_is_in_the_splitter_after_comments_and_does_not_stretch(self):
-        splitter = self.panel.notes_panel.parentWidget()
-        info = splitter.indexOf(self.panel.info_panel)
-        self.assertEqual(splitter.indexOf(self.panel.notes_panel) + 1, info)
+    def test_the_page_is_in_the_one_side_pane_which_does_not_stretch(self):
+        pane = self.panel.side_pane
+        splitter = pane.parentWidget()
+        self.assertEqual(-1, splitter.indexOf(self.panel.info_panel), "the info page has its own place")
+        self.assertTrue(pane.isAncestorOf(self.panel.info_panel))
         stretch = [splitter.widget(i).sizePolicy().horizontalStretch() for i in range(splitter.count())]
-        self.assertEqual(0, stretch[info])
+        self.assertEqual(0, stretch[splitter.indexOf(pane)])
         self.assertEqual(1, stretch.count(1), "the grid is not the one flexible pane: %s" % stretch)
 
     def test_the_button_art_is_info_icon_color_while_open(self):

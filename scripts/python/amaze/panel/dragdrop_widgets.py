@@ -603,16 +603,19 @@ class DragDropListView(GridGestureMixin, QtWidgets.QListView):
     """The grid: one tile per item, IconMode or ListMode."""
 
 
-class DragDropTableView(GridGestureMixin, QtWidgets.QTableView):
-    """List mode as a table, sharing the gesture, model, proxy and selection model with the grid."""
+class DragDropTableView(GridGestureMixin, QtWidgets.QTreeView):
+    """List mode: the app's one kind of row list with its headline shown. ▸r/one-row-list"""
 
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setShowGrid(False)
-        self.setAlternatingRowColors(True)    # banded rows in the host stylesheet's alternate-background-color
+        ui_helpers.striped_rows(self)    # Houdini's style paints the rows, the space under them and the headline
+        self.setHeaderHidden(False)
+        self.setIndentation(0)
+        self.setItemsExpandable(False)
+        self.setExpandsOnDoubleClick(False)
+        self.setAllColumnsShowFocus(True)
         self.setWordWrap(False)
-        self.setCornerButtonEnabled(False)
-        self.verticalHeader().setVisible(False)
+        self._row_height = 0    # 0: the cell delegates' own; else what `GridCellDelegate.sizeHint` returns
         self.setSelectionBehavior(
             QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
         self.setSelectionMode(    # set explicitly so both views match
@@ -624,3 +627,12 @@ class DragDropTableView(GridGestureMixin, QtWidgets.QTableView):
         self.setAutoScroll(False)    # selecting a row never scrolls the view
         self.setEditTriggers(
             QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+
+    def row_height(self) -> int:
+        return self._row_height
+
+    def set_row_height(self, height: int) -> None:
+        """Every row is `height` px high; the view lays its rows out again."""
+        if height != self._row_height:
+            self._row_height = int(height)
+            self.scheduleDelayedItemsLayout()

@@ -22,7 +22,7 @@ from amaze.actions import library as library_actions
 from amaze.actions import materials as material_actions
 from amaze.actions import nodes as node_actions
 from amaze.core import grid_columns, grid_engine
-from amaze.panel import (dragdrop_widgets, empty_state, grid, info_panel, notes_panel,
+from amaze.panel import (dragdrop_widgets, empty_state, grid, info_panel, notes_panel, side_pane,
                          sections, sidebar)
 from amaze.core import debug, documents, library_db, library_files, locations, section_list
 from amaze.core import versions
@@ -154,6 +154,7 @@ _reload(grid)    # before sections, which imports it
 _reload(sidebar)
 _reload(sections)
 _reload(empty_state)    # after grid AND sections: it imports the first and reads the second's EMPTY declarations
+_reload(side_pane)
 _reload(notes_panel)
 _reload(info_panel)
 _reload(multifilterproxy_model)
@@ -927,9 +928,7 @@ class AmazePanel(QtWidgets.QWidget):
     _TOOLBAR = amazetheme.drawn_toolbar()    # the toolbar's height, edges, gaps and sizes are B01's
     _SIDEBAR = amazetheme.drawn_sidebar()    # the sidebar's width and its splitter handle are G01's
     CELL_PAD = theme.ui_px(_LIST["cell_pad"])    #: a heading's inset from its column edge; the style sets the row text's
-    HEADER_BG = QtGui.QColor(amazetheme.LIST_HEADER_BG)    #: the header strip's own colours and height
-    HEADER_DIVIDER = QtGui.QColor(amazetheme.LIST_HEADER_DIVIDER)
-    HEADER_HEIGHT = theme.ui_px(_LIST["header_h"])
+    HEADER_HEIGHT = theme.ui_px(_LIST["header_h"])    #: the headline's height; the style paints it
 
     def sync_list_columns(self) -> None:
         """Re-fit list mode's columns for the context now showing; every `activate()` calls it."""
@@ -1286,35 +1285,32 @@ class AmazePanel(QtWidgets.QWidget):
             cat_index = splitter.indexOf(self.cat_list)
             if self.prefs.show_notes and self.prefs.show_info:
                 self.prefs.show_info = False    # one side pane at a time: the comments pane stays
-            self.notes_panel = notes_panel.NotesPanel(self.prefs)    # the splitter's rightmost pane: sidebar | grid | notes
-            splitter.addWidget(self.notes_panel)
-            self.notes_panel.copy_font_and_text_color(self.cat_list)
+            self.side_pane = side_pane.Pane(    # the splitter's rightmost pane: sidebar | grid | side pane
+                self.prefs, "notes_panel_width", theme.ui_px(amazetheme.drawn_comments()["width"]))
+            self.side_pane.setMinimumWidth(theme.ui_px(side_pane.MIN_WIDTH))
+            self.side_pane.hide()
+            splitter.addWidget(self.side_pane)
             splitter.splitterMoved.connect(self._on_splitter_moved)
+            self.notes_panel = notes_panel.NotesPanel(self.prefs)    # its two pages: one shows at a time
+            self.side_pane.add_page(self.notes_panel)
+            self.notes_panel.copy_font_and_text_color(self.cat_list)
             self.notes_panel.changed.connect(self._on_note_saved)
-            self.notes_panel.setVisible(bool(self.prefs.show_notes))
-            self.info_panel = info_panel.InfoPanel(self.prefs)    # beside notes; one shows at a time
-            splitter.addWidget(self.info_panel)
+            self.info_panel = info_panel.InfoPanel(self.prefs)
+            self.side_pane.add_page(self.info_panel)
             self.info_panel.copy_font(self.cat_list)
             self.info_panel.shown.connect(self._refresh_info_subject)    # hiding forgot the subject
-            self.info_panel.setVisible(bool(self.prefs.show_info))
+            self._show_side_page()
             splitter.setHandleWidth(theme.ui_px(self._SIDEBAR["handle"]))    # width only; Houdini draws the grip ▸r/sidebar-from-frame
-        self.cat_wrapper = ui_helpers.SavedWidthPane(    # keeps its width: the last dragged width, or the design width
-            self.prefs, "sidebar_width", theme.ui_px(self._SIDEBAR["width"]))
-        self.cat_wrapper.setMaximumWidth(theme.ui_px(self._SIDEBAR["width"]))    # the pane's cap ▸r/sidebar-from-frame
-        self.cat_list.setMaximumWidth(theme.ui_px(self._SIDEBAR["width"]))    # and the list's, at UI scale
-        self.cat_wrapper.setAutoFillBackground(True)    # backdrop by palette; a stylesheet here would restyle cat_list
-        cat_wrapper_palette = self.cat_wrapper.palette()
-        cat_wrapper_palette.setColor(QtGui.QPalette.ColorRole.Window, theme.color("surface_low"))
-        self.cat_wrapper.setPalette(cat_wrapper_palette)
-        cat_wrapper_layout = QtWidgets.QVBoxLayout(self.cat_wrapper)
-        cat_wrapper_layout.setContentsMargins(0, 0, 0, 0)
-        cat_wrapper_layout.setSpacing(0)
-
-        cat_wrapper_layout.addWidget(self.cat_list)
+        width = theme.ui_px(self._SIDEBAR["width"])    # the last dragged width, never wider ▸r/sidebar-from-frame
+        self.cat_wrapper = side_pane.Pane(self.prefs, "sidebar_width", width, width)
+        self.cat_list.setMaximumWidth(width)    # and the list's, at UI scale
+        categories = side_pane.SidePage(side_pane.Page(    # no header; the category tree is its body
+            None, None, (side_pane.Widget("tree", lambda: self.cat_list),)))
+        self.cat_wrapper.add_page(categories)
+        self.cat_wrapper.show_page(categories)
         if splitter is not None and cat_index >= 0:
             splitter.insertWidget(cat_index, self.cat_wrapper)    # the grid is the only flexible pane; the other two keep their width
-            fixed_width = (self.cat_wrapper, getattr(self, "notes_panel", None),
-                           getattr(self, "info_panel", None))
+            fixed_width = (self.cat_wrapper, getattr(self, "side_pane", None))
             for i in range(splitter.count()):
                 flexible = splitter.widget(i) not in fixed_width
                 splitter.setStretchFactor(i, 1 if flexible else 0)
@@ -1427,7 +1423,7 @@ class AmazePanel(QtWidgets.QWidget):
 
         self.thumbtable = dragdrop_widgets.DragDropTableView()    # list mode: a second view sharing the grid's proxy and selection model
         self.thumbtable.setObjectName("thumbtable")
-        self.thumbtable.setHorizontalHeader(    # before `grid.style_table_header` styles it
+        self.thumbtable.setHeader(    # before `grid.style_table_header` sets it up
             ui_helpers.GridHeaderView(
                 QtCore.Qt.Orientation.Horizontal, self.thumbtable))
         self.thumbtable.setVisible(False)
@@ -2802,15 +2798,12 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _on_splitter_moved(self, _pos: int, _index: int) -> None:
         """A splitter drag records both side panes' widths; the debounced save writes them."""
-        pane = getattr(self, "notes_panel", None)
+        pane = getattr(self, "side_pane", None)
         if pane is None:
             return
         splitter = pane.parentWidget()
         if not isinstance(splitter, QtWidgets.QSplitter):
             return
-        info = getattr(self, "info_panel", None)
-        if pane.isHidden() and info is not None:
-            pane = info    # the two share one place and one width: the shown one is recorded
         sizes = splitter.sizes()
         changed = False
         for widget, pref_key in (
@@ -2833,11 +2826,10 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _on_notes_toggled(self, checked: bool) -> None:
         """Show or hide the pane and remember it; the grid takes up the width."""
-        panel = getattr(self, "notes_panel", None)
-        if panel is None:
+        if getattr(self, "notes_panel", None) is None:
             return
-        panel.setVisible(bool(checked))
         self.prefs.show_notes = bool(checked)
+        self._show_side_page(self.notes_panel if checked else None)
         self.prefs.save()
         if checked:
             self._close_other_pane("btn_info")
@@ -2851,15 +2843,23 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _on_info_toggled(self, checked: bool) -> None:
         """Show or hide the info pane and remember it; opening it closes the comments pane."""
-        panel = getattr(self, "info_panel", None)
-        if panel is None:
+        if getattr(self, "info_panel", None) is None:
             return
-        panel.setVisible(bool(checked))
         self.prefs.show_info = bool(checked)
+        self._show_side_page(self.info_panel if checked else None)
         self.prefs.save()
         if checked:
             self._close_other_pane("btn_notes")
             self._refresh_info_subject()
+
+    def _show_side_page(self, opened=None) -> None:
+        """Show the side pane's page: the one just `opened`, else the one the settings have on."""
+        page = opened
+        if page is None and self.prefs.show_notes:
+            page = self.notes_panel
+        if page is None and self.prefs.show_info:
+            page = self.info_panel
+        self.side_pane.show_page(page)
 
     def _close_other_pane(self, button_name: str) -> None:
         """Uncheck the other side pane's button; its own handler hides the pane and saves."""

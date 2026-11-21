@@ -365,7 +365,7 @@ class OnlyTheSortedColumnReservesRoomForTheArrow(unittest.TestCase):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
     def setUp(self):
-        self.header = self.panel.thumbtable.horizontalHeader()
+        self.header = self.panel.thumbtable.header()
 
     def _shown(self):
         return [c for c in range(len(grid_columns.KEYS))
@@ -688,7 +688,7 @@ class TheTableViewIsWiredToTheSameEVERYTHING(unittest.TestCase):
         panel = self.panel
         self._mode("list")
         metrics = QtGui.QFontMetrics(panel.thumblist.font())  # a text line, since list rows hold no thumbnail
-        height = panel.thumbtable.verticalHeader().defaultSectionSize()
+        height = panel.thumbtable.sizeHintForRow(0)
         self.assertLess(
             height, metrics.height() + theme.ui_px(12),
             "the row is taller than a line of text needs")
@@ -779,7 +779,7 @@ class TheHeaderSORTS(unittest.TestCase):
             column, panel.thumbtable.model().sourceModel().sort_column(),
             "the filter change reset the sort column")
         self.assertEqual(
-            column, panel.thumbtable.horizontalHeader().sortIndicatorSection(),
+            column, panel.thumbtable.header().sortIndicatorSection(),
             "the sort arrow moved off the sorted column")
 
 
@@ -865,7 +865,7 @@ class TheSelectionIsInROWS(unittest.TestCase):
     def test_a_dragged_column_width_is_kept_after_a_tab_switch(self):
         """Widths are set once per view; later syncs change visibility only."""
         panel = self.panel
-        header = panel.thumbtable.horizontalHeader()
+        header = panel.thumbtable.header()
         column = grid_columns.KEYS.index("name")
         dragged = header.sectionSize(column) + 77
         header.resizeSection(column, dragged)
@@ -1054,7 +1054,7 @@ class TheHeaderSectionsAreClickable(unittest.TestCase):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
     def setUp(self):
-        self.header = self.panel.thumbtable.horizontalHeader()
+        self.header = self.panel.thumbtable.header()
 
     def test_the_sections_are_clickable(self):
         self.assertTrue(
@@ -1099,7 +1099,7 @@ class TheListMatchesItsDesignFrame(unittest.TestCase):
         self.column = self._by_key("column")
         self.heading = self._by_key("heading")
         self.table = panel.thumbtable
-        self.header = self.table.horizontalHeader()
+        self.header = self.table.header()
 
     def _by_key(self, kind):
         return amazetheme.drawn_by_owner("L01", kind)
@@ -1188,20 +1188,10 @@ class TheListMatchesItsDesignFrame(unittest.TestCase):
         self.assertEqual((height, height),
                          (self.header.minimumHeight(), self.header.maximumHeight()))
 
-    def test_every_heading_starts_where_it_is_drawn(self):
-        style = self.header.style()
-        for key, node in self.column.items():
-            column = grid_columns.KEYS.index(key)
-            x = self.header.sectionPosition(column)
-            option = QtWidgets.QStyleOptionHeader()
-            option.initFrom(self.header)
-            option.rect = QtCore.QRect(x, 0, self.px(node[3]), self.px(node[4]))
-            option.section = column
-            option.text = grid_columns.LABELS[column]
-            label = style.subElementRect(
-                QtWidgets.QStyle.SubElement.SE_HeaderLabel, option, self.header)
-            with self.subTest(column=key):
-                self.assertEqual(self.px(self.heading[key][1] - node[1]), label.x() - x)
+    def test_the_headline_is_the_styles_with_no_colours_of_the_apps_own(self):
+        self.assertEqual("", self.header.styleSheet(), "the headline is styled by the app, not the host")
+        self.assertFalse(self.table.isHeaderHidden())
+        self.assertTrue(self.table.alternatingRowColors())
 
     def test_every_shown_column_starts_at_its_drawn_width(self):
         shown = [c for c in range(len(grid_columns.KEYS))

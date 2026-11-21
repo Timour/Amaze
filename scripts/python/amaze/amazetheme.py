@@ -116,7 +116,7 @@ COMMENT_ICON_COLOR = "#a05dfe"   # ▸ the Comments pane (N01): its header icon,
 COMMENT_ICON_ART_COLOR = "#5d7abd"    # the colour icon_comments.svg is drawn in; COMMENT_ICON_COLOR replaces it
 COMMENT_DONE_COLOR = "#4af2a1"   # a done to-do
 COMMENT_OPEN_COLOR = "#ff7760"   # an open to-do
-COMMENT_ADD_COLOR = "#a05dfe"    # the + art's colour
+COMMENT_ADD_COLOR = "#dddddd"    # the + art's colour
 COMMENT_HEADER_BG = "#272727"
 COMMENT_PAGE_BG = "#2d2d2d"
 COMMENT_DIM_NAME = "Nothing Selected"   # ▸ nothing selected (N01B): the header's two labels,
@@ -134,9 +134,11 @@ INFO_TEXT = "#cdc8bc"            # labels and values
 INFO_DIVIDER_WIDTH = 2           # the line between the two columns, centred on the drawn divider's x
 INFO_HIDE_PREVIEW = "Hide Preview"    # the header button's tooltip while the picture is shown
 INFO_SHOW_PREVIEW = "Show Preview"    # and while it is hidden
+INFO_BUTTON_COLOR = "#dddddd"       # the colour the header buttons' art is drawn in
+INFO_PREVIEW_LEAST = 38             # px: the lowest the drag line takes the picture area, two rows
+DRAG_LINE_COLOR = "#202020"         # the line under the picture; dragging it sets the picture area's height
+DRAG_LINE_GRAB = 3                  # px above and below the line that also take the drag
 
-LIST_HEADER_BG = "#2a2a2a"       # ▸ list mode's header strip: a QHeaderView picks up none of these, so the strip sets them
-LIST_HEADER_DIVIDER = "#454545"
 
 TILE_TEXT = "#cdc8bc"           # ▸ the tile and list delegates
 TILE_SUBTITLE = "#5d7abd"       # the sidebar's drag highlight until the panel applies the accent
@@ -152,7 +154,6 @@ LIST_SELECTED_TEXT = "#000000"  # every column of a selected row
 SLIDER_LEFT = "#5d7abd"         # ▸ the slider, tabs and icon-menu button; the default accent
 SLIDER_HANDLE = "#777f95"
 SLIDER_TRACK = "#1a1a1a"        # the progress track's OWN colour, never the slider's, so one tweak cannot recolour both
-TAB_STRIP_LINE = "#1b1b1b"      # ▸ S01: the 1 px line along the tab strip's bottom row
 TAB_TEXT_HOVER = "#cccdcd"      # not in the design, which draws no tab hover state - matching the toolbar icons' hover
 MENU_IDLE_BODY = "#5d7abd"
 MENU_HOVER_BODY = "#cccdcd"
@@ -995,16 +996,16 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
         "frame": (450, 621),
         "nodes": (
             ("header", 0, 0, 450, 30, None),
-            ("icon ▸ preview ▸ icon_preview_hide.svg", 424, 6, 18, 18, None),
+            ("icon ▸ preview ▸ icon_preview_hide.svg", 427, 7, 15, 15, None),
             ("body", 0, 330, 450, 291, None),
-            ("row ▸ 2", 0, 349, 450, 19, None),
-            ("row ▸ 4", 0, 387, 450, 19, None),
-            ("row ▸ 6", 0, 425, 450, 19, None),
-            ("row ▸ 8", 0, 463, 450, 19, None),
-            ("row ▸ 10", 0, 501, 450, 19, None),
-            ("row ▸ 12", 0, 539, 450, 19, None),
-            ("row ▸ 14", 0, 577, 450, 19, None),
-            ("row ▸ 16", 0, 615, 450, 19, None),
+            ("row ▸ 1", 0, 330, 450, 19, None),
+            ("row ▸ 3", 0, 368, 450, 19, None),
+            ("row ▸ 5", 0, 406, 450, 19, None),
+            ("row ▸ 7", 0, 444, 450, 19, None),
+            ("row ▸ 9", 0, 482, 450, 19, None),
+            ("row ▸ 11", 0, 520, 450, 19, None),
+            ("row ▸ 13", 0, 558, 450, 19, None),
+            ("row ▸ 15", 0, 596, 450, 19, None),
             ("text ▸ name", 36, 7, 37, 15, "Flower"),
             ("text ▸ type", 79, 7, 20, 15, "JPG"),
             ("label ▸ 1", 12, 332, 30, 15, "Name"),
@@ -1033,7 +1034,8 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("value ▸ 11", 109, 522, 17, 15, "Yes"),
             ("label ▸ 12", 12, 541, 33, 15, "Folder"),
             ("value ▸ 12", 109, 541, 160, 15, "/Projects/library/textures/metal"),
-            ("preview", 0, 30, 450, 300, None),
+            ("preview", 125, 30, 199, 298, None),
+            ("line ▸ drag", 0, 328, 450, 2, None),
         ),
     },
 }
@@ -1441,18 +1443,19 @@ def drawn_info(frame_key: str = "N02") -> dict:
         return drawn_node(frame_key, kind, owner)
 
     header, icon, name = node("header"), node("icon", "header"), node("text", "name")
-    row, label, value = node("row", "2"), node("label", "2"), node("value", "2")
-    button = node("icon", "preview")
+    row, label, value = node("row", "1"), node("label", "1"), node("value", "1")
+    button, preview = node("icon", "preview"), node("preview")
     return {
         "width": width,
         "header": header[4],
         "pad": icon[1] - header[1],
         "preview_button": button[3],
         "preview_button_pad": width - (button[1] + button[3]),    # its inset from the header's right
+        "preview_height": preview[4],    # the picture area until its line is dragged
+        "drag_line": node("line", "drag")[4],
         "gap": name[1] - (icon[1] + icon[3]),
         "icon": icon[3],
         "row": row[4],
-        "first_row": row[2] - row[4] - node("body")[2],    # the first row's top; `row` is the second
         "label_x": label[1] - row[1],
         "value_x": value[1] - row[1],
         "text_y": label[2] - row[2],    # the text's drop inside its row

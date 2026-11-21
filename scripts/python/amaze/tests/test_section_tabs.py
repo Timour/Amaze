@@ -70,8 +70,8 @@ class TheTabStripMatchesItsDesignFrame(unittest.TestCase):
         line_px = self.px(1)
         image = self.bar.grab().toImage()
         scale = image.width() // self.bar.width()
-        want = QtGui.QColor(amazetheme.TAB_STRIP_LINE).name()
-        self.assertEqual("#1b1b1b", want)
+        want = self.bar.TRAY_COLOR.name()    # the tabs' background, from Houdini's theme
+        self.assertEqual(theme.color_hex("surface_low"), want)
         for row in range(image.height() - line_px * scale, image.height()):
             with self.subTest(row=row):
                 self.assertEqual({want}, {image.pixelColor(x, row).name()

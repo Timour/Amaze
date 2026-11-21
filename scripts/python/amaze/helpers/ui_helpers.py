@@ -672,7 +672,7 @@ class SectionTabBar(QtWidgets.QWidget):
 
     STRIP_COLOR = theme.color("surface")   # theme-derived; matches the toolbar row
     TRAY_COLOR = theme.color("surface_low")   # matches the category backdrop, so the tray looks connected to the sidebar below
-    LINE_COLOR = QtGui.QColor(amazetheme.TAB_STRIP_LINE)
+    LINE_COLOR = TRAY_COLOR    # the line under the strip is the tray's own colour
     CHIP_FILL = theme.color("tab_chip")    # an ACCENT shade: Houdini's own example panel drives its checked/tab states from accent variants
     CHIP_RING = theme.color("tab_ring")
     TEXT_SELECTED = theme.color("text_bright")
@@ -1276,20 +1276,3 @@ def pick_color(initial, parent=None, title="Select Color"):
         else QtGui.QColor(amazetheme.SIDEBAR_PICKER_START),
         parent, title)
     return picked if picked.isValid() else None
-
-
-class SavedWidthPane(QtWidgets.QWidget):
-    """A splitter side pane whose width hint is the saved dragged width, else the design width."""
-
-    def __init__(self, preferences, pref_key, default_px, parent=None):
-        super().__init__(parent)
-        self._preferences = preferences
-        self._pref_key = pref_key
-        self._default_px = default_px
-
-    def sizeHint(self):
-        hint = super().sizeHint()
-        remembered = int(getattr(
-            self._preferences, self._pref_key, 0) or 0)
-        return QtCore.QSize(remembered or self._default_px,
-                            hint.height())

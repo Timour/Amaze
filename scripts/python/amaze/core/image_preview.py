@@ -26,9 +26,13 @@ def can_read(path: str) -> bool:
 def _read_qt(path: str, width: int):
     reader = QtGui.QImageReader(path)
     reader.setAutoTransform(True)    # a camera's rotation flag is applied
-    size = reader.size()
-    if size.isValid() and size.width() > width:
-        reader.setScaledSize(QtCore.QSize(width, max(1, round(size.height() * width / size.width()))))
+    size = reader.size()    # as stored: a turned photo's width is its stored height ▸r/image-preview
+    turned = reader.transformation() & QtGui.QImageIOHandler.Transformation.TransformationRotate90
+    shown = size.height() if turned else size.width()
+    if size.isValid() and shown > width:
+        scale = width / shown
+        reader.setScaledSize(QtCore.QSize(max(1, round(size.width() * scale)),
+                                          max(1, round(size.height() * scale))))
     image = reader.read()
     return None if image.isNull() else image
 
@@ -63,8 +67,8 @@ def _read_oiio(path: str, width: int, cancelled):
     if cancelled():
         return None
     if values is None:
-        picture = oiio.ImageBuf(path, 0, level)
-        if not picture.read(0, level, 0, channels, True, oiio.UNKNOWN):    # in the file's own type
+        picture = oiio.ImageBuf(path, 0, level)    # this reads the pixels; a read() after it reads twice
+        if picture.has_error or not picture.pixels_valid:
             return None
     else:
         picture = oiio.ImageBuf(oiio.ImageSpec(spec.width, spec.height, channels, kind))
@@ -74,10 +78,13 @@ def _read_oiio(path: str, width: int, cancelled):
         return None
     if spec.width > width:
         height = max(1, round(spec.height * width / spec.width))
-        small = oiio.ImageBuf(oiio.ImageSpec(width, height, channels, oiio.FLOAT if linear else oiio.UINT8))
+        small = oiio.ImageBuf(oiio.ImageSpec(width, height, picture.nchannels,
+                                             oiio.FLOAT if linear else oiio.UINT8))
         if not oiio.ImageBufAlgo.resize(small, picture, filtername=SCALE_FILTER) or cancelled():
             return None
         picture = small
+    if picture.nchannels != channels:
+        picture = oiio.ImageBufAlgo.channels(picture, tuple(range(channels)))
     if linear:
         shown = oiio.ImageBuf()    # the default display and view of the OCIO setup Houdini runs with
         if oiio.ImageBufAlgo.ociodisplay(shown, picture, "", "", ""):

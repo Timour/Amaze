@@ -548,8 +548,9 @@ class PanelWidgetTest(unittest.TestCase):
         self.assertEqual(theme.ui_px(12),
                          edit.document().documentMargin(),
                          "the inset is no longer the document margin")
-        body_margins = self.widget.body_widget.layout().contentsMargins()
-        self.assertEqual(0, body_margins.top(),
+        self.widget.resize(400, 300)
+        self.widget.body_widget.place()
+        self.assertEqual(0, edit.y(),
                          "a layout margin is back - scrolled text will "
                          "disappear at the gap instead of scrolling under "
                          "the header")
@@ -845,10 +846,10 @@ class PanelWiringTest(unittest.TestCase):
             setattr, self.panel.prefs, "notes_panel_width",
             self.panel.prefs.notes_panel_width)
         self.panel.prefs.notes_panel_width = 0
-        hint = self.panel.notes_panel.sizeHint().width()
+        hint = self.panel.side_pane.sizeHint().width()
         self.assertEqual(theme.ui_px(450), hint)
         self.assertGreater(
-            self.panel.notes_panel.maximumWidth(), theme.ui_px(1000),
+            self.panel.side_pane.maximumWidth(), theme.ui_px(1000),
             "a maximum width was set - 450 is the LAUNCH width only")
 
     def test_a_splitter_drag_is_recorded_and_returned_by_sizeHint(self):
@@ -859,7 +860,7 @@ class PanelWiringTest(unittest.TestCase):
         self.addCleanup(  # shared fixture pref - restore it, or the launch-width test reads this test's value
             setattr, panel.prefs, "notes_panel_width",
             panel.prefs.notes_panel_width)
-        pane = panel.notes_panel
+        pane = panel.side_pane
         splitter = pane.parentWidget()
         index = splitter.indexOf(pane)
         splitter.resize(1200, 500)  # headless Qt runs no layout, and with no geometry this test checks nothing
@@ -899,7 +900,7 @@ class PanelWiringTest(unittest.TestCase):
     def test_a_drag_remembers_the_sidebar_too(self):
         """_on_splitter_moved records BOTH side panes now."""
         panel = self.panel
-        splitter = panel.notes_panel.parentWidget()
+        splitter = panel.side_pane.parentWidget()
         splitter.resize(1200, 500)
         side_i = splitter.indexOf(panel.cat_wrapper)
         self.assertGreaterEqual(side_i, 0,
@@ -922,7 +923,7 @@ class PanelWiringTest(unittest.TestCase):
     def test_one_flexible_pane_is_the_construction(self):
         """One flexible pane, the grid; both side panes keep their width (stretch 0/1/0)."""
         panel = self.panel
-        splitter = panel.notes_panel.parentWidget()
+        splitter = panel.side_pane.parentWidget()
         stretches = [
             splitter.widget(i).sizePolicy().horizontalStretch()
             for i in range(splitter.count())]
@@ -932,7 +933,7 @@ class PanelWiringTest(unittest.TestCase):
                          "pane (the grid) - stretches are %s"
                          % stretches)
         held = (splitter.indexOf(panel.cat_wrapper),
-                splitter.indexOf(panel.notes_panel))
+                splitter.indexOf(panel.side_pane))
         self.assertNotIn(flexible[0], held,
                          "a side pane is the flexible one - the grid "
                          "must take every width change")
@@ -1555,9 +1556,6 @@ class TheCommentsPaneMatchesItsDesignFrame(unittest.TestCase):
         self.assertEqual(todo[2] - (plain[2] + plain[4]), after[2] - (done[2] + done[4]),
                          "a to-do is padded differently above and below")
         self.assertEqual(plain[1], after[1], "the plain lines start at different x")
-
-    def test_the_pane_opens_at_its_drawn_width(self):
-        self.assertEqual(self.px(self.drawn["width"]), self.pane.sizeHint().width())
 
     def test_the_header_is_where_it_is_drawn(self):
         pane, d, px = self.pane, self.drawn, self.px

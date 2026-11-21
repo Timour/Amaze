@@ -1566,7 +1566,7 @@ class TheColoursAreHoudinisOwn(unittest.TestCase):
     def test_with_no_theme_published_the_colours_are_the_default_dark_themes(self):
         self._publish({})
         self.assertEqual({"surface_low": "#282828", "surface": "#2d2d2d", "field": "#434343",
-                          "text_dim": "#656565", "text": "#a6a6a6", "text_bright": "#dddddd",
+                          "row": "#2f2f2f", "text_dim": "#656565", "text": "#a6a6a6", "text_bright": "#dddddd",
                           "tab_chip": "#404862", "tab_ring": "#464f6b", "star": "#fdba00"},
                          {name: self.theme.color_hex(name) for name in self.theme._DEFAULTS})
         self.assertEqual("#123456", self.theme.accent("#123456").name())

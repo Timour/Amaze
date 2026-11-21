@@ -271,25 +271,25 @@ class TheCommentsPaneHOLDSItsOwnWidth(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
 
     def _sizes(self):
-        splitter = self.panel.notes_panel.parentWidget()
+        splitter = self.panel.side_pane.parentWidget()
         return {splitter.widget(i): size
                 for i, size in enumerate(splitter.sizes())}
 
     def test_BOTH_side_panes_hold_their_width_the_same_way(self):
-        from amaze.helpers import ui_helpers
+        from amaze.panel import side_pane
 
-        for name in ("cat_wrapper", "notes_panel"):
+        for name in ("cat_wrapper", "side_pane"):
             with self.subTest(pane=name):
                 self.assertIsInstance(
-                    getattr(self.panel, name), ui_helpers.SavedWidthPane,
-                    "%s is not a `SavedWidthPane`, so its width is kept by "
+                    getattr(self.panel, name), side_pane.Pane,
+                    "%s is not the engine's `Pane`, so its width is kept by "
                     "code written just for it" % name)
 
     def test_opening_it_gives_it_the_REMEMBERED_width(self):
         self.panel.prefs.notes_panel_width = 320
         self.panel.btn_notes.setChecked(True)
         QtWidgets.QApplication.processEvents()
-        self.assertEqual(320, self._sizes()[self.panel.notes_panel])
+        self.assertEqual(320, self._sizes()[self.panel.side_pane])
 
     def test_opening_it_takes_the_room_from_the_GRID(self):
         """Not from the sidebar - the grid is the only pane that resizes freely."""
