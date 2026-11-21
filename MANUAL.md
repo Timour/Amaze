@@ -426,7 +426,8 @@ Browses folders on disk.
   the <img src="scripts/python/amaze/ui/icon_screenshot.svg" width="14">
   **Capture** button, takes one from the Scene View while that scene is
   open.
-- **Other files** show their system icon. **Copy Path** copies the path
+- **Other files** show their system icon, or the generic file icon when
+  **System File Icons** is off. **Copy Path** copies the path
   to the clipboard, written as set in [Write Paths As](#write-paths-as).
 - **New Folder** asks for a name and makes that folder in the folder you
   are looking at. **Save Scene** asks for a name and saves the open scene
@@ -584,7 +585,8 @@ The **Image** menu sets what the tile shows:
 Image is the default, and a tile shows its Generic icon until its
 picture exists. Node networks outside SOP and COP default to Generic
 Icon, with Image greyed. A scene's image is its capture; any other
-file's is its preview, which is the system icon for the file type.
+file's is its preview, which is the system icon for the file type, or
+the generic file icon.
 Taking a capture switches the tile to Image. The preview square shows
 the finished tile.
 
@@ -827,8 +829,9 @@ Two sub-tabs set which renderers and sections Amaze shows.
 
 **Show Counts on Categories**, **Hide Empty Categories**, **Step Size**
 (the size slider moves in steps of 64 px), **Render RAT Files** (off:
-RAT files in the File tab show a rat and are not converted), **Write
-Paths As**, **Tile Icon Line** (Thin, or Feather's Regular) and **Scroll
+RAT files in the File tab show a rat and are not converted), **System
+File Icons** (off: files with no preview show the generic file icon),
+**Write Paths As**, **Tile Icon Line** (Thin, or Feather's Regular) and **Scroll
 Speed (%)**.
 
 ### Add-On

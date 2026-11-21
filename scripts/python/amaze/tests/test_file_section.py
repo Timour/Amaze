@@ -1093,6 +1093,15 @@ class OsIconTest(unittest.TestCase):
                     continue
                 self.assertNotEqual(face, shown, "the default shows the file face")
 
+    def test_with_system_file_icons_off_every_such_file_shows_the_generic_icon(self):
+        own = QtGui.QImage(8, 8, QtGui.QImage.Format.Format_ARGB32)
+        own.fill(QtGui.QColor("#336699"))
+        model = self._model_with("mocap.bvh")
+        model.os_icon = lambda _path, _side: own
+        model.preferences.system_file_icons = False
+        shown = model.data(model.index(0, 0), QtCore.Qt.ItemDataRole.DecorationRole)
+        self.assertEqual(tile_icons.generic_image("face_file"), shown)
+
     def test_one_icon_is_composed_per_extension_not_per_file(self):
         model = self._model_with("a.log", "b.log", "c.log")
         with mock.patch.object(model, "tile_icon", return_value={"face": "image"}):

@@ -137,6 +137,7 @@ USER_KEYS = {  # per-user view state under `users.<uid>`: stored key -> (propert
     "show_categories": ("show_categories", "_show_categories", True),
     "sidebar_counts": ("sidebar_counts", "_sidebar_counts", True),
     "render_rat_files": ("render_rat_files", "_render_rat_files", False),
+    "system_file_icons": ("system_file_icons", "_system_file_icons", True),
     "hide_empty_categories":
         ("hide_empty_categories", "_hide_empty_categories", True),
     "scroll_speed": ("scroll_speed", "_scroll_speed", 0.75),

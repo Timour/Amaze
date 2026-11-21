@@ -1061,6 +1061,12 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._cbx_render_rat.setChecked(self._prefs.render_rat_files)
         self._cbx_render_rat.toggled.connect(self.set_render_rat_files)
         form.addRow(self._label(""), self._cbx_render_rat)
+        self._cbx_system_icons = ui_helpers.ToggleSwitch("System File Icons")
+        self._cbx_system_icons.setToolTip(ui_helpers.tooltip_text(
+            tooltips.PREFS_SYSTEM_FILE_ICONS))
+        self._cbx_system_icons.setChecked(self._prefs.system_file_icons)
+        self._cbx_system_icons.toggled.connect(self.set_system_file_icons)
+        form.addRow(self._label(""), self._cbx_system_icons)
 
         self._combo_path_style = self._data_combo((
             ("$HOME", "home"),
@@ -1653,6 +1659,7 @@ class PrefsDialog(base_dialog.AssetDialog):
     _USER_ROWS = (    # (row attribute, the per-user setting it shows); sections and scroll are in `_shown_values`
         ("_cbx_sidebar_counts", "sidebar_counts"),
         ("_cbx_render_rat", "render_rat_files"),
+        ("_cbx_system_icons", "system_file_icons"),
         ("_cbx_hide_empty", "hide_empty_categories"),
         ("_cbx_step_size", "step_size"),
         ("_combo_icon_weight", "icon_line_weight"),
@@ -1900,6 +1907,14 @@ class PrefsDialog(base_dialog.AssetDialog):
     def set_render_rat_files(self, checked: bool) -> None:
         """Store the switch and list the File tab's folder again, so its .rat tiles change at once."""
         self._prefs.render_rat_files = checked
+        self._prefs.save()
+        files = getattr(self._panel, "file_files_model", None)
+        if files is not None:
+            files.refresh_current_folder()
+
+    def set_system_file_icons(self, checked: bool) -> None:
+        """Store the switch and list the File tab's folder again, so its tiles change at once."""
+        self._prefs.system_file_icons = checked
         self._prefs.save()
         files = getattr(self._panel, "file_files_model", None)
         if files is not None:

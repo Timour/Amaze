@@ -96,6 +96,7 @@ class Prefs(_Persistence):
         self._icon_line_weight = "template"  # "template" (thin 10px stroke) or "feather" (the icon set's default)
         self._sidebar_counts = True  # entry counts on INDIVIDUAL categories/folders; "All" always shows its total regardless
         self._render_rat_files = False
+        self._system_file_icons = True
         self._cache_dir = ""  # "" = this OS's own convention via hostos.cache_root()
         self._libraries: list[str] = []  # the Library list, the most recently opened first
         self._hide_empty_categories = True  # for Materials, "empty" respects the active renderer filter
@@ -469,6 +470,15 @@ class Prefs(_Persistence):
     @render_rat_files.setter
     def render_rat_files(self, val: bool) -> None:
         self._render_rat_files = bool(val)
+
+    @property
+    def system_file_icons(self) -> bool:
+        """Whether a file with no preview shows its type's system icon; off, the generic file icon."""
+        return self._system_file_icons
+
+    @system_file_icons.setter
+    def system_file_icons(self, val: bool) -> None:
+        self._system_file_icons = bool(val)
 
     @property
     def ram_cache_mb(self) -> int:

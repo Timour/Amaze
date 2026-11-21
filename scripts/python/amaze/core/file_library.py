@@ -764,6 +764,8 @@ class FileFiles(grid_engine.GridEngine,
             return None
         key, source, payload = self._row_specs[row]
         if source == "os-icon":
+            if not getattr(self.preferences, "system_file_icons", True):
+                return tile_icons.generic_image("face_file")    # Preferences ▸ Look ▸ System File Icons, off
             return self._os_icon_image(payload)
         if source in ("missing", "none", "face"):
             return tile_icons.generic_image(self.tile_face_art(row))    # unreadable, a scene, or a .rat not rendered
