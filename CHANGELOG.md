@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.45.1
+
+- Section tabs: a tab under the pointer has a highlight behind it, and the tabs' highlights meet in the middle, like Houdini's own tabs.
+
 ## 1.45.0
 
 - File: **System File Icons** in Preferences ▸ Look. On, a file with no preview shows its system icon. Off, it shows the generic file icon.
