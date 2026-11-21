@@ -264,8 +264,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         )
         return QtCore.QSize(width, height)
 
-    BAND_TEXT_DARK = QtGui.QColor(amazetheme.BAND_TEXT_DARK)     # the two text colours for a coloured band
-    BAND_TEXT_LIGHT = QtGui.QColor(amazetheme.BAND_TEXT_LIGHT)
+    CATEGORY_STRIP = theme.ui_px(amazetheme.drawn_category_strip())    # its height, off frame T20
 
     @staticmethod
     def _relative_luminance(color):
@@ -289,14 +288,6 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         return (lighter + 0.05) / (darker + 0.05)
 
     @classmethod
-    def text_on(cls, background):
-        """Whichever of the two band text colours has the higher WCAG contrast on `background`."""
-        if cls.contrast_ratio(background, cls.BAND_TEXT_DARK) >= \
-                cls.contrast_ratio(background, cls.BAND_TEXT_LIGHT):
-            return cls.BAND_TEXT_DARK
-        return cls.BAND_TEXT_LIGHT
-
-    @classmethod
     def readable_on(cls, color, background, floor=4.5):
         """`color` lightened or darkened until it reaches `floor` contrast on `background`, hue kept."""
         if cls.contrast_ratio(color, background) >= floor:
@@ -309,8 +300,8 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
                 return best
         return cls.CATEGORY_COLOR    # a colour that never reaches `floor` falls back to CATEGORY_COLOR
 
-    def _band_color(self, index):
-        """The category colour for this row, or None to leave the card as it is."""
+    def _category_color(self, index):
+        """The category colour for this row, or None for a tile that shows none."""
         return role_color(index, self._category_color_role)
 
     @classmethod
@@ -361,7 +352,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         self._licence_role = licence_role
         self._date_role = date_role            # list mode's date and id columns ▸p/d03-retired
         self._id_role = id_role
-        self._category_color_role = category_color_role    # colours the band under the image; None: no band
+        self._category_color_role = category_color_role    # the strip's colour; None: no strip
         self._badge_clicks = {}       # badge name -> handler; registering one makes that badge a button
         self._button_hover = None     # (badge name, QPersistentModelIndex) while the cursor is on a button badge
         self._button_down = False     # and whether the left button is held on it
@@ -695,7 +686,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
             super().paint(painter, option, index)    # balanced again by the `finally` above, so the fallback paints on a clean painter
 
     def _paint(self, painter, option, index):
-        """The tile itself: card, optional category band, thumbnail, badges, then the two text lines."""
+        """The tile itself: card, optional category strip, thumbnail, badges, then the two text lines."""
         selected = bool(option.state & QtWidgets.QStyle.StateFlag.State_Selected)
         alternate = bool(
             option.features & QtWidgets.QStyleOptionViewItem.ViewItemFeature.Alternate
@@ -721,7 +712,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         h_name = fm_name.height()
         h_rend = fm_rend.height()
 
-        raw_category = self._band_color(index)    # read once per tile
+        raw_category = self._category_color(index)    # read once per tile
 
         pad = self.PAD
         text_x = rect.left() + pad + self.GRID_TEXT_INSET
@@ -740,16 +731,9 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
             ),
             self.THUMB_BG_COLOR,
         )
-        band_color = raw_category    # the category colour, painted over the card below the image
-        if band_color is not None and not selected:
-            band_top = icon_y + icon_side
+        if raw_category is not None and not selected:    # the category colour, a strip under the image
             painter.fillRect(
-                QtCore.QRect(
-                    icon_x, band_top, icon_side,
-                    max(card_bottom - band_top, 0),
-                ),
-                band_color,
-            )
+                QtCore.QRect(icon_x, icon_y + icon_side, icon_side, self.CATEGORY_STRIP), raw_category)
         if selected:
             zone_top = icon_y + icon_side    # repaint the highlight on the text area only
             painter.fillRect(
@@ -783,12 +767,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
             painter.drawPixmap(mark_x - bleed, mark_y - bleed, mark)
             subtitle_w = max(mark_x - self.GRID_TEXT_INSET - text_x, 1)
         painter.setFont(name_font)
-        name_pen = self.SELECTED_TEXT if selected else self.GRID_NAME_COLOR
-        subtitle_pen = None
-        if band_color is not None and not selected:
-            name_pen = self.text_on(band_color)    # both lines use the text colour readable on the band
-            subtitle_pen = name_pen
-        painter.setPen(name_pen)
+        painter.setPen(self.SELECTED_TEXT if selected else self.GRID_NAME_COLOR)
         painter.drawText(
             QtCore.QRect(text_x, text_top + name_dy, text_w, h_name),
             QtCore.Qt.AlignmentFlag.AlignLeft
@@ -799,11 +778,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         )
         if renderer:
             painter.setFont(rend_font)
-            painter.setPen(
-                subtitle_pen if subtitle_pen is not None
-                else (self.SELECTED_TEXT if selected
-                      else self.GRID_SUBTITLE_COLOR)
-            )
+            painter.setPen(self.SELECTED_TEXT if selected else self.GRID_SUBTITLE_COLOR)
             painter.drawText(
                 QtCore.QRect(text_x, subtitle_top, subtitle_w, h_rend),
                 QtCore.Qt.AlignmentFlag.AlignLeft

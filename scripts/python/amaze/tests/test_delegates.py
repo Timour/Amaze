@@ -615,39 +615,87 @@ class TheRendererIconIsOnTheSubtitlesLine(unittest.TestCase):
         self.assertEqual(theme.ui_px(gap), subtitle.top() - (name.bottom() + 1))
 
 
+class TheCategoryColourIsAStripUnderThePicture(unittest.TestCase):
+    """T20: the category colour is a strip across the card under the picture."""
+
+    COLOR_ROLE = QtCore.Qt.ItemDataRole.UserRole + 8
+    SUBTITLE = QtCore.Qt.ItemDataRole.UserRole + 3
+    COLOUR = "#12ab34"
+
+    def _painted(self, colour, selected=False):
+        """(image, delegate) of one tile painted at the drawn size with `colour` as its category's."""
+        values = {self.COLOR_ROLE: colour, self.SUBTITLE: "Karma", QtCore.Qt.ItemDataRole.DisplayRole: "mat"}
+
+        class _Model(QtCore.QAbstractListModel):
+            def rowCount(self, parent=None):
+                return 1
+
+            def data(self, index, role=0):
+                return values.get(role)
+
+        view = QtWidgets.QListView()
+        self.addCleanup(view.deleteLater)
+        model = _Model()
+        delegate = delegates.AssetItemDelegate(self.SUBTITLE, category_color_role=self.COLOR_ROLE)
+        cell = delegate.grid_cell_size(amazetheme.TILE_DRAWN_SIZE, view.font())
+        image = QtGui.QImage(cell.width(), cell.height(), QtGui.QImage.Format.Format_RGB32)
+        image.fill(QtGui.QColor("#000000"))
+        option = QtWidgets.QStyleOptionViewItem()
+        option.rect = QtCore.QRect(0, 0, cell.width(), cell.height())
+        option.widget, option.font, option.palette = view, view.font(), view.palette()
+        if selected:
+            option.state |= QtWidgets.QStyle.StateFlag.State_Selected
+        painter = QtGui.QPainter(image)
+        try:
+            delegate._paint(painter, option, model.index(0, 0))
+        finally:
+            painter.end()
+        return image, delegate
+
+    def _strip(self):
+        from amaze.helpers import theme
+        return tuple(theme.ui_px(v) for v in amazetheme.drawn_node("T20", "category strip")[1:5])
+
+    def test_the_strip_is_where_t20_draws_it_and_nowhere_below(self):
+        image, delegate = self._painted(self.COLOUR)
+        x, y, w, h = self._strip()
+        thumb = amazetheme.drawn_node("T20", "thumbnail")
+        self.assertEqual((thumb[1], thumb[2] + thumb[4], thumb[3], 4),
+                         amazetheme.drawn_node("T20", "category strip")[1:5],
+                         "the frame no longer draws the strip across the card, right under the thumbnail")
+        for px, py in ((x, y), (x + w - 1, y), (x, y + h - 1), (x + w - 1, y + h - 1)):
+            self.assertEqual(self.COLOUR, image.pixelColor(px, py).name(), "the strip misses (%d, %d)" % (px, py))
+        card = delegate.THUMB_BG_COLOR.name()
+        for px, py in ((x, y + h), (x + w - 1, y + h), (x, image.height() - 1), (x + w - 1, image.height() - 1)):
+            self.assertEqual(card, image.pixelColor(px, py).name(),
+                             "the category colour still covers the card at (%d, %d)" % (px, py))
+
+    def test_the_text_keeps_its_own_colours_under_a_strip(self):
+        plain, _delegate = self._painted(None)
+        coloured, _delegate = self._painted(self.COLOUR)
+        _x, y, _w, h = self._strip()
+        below = QtCore.QRect(0, y + h, plain.width(), plain.height() - y - h)
+        self.assertEqual(plain.copy(below), coloured.copy(below), "a category changed what is painted under its strip")
+
+    def test_a_tile_without_a_category_and_a_selected_tile_draw_no_strip(self):
+        x, y, _w, _h = self._strip()
+        plain, delegate = self._painted(None)
+        self.assertEqual(delegate.THUMB_BG_COLOR.name(), plain.pixelColor(x, y).name())
+        selected, _delegate = self._painted(self.COLOUR, selected=True)
+        self.assertNotEqual(self.COLOUR, selected.pixelColor(x, y).name(), "a selected tile still shows the strip")
+
+    def test_the_strips_height_is_read_off_the_frame(self):
+        from amaze.helpers import theme
+        self.assertEqual(4, amazetheme.drawn_category_strip())
+        self.assertEqual(theme.ui_px(4), delegates.AssetItemDelegate.CATEGORY_STRIP)
+
+
 class BandContrastTest(unittest.TestCase):
-    """A category colour never makes its own label unreadable; #00ee00 is the case to watch."""
+    """A dark category colour stays legible as list mode's row text."""
 
     DELEGATE = delegates.AssetItemDelegate
 
-    def _sweep(self, step=15):
-        for red in range(0, 256, step):
-            for green in range(0, 256, step):
-                for blue in range(0, 256, step):
-                    yield QtGui.QColor(red, green, blue)
-
-    def test_no_colour_makes_its_label_unreadable(self):
-        worst, worst_color = 21.0, None
-        for color in self._sweep():
-            ratio = self.DELEGATE.contrast_ratio(
-                color, self.DELEGATE.text_on(color))
-            if ratio < worst:
-                worst, worst_color = ratio, color
-        self.assertGreaterEqual(
-            worst, 3.0,
-            "a category colour drops its label below 3:1 (%s at %.2f:1)"
-            % (worst_color.name() if worst_color else "?", worst))
-
     LEGACY_PRESETS = ("#ef8878", "#4af2a1", "#5cc9f5", "#e2b148")   # colours older saved tiles hold; the current palette comes from the drawing
-
-    def test_the_shipped_presets_are_unchanged(self):
-        """Contrast does not restyle what is saved: the four legacy presets keep their text colour."""
-        for value in self.LEGACY_PRESETS + ("#00ee00",):    # the green that exposed the old threshold
-            color = QtGui.QColor(value)
-            self.assertGreater(
-                self.DELEGATE.contrast_ratio(
-                    color, self.DELEGATE.text_on(color)),
-                4.5, "preset %s lost contrast" % value)
 
     def test_a_dark_category_is_legible_in_list_mode(self):
         """List mode paints the colour as the pen on the row; #333333 measured 1.03:1 against it."""

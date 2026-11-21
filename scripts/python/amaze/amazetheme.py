@@ -147,8 +147,6 @@ RENDERER_ICON_BLEED = 4         # px painted around a renderer icon's own box, f
 MENU_ICON = 16                  # ▸ C13: a menu entry's icon box, the size Houdini draws it ▸r/menu-checked-look
 LIST_TEXT_COLOR = "#d8d6d4"            # a table is read down its columns, so every column is drawn in this except Category
 LIST_SELECTED_TEXT = "#000000"  # every column of a selected row
-BAND_TEXT_DARK = "#262626"      # text on a coloured band; a category colour can be any lightness at all
-BAND_TEXT_LIGHT = "#f0eeee"
 
 SLIDER_LEFT = "#5d7abd"         # ▸ the slider, tabs and icon-menu button; the default accent
 SLIDER_HANDLE = "#777f95"
@@ -742,6 +740,7 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("badge comment (lower-right) ▸ badge_comment", 6, 6, 22, 22, None),
             ("badge versions (lower-left) ▸ badge_versions", 6, 110, 22, 22, None),
             ("badge execute (lower-right) ▸ badge_execute", 110, 110, 22, 22, None),
+            ("category strip (example colour)", 4, 134, 130, 4, None),
         ),
     },
     "T23": {   # the badges that show a state: a favourite, a comment, the open scene
@@ -1167,6 +1166,11 @@ def drawn_tile(frame_key: str = "T01") -> dict:
         "bottom_pad": layout["frame"][1] - (sub[2] + sub[4]),
         "thumb": thumb[3],
     }
+
+
+def drawn_category_strip(frame_key: str = "T20") -> int:
+    """The height of the category colour's strip, drawn across the card under the thumbnail."""
+    return drawn_node(frame_key, "category strip")[4]
 
 
 def drawn_renderer_icon(frame_key: str = "T24") -> dict:

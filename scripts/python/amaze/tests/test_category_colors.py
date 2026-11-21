@@ -87,27 +87,5 @@ class CategoryColorTest(unittest.TestCase):
         self.assertEqual("#e28248", fresh.color_of("Metal"))
 
 
-class BandTextTest(unittest.TestCase):
-    """The name and subtitle have to stay readable on any colour."""
-
-    def test_light_bands_get_dark_text_and_dark_bands_light(self):
-        text_on = delegates.AssetItemDelegate.text_on
-        dark = delegates.AssetItemDelegate.BAND_TEXT_DARK
-        light = delegates.AssetItemDelegate.BAND_TEXT_LIGHT
-        for colour, expected in (
-            ("#4af2a1", dark),      # mint
-            ("#e2b148", dark),      # sand
-            ("#ffffff", dark),
-            ("#20304f", light),     # navy
-            ("#262626", light),
-            ("#000000", light),
-            ("#00ff00", dark),      # weighted, never averaged: green reads far brighter than blue
-            ("#0000ff", light),
-        ):
-            self.assertEqual(
-                expected.name(), text_on(QtGui.QColor(colour)).name(),
-                "wrong text colour on %s" % colour)
-
-
 if __name__ == "__main__":
     unittest.main()
