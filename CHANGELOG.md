@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.46.1
+
+- Sidebar: dragging a row to reorder it works again.
+- Sidebar: Ctrl-clicking the selected row keeps it selected, and clicking the selected row shows it again.
+- Sidebar: holding an arrow key shows the row it stops on, instead of listing every folder on the way.
+- Preferences: System File Icons and Render RAT Files change the File tab in every open panel.
+- After Esc ends a drag, moving the mouse no longer starts Qt's own drag of the tile.
+- A category moved in a library that won't save the change goes back to its place.
+
 ## 1.46.0
 
 - Dragging a material over an OBJ viewport lights the object the way Houdini's own drags do. The selection is not changed, so the scene view and the network editor stay where they are.
