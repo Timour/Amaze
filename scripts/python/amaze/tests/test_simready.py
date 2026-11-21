@@ -663,8 +663,8 @@ class PreviewlessTileTest(unittest.TestCase):
         model._queue_previews([record])
         image = thumbnails.engine.peek(key)
         self.assertIsNotNone(image, "a tile with no preview stayed blank")
-        self.assertEqual(tile_icons.generic_image(library.MaterialLibrary.TILE_FACE), image,
-                         "the online face differs from the Material section's")
+        self.assertEqual(tile_icons.generic_image(matx_library.ONLINE_FACE), image,
+                         "a SimReady tile with no preview does not show the online face")
 
 
 class SimReadyPreviewsTest(unittest.TestCase):

@@ -250,8 +250,9 @@ class FaceRuleTest(unittest.TestCase):
                     face, tile_icons.face_of(spec, default, **kwargs))
 
     def test_every_face_is_shipped_art(self):
-        from amaze.core import code_library, gradient_library, library
+        from amaze.core import code_library, gradient_library, library, matx_library
         for art in (library.MaterialLibrary.TILE_FACE, cop_library.CopLibrary.TILE_FACE,
+                    matx_library.ONLINE_FACE,
                     code_library.CodeLibrary.TILE_FACE,
                     gradient_library.GradientLibrary.TILE_FACE, "icon_hip", "face_file"):
             image = tile_icons.generic_image(art)

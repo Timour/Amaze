@@ -14,6 +14,7 @@ from PySide6 import QtCore, QtGui
 from amaze.core import category, debug, matx_sources, renderers, sidebar_model, thumbnails, workers
 from amaze.core import grid_engine
 
+ONLINE_FACE = "face_online"    # T12: an online material with no picture
 PREVIEW_DIR_NAME = "matx_previews"    # a NAME only - its folder is resolved per call in preview_cache(), like CATALOGUE_NAME below
 
 
@@ -550,11 +551,10 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
         worker.start()
 
     def _deposit_face(self, key, section: str) -> None:
-        """The local section's generic face for an online tile with no picture. ▸r/tile-faces"""
-        from amaze.core import cop_library, library, tile_icons
+        """An online tile with no picture: the online face, or the Node section's. ▸r/tile-faces"""
+        from amaze.core import cop_library, tile_icons
         thumbnails.engine.deposit(key, tile_icons.generic_image(
-            cop_library.CopLibrary.TILE_FACE if section == "cop"
-            else library.MaterialLibrary.TILE_FACE))
+            cop_library.CopLibrary.TILE_FACE if section == "cop" else ONLINE_FACE))
         self._requested.discard(key)
 
     def _on_preview_attempted(self):

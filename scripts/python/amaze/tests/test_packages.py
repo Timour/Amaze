@@ -2122,9 +2122,12 @@ class OnlineTilePaintingTest(unittest.TestCase):
             "a node tile online must show the Node section's own generic "
             "icon, not a hand-picked one")
         self.assertEqual(
-            tile_icons.generic_image(library.MaterialLibrary.TILE_FACE),
+            tile_icons.generic_image(matx_library.ONLINE_FACE),
             face_of("material", {"name": "bare"}),
-            "a material without thumbnail shows the Material section's icon")
+            "an online material without thumbnail shows the online face")
+        self.assertNotEqual(tile_icons.generic_image(matx_library.ONLINE_FACE),
+                            tile_icons.generic_image(library.MaterialLibrary.TILE_FACE),
+                            "the online face is the Material section's own")
 
     def test_the_value_only_template_takes_both_swatches(self):
         """T09's two placeholder colours are replaced by the values, in either case of hex."""
