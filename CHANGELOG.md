@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.41.1
+
+- Toolbar: the Search box keeps 6 px from the Comments button in a narrow panel.
+
 ## 1.41.0
 
 - Toolbar: Preferences and Capture sit after Favorites, and Comments and Info are at the right end. Online is green while it is on. The comment icon is redrawn.
