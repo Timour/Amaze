@@ -1532,7 +1532,7 @@ class AmazePanel(QtWidgets.QWidget):
 
         placed = set(drawn["left"] + drawn["right"]) | {"click_slider", "filter_label", "line_filter"}
         for name in sorted(set(controls) - placed):
-            debug.note("toolbar control not in frame B01, so not shown", control=name)
+            debug.event("toolbar", "control not in frame B01, so not shown", control=name)
 
         def buttons(names):
             present = [controls[name] for name in names if name in controls]
