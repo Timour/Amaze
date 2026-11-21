@@ -91,7 +91,8 @@ def font(role: str, source=None) -> QtGui.QFont:
 
 
 _DEFAULTS = {        # Houdini's default dark theme, for a session that publishes no theme (hython)
-    "surface_low": "#282828",  # tab tray, sidebar backdrop, thumb bg
+    "tab_bar": "#242424",  # behind a row of tabs: the section tabs' tray and the line under it
+    "surface_low": "#282828",  # sidebar backdrop, thumb bg
     "surface": "#2d2d2d",  # toolbar row, tab strip, line_tags
     "field": "#434343",  # filter box fill, toolbar divider
     "row": "#2f2f2f",  # a row list's darker row: the line between the info table's columns
@@ -104,6 +105,7 @@ _DEFAULTS = {        # Houdini's default dark theme, for a session that publishe
 }
 
 _ROLES = {           # an Amaze colour -> the role Houdini's theme publishes it under ▸r/one-row-list
+    "tab_bar": "surfaceLowest",    # what Houdini's own style fills a tab bar with
     "surface_low": "surfaceLow",
     "surface": "bg",
     "field": "field",

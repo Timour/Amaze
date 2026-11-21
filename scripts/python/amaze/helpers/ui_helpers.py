@@ -718,7 +718,7 @@ class SectionTabBar(QtWidgets.QWidget):
     ICON_BLEED = theme.ui_px(amazetheme.TAB_ICON_BLEED)    # room around an icon's box for its outline
 
     STRIP_COLOR = theme.color("surface")   # theme-derived; matches the toolbar row
-    TRAY_COLOR = theme.color("surface_low")   # matches the category backdrop, so the tray looks connected to the sidebar below
+    TRAY_COLOR = theme.color("tab_bar")   # the colour Houdini fills its own tab bars with
     LINE_COLOR = TRAY_COLOR    # the line under the strip is the tray's own colour
     CHIP_FILL = theme.color("tab_chip")    # an ACCENT shade: Houdini's own example panel drives its checked/tab states from accent variants
     CHIP_RING = theme.color("tab_ring")

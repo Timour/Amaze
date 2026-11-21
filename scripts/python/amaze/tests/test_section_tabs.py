@@ -74,7 +74,7 @@ class TheTabStripMatchesItsDesignFrame(unittest.TestCase):
         image = self.bar.grab().toImage()
         scale = image.width() // self.bar.width()
         want = self.bar.TRAY_COLOR.name()    # the tabs' background, from Houdini's theme
-        self.assertEqual(theme.color_hex("surface_low"), want)
+        self.assertEqual(theme.color_hex("tab_bar"), want)
         for row in range(image.height() - line_px * scale, image.height()):
             with self.subTest(row=row):
                 self.assertEqual({want}, {image.pixelColor(x, row).name()
