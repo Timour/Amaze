@@ -22,12 +22,17 @@ from amaze.helpers import ui_helpers  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
 
-def _press(point):
-    return QtGui.QMouseEvent(
-        QtCore.QEvent.Type.MouseButtonPress, point,
-        QtCore.Qt.MouseButton.LeftButton,
-        QtCore.Qt.MouseButton.LeftButton,
-        QtCore.Qt.KeyboardModifier.NoModifier)
+def _click(strip, point):
+    """Press and release the left button on whichever of `strip`'s children is at `point`."""
+    child = strip.childAt(QtCore.QPointF(point).toPoint())
+    if child is None:
+        return
+    local = QtCore.QPointF(child.mapFrom(strip, QtCore.QPointF(point).toPoint()))
+    for kind, buttons in ((QtCore.QEvent.Type.MouseButtonPress, QtCore.Qt.MouseButton.LeftButton),
+                          (QtCore.QEvent.Type.MouseButtonRelease, QtCore.Qt.MouseButton.NoButton)):
+        QtWidgets.QApplication.sendEvent(child, QtGui.QMouseEvent(
+            kind, local, QtCore.Qt.MouseButton.LeftButton, buttons,
+            QtCore.Qt.KeyboardModifier.NoModifier))
 
 
 class TheCancelConversionsModel(unittest.TestCase):
@@ -100,8 +105,7 @@ class TheCancelChip(unittest.TestCase):
         rect = self.tabs._cancel_rect()
         self.assertIsNotNone(rect, "600px of strip left no room for "
                              "the chip, so the press below hits nothing")
-        QtWidgets.QApplication.sendEvent(
-            self.tabs, _press(rect.center()))
+        _click(self.tabs, rect.center())
         self.assertEqual([True], self.fired)
         self.assertEqual("material", self.tabs._checked_key)
 
@@ -109,25 +113,25 @@ class TheCancelChip(unittest.TestCase):
         self.tabs.set_cancel_visible(True)
         rect = self.tabs._cancel_rect()
         self.tabs.set_cancel_visible(False)
-        QtWidgets.QApplication.sendEvent(
-            self.tabs, _press(rect.center()))
+        self.assertIsNone(self.tabs._cancel_rect())
+        _click(self.tabs, rect.center())
         self.assertEqual([], self.fired)
 
-    def test_the_chip_centers_on_the_strip_above_its_line_not_the_tray(self):
-        """The chip is drawn outside the tray, so it centers on the row above the bottom line."""
+    def test_the_chip_centers_on_the_strip_above_its_line(self):
         self.tabs.set_cancel_visible(True)
         rect = self.tabs._cancel_rect()
         self.assertIsNotNone(rect)
-        self.assertEqual(
-            self.tabs.LINE_TOP / 2.0, rect.center().y(),
-            "the chip is not centered on the strip above its bottom line")
+        self.assertAlmostEqual(
+            (self.tabs.HEIGHT - self.tabs.LINE_W) / 2.0, rect.center().y(), delta=0.5,
+            msg="the chip is not centered on the strip above its bottom line")
 
     def test_a_press_on_a_tab_still_selects_it(self):
+        self.tabs.setAttribute(QtCore.Qt.WidgetAttribute.WA_DontShowOnScreen)
+        self.tabs.show()
+        QtWidgets.QApplication.processEvents()
         self.tabs.setChecked("material", emit=False)
         self.tabs.set_cancel_visible(True)
-        (_, rect) = self.tabs._chip_rects()[1]
-        QtWidgets.QApplication.sendEvent(
-            self.tabs, _press(rect.center()))
+        _click(self.tabs, QtCore.QPointF(self.tabs.tab_rect(1).center()))
         self.assertEqual("file", self.tabs._checked_key)
         self.assertEqual([], self.fired)
 
@@ -199,8 +203,7 @@ class TheChipIsShownWithTheProgressBar(unittest.TestCase):
         self.addCleanup(setattr, model, "_flush_image_cache", real_flush)
         self.addCleanup(setattr, thumbnails.engine,
                         "cancel_pending_converts", real_cancel)
-        QtWidgets.QApplication.sendEvent(
-            panel.section_tabs, _press(rect.center()))
+        _click(panel.section_tabs, rect.center())
         self.assertEqual(
             ["flush", "cancel"], order,
             "the chip's press did not reach the engine as a flush "

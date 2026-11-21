@@ -148,8 +148,8 @@ DRAWN_EXEMPT = (    # (does this node need no pin, why): every other drawn node 
      "the toolbar is a layout of gaps and self-painted controls: the panel "
      "reads it through drawn_toolbar, held by TheToolbarMatchesFrameB01"),
     (lambda f, n: f.startswith("S"),
-     "the tab strip is PAINTED, not built from widgets: it reads its sizes "
-     "through drawn_tabs, held by TheTabStripMatchesItsDesignFrame"),
+     "the tab strip is a tab bar drawn by Houdini's style: it reads its height "
+     "and icons through drawn_tabs, held by TheTabStripMatchesItsDesignFrame"),
     (lambda f, n: f.startswith("G"),
      "the sidebar's rows are drawn by Houdini's style: the panel reads its "
      "sizes through drawn_sidebar, held by TheSidebarMatchesItsDesignFrame"),

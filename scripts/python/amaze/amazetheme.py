@@ -150,7 +150,6 @@ LIST_SELECTED_TEXT = "#000000"  # every column of a selected row
 SLIDER_LEFT = "#5d7abd"         # ▸ the slider, tabs and icon-menu button; the default accent
 SLIDER_HANDLE = "#777f95"
 SLIDER_TRACK = "#1a1a1a"        # the progress track's OWN colour, never the slider's, so one tweak cannot recolour both
-TAB_TEXT_HOVER = "#cccdcd"      # not in the design, which draws no tab hover state - matching the toolbar icons' hover
 MENU_IDLE_BODY = "#5d7abd"
 MENU_HOVER_BODY = "#cccdcd"
 MENU_IDLE_TRIANGLE = "#7f807f"
@@ -897,7 +896,7 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("icon ▸ btn_info ▸ icon_info.svg", 817, 6, 18, 18, None),
         ),
     },
-    "S01": {   # the section tab strip - its height, tray, chip spacing and tab icons are read
+    "S01": {   # the section tab strip - its height and tab icons are read
         "frame": (840, 29),
         "nodes": (
             ("tray", 3, 5, 305, 23, None),
@@ -1369,28 +1368,11 @@ def drawn_toolbar(frame_key: str = "B01") -> dict:
 
 
 def drawn_tabs(frame_key: str = "S01") -> dict:
-    """The section strip's height, tray, chip spacing and icons, off its frame. ▸r/tabs-from-frame"""
-    layout = DIALOG_LAYOUT[frame_key]
-    tray, line = drawn_node(frame_key, "tray"), drawn_node(frame_key, "Line 3")
-    chips = sorted(drawn_nodes(frame_key, "chip"), key=lambda n: n[1])
-    first = drawn_name(chips[0])[1]
-    icons = {}    # {section key: (art file, width, height, gap to the label, drop inside the chip)}
-    for chip in chips:
-        key = drawn_name(chip)[1]
-        icon, label = drawn_node(frame_key, "icon", key), drawn_node(frame_key, "label", key)
-        icons[key] = (drawn_name(icon)[2], icon[3], icon[4], label[1] - (icon[1] + icon[3]), icon[2] - chip[2])
-    return {
-        "height": layout["frame"][1],
-        "line_y": line[2],    # the bottom line's centre; the frame's 1 px stroke is the tray's colour
-        "tray_left": tray[1],
-        "tray_top": tray[2],
-        "tray_height": tray[4],
-        "chip_height": chips[0][4],
-        "chip_inset": chips[0][1] - tray[1],
-        "chip_gap": chips[1][1] - (chips[0][1] + chips[0][3]),
-        "chip_pad": drawn_node(frame_key, "icon", first)[1] - chips[0][1],    # the same after the label
-        "icons": icons,
-    }
+    """The section strip's height, left edge and tab icons' art and size, off S01. ▸r/tabs-from-frame"""
+    icons = {key: (drawn_name(icon)[2], icon[3], icon[4])    # {section key: (art file, width, height)}
+             for key, icon in drawn_by_owner(frame_key, "icon").items()}
+    return {"height": DIALOG_LAYOUT[frame_key]["frame"][1], "left": drawn_node(frame_key, "tray")[1],
+            "icons": icons}
 
 
 def drawn_sidebar(frame_key: str = "G01") -> dict:

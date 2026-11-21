@@ -1,15 +1,17 @@
 """Shared UI elements: the drag tag, the ui/ asset and SVG readers, and hand-painted widgets."""
 
 import contextlib
+import math
 import os
 import re
 
-from PySide6 import QtWidgets, QtCore, QtGui, QtSvg
+from PySide6 import QtWidgets, QtCore, QtGui, QtQml, QtQuick, QtSvg
 
 import amaze
 from amaze import amazetheme, messages
 from amaze.core import debug
 from amaze.helpers import theme
+from hutil.qt.common import qmlviews    # Houdini's own QML panels' base ▸r/houdini-qml-tabs
 
 
 @contextlib.contextmanager
@@ -687,245 +689,170 @@ class GridHeaderView(QtWidgets.QHeaderView):
             max(size.width() - size.height() - margin, 1), size.height())
 
 
-def _event_point(event) -> QtCore.QPointF:
-    """A mouse event's widget-local position for a QRectF hit test, rounded to whole pixels."""
-    return QtCore.QPointF(event.position().toPoint())   # `toPoint` rounds half away from zero, as `pos()` did
+class _StripLine(QtWidgets.QWidget):
+    """The strip's bottom row in the tab bar's colour, over the tab bar; it takes no mouse events."""
+
+    def __init__(self, parent) -> None:
+        super().__init__(parent)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+
+    def paintEvent(self, _event) -> None:
+        painter = QtGui.QPainter(self)    # Houdini's style ends the first and last tab a row short of the others
+        painter.fillRect(self.rect(), theme.color("tab_bar"))
+        painter.end()
+
+
+class _TabIcons(QtQuick.QQuickImageProvider):
+    """`image://sectiontab/<key>`: a section's art at its drawn size with room for its outline."""
+
+    def __init__(self, icons: dict, bleed: int) -> None:
+        super().__init__(QtQml.QQmlImageProviderBase.ImageType.Pixmap)
+        self._icons, self._bleed = icons, bleed
+
+    def requestPixmap(self, key: str, size: QtCore.QSize, requested: QtCore.QSize) -> QtGui.QPixmap:
+        art, _width, height = self._icons[key]
+        drawn = theme.ui_px(height)
+        tall = drawn + 2 * self._bleed
+        ratio = requested.height() / tall if requested.height() > 0 else theme.screen_ratio()
+        pixmap = bled_pixmap(amaze.package_file("ui", art), drawn, ratio, self._bleed)
+        size.setWidth(pixmap.width())
+        size.setHeight(pixmap.height())
+        return pixmap
+
+
+class _SectionTabsView(qmlviews.BaseQmlWidget):
+    """The section tabs' QML, made as Houdini makes its own QML panels. ▸r/houdini-qml-tabs"""
+
+    SOURCE_URL = QtCore.QUrl.fromLocalFile(amaze.package_file("ui", "section_tabs.qml")).toString()
+
+    def setupEngine(self) -> None:
+        self.engine().addImageProvider("sectiontab", _TabIcons(SectionTabBar.ICONS, SectionTabBar.ICON_BLEED))
 
 
 class SectionTabBar(QtWidgets.QWidget):
-    """The section tab strip below the toolbar, hand-painted: a tab per section, its icon first."""
+    """The section tab strip below the toolbar: Houdini's own QML tab bar, section icons first."""
 
     segmentClicked = QtCore.Signal(str)   # the key of the tab that just became checked, emitted only on an actual change
-    cancelClicked = QtCore.Signal()   # the Cancel chip; only panel.set_conversion_bar_visible shows or hides it
+    cancelClicked = QtCore.Signal()   # the Cancel button; only panel.set_conversion_bar_visible shows or hides it
 
     CANCEL_LABEL = "Cancel"
 
-    _DRAWN = amazetheme.drawn_tabs()    # every size but the radii and line weight is S01's ▸r/tabs-from-frame
+    _DRAWN = amazetheme.drawn_tabs()    # S01's height, left edge and icons ▸r/tabs-from-frame
     HEIGHT = theme.ui_px(_DRAWN["height"])
+    LEFT = theme.ui_px(_DRAWN["left"])    # where the tab bar starts, as the frame's tray does
     LINE_W = theme.ui_px(1)    # the frame's line node carries no weight ▸r/toolbar-tabs-840
-    LINE_TOP = theme.ui_px(_DRAWN["line_y"]) - LINE_W / 2.0
-    TRAY_TOP = theme.ui_px(_DRAWN["tray_top"])
-    TRAY_HEIGHT = theme.ui_px(_DRAWN["tray_height"])
-    TRAY_RADIUS = theme.ui_px(4)
-    TRAY_LEFT = theme.ui_px(_DRAWN["tray_left"])
-    CHIP_HEIGHT = theme.ui_px(_DRAWN["chip_height"])
-    CHIP_RADIUS = theme.ui_px(4)
-    CHIP_RING_W = theme.ui_px(1)
-    CHIP_PAD_X = theme.ui_px(_DRAWN["chip_pad"])
-    CHIP_GAP = theme.ui_px(_DRAWN["chip_gap"])
-    CHIP_INSET = theme.ui_px(_DRAWN["chip_inset"])
-    ICONS = _DRAWN["icons"]    # a section's art and its drawn size; a tab with no entry is its label alone
+    ICONS = _DRAWN["icons"]    # a section's art and its drawn size; a tab with no entry has no icon
     ICON_BLEED = theme.ui_px(amazetheme.TAB_ICON_BLEED)    # room around an icon's box for its outline
 
     STRIP_COLOR = theme.color("surface")   # theme-derived; matches the toolbar row
-    TRAY_COLOR = theme.color("tab_bar")   # the colour Houdini fills its own tab bars with
-    HOVER_FILL = theme.color("tab_hover")   # the chip behind a tab under the pointer, as Houdini's tabs have
-    LINE_COLOR = TRAY_COLOR    # the line under the strip is the tray's own colour
-    CHIP_FILL = theme.color("tab_chip")    # an ACCENT shade: Houdini's own example panel drives its checked/tab states from accent variants
-    CHIP_RING = theme.color("tab_ring")
-    TEXT_SELECTED = theme.color("text_bright")
-    TEXT_UNSELECTED = theme.color("text")
-    TEXT_HOVER = QtGui.QColor(amazetheme.TAB_TEXT_HOVER)   # tab hover text, matching the toolbar icons' hover colour
 
     def __init__(self, segments: list) -> None:
         """segments: list of (key, label) pairs, left to right."""
         super().__init__()
         self._segments = list(segments)
-        self._icon_pixmaps = {}    # {(key, screen ratio): pixmap}
         self._checked_key = None
-        self._hover_key = None
         self._cancel_visible = False
-        self._cancel_hover = False
         self.setFixedHeight(self.HEIGHT)
-        self.setMouseTracking(True)
         self.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Expanding,
             QtWidgets.QSizePolicy.Policy.Fixed,
         )
+        self._tabs = self._make_tabs()
+        self._cancel_button = QtWidgets.QPushButton(self.CANCEL_LABEL, self)
+        self._cancel_button.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+        self._cancel_button.clicked.connect(self.cancelClicked)
+        self._cancel_button.hide()
+        self._line = _StripLine(self)    # made last, so it is above the tab bar
+        self._place()
+
+    def _make_tabs(self):
+        """The QML tab bar, with the section rows and the choice wired to the strip."""
+        tabs = _SectionTabsView(parent=self)
+        tabs.setClearColor(self.STRIP_COLOR)
+        tabs.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+        root = tabs.rootObject()
+        if root is None:
+            raise RuntimeError("the section tabs did not load: %s"
+                               % "; ".join(e.toString() for e in tabs.errors()))
+        root.setProperty("tabs", [self._tab_row(key, label) for key, label in self._segments])
+        root.tabChosen.connect(self._on_tab)
+        return tabs
+
+    def _tab_row(self, key: str, label: str) -> dict:
+        """One tab for the QML: its name, and its art at the drawn size plus the outline's room."""
+        if key not in self.ICONS:
+            return {"label": label, "icon": "", "iconWidth": 0, "iconHeight": 0, "bleed": 0}
+        _art, width, height = self.ICONS[key]
+        return {"label": label, "icon": "image://sectiontab/" + key, "bleed": self.ICON_BLEED,
+                "iconWidth": theme.ui_px(width) + 2 * self.ICON_BLEED,
+                "iconHeight": theme.ui_px(height) + 2 * self.ICON_BLEED}
+
+    def tab_rect(self, index: int) -> QtCore.QRect:
+        """Where tab `index` is drawn, in the strip's coordinates."""
+        rect = self._tabs.rootObject().tabRect(index)
+        return QtCore.QRectF(rect).translated(QtCore.QPointF(self._tabs.pos())).toAlignedRect()
+
+    def _on_tab(self, index: int) -> None:
+        if 0 <= index < len(self._segments):
+            self.setChecked(self._segments[index][0])
 
     def setChecked(self, key: str, emit: bool = True) -> None:
         """Select a tab, emitting `segmentClicked` only on a change; `emit=False` sets the initial state."""
         if key != self._checked_key:
             self._checked_key = key
-            self.update()
+            keys = [k for k, _label in self._segments]
+            if key in keys:
+                self._tabs.rootObject().setProperty("currentIndex", keys.index(key))
             if emit:
                 self.segmentClicked.emit(key)
 
-    def _chip_rects(self) -> list:
-        """[((key, label), QRectF), ...]: each tab's chip rect and hit target, in the current font."""
-        metrics = self.fontMetrics()
-        chip_y = self.TRAY_TOP + (self.TRAY_HEIGHT - self.CHIP_HEIGHT) / 2.0
-        x = self.TRAY_LEFT + self.CHIP_INSET
-        rects = []
-        for key, label in self._segments:
-            w = self._icon_room(key) + metrics.horizontalAdvance(label) + 2 * self.CHIP_PAD_X
-            rects.append(
-                ((key, label), QtCore.QRectF(x, chip_y, w, self.CHIP_HEIGHT))
-            )
-            x += w + self.CHIP_GAP
-        return rects
-
-    def _icon_room(self, key: str) -> int:
-        """What a tab's icon and the gap after it take of its width; 0 for a tab without one."""
-        icon = self.ICONS.get(key)
-        return theme.ui_px(icon[1]) + theme.ui_px(icon[3]) if icon else 0
-
-    def icon_rect(self, key: str, chip: QtCore.QRectF):
-        """Where a tab's icon is drawn inside its chip, or None for a tab without one."""
-        icon = self.ICONS.get(key)
-        if not icon:
-            return None
-        return QtCore.QRectF(chip.x() + self.CHIP_PAD_X, chip.y() + theme.ui_px(icon[4]),
-                             theme.ui_px(icon[1]), theme.ui_px(icon[2]))
-
-    def _icon_pixmap(self, key: str) -> QtGui.QPixmap:
-        ratio = theme.screen_ratio(self)
-        pixmap = self._icon_pixmaps.get((key, ratio))
-        if pixmap is None:
-            art, _width, height = self.ICONS[key][:3]
-            pixmap = bled_pixmap(amaze.package_file("ui", art), theme.ui_px(height), ratio, self.ICON_BLEED)
-            self._icon_pixmaps[(key, ratio)] = pixmap
-        return pixmap
-
-    def _key_at(self, pos) -> str | None:
-        for (key, _), rect in self._chip_rects():
-            if rect.contains(QtCore.QPointF(pos)):
-                return key
-        return None
-
     def set_cancel_visible(self, visible: bool) -> None:
-        """Show or hide the Cancel chip; call through panel.set_conversion_bar_visible."""
-        visible = bool(visible)
-        if visible != self._cancel_visible:
-            self._cancel_visible = visible
-            if not visible:
-                self._cancel_hover = False
-            self.update()
+        """Show or hide the Cancel button; call through panel.set_conversion_bar_visible."""
+        self._cancel_visible = bool(visible)
+        self._place()
 
     def cancel_visible(self) -> bool:
         return self._cancel_visible
 
-    def _cancel_rect(self, rects=None):
-        """The Cancel chip's rect, or None while hidden or when the strip is too narrow for it."""
-        if not self._cancel_visible:
+    def _cancel_rect(self):
+        """The Cancel button's rect, or None while hidden or when the strip is too narrow for it."""
+        self._place()
+        if self._cancel_button.isHidden():
             return None
-        metrics = self.fontMetrics()
-        chip_y = (self.LINE_TOP - self.CHIP_HEIGHT) / 2.0   # centred on the strip above its line, not the tray
-        width = metrics.horizontalAdvance(self.CANCEL_LABEL) \
-            + 2 * self.CHIP_PAD_X
-        x = self.width() - self.TRAY_LEFT - self.CHIP_INSET - width
-        if rects is None:
-            rects = self._chip_rects()
-        tabs_right = rects[-1][1].right() if rects else 0
-        if x < tabs_right + self.CHIP_GAP:
-            return None
-        return QtCore.QRectF(x, chip_y, width, self.CHIP_HEIGHT)
+        return QtCore.QRectF(self._cancel_button.geometry())
+
+    def _tabs_size(self) -> QtCore.QSize:
+        root = self._tabs.rootObject()
+        return QtCore.QSize(math.ceil(root.property("implicitWidth")),
+                            min(math.ceil(root.property("implicitHeight")), self.HEIGHT))
+
+    def _place(self) -> None:
+        """Lay out the tab bar at the left on the line row, the Cancel button at the right, the line."""
+        size = self._tabs_size()
+        width = min(size.width(), max(self.width() - self.LEFT, 0))
+        self._tabs.setGeometry(self.LEFT, self.HEIGHT - size.height(), width, size.height())
+        style = self.style()
+        margin = style.pixelMetric(QtWidgets.QStyle.PixelMetric.PM_LayoutRightMargin)
+        gap = style.pixelMetric(QtWidgets.QStyle.PixelMetric.PM_LayoutHorizontalSpacing)
+        button = self._cancel_button.sizeHint()
+        above = self.HEIGHT - self.LINE_W    # the button is centred on the strip above its line
+        button_h = min(button.height(), above)
+        x = self.width() - margin - button.width()
+        self._cancel_button.setGeometry(x, (above - button_h) // 2, button.width(), button_h)
+        self._cancel_button.setVisible(self._cancel_visible and x >= self.LEFT + size.width() + gap)
+        self._line.setGeometry(0, self.HEIGHT - self.LINE_W, self.width(), self.LINE_W)
+        self._line.raise_()
+
+    def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
+        super().resizeEvent(event)
+        self._place()
 
     def sizeHint(self) -> QtCore.QSize:
-        rects = self._chip_rects()
-        right = rects[-1][1].right() + self.CHIP_INSET if rects else 0
-        return QtCore.QSize(int(right) + self.TRAY_LEFT, self.HEIGHT)
-
-    @debug.guarded("SectionTabBar.mousePressEvent")
-    def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
-        if event.button() != QtCore.Qt.MouseButton.LeftButton:
-            return
-        point = _event_point(event)
-        cancel = self._cancel_rect()
-        if cancel is not None and cancel.contains(point):
-            self.cancelClicked.emit()
-            return
-        key = self._key_at(point)
-        if key is not None:
-            self.setChecked(key)
-
-    @debug.guarded("SectionTabBar.mouseMoveEvent")
-    def mouseMoveEvent(self, event: QtGui.QMouseEvent) -> None:
-        point = _event_point(event)
-        key = self._key_at(point)
-        cancel = self._cancel_rect()
-        over_cancel = cancel is not None and cancel.contains(point)
-        if key != self._hover_key or over_cancel != self._cancel_hover:
-            self._hover_key = key
-            self._cancel_hover = over_cancel
-            if key is not None or over_cancel:   # a pointing hand over a tab or the Cancel chip only
-                self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-            else:
-                self.unsetCursor()
-            self.update()
-
-    def leaveEvent(self, event: QtCore.QEvent) -> None:
-        if self._hover_key is not None or self._cancel_hover:
-            self._hover_key = None
-            self._cancel_hover = False
-            self.unsetCursor()
-            self.update()
-
-    def _tray_rect(self, rects=None):
-        """The tray behind the tabs, down to the strip's bottom line, or None with no tabs."""
-        if rects is None:
-            rects = self._chip_rects()
-        if not rects:
-            return None
-        right = rects[-1][1].right() + self.CHIP_INSET
-        return QtCore.QRectF(self.TRAY_LEFT, self.TRAY_TOP, right - self.TRAY_LEFT, self.TRAY_HEIGHT)
-
-    def _line_rect(self) -> QtCore.QRectF:
-        """The line along the strip's bottom, the full width."""
-        return QtCore.QRectF(0, self.LINE_TOP, self.width(), self.LINE_W)
+        return QtCore.QSize(self.LEFT + self._tabs_size().width(), self.HEIGHT)
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
         painter = QtGui.QPainter(self)
-        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
         painter.fillRect(self.rect(), self.STRIP_COLOR)
-
-        rects = self._chip_rects()
-        tray = self._tray_rect(rects)
-        if tray is not None:
-            tray_path = QtGui.QPainterPath()
-            tray_path.addRoundedRect(    # one radius past the bottom, so only the top corners round
-                tray.adjusted(0, 0, 0, self.TRAY_RADIUS),
-                self.TRAY_RADIUS,
-                self.TRAY_RADIUS,
-            )
-            painter.fillPath(tray_path, self.TRAY_COLOR)
-
-        for (key, label), rect in rects:
-            checked = key == self._checked_key
-            if checked:
-                chip_path = QtGui.QPainterPath()
-                chip_path.addRoundedRect(rect, self.CHIP_RADIUS, self.CHIP_RADIUS)
-                painter.fillPath(chip_path, self.CHIP_FILL)
-                draw_ring(painter, rect, self.CHIP_RING, self.CHIP_RING_W,
-                          self.CHIP_RADIUS)
-            elif key == self._hover_key:
-                hover_path = QtGui.QPainterPath()
-                hover_path.addRoundedRect(rect, self.CHIP_RADIUS, self.CHIP_RADIUS)
-                painter.fillPath(hover_path, self.HOVER_FILL)
-            if checked:
-                painter.setPen(self.TEXT_SELECTED)
-            elif key == self._hover_key:
-                painter.setPen(self.TEXT_HOVER)
-            else:
-                painter.setPen(self.TEXT_UNSELECTED)
-            icon = self.icon_rect(key, rect)
-            if icon is not None:    # the art keeps its own colours, selected or not
-                painter.drawPixmap(icon.topLeft() - QtCore.QPointF(self.ICON_BLEED, self.ICON_BLEED),
-                                   self._icon_pixmap(key))    # the outline overhangs the icon's own box
-            text = rect.adjusted(self.CHIP_PAD_X + self._icon_room(key), 0, -self.CHIP_PAD_X, 0)
-            painter.drawText(text, QtCore.Qt.AlignmentFlag.AlignCenter, label)
-
-        painter.fillRect(self._line_rect(), self.LINE_COLOR)
-
-        cancel = self._cancel_rect(rects)
-        if cancel is not None:   # ring only, no fill: so it looks like a BUTTON, not like the tabs beside it
-            draw_ring(painter, cancel, self.CHIP_RING, self.CHIP_RING_W,
-                      self.CHIP_RADIUS)
-            painter.setPen(self.TEXT_HOVER if self._cancel_hover
-                           else self.TEXT_UNSELECTED)
-            painter.drawText(cancel, QtCore.Qt.AlignmentFlag.AlignCenter,
-                             self.CANCEL_LABEL)
-
         painter.end()
 
 

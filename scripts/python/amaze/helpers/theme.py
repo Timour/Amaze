@@ -91,23 +91,19 @@ def font(role: str, source=None) -> QtGui.QFont:
 
 
 _DEFAULTS = {        # Houdini's default dark theme, for a session that publishes no theme (hython)
-    "tab_bar": "#242424",  # behind a row of tabs: the section tabs' tray and the line under it
-    "tab_hover": "#2f2f2f",  # a tab under the pointer
+    "tab_bar": "#242424",  # the line under a row of tabs: the section tabs' and Preferences'
     "surface_low": "#282828",  # sidebar backdrop, thumb bg
     "surface": "#2d2d2d",  # toolbar row, tab strip, line_tags
     "field": "#434343",  # filter box fill, toolbar divider
     "row": "#2f2f2f",  # a row list's darker row: the line between the info table's columns
     "text_dim": "#656565",  # grid tile subtitle
-    "text": "#a6a6a6",  # grid tile name, unselected tab text
-    "text_bright": "#dddddd",  # selected tab text, "Filter" label
-    "tab_chip": "#404862",  # section tab selected fill
-    "tab_ring": "#464f6b",  # section tab selected ring
+    "text": "#a6a6a6",  # grid tile name
+    "text_bright": "#dddddd",  # "Filter" label
     "star": "#fdba00",  # favorite badge (Yellow mode)
 }
 
 _ROLES = {           # an Amaze colour -> the role Houdini's theme publishes it under ▸r/one-row-list
     "tab_bar": "surfaceLowest",    # what Houdini's own style fills a tab bar with
-    "tab_hover": "surface",        # and a tab under the pointer ▸r/tab-hover
     "surface_low": "surfaceLow",
     "surface": "bg",
     "field": "field",
@@ -117,7 +113,6 @@ _ROLES = {           # an Amaze colour -> the role Houdini's theme publishes it 
     "text_bright": "fg",
     "star": "highlight",
 }
-TAB_RING_LIGHTER = 110    # Houdini's style draws a selected tab's outline this much lighter than its fill
 
 
 def houdini_role(role: str):
@@ -127,16 +122,6 @@ def houdini_role(role: str):
     return QtGui.QColor(value) if isinstance(value, QtGui.QColor) and value.isValid() else None
 
 
-def _selected_tab():
-    """(fill, outline) of a selected tab, mixed as Houdini's own style mixes them; None with no theme."""
-    high, checked = houdini_role("surfaceHighest"), houdini_role("checkedSurface")
-    if high is None or checked is None:
-        return None
-    fill = QtGui.QColor.fromRgbF((high.redF() + checked.redF()) / 2, (high.greenF() + checked.greenF()) / 2,
-                                 (high.blueF() + checked.blueF()) / 2)
-    return fill, fill.lighter(TAB_RING_LIGHTER)
-
-
 def accent(fallback_hex: str) -> QtGui.QColor:
     """The theme's accent; the manual accent preference when no theme."""
     return houdini_role("primary") or QtGui.QColor(fallback_hex)
@@ -144,12 +129,7 @@ def accent(fallback_hex: str) -> QtGui.QColor:
 
 def color(name: str) -> QtGui.QColor:
     """A named Amaze colour: Houdini's own for it, read now, so a changed theme shows at once."""
-    if name in ("tab_chip", "tab_ring"):
-        tab = _selected_tab()
-        live = tab[name == "tab_ring"] if tab else None
-    else:
-        live = houdini_role(_ROLES[name])
-    return live or QtGui.QColor(_DEFAULTS[name])
+    return houdini_role(_ROLES[name]) or QtGui.QColor(_DEFAULTS[name])
 
 
 def color_hex(name: str) -> str:
