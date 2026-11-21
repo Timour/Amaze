@@ -148,6 +148,16 @@ class TheTabStripMatchesItsDesignFrame(unittest.TestCase):
         self.assertTrue(any(image.pixelColor(edge, y).alpha() for y in range(image.height())),
                         "the outline left of the Node icon's box is not painted")
 
+    def test_a_tab_under_the_pointer_has_a_chip_behind_it(self):
+        self.bar.show()
+        self.bar.setChecked(self.keys[0], emit=False)
+        (key, _label), rect = self.bar._chip_rects()[2]
+        self.bar._hover_key = key
+        image = self.bar.grab().toImage()
+        scale = image.width() // self.bar.width()
+        at = (int((rect.left() + 2) * scale), int(rect.center().y() * scale))    # inside the chip, left of the icon
+        self.assertEqual(self.bar.HOVER_FILL.name(), image.pixelColor(*at).name())
+
     def test_a_tab_with_no_icon_is_its_name_between_the_pads(self):
         bar = ui_helpers.SectionTabBar([("GPUOpen", "GPUOpen"), ("RGL", "RGL")])
         self.addCleanup(bar.deleteLater)

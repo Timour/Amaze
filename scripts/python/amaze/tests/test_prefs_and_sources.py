@@ -1528,7 +1528,7 @@ class PreferencesShowTheDrawnTexts(unittest.TestCase):
 class TheColoursAreHoudinisOwn(unittest.TestCase):
     """Every Amaze colour is one Houdini 22's theme publishes; none is worked out here. ▸r/one-row-list"""
 
-    LIVE = {"surfaceLowest": "#242424", "surfaceLow": "#282828", "bg": "#2d2d2d", "field": "#434343", "dimFg": "#656565",
+    LIVE = {"surfaceLowest": "#242424", "surface": "#2f2f2f", "surfaceLow": "#282828", "bg": "#2d2d2d", "field": "#434343", "dimFg": "#656565",
             "secondarySurfaceFg": "#a6a6a6", "fg": "#dddddd", "highlight": "#fdba00",
             "surfaceHighest": "#383838", "checkedSurface": "#47578b", "primary": "#7082b9"}
 
@@ -1545,7 +1545,7 @@ class TheColoursAreHoudinisOwn(unittest.TestCase):
 
     def test_each_colour_is_the_role_houdini_publishes_it_under(self):
         self._publish({role: "#0%d0%d0%d" % (n, n, n) for n, role in enumerate(self.LIVE, 1)})
-        for name, role in (("tab_bar", "surfaceLowest"), ("surface_low", "surfaceLow"), ("surface", "bg"), ("field", "field"),
+        for name, role in (("tab_bar", "surfaceLowest"), ("tab_hover", "surface"), ("surface_low", "surfaceLow"), ("surface", "bg"), ("field", "field"),
                            ("text_dim", "dimFg"), ("text", "secondarySurfaceFg"), ("text_bright", "fg"),
                            ("star", "highlight")):
             with self.subTest(name=name):
@@ -1565,7 +1565,7 @@ class TheColoursAreHoudinisOwn(unittest.TestCase):
 
     def test_with_no_theme_published_the_colours_are_the_default_dark_themes(self):
         self._publish({})
-        self.assertEqual({"tab_bar": "#242424", "surface_low": "#282828", "surface": "#2d2d2d", "field": "#434343",
+        self.assertEqual({"tab_bar": "#242424", "tab_hover": "#2f2f2f", "surface_low": "#282828", "surface": "#2d2d2d", "field": "#434343",
                           "row": "#2f2f2f", "text_dim": "#656565", "text": "#a6a6a6", "text_bright": "#dddddd",
                           "tab_chip": "#404862", "tab_ring": "#464f6b", "star": "#fdba00"},
                          {name: self.theme.color_hex(name) for name in self.theme._DEFAULTS})

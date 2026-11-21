@@ -719,6 +719,7 @@ class SectionTabBar(QtWidgets.QWidget):
 
     STRIP_COLOR = theme.color("surface")   # theme-derived; matches the toolbar row
     TRAY_COLOR = theme.color("tab_bar")   # the colour Houdini fills its own tab bars with
+    HOVER_FILL = theme.color("tab_hover")   # the chip behind a tab under the pointer, as Houdini's tabs have
     LINE_COLOR = TRAY_COLOR    # the line under the strip is the tray's own colour
     CHIP_FILL = theme.color("tab_chip")    # an ACCENT shade: Houdini's own example panel drives its checked/tab states from accent variants
     CHIP_RING = theme.color("tab_ring")
@@ -897,6 +898,10 @@ class SectionTabBar(QtWidgets.QWidget):
                 painter.fillPath(chip_path, self.CHIP_FILL)
                 draw_ring(painter, rect, self.CHIP_RING, self.CHIP_RING_W,
                           self.CHIP_RADIUS)
+            elif key == self._hover_key:
+                hover_path = QtGui.QPainterPath()
+                hover_path.addRoundedRect(rect, self.CHIP_RADIUS, self.CHIP_RADIUS)
+                painter.fillPath(hover_path, self.HOVER_FILL)
             if checked:
                 painter.setPen(self.TEXT_SELECTED)
             elif key == self._hover_key:
