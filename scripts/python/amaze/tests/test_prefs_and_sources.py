@@ -4,6 +4,7 @@ import ast
 import builtins
 import contextlib
 import importlib.util
+import inspect
 import json
 import ntpath
 import os
@@ -16,7 +17,7 @@ import unittest
 from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PySide6 import QtWidgets  # noqa: E402
+from PySide6 import QtGui, QtWidgets  # noqa: E402
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
@@ -1524,56 +1525,63 @@ class PreferencesShowTheDrawnTexts(unittest.TestCase):
         self.assertEqual(("Log not saved", "Log saved"),
                          (messages.TITLE_LOG_NOT_SAVED, messages.TITLE_LOG_SAVED))
 
-class ThePresetThemeIsFollowed(unittest.TestCase):
-    """A named theme leaves `themeValues` empty; its triplets come from the theme files. ▸r/pluto-theme"""
+class TheColoursAreHoudinisOwn(unittest.TestCase):
+    """Every Amaze colour is one Houdini 22's theme publishes; none is worked out here. ▸r/one-row-list"""
+
+    LIVE = {"surfaceLow": "#282828", "bg": "#2d2d2d", "field": "#434343", "dimFg": "#656565",
+            "secondarySurfaceFg": "#a6a6a6", "fg": "#dddddd", "highlight": "#fdba00",
+            "surfaceHighest": "#383838", "checkedSurface": "#47578b", "primary": "#7082b9"}
 
     def setUp(self):
         from amaze.helpers import theme
         self.theme = theme
-        theme._read.cache_clear()
-        self.addCleanup(theme._read.cache_clear)
-        self.prefs = {}
-        self.folder = tempfile.mkdtemp(prefix="amaze_themes_")
-        self.addCleanup(shutil.rmtree, self.folder, ignore_errors=True)
-        shipped = hou.text.expandString("$HFS/houdini/config/Themes")
-        for patcher in (
-                mock.patch.object(hou, "getPreference",
-                                  lambda name: self.prefs.get(name, "")),
-                mock.patch.object(hou, "findDirectories",
-                                  lambda path: (self.folder, shipped))):
-            patcher.start()
-            self.addCleanup(patcher.stop)
+        self.app = QtWidgets.QApplication.instance()
+        for role in self.LIVE:
+            self.addCleanup(self.app.setProperty, "pluto_" + role, self.app.property("pluto_" + role))
 
-    def _base(self, triplet):
-        from hutil import oklch
-        return self.theme._to_qcolor(oklch, triplet).name()
+    def _publish(self, values):
+        for role in self.LIVE:
+            self.app.setProperty("pluto_" + role, QtGui.QColor(values[role]) if role in values else None)
 
-    def _read_base(self):
-        read = self.theme._read()
-        return None if read is None else read["base"].name()
+    def test_each_colour_is_the_role_houdini_publishes_it_under(self):
+        self._publish({role: "#0%d0%d0%d" % (n, n, n) for n, role in enumerate(self.LIVE, 1)})
+        for name, role in (("surface_low", "surfaceLow"), ("surface", "bg"), ("field", "field"),
+                           ("text_dim", "dimFg"), ("text", "secondarySurfaceFg"), ("text_bright", "fg"),
+                           ("star", "highlight")):
+            with self.subTest(name=name):
+                self.assertEqual(self.app.property("pluto_" + role).name(), self.theme.color_hex(name))
+        self.assertEqual(self.app.property("pluto_primary").name(), self.theme.accent("#123456").name())
 
-    def test_a_stock_preset_is_read_by_name(self):
-        self.prefs["pluto_ui.themeName"] = "Default Colorful"
-        self.assertEqual(self._base([280, 5, 18]), self._read_base())
+    def test_a_selected_tab_is_mixed_as_houdinis_own_style_mixes_it(self):
+        self._publish(self.LIVE)
+        self.assertEqual(("#404862", "#464f6b"),    # read live off Houdini 22.0.508's style, 2026-11-21
+                         (self.theme.color_hex("tab_chip"), self.theme.color_hex("tab_ring")))
 
-    def test_hand_edited_values_take_precedence_over_the_name(self):
-        self.prefs.update({"pluto_ui.themeName": "Default Colorful",
-                           "pluto_ui.themeValues": json.dumps(
-                               {"base": [100, 10, 20], "primary": [270, 29, 55],
-                                "highlight": [82, 60, 80]})})
-        self.assertEqual(self._base([100, 10, 20]), self._read_base())
+    def test_a_changed_theme_shows_at_the_next_read(self):
+        self._publish(self.LIVE)
+        self.assertEqual("#2d2d2d", self.theme.color_hex("surface"))
+        self.app.setProperty("pluto_bg", QtGui.QColor("#101820"))
+        self.assertEqual("#101820", self.theme.color_hex("surface"), "the first theme read was kept")
 
-    def test_a_user_theme_is_read_by_its_file_and_name(self):
-        path = os.path.join(self.folder, "mine.theme.json")
-        with open(path, "w", encoding="utf-8") as handle:
-            json.dump({"name": "Mine", "theme": {"base": [30, 8, 22], "primary": [270, 29, 55],
-                                                 "highlight": [82, 60, 80]}}, handle)
-        self.prefs["pluto_ui.themeName"] = path.replace("\\", "/") + "::Mine"
-        self.assertEqual(self._base([30, 8, 22]), self._read_base())
+    def test_with_no_theme_published_the_colours_are_the_default_dark_themes(self):
+        self._publish({})
+        self.assertEqual({"surface_low": "#282828", "surface": "#2d2d2d", "field": "#434343",
+                          "text_dim": "#656565", "text": "#a6a6a6", "text_bright": "#dddddd",
+                          "tab_chip": "#404862", "tab_ring": "#464f6b", "star": "#fdba00"},
+                         {name: self.theme.color_hex(name) for name in self.theme._DEFAULTS})
+        self.assertEqual("#123456", self.theme.accent("#123456").name())
 
-    def test_an_unknown_name_falls_back_to_the_built_in_colors(self):
-        self.prefs["pluto_ui.themeName"] = "No Such Theme"
-        self.assertIsNone(self.theme._read())
+    def test_the_built_in_colours_are_what_the_default_theme_publishes(self):
+        self._publish(self.LIVE)
+        self.assertEqual({name: QtGui.QColor(value).name() for name, value in self.theme._DEFAULTS.items()},
+                         {name: self.theme.color_hex(name) for name in self.theme._DEFAULTS})
+
+    def test_nothing_here_works_a_colour_out_from_the_themes_base_colours(self):
+        source = inspect.getsource(self.theme)
+        for gone in ("oklch", "themeValues", "themeName", "_derive", "tone_to_lightness"):
+            with self.subTest(name=gone):
+                self.assertNotIn(gone, source)
+
 
 class ThePickersStartInAForwardSlashPath(unittest.TestCase):
     """`hou.ui.selectFile` wants forward slashes in `start_directory`, even on Windows."""
@@ -1747,21 +1755,6 @@ class ALoadOnceResultIsKeptUntilCleared(unittest.TestCase):
             matx_sources._ssl_context()
             self.assertEqual(2, tls.create_default_context.call_count,
                              "after cache_clear() the next call did not build a context")
-
-    def test_an_empty_theme_preference_is_read_once(self):
-        from amaze.helpers import theme
-        self._fresh(theme._read)
-        with mock.patch.object(hou, "getPreference", return_value="") as asked:
-            first = theme._read()
-            once = asked.call_count
-            second = theme._read()
-            self.assertEqual([None, None], [first, second], "an empty preference read as a theme")
-            self.assertEqual(once, asked.call_count,
-                             "the None result was not cached, so the preference was read again")
-            theme._read.cache_clear()
-            theme._read()
-            self.assertEqual(2 * once, asked.call_count,
-                             "after cache_clear() the next call did not read the preference")
 
     def test_pillow_is_imported_once(self):
         from amaze.core import conversion

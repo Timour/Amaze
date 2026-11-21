@@ -1,9 +1,5 @@
 """Palette, fonts and UI scale from Houdini's Pluto theme, else built-in colours. ▸r/pluto-theme"""
 
-import functools
-import glob
-import json
-import os
 
 from PySide6 import QtGui
 
@@ -94,127 +90,60 @@ def font(role: str, source=None) -> QtGui.QFont:
     return derived
 
 
-_DEFAULTS = {        # the fallback palette; no print() in this module ▸r/qt-windows-macos
-    "surface_low": "#272727",  # tab tray, sidebar backdrop, thumb bg
+_DEFAULTS = {        # Houdini's default dark theme, for a session that publishes no theme (hython)
+    "surface_low": "#282828",  # tab tray, sidebar backdrop, thumb bg
     "surface": "#2d2d2d",  # toolbar row, tab strip, line_tags
     "field": "#434343",  # filter box fill, toolbar divider
-    "text_dim": "#696969",  # grid tile subtitle
+    "text_dim": "#656565",  # grid tile subtitle
     "text": "#a6a6a6",  # grid tile name, unselected tab text
     "text_bright": "#dddddd",  # selected tab text, "Filter" label
-    "tab_chip": "#3e4765",  # section tab selected fill
-    "tab_ring": "#43506d",  # section tab selected ring
+    "tab_chip": "#404862",  # section tab selected fill
+    "tab_ring": "#464f6b",  # section tab selected ring
     "star": "#fdba00",  # favorite badge (Yellow mode)
 }
 
-_BASE_TONES = {      # a tone on the theme base's own hue and chroma
-    "surface_low": 15.4,
-    "surface": 18.2,
-    "field": 28.1,
-    "text_dim": 44.1,
-    "text": 67.9,
-    "text_bright": 88.0,
+_ROLES = {           # an Amaze colour -> the role Houdini's theme publishes it under ▸r/one-row-list
+    "surface_low": "surfaceLow",
+    "surface": "bg",
+    "field": "field",
+    "text_dim": "dimFg",
+    "text": "secondarySurfaceFg",
+    "text_bright": "fg",
+    "star": "highlight",
 }
-
-_ACCENT_DERIVED = {  # (chroma factor vs the accent's own, tone) ▸r/pluto-theme
-    "tab_chip": (0.60, 30.4),
-    "tab_ring": (0.59, 33.8),
-}
-
-_derived = {}
+TAB_RING_LIGHTER = 110    # Houdini's style draws a selected tab's outline this much lighter than its fill
 
 
-@functools.cache
-def _read():
-    """The active theme's three roles as QColors, read once a session; later changes are ignored."""
-    try:
-        values = _theme_values()
-        if values:
-            from hutil import oklch
-
-            return {
-                "oklch": oklch,
-                "base": _to_qcolor(oklch, values["base"]),
-                "accent": _to_qcolor(oklch, values["primary"]),
-                "highlight": _to_qcolor(oklch, values["highlight"]),
-            }
-    except Exception as exc:
-        from amaze.core import debug   # lazy: debug imports theme for its session header, so a module-top import cycles on reload
-
-        debug.event("theme", "not readable, using built-in colors", error=str(exc))
-    return None
+def houdini_role(role: str):
+    """A colour Houdini 22's theme publishes under `role`, or None where no theme is published."""
+    app = QtGui.QGuiApplication.instance()
+    value = app.property("pluto_" + role) if app is not None else None
+    return QtGui.QColor(value) if isinstance(value, QtGui.QColor) and value.isValid() else None
 
 
-def _theme_values():
-    """Hand-edited `themeValues` first, else `themeName` looked up as Houdini's theme manager does."""
-    raw = hou.getPreference("pluto_ui.themeValues")
-    if raw:
-        return json.loads(raw)
-    unique_id = hou.getPreference("pluto_ui.themeName")    # a named theme leaves the values empty ▸r/pluto-theme
-    return _named_theme(unique_id) if unique_id else None
-
-
-def _named_theme(unique_id: str):
-    """A theme's values by ID: `<file>::<name>`, or a bare name, the shipped file's first."""
-    wanted_file, _, wanted_name = unique_id.rpartition("::")
-    wanted_file = _same_file_key(hou.text.expandString(wanted_file)) if wanted_file else ""
-    shipped = _same_file_key(hou.text.expandString("$HFS/houdini/config/Themes/default.theme.json"))
-    by_name = []
-    for folder in hou.findDirectories("config/Themes"):
-        for path in sorted(glob.glob(os.path.join(folder, "*.theme.json"))):
-            try:
-                with open(path, encoding="utf-8") as handle:
-                    data = json.load(handle)
-            except (OSError, ValueError):
-                continue
-            found = ({data.get("name", os.path.basename(path)): data["theme"]} if "theme" in data
-                     else data.get("themes") or {})
-            if not isinstance(found, dict) or wanted_name not in found:
-                continue
-            key = _same_file_key(path)
-            if key == (wanted_file or shipped):
-                return found[wanted_name]
-            by_name.append(found[wanted_name])
-    return by_name[0] if by_name else None    # Houdini falls back to the name alone too
-
-
-def _same_file_key(path: str) -> str:
-    return os.path.normcase(os.path.realpath(path))
-
-def _to_qcolor(oklch, triplet):
-    hue, chroma, tone = (float(v) for v in triplet[:3])
-    ok = oklch.OkLCH(
-        oklch.tone_to_lightness(tone),
-        chroma / 100.0 * oklch.max_chroma,
-        hue,
-    )
-    return _rgb_qcolor(oklch, ok)
-
-
-def _rgb_qcolor(oklch, ok):
-    rgb = oklch.chromaClamp(ok)
-    return QtGui.QColor(int(rgb.red), int(rgb.green), int(rgb.blue))
-
-
-def _lch(oklch, qcolor):
-    return oklch.RGB(qcolor.red(), qcolor.green(), qcolor.blue()).to_OKLCH()
+def _selected_tab():
+    """(fill, outline) of a selected tab, mixed as Houdini's own style mixes them; None with no theme."""
+    high, checked = houdini_role("surfaceHighest"), houdini_role("checkedSurface")
+    if high is None or checked is None:
+        return None
+    fill = QtGui.QColor.fromRgbF((high.redF() + checked.redF()) / 2, (high.greenF() + checked.greenF()) / 2,
+                                 (high.blueF() + checked.blueF()) / 2)
+    return fill, fill.lighter(TAB_RING_LIGHTER)
 
 
 def accent(fallback_hex: str) -> QtGui.QColor:
     """The theme's accent; the manual accent preference when no theme."""
-    theme = _read()
-    if theme is not None:
-        return QtGui.QColor(theme["accent"])
-    return QtGui.QColor(fallback_hex)
+    return houdini_role("primary") or QtGui.QColor(fallback_hex)
 
 
 def color(name: str) -> QtGui.QColor:
-    """A named Amaze color, theme-derived when a theme is active."""
-    theme = _read()
-    if theme is None:
-        return QtGui.QColor(_DEFAULTS[name])
-    if name not in _derived:
-        _derived[name] = _derive(theme, name)
-    return QtGui.QColor(_derived[name])
+    """A named Amaze colour: Houdini's own for it, read now, so a changed theme shows at once."""
+    if name in ("tab_chip", "tab_ring"):
+        tab = _selected_tab()
+        live = tab[name == "tab_ring"] if tab else None
+    else:
+        live = houdini_role(_ROLES[name])
+    return live or QtGui.QColor(_DEFAULTS[name])
 
 
 def color_hex(name: str) -> str:
@@ -241,36 +170,3 @@ def syntax_colors() -> dict:
         live = {kind: QtGui.QColor(fallback)
                 for kind, (_name, fallback) in amazetheme.CODE_SYNTAX.items()}
     return live
-
-
-def _derive(theme, name):
-    oklch = theme["oklch"]
-    try:
-        if name == "star":
-            return QtGui.QColor(theme["highlight"])
-        if name in _BASE_TONES:
-            base = _lch(oklch, theme["base"])
-            return _rgb_qcolor(
-                oklch,
-                oklch.OkLCH(
-                    oklch.tone_to_lightness(_BASE_TONES[name]),
-                    base.chroma,
-                    base.hue,
-                ),
-            )
-        if name in _ACCENT_DERIVED:
-            factor, tone = _ACCENT_DERIVED[name]
-            acc = _lch(oklch, theme["accent"])
-            return _rgb_qcolor(
-                oklch,
-                oklch.OkLCH(
-                    oklch.tone_to_lightness(tone),
-                    acc.chroma * factor,
-                    acc.hue,
-                ),
-            )
-    except Exception as exc:
-        from amaze.core import debug   # lazy: debug imports theme for its session header, so a module-top import cycles on reload
-
-        debug.event("theme", "derivation failed", name=name, error=str(exc))
-    return QtGui.QColor(_DEFAULTS[name])
