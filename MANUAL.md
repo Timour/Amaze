@@ -69,8 +69,8 @@ The **Amaze shelf** has five tools:
 <img src="docs/images/material_grid.png" width="820">
 
 The **section tabs** at the top switch between Material, Color, Node,
-Code and File. Each section keeps its own category, view mode and scroll
-position. Preferences ▸ Show/Hide ▸ Sections sets which sections are
+Code and File. Each tab shows the section's icon before its name. Each
+section keeps its own category, view mode and scroll position. Preferences ▸ Show/Hide ▸ Sections sets which sections are
 shown.
 
 The **toolbar**, from left to right:
@@ -672,7 +672,8 @@ When one image file is selected, the pane shows the picture above the
 rows. The picture is shown whole, centred in its area. Drag the line
 under the picture to set the height of the area; the height is
 remembered. The area stops growing where the picture is as wide as the
-pane. EXR, HDR and other float files are shown with the OCIO display
+pane, and the rows always keep four rows of room under it. Scrolling
+over the picture scrolls the rows. EXR, HDR and other float files are shown with the OCIO display
 view. `.rat` and `.pic` files have no picture. The button at the right
 of the header shows and hides the image preview, and the choice is
 remembered.

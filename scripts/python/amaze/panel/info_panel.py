@@ -17,7 +17,8 @@ DESCRIPTION = side_pane.Page(    # what the page is made of; the engine builds i
     header=side_pane.Header(
         "icon_info.svg", amazetheme.INFO_ICON_COLOR, _DRAWN["preview_button_pad"],
         (side_pane.Button("preview_button", _DRAWN["preview_button"]),)),
-    body=(side_pane.Picture("preview", _DRAWN["preview_height"], amazetheme.INFO_PREVIEW_LEAST),
+    body=(side_pane.Picture("preview", _DRAWN["preview_height"], amazetheme.INFO_PREVIEW_LEAST,
+                            amazetheme.INFO_ROWS_KEPT),
           side_pane.DragLine("drag_line", _DRAWN["drag_line"]),
           side_pane.Rows("table", _DRAWN)))
 

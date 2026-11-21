@@ -14,6 +14,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 import hou  # noqa: E402,F401
+import amaze  # noqa: E402
 from amaze import amazetheme  # noqa: E402
 from amaze.helpers import theme, ui_helpers  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401
@@ -30,22 +31,24 @@ class TheTabStripMatchesItsDesignFrame(unittest.TestCase):
         labels = {key: n[5] for key, n in amazetheme.drawn_by_owner("S01", "label").items()}
         self.tray = amazetheme.drawn_node("S01", "tray")
         self.line = amazetheme.drawn_node("S01", "Line 3")
+        self.icons = amazetheme.drawn_by_owner("S01", "icon")
         self.keys = [amazetheme.drawn_name(c)[1] for c in self.chips]
         self.bar = ui_helpers.SectionTabBar([(k, labels[k]) for k in self.keys])
         self.bar.resize(self.px(self.frame["frame"][0]), self.bar.HEIGHT)
         self.addCleanup(self.bar.deleteLater)
 
     def test_the_frame_is_one_strip_the_code_can_follow(self):
-        """Tabs edge to edge at one gap, one pad, centred in the tray; the tray its tabs' width."""
+        """Tabs at one gap, icon then name between one pad on each side; the tray its tabs' width."""
         gaps = {b[1] - (a[1] + a[3]) for a, b in zip(self.chips, self.chips[1:])}
         self.assertEqual(1, len(gaps), "the tabs sit at gaps %s" % sorted(gaps))
-        pads = {self.boxes[k][1] - c[1] for k, c in zip(self.keys, self.chips)}
-        self.assertEqual(1, len(pads), "the tabs pad their text by %s" % sorted(pads))
+        pads = {self.icons[k][1] - c[1] for k, c in zip(self.keys, self.chips)}
+        self.assertEqual(1, len(pads), "the tabs pad their icon by %s" % sorted(pads))
         for key, chip in zip(self.keys, self.chips):
-            box = self.boxes[key]
+            box, icon = self.boxes[key], self.icons[key]
             with self.subTest(tab=key):
-                self.assertEqual(box[1] - chip[1], (chip[1] + chip[3]) - (box[1] + box[3]),
-                                 "the text box is not centred in its tab")
+                self.assertEqual(icon[1] - chip[1], (chip[1] + chip[3]) - (box[1] + box[3]),
+                                 "the pad after the name is not the pad before the icon")
+                self.assertLess(icon[1] + icon[3], box[1], "the icon is not left of the name")
                 self.assertEqual(chip[2] - self.tray[2], (self.tray[4] - chip[4]) / 2,
                                  "the tab is not centred in the tray")
         inset = self.chips[0][1] - self.tray[1]
@@ -87,16 +90,56 @@ class TheTabStripMatchesItsDesignFrame(unittest.TestCase):
         self.assertEqual(len(self.chips), len(rects))
         self.assertEqual(self.px(self.chips[0][1]), rects[0].x(), "the first tab is not at its drawn x")
         metrics = self.bar.fontMetrics()
-        pad = self.px(self.boxes[self.keys[0]][1] - self.chips[0][1])
+        pad = self.px(self.icons[self.keys[0]][1] - self.chips[0][1])
         gap = self.px(self.chips[1][1] - (self.chips[0][1] + self.chips[0][3]))
         for (key, label), rect in self.bar._chip_rects():
             chip = self.chips[self.keys.index(key)]
             with self.subTest(tab=key):
                 self.assertEqual((self.px(chip[2]), self.px(chip[4])), (rect.y(), rect.height()))
-                self.assertEqual(2 * pad, rect.width() - metrics.horizontalAdvance(label),
-                                 "the tab does not pad its label by the drawn pad")
+                icon, box = self.icons[key], self.boxes[key]
+                room = self.px(icon[3]) + self.px(box[1] - (icon[1] + icon[3]))
+                self.assertEqual(2 * pad + room, rect.width() - metrics.horizontalAdvance(label),
+                                 "the tab is not its pads, its icon, the drawn gap and its name")
         for a, b in zip(rects, rects[1:]):
             self.assertEqual(gap, b.x() - (a.x() + a.width()), "two tabs have another gap")
+
+    def test_every_icon_is_where_it_is_drawn_in_its_own_colours_selected_or_not(self):
+        self.bar.show()
+        QtWidgets.QApplication.processEvents()
+
+        def painted(checked):
+            self.bar.setChecked(checked, emit=False)
+            image = self.bar.grab().toImage()
+            scale = image.width() // self.bar.width()
+            out = {}
+            for (key, _label), rect in self.bar._chip_rects():
+                box = self.bar.icon_rect(key, rect)
+                out[key] = [image.pixelColor(int(x * scale), int(y * scale)).name()
+                            for x in range(int(box.left()), int(box.right()))
+                            for y in range(int(box.top()), int(box.bottom()))]
+            return out
+
+        for (key, _label), rect in self.bar._chip_rects():
+            chip, icon = self.chips[self.keys.index(key)], self.icons[key]
+            box = self.bar.icon_rect(key, rect)
+            with self.subTest(tab=key):
+                self.assertEqual((self.px(icon[1] - chip[1]), self.px(icon[2] - chip[2]), self.px(icon[3]), self.px(icon[4])),
+                                 (box.x() - rect.x(), box.y() - rect.y(), box.width(), box.height()))
+                self.assertTrue(os.path.exists(amaze.package_file("ui", amazetheme.drawn_name(icon)[2])))
+        first, second = painted(self.keys[0]), painted(self.keys[1])
+        for key in self.keys[2:]:
+            with self.subTest(tab=key):
+                self.assertGreater(len(set(first[key])), 2, "no icon is painted")
+                self.assertEqual(first[key], second[key])
+
+    def test_a_tab_with_no_icon_is_its_name_between_the_pads(self):
+        bar = ui_helpers.SectionTabBar([("GPUOpen", "GPUOpen"), ("RGL", "RGL")])
+        self.addCleanup(bar.deleteLater)
+        metrics, pad = bar.fontMetrics(), self.px(self.icons[self.keys[0]][1] - self.chips[0][1])
+        for (key, label), rect in bar._chip_rects():
+            with self.subTest(tab=key):
+                self.assertIsNone(bar.icon_rect(key, rect))
+                self.assertEqual(2 * pad, rect.width() - metrics.horizontalAdvance(label))
 
     def test_the_tray_is_where_it_is_drawn(self):
         tray = self.bar._tray_rect()

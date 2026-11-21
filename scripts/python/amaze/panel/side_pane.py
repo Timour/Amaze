@@ -35,6 +35,7 @@ class Picture(NamedTuple):
     name: str
     height: int    # the area's height in px as drawn, until the drag line under it is dragged
     least: int    # the lowest the drag line takes it
+    keep: int    # px the parts under it always keep, however short the pane is
 
 
 class DragLine(NamedTuple):
@@ -283,19 +284,37 @@ class Body(QtWidgets.QWidget):
         ui_helpers.fill_window(self, PAGE_BG)
         self._parts = tuple(parts)    # (description, widget), top down
         self._picture = self._line = None
-        self._wanted = self._least = 0
+        self._wanted = self._least = self._keep = 0
+        self._scrolls = None    # the part that fills the rest: a wheel turn over the others scrolls it
         for spec, widget in self._parts:
             widget.setParent(self)
             if isinstance(spec, Picture):
                 self._picture = widget
                 self._wanted, self._least = theme.ui_px(spec.height), theme.ui_px(spec.least)
+                self._keep = theme.ui_px(spec.keep)
                 widget.changed.connect(self.place)
+                widget.installEventFilter(self)
             elif isinstance(spec, DragLine):
                 self._line = widget
+                widget.installEventFilter(self)
                 widget.moved.connect(self._dragged)
                 widget.released.connect(lambda: self.height_set.emit(self._wanted))
             else:
+                self._scrolls = widget
                 widget.show()
+
+    def eventFilter(self, watched, event) -> bool:
+        """A wheel turn over the picture or the line scrolls the part under them."""
+        target = getattr(self._scrolls, "viewport", None)
+        if event.type() != QtCore.QEvent.Type.Wheel or target is None:
+            return super().eventFilter(watched, event)
+        QtWidgets.QApplication.sendEvent(target(), event)
+        return True
+
+    def _most(self) -> int:
+        """The tallest the picture area may be: the picture at full width, and room kept under it."""
+        line = self._line.line if self._line is not None else 0
+        return max(0, min(self._picture.full_height(self.width()), self.height() - line - self._keep))
 
     def wanted_height(self) -> int:
         """The picture area's height as dragged or drawn; a picture may get less."""
@@ -310,16 +329,13 @@ class Body(QtWidgets.QWidget):
         picture = self._picture
         if picture is None or picture.image() is None:
             return 0
-        line = self._line.line if self._line is not None else 0
-        return max(0, min(self._wanted, picture.full_height(self.width()), self.height() - line))
+        return min(self._wanted, self._most())
 
     def _dragged(self, top: int) -> None:
         picture = self._picture
         if picture is None or picture.image() is None:
             return
-        line = self._line.line
-        most = min(picture.full_height(self.width()), self.height() - line)    # past it a drag does nothing
-        self._wanted = max(self._least, min(top, most))
+        self._wanted = max(self._least, min(top, self._most()))    # past the most a drag does nothing
         self.place()
 
     def place(self) -> None:

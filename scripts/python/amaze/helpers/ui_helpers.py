@@ -648,7 +648,7 @@ def _event_point(event) -> QtCore.QPointF:
 
 
 class SectionTabBar(QtWidgets.QWidget):
-    """The full-width section tab strip below the toolbar, hand-painted, one text tab per section."""
+    """The section tab strip below the toolbar, hand-painted: a tab per section, its icon first."""
 
     segmentClicked = QtCore.Signal(str)   # the key of the tab that just became checked, emitted only on an actual change
     cancelClicked = QtCore.Signal()   # the Cancel chip; only panel.set_conversion_bar_visible shows or hides it
@@ -669,6 +669,7 @@ class SectionTabBar(QtWidgets.QWidget):
     CHIP_PAD_X = theme.ui_px(_DRAWN["chip_pad"])
     CHIP_GAP = theme.ui_px(_DRAWN["chip_gap"])
     CHIP_INSET = theme.ui_px(_DRAWN["chip_inset"])
+    ICONS = _DRAWN["icons"]    # a section's art and its drawn size; a tab with no entry is its label alone
 
     STRIP_COLOR = theme.color("surface")   # theme-derived; matches the toolbar row
     TRAY_COLOR = theme.color("surface_low")   # matches the category backdrop, so the tray looks connected to the sidebar below
@@ -683,6 +684,7 @@ class SectionTabBar(QtWidgets.QWidget):
         """segments: list of (key, label) pairs, left to right."""
         super().__init__()
         self._segments = list(segments)
+        self._icon_pixmaps = {}    # {(key, screen ratio): pixmap}
         self._checked_key = None
         self._hover_key = None
         self._cancel_visible = False
@@ -709,12 +711,34 @@ class SectionTabBar(QtWidgets.QWidget):
         x = self.TRAY_LEFT + self.CHIP_INSET
         rects = []
         for key, label in self._segments:
-            w = metrics.horizontalAdvance(label) + 2 * self.CHIP_PAD_X
+            w = self._icon_room(key) + metrics.horizontalAdvance(label) + 2 * self.CHIP_PAD_X
             rects.append(
                 ((key, label), QtCore.QRectF(x, chip_y, w, self.CHIP_HEIGHT))
             )
             x += w + self.CHIP_GAP
         return rects
+
+    def _icon_room(self, key: str) -> int:
+        """What a tab's icon and the gap after it take of its width; 0 for a tab without one."""
+        icon = self.ICONS.get(key)
+        return theme.ui_px(icon[1]) + theme.ui_px(icon[3]) if icon else 0
+
+    def icon_rect(self, key: str, chip: QtCore.QRectF):
+        """Where a tab's icon is drawn inside its chip, or None for a tab without one."""
+        icon = self.ICONS.get(key)
+        if not icon:
+            return None
+        return QtCore.QRectF(chip.x() + self.CHIP_PAD_X, chip.y() + theme.ui_px(icon[4]),
+                             theme.ui_px(icon[1]), theme.ui_px(icon[2]))
+
+    def _icon_pixmap(self, key: str) -> QtGui.QPixmap:
+        ratio = theme.screen_ratio(self)
+        pixmap = self._icon_pixmaps.get((key, ratio))
+        if pixmap is None:
+            art, _width, height = self.ICONS[key][:3]
+            pixmap = bled_pixmap(amaze.package_file("ui", art), theme.ui_px(height), ratio, 0)
+            self._icon_pixmaps[(key, ratio)] = pixmap
+        return pixmap
 
     def _key_at(self, pos) -> str | None:
         for (key, _), rect in self._chip_rects():
@@ -833,7 +857,11 @@ class SectionTabBar(QtWidgets.QWidget):
                 painter.setPen(self.TEXT_HOVER)
             else:
                 painter.setPen(self.TEXT_UNSELECTED)
-            painter.drawText(rect, QtCore.Qt.AlignmentFlag.AlignCenter, label)
+            icon = self.icon_rect(key, rect)
+            if icon is not None:    # the art keeps its own colours, selected or not
+                painter.drawPixmap(icon.topLeft(), self._icon_pixmap(key))
+            text = rect.adjusted(self.CHIP_PAD_X + self._icon_room(key), 0, -self.CHIP_PAD_X, 0)
+            painter.drawText(text, QtCore.Qt.AlignmentFlag.AlignCenter, label)
 
         painter.fillRect(self._line_rect(), self.LINE_COLOR)
 

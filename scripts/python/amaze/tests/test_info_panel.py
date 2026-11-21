@@ -365,6 +365,39 @@ class APictureForAnImageFile(_PaneCase):
         self.assertEqual(most, body.wanted_height(), "dragging past the stop was remembered")
         self.assertEqual(preview.rect(), preview.picture_rect(), "there is a band beside or above the picture")
 
+    def test_a_short_pane_keeps_four_rows_under_the_picture(self):
+        preview, body = self._show(400, 1200)
+        self.pane.resize(self.pane.width(), self.pane.header_widget.height() + 200)
+        QtWidgets.QApplication.processEvents()
+        kept = theme.ui_px(amazetheme.INFO_ROWS_KEPT)
+        self.assertEqual(200 - self.pane.drag_line.line - kept, preview.height())
+        self.assertEqual(kept, self.pane.table.height())
+        self.assertEqual(theme.ui_px(amazetheme.drawn_info()["preview_height"]), body.wanted_height(),
+                         "a short pane changed the remembered height")
+        self.pane.drag_line.moved.emit(1000)
+        self.assertEqual(kept, self.pane.table.height(), "the line was dragged over the kept rows")
+
+    def test_a_wheel_turn_over_the_picture_scrolls_the_rows(self):
+        self.pictures.image = _picture(900, 600)
+        rows = tuple(("Row %d" % n, "value") for n in range(80))
+        self.pane.set_subject(file_info.Subject("a", "steel", "EXR", rows, (),
+                                                file_info.request_for_file("/lib/a.exr")))
+        QtWidgets.QApplication.processEvents()
+        bar, preview = self.pane.table.verticalScrollBar(), self.pane.preview
+        at = QtCore.QPointF(preview.rect().center())
+
+        def turn(delta):
+            event = QtGui.QWheelEvent(at, QtCore.QPointF(preview.mapToGlobal(at.toPoint())), QtCore.QPoint(0, 0),
+                                      QtCore.QPoint(0, delta), QtCore.Qt.MouseButton.NoButton,
+                                      QtCore.Qt.KeyboardModifier.NoModifier, QtCore.Qt.ScrollPhase.NoScrollPhase, False)
+            QtWidgets.QApplication.sendEvent(preview, event)
+
+        turn(-240)
+        self.assertGreater(bar.value(), 0, "a wheel turn over the picture did not scroll the rows")
+        bar.setValue(0)
+        turn(240)    # at the top already: nothing moves
+        self.assertEqual(0, bar.value())
+
     def test_the_line_never_takes_the_area_under_two_rows(self):
         preview, body = self._show(900, 600)
         self.pane.drag_line.moved.emit(0)

@@ -136,6 +136,7 @@ INFO_HIDE_PREVIEW = "Hide Preview"    # the header button's tooltip while the pi
 INFO_SHOW_PREVIEW = "Show Preview"    # and while it is hidden
 INFO_BUTTON_COLOR = "#dddddd"       # the colour the header buttons' art is drawn in
 INFO_PREVIEW_LEAST = 38             # px: the lowest the drag line takes the picture area, two rows
+INFO_ROWS_KEPT = 76                 # px: what the rows always keep under the picture, four rows
 DRAG_LINE_COLOR = "#202020"         # the line under the picture; dragging it sets the picture area's height
 DRAG_LINE_GRAB = 3                  # px above and below the line that also take the drag
 
@@ -804,38 +805,38 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
         "frame": (1542, 96),
         "nodes": (
             ("column ▸ name", 0, 0, 176, 20, None),
-            ("divider ▸ name", 175, 0, 1, 20, None),
+            ("divider ▸ name", 175, 0, 2, 20, None),
             ("heading ▸ name", 5, 2.5, 30, 15, "Name"),
             ("sort arrow ▸ name (Qt's own, traced)", 155, 2, 16, 16, None),
             ("column ▸ type", 176, 0, 59, 20, None),
-            ("divider ▸ type", 234, 0, 1, 20, None),
+            ("divider ▸ type", 234, 0, 2, 20, None),
             ("heading ▸ type", 181, 2.5, 25, 15, "Type"),
             ("column ▸ category", 235, 0, 76, 20, None),
-            ("divider ▸ category", 310, 0, 1, 20, None),
+            ("divider ▸ category", 310, 0, 2, 20, None),
             ("heading ▸ category", 240, 2.5, 45, 15, "Category"),
             ("column ▸ favorite", 311, 0, 69, 20, None),
-            ("divider ▸ favorite", 379, 0, 1, 20, None),
+            ("divider ▸ favorite", 379, 0, 2, 20, None),
             ("heading ▸ favorite", 316, 2.5, 41, 15, "Favorite"),
             ("column ▸ version", 380, 0, 66, 20, None),
-            ("divider ▸ version", 445, 0, 1, 20, None),
+            ("divider ▸ version", 445, 0, 2, 20, None),
             ("heading ▸ version", 385, 2.5, 38, 15, "Version"),
             ("column ▸ open", 446, 0, 54, 20, None),
-            ("divider ▸ open", 499, 0, 1, 20, None),
+            ("divider ▸ open", 499, 0, 2, 20, None),
             ("heading ▸ open", 451, 2.5, 28, 15, "Open"),
             ("column ▸ comments", 500, 0, 85, 20, None),
-            ("divider ▸ comments", 584, 0, 1, 20, None),
+            ("divider ▸ comments", 584, 0, 2, 20, None),
             ("heading ▸ comments", 505, 2.5, 55, 15, "Comments"),
             ("column ▸ tags", 585, 0, 300, 20, None),
-            ("divider ▸ tags", 884, 0, 1, 20, None),
+            ("divider ▸ tags", 884, 0, 2, 20, None),
             ("heading ▸ tags", 590, 2.5, 23, 15, "Tags"),
             ("column ▸ license", 885, 0, 287, 20, None),
-            ("divider ▸ license", 1171, 0, 1, 20, None),
+            ("divider ▸ license", 1171, 0, 2, 20, None),
             ("heading ▸ license", 890, 2.5, 38, 15, "License"),
             ("column ▸ date", 1172, 0, 130, 20, None),
-            ("divider ▸ date", 1301, 0, 1, 20, None),
+            ("divider ▸ date", 1301, 0, 2, 20, None),
             ("heading ▸ date", 1177, 2.5, 24, 15, "Date"),
             ("column ▸ id", 1302, 0, 240, 20, None),
-            ("divider ▸ id", 1541, 0, 1, 20, None),
+            ("divider ▸ id", 1541, 0, 2, 20, None),
             ("heading ▸ id", 1307, 2.5, 11, 15, "ID"),
             ("row ▸ plain", 0, 20, 1542, 19, None),
             ("cell ▸ name", 5, 22, 72, 15, "brushed_steel"),
@@ -904,26 +905,31 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("icon ▸ btn_info ▸ icon_info.svg", 817, 6, 18, 18, None),
         ),
     },
-    "S01": {   # the section tab strip from the live panel - its height, tray and chip spacing are read
+    "S01": {   # the section tab strip - its height, tray, chip spacing and tab icons are read
         "frame": (840, 29),
         "nodes": (
-            ("tray", 3, 5, 230, 23, None),
-            ("chip ▸ material", 6, 8, 56, 17, None),
-            ("chip ▸ gradient", 64.5, 8, 42, 17, None),
-            ("chip ▸ cop", 109, 8, 42, 17, None),
-            ("chip ▸ code", 153.5, 8, 41, 17, None),
-            ("chip ▸ file", 197, 8, 33, 17, None),
-            ("text box ▸ material", 13.5, 9, 41, 15, None),
-            ("label ▸ material", 13.5, 9, 41, 15, "Material"),
-            ("text box ▸ gradient", 72, 9, 27, 15, None),
-            ("label ▸ gradient", 71.5, 9, 28, 15, "Color"),
-            ("text box ▸ cop", 116.5, 9, 27, 15, None),
-            ("label ▸ cop", 116.5, 9, 27, 15, "Node"),
-            ("text box ▸ code", 161, 9, 26, 15, None),
-            ("label ▸ code", 161, 9, 26, 15, "Code"),
-            ("text box ▸ file", 204.5, 9, 18, 15, None),
-            ("label ▸ file", 204.5, 9, 18, 15, "File"),
+            ("tray", 3, 5, 307, 23, None),
+            ("chip ▸ material", 8, 8, 66, 17, None),
+            ("chip ▸ gradient", 81, 8, 55, 17, None),
+            ("chip ▸ cop", 143, 8, 54, 17, None),
+            ("chip ▸ code", 204, 8, 53, 17, None),
+            ("chip ▸ file", 264, 8, 41, 17, None),
+            ("text box ▸ material", 28, 9, 41, 15, None),
+            ("text box ▸ gradient", 103, 9, 28, 15, None),
+            ("text box ▸ cop", 165, 9, 27, 15, None),
+            ("text box ▸ code", 226, 9, 26, 15, None),
+            ("text box ▸ file", 282, 9, 18, 15, None),
             ("Line 3", 0, 28.5, 840, 0, None),
+            ("label ▸ file", 282, 9, 18, 15, "File"),
+            ("icon ▸ file ▸ tab_file.svg", 269, 10, 10, 12, None),
+            ("label ▸ material", 28, 9, 41, 15, "Material"),
+            ("icon ▸ material ▸ tab_material.svg", 13, 10, 13, 13, None),
+            ("label ▸ code", 226, 9, 26, 15, "Code"),
+            ("icon ▸ code ▸ tab_code.svg", 209, 10, 15, 13, None),
+            ("label ▸ gradient", 103, 9, 28, 15, "Color"),
+            ("icon ▸ gradient ▸ tab_gradient.svg", 86, 10, 15, 13, None),
+            ("label ▸ cop", 165, 9, 27, 15, "Node"),
+            ("icon ▸ cop ▸ tab_cop.svg", 148, 10, 15, 13, None),
         ),
     },
     "G01": {   # the sidebar at its design width - its width, colour bar and splitter handle are read
@@ -998,14 +1004,14 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("header", 0, 0, 450, 30, None),
             ("icon ▸ preview ▸ icon_preview_hide.svg", 427, 7, 15, 15, None),
             ("body", 0, 330, 450, 291, None),
-            ("row ▸ 1", 0, 330, 450, 19, None),
-            ("row ▸ 3", 0, 368, 450, 19, None),
-            ("row ▸ 5", 0, 406, 450, 19, None),
-            ("row ▸ 7", 0, 444, 450, 19, None),
-            ("row ▸ 9", 0, 482, 450, 19, None),
-            ("row ▸ 11", 0, 520, 450, 19, None),
-            ("row ▸ 13", 0, 558, 450, 19, None),
-            ("row ▸ 15", 0, 596, 450, 19, None),
+            ("row ▸ 2", 0, 349, 450, 19, None),
+            ("row ▸ 4", 0, 387, 450, 19, None),
+            ("row ▸ 6", 0, 425, 450, 19, None),
+            ("row ▸ 8", 0, 463, 450, 19, None),
+            ("row ▸ 10", 0, 501, 450, 19, None),
+            ("row ▸ 12", 0, 539, 450, 19, None),
+            ("row ▸ 14", 0, 577, 450, 19, None),
+            ("row ▸ 16", 0, 615, 450, 19, None),
             ("text ▸ name", 36, 7, 37, 15, "Flower"),
             ("text ▸ type", 79, 7, 20, 15, "JPG"),
             ("label ▸ 1", 12, 332, 30, 15, "Name"),
@@ -1384,11 +1390,16 @@ def drawn_toolbar(frame_key: str = "B01") -> dict:
 
 
 def drawn_tabs(frame_key: str = "S01") -> dict:
-    """The section strip's height, tray and chip spacing, read off its frame. ▸r/tabs-from-frame"""
+    """The section strip's height, tray, chip spacing and icons, off its frame. ▸r/tabs-from-frame"""
     layout = DIALOG_LAYOUT[frame_key]
     tray, line = drawn_node(frame_key, "tray"), drawn_node(frame_key, "Line 3")
     chips = sorted(drawn_nodes(frame_key, "chip"), key=lambda n: n[1])
-    box = drawn_node(frame_key, "text box", drawn_name(chips[0])[1])
+    first = drawn_name(chips[0])[1]
+    icons = {}    # {section key: (art file, width, height, gap to the label, drop inside the chip)}
+    for chip in chips:
+        key = drawn_name(chip)[1]
+        icon, label = drawn_node(frame_key, "icon", key), drawn_node(frame_key, "label", key)
+        icons[key] = (drawn_name(icon)[2], icon[3], icon[4], label[1] - (icon[1] + icon[3]), icon[2] - chip[2])
     return {
         "height": layout["frame"][1],
         "line_y": line[2],    # the bottom line's centre; the frame's 1 px stroke is the tray's colour
@@ -1398,7 +1409,8 @@ def drawn_tabs(frame_key: str = "S01") -> dict:
         "chip_height": chips[0][4],
         "chip_inset": chips[0][1] - tray[1],
         "chip_gap": chips[1][1] - (chips[0][1] + chips[0][3]),
-        "chip_pad": box[1] - chips[0][1],
+        "chip_pad": drawn_node(frame_key, "icon", first)[1] - chips[0][1],    # the same after the label
+        "icons": icons,
     }
 
 
@@ -1443,7 +1455,7 @@ def drawn_info(frame_key: str = "N02") -> dict:
         return drawn_node(frame_key, kind, owner)
 
     header, icon, name = node("header"), node("icon", "header"), node("text", "name")
-    row, label, value = node("row", "1"), node("label", "1"), node("value", "1")
+    row, label, value = node("row", "2"), node("label", "2"), node("value", "2")
     button, preview = node("icon", "preview"), node("preview")
     return {
         "width": width,
