@@ -136,7 +136,6 @@ INFO_HIDE_PREVIEW = "Hide Preview"    # the header button's tooltip while the pi
 INFO_SHOW_PREVIEW = "Show Preview"    # and while it is hidden
 INFO_BUTTON_COLOR = "#dddddd"       # the colour the header buttons' art is drawn in
 INFO_PREVIEW_LEAST = 38             # px: the lowest the drag line takes the picture area, two rows
-INFO_ROWS_KEPT = 76                 # px: what the rows always keep under the picture, four rows
 DRAG_LINE_COLOR = "#202020"         # the line under the picture; dragging it sets the picture area's height
 DRAG_LINE_GRAB = 3                  # px above and below the line that also take the drag
 
@@ -1245,13 +1244,11 @@ def _badge_edge(at, size, start, span):
 
 def drawn_list(frame_key: str = "L01") -> dict:
     """The list's header, widths, text inset and tick box, off its frame. ▸r/list-from-frame"""
-    columns, headings, cells = (drawn_by_owner(frame_key, kind)
-                                for kind in ("column", "heading", "cell"))
+    columns, cells = (drawn_by_owner(frame_key, kind) for kind in ("column", "cell"))
     tick = drawn_node(frame_key, "tick box")
     first = next(iter(columns))
     return {
         "header_h": columns[first][4],
-        "cell_pad": headings[first][1] - columns[first][1],
         "text_inset": cells[first][1] - columns[first][1],
         "widths": {key: n[3] for key, n in columns.items()},
         "tick_pad": tick[1] - columns[drawn_name(tick)[1]][1],

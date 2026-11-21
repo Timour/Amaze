@@ -363,7 +363,7 @@ class PanelWidgetTest(unittest.TestCase):
 
     def test_the_designed_colours_are_set_on_the_widget_palettes(self):
         """Header and page colours are set on the widget palettes, with autofill on."""
-        from amaze.panel import notes_panel as module
+        from amaze.panel import side_pane as module    # the pane engine owns both colours
         header = self.widget.header_widget
         self.assertTrue(header.autoFillBackground())
         self.assertEqual(

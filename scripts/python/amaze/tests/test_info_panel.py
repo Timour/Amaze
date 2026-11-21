@@ -365,38 +365,75 @@ class APictureForAnImageFile(_PaneCase):
         self.assertEqual(most, body.wanted_height(), "dragging past the stop was remembered")
         self.assertEqual(preview.rect(), preview.picture_rect(), "there is a band beside or above the picture")
 
-    def test_a_short_pane_keeps_four_rows_under_the_picture(self):
-        preview, body = self._show(400, 1200)
-        self.pane.resize(self.pane.width(), self.pane.header_widget.height() + 200)
-        QtWidgets.QApplication.processEvents()
-        kept = theme.ui_px(amazetheme.INFO_ROWS_KEPT)
-        self.assertEqual(200 - self.pane.drag_line.line - kept, preview.height())
-        self.assertEqual(kept, self.pane.table.height())
-        self.assertEqual(theme.ui_px(amazetheme.drawn_info()["preview_height"]), body.wanted_height(),
-                         "a short pane changed the remembered height")
-        self.pane.drag_line.moved.emit(1000)
-        self.assertEqual(kept, self.pane.table.height(), "the line was dragged over the kept rows")
-
-    def test_a_wheel_turn_over_the_picture_scrolls_the_rows(self):
+    def _long_page(self):
         self.pictures.image = _picture(900, 600)
         rows = tuple(("Row %d" % n, "value") for n in range(80))
         self.pane.set_subject(file_info.Subject("a", "steel", "EXR", rows, (),
                                                 file_info.request_for_file("/lib/a.exr")))
         QtWidgets.QApplication.processEvents()
-        bar, preview = self.pane.table.verticalScrollBar(), self.pane.preview
-        at = QtCore.QPointF(preview.rect().center())
+        return self.pane.body_widget, self.pane.body_widget.scrollbar()
 
-        def turn(delta):
-            event = QtGui.QWheelEvent(at, QtCore.QPointF(preview.mapToGlobal(at.toPoint())), QtCore.QPoint(0, 0),
-                                      QtCore.QPoint(0, delta), QtCore.Qt.MouseButton.NoButton,
-                                      QtCore.Qt.KeyboardModifier.NoModifier, QtCore.Qt.ScrollPhase.NoScrollPhase, False)
-            QtWidgets.QApplication.sendEvent(preview, event)
+    def _turn(self, widget, delta):
+        at = QtCore.QPointF(widget.rect().center())
+        event = QtGui.QWheelEvent(at, QtCore.QPointF(widget.mapToGlobal(at.toPoint())), QtCore.QPoint(0, 0),
+                                  QtCore.QPoint(0, delta), QtCore.Qt.MouseButton.NoButton,
+                                  QtCore.Qt.KeyboardModifier.NoModifier, QtCore.Qt.ScrollPhase.NoScrollPhase, False)
+        QtWidgets.QApplication.sendEvent(widget, event)
 
-        turn(-240)
-        self.assertGreater(bar.value(), 0, "a wheel turn over the picture did not scroll the rows")
+    def test_the_whole_page_scrolls_and_the_picture_slides_under_the_header(self):
+        body, bar = self._long_page()
+        preview, table = self.pane.preview, self.pane.table
+        self.assertTrue(bar.isVisible(), "a page longer than the pane has no scrollbar")
+        self.assertEqual(80 * table.row_height(), table.height(), "the table does not show all its rows")
+        self.assertEqual(0, table.verticalScrollBar().maximum(), "the table scrolls by itself")
+        self.assertEqual(preview.height() + self.pane.drag_line.line + table.height() - body.height(), bar.maximum())
+        self.assertEqual(0, preview.y())
+        bar.setValue(bar.maximum())
+        self.assertEqual(-bar.maximum(), preview.y(), "the picture did not move with the page")
+        self.assertLess(preview.geometry().bottom(), 0, "the picture is still in view at the page's end")
+        self.assertEqual(body.height(), table.geometry().bottom() + 1, "the page does not end at the pane's bottom")
+        self.assertEqual(0, self.pane.header_widget.y(), "the header scrolled away")
+
+    def test_a_wheel_turn_anywhere_on_the_page_scrolls_it(self):
+        body, bar = self._long_page()
+        for widget in (self.pane.preview, self.pane.table.viewport(), self.pane.drag_line):
+            bar.setValue(0)
+            self._turn(widget, -240)
+            with self.subTest(over=type(widget).__name__):
+                self.assertGreater(bar.value(), 0)
         bar.setValue(0)
-        turn(240)    # at the top already: nothing moves
+        self._turn(self.pane.preview, 240)    # at the top already: nothing moves
         self.assertEqual(0, bar.value())
+
+    def test_the_scrollbar_takes_its_width_from_every_part_and_none_when_the_page_fits(self):
+        body, bar = self._long_page()
+        wide = body.width() - bar.width()
+        self.assertEqual({wide}, {self.pane.preview.width(), self.pane.table.width(), self.pane.drag_line.width()})
+        self.assertEqual(body.width() - bar.width(), bar.x())
+        self.pane.set_subject(self._file("/lib/b.exr", "b"))
+        QtWidgets.QApplication.processEvents()
+        self.assertFalse(bar.isVisible(), "a page that fits shows a scrollbar")
+        self.assertEqual(body.width(), self.pane.table.width())
+
+    def test_another_selection_starts_at_the_top_of_the_page(self):
+        body, bar = self._long_page()
+        bar.setValue(bar.maximum())
+        rows = tuple(("Row %d" % n, "value") for n in range(80))
+        self.pane.set_subject(file_info.Subject("other", "rust", "EXR", rows, (),
+                                                file_info.request_for_file("/lib/other.exr")))
+        QtWidgets.QApplication.processEvents()
+        self.assertEqual(0, bar.value())
+
+    def test_the_line_is_dragged_right_while_the_page_is_scrolled(self):
+        self.pictures.image = _picture(400, 1200)
+        rows = tuple(("Row %d" % n, "value") for n in range(80))
+        self.pane.set_subject(file_info.Subject("a", "steel", "EXR", rows, (),
+                                                file_info.request_for_file("/lib/a.exr")))
+        QtWidgets.QApplication.processEvents()
+        body, bar = self.pane.body_widget, self.pane.body_widget.scrollbar()
+        bar.setValue(100)
+        self.pane.drag_line.moved.emit(150)    # the line's top as seen: 150 px under the header
+        self.assertEqual(250, self.pane.preview.height())
 
     def test_the_line_never_takes_the_area_under_two_rows(self):
         preview, body = self._show(900, 600)
@@ -431,20 +468,6 @@ class APictureForAnImageFile(_PaneCase):
         self.assertFalse(self.pane.preview.isVisible())
         self.assertEqual(self.pane.header_widget.height(),
                          self.pane.table.mapTo(self.pane, QtCore.QPoint(0, 0)).y())
-
-    def test_the_table_scrolls_by_itself_under_a_picture_that_stays(self):
-        self.pictures.image = _picture(900, 600)
-        rows = tuple(("Row %d" % n, "value") for n in range(80))
-        self.pane.set_subject(file_info.Subject("a", "steel", "EXR", rows, (),
-                                                file_info.request_for_file("/lib/a.exr")))
-        QtWidgets.QApplication.processEvents()
-        bar = self.pane.table.verticalScrollBar()
-        self.assertGreater(bar.maximum(), 0, "80 rows do not scroll")
-        before = self.pane.preview.geometry()
-        bar.setValue(bar.maximum())
-        QtWidgets.QApplication.processEvents()
-        self.assertEqual(before, self.pane.preview.geometry())
-        self.assertEqual(self.pane.body_widget.width(), self.pane.width(), "the pane's own width changed")
 
     def test_clearing_and_hiding_stop_the_picture_read_and_drop_the_picture(self):
         self.pictures.image = _picture()

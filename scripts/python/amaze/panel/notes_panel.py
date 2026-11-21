@@ -17,8 +17,6 @@ COMMENT_ICON_COLOR = amazetheme.COMMENT_ICON_COLOR    # defined once, in amazeth
 
 SAVE_DELAY_MS = 600       # a crash loses a sentence at most, and typing is not a write per key
 
-HEADER_BG = amazetheme.COMMENT_HEADER_BG
-PAGE_BG = amazetheme.COMMENT_PAGE_BG
 
 _DRAWN = amazetheme.drawn_comments()    # every size and spacing below is from the N01 design frame ▸r/comments-from-frame
 

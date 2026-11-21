@@ -927,7 +927,6 @@ class AmazePanel(QtWidgets.QWidget):
     _LIST = amazetheme.drawn_list()    # header, heading inset and column widths are L01's ▸r/list-from-frame
     _TOOLBAR = amazetheme.drawn_toolbar()    # the toolbar's height, edges, gaps and sizes are B01's
     _SIDEBAR = amazetheme.drawn_sidebar()    # the sidebar's width and its splitter handle are G01's
-    CELL_PAD = theme.ui_px(_LIST["cell_pad"])    #: a heading's inset from its column edge; the style sets the row text's
     HEADER_HEIGHT = theme.ui_px(_LIST["header_h"])    #: the headline's height; the style paints it
 
     def sync_list_columns(self) -> None:

@@ -293,7 +293,7 @@ class ATickColumnIsAsWideAsTheTICK(unittest.TestCase):
             cell.left() + delegate.PAD, box.left(),
             "the tick does not sit at the cell's left edge")
         self.assertEqual(
-            self.panel.CELL_PAD, delegate.PAD,
+            delegates.GridCellDelegate.TEXT_INSET, delegate.PAD,
             "the tick's inset is not the padding every other cell has")
 
     def test_a_tick_cell_PAINTS_ITSELF_when_the_row_is_selected(self):

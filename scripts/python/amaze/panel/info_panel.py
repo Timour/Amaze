@@ -17,8 +17,7 @@ DESCRIPTION = side_pane.Page(    # what the page is made of; the engine builds i
     header=side_pane.Header(
         "icon_info.svg", amazetheme.INFO_ICON_COLOR, _DRAWN["preview_button_pad"],
         (side_pane.Button("preview_button", _DRAWN["preview_button"]),)),
-    body=(side_pane.Picture("preview", _DRAWN["preview_height"], amazetheme.INFO_PREVIEW_LEAST,
-                            amazetheme.INFO_ROWS_KEPT),
+    body=(side_pane.Picture("preview", _DRAWN["preview_height"], amazetheme.INFO_PREVIEW_LEAST),
           side_pane.DragLine("drag_line", _DRAWN["drag_line"]),
           side_pane.Rows("table", _DRAWN)))
 
@@ -93,6 +92,8 @@ class InfoPanel(side_pane.SidePage):
         if (current is not None and current.key == subject.key
                 and current.before == subject.before and current.after == subject.after):
             return
+        if current is None or current.key != subject.key:
+            self.body_widget.scroll_to_top()    # another selection starts at the top of the page
         self._subject = subject
         self._dimmed = False
         self.set_header(subject.name, subject.type)

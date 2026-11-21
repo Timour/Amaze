@@ -1162,7 +1162,7 @@ class OnlyTheWindowHasAMinimumWidth(unittest.TestCase):
         self.panel = test_support.fixture_panel(self)
 
     def _splitter(self):
-        """By search: a `SavedWidthPane` makes the splitter a grandparent."""
+        """By search: a pane around the list makes the splitter a grandparent."""
         from PySide6 import QtWidgets
 
         found = self.panel.findChildren(QtWidgets.QSplitter)

@@ -35,7 +35,6 @@ class Picture(NamedTuple):
     name: str
     height: int    # the area's height in px as drawn, until the drag line under it is dragged
     least: int    # the lowest the drag line takes it
-    keep: int    # px the parts under it always keep, however short the pane is
 
 
 class DragLine(NamedTuple):
@@ -168,6 +167,8 @@ class _RowTexts(QtWidgets.QStyledItemDelegate):
 class RowsView(QtWidgets.QTreeWidget):
     """The rows: labels on the left, values on the right, a line between the columns."""
 
+    rows_changed = QtCore.Signal()    # another number of rows: the page is another length
+
     def __init__(self, drawn: dict, parent=None) -> None:
         super().__init__(parent)
         ui_helpers.striped_rows(self)
@@ -181,6 +182,7 @@ class RowsView(QtWidgets.QTreeWidget):
         self.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.NoSelection)
         self.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
         self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)    # the page scrolls
         self.header().setMinimumSectionSize(1)
         self.header().setStretchLastSection(True)
         self.header().resizeSection(0, theme.ui_px(drawn["divider_x"]))
@@ -197,9 +199,14 @@ class RowsView(QtWidgets.QTreeWidget):
             item = QtWidgets.QTreeWidgetItem([label, value])
             item.setFlags(QtCore.Qt.ItemFlag.ItemIsEnabled)
             self.addTopLevelItem(item)
+        self.rows_changed.emit()
 
     def row_height(self) -> int:
         return theme.ui_px(self._drawn["row"])
+
+    def content_height(self) -> int:
+        """What all the rows need: the page is that long and scrolls as a whole."""
+        return len(self._rows) * self.row_height()
 
     def row_top(self, index: int) -> int:
         """Row `index`'s top before any scrolling."""
@@ -275,7 +282,7 @@ class RowsView(QtWidgets.QTreeWidget):
 
 
 class Body(QtWidgets.QWidget):
-    """A page's parts from the top down; the body alone decides each part's place and size."""
+    """A page's parts from the top down; the body places them and scrolls the page. ▸r/one-side-pane"""
 
     height_set = QtCore.Signal(int)    # a drag of the line ended: the picture area's height
 
@@ -283,15 +290,18 @@ class Body(QtWidgets.QWidget):
         super().__init__(parent)
         ui_helpers.fill_window(self, PAGE_BG)
         self._parts = tuple(parts)    # (description, widget), top down
-        self._picture = self._line = None
-        self._wanted = self._least = self._keep = 0
-        self._scrolls = None    # the part that fills the rest: a wheel turn over the others scrolls it
+        self._picture = self._line = self._fills = None
+        self._wanted = self._least = 0
+        self._wide = 0    # the parts' width: the body's, less the page's scrollbar while it shows
+        self._placing = False
+        self._bar = QtWidgets.QScrollBar(QtCore.Qt.Orientation.Vertical, self)    # the page's one scrollbar
+        self._bar.hide()
+        self._bar.valueChanged.connect(self.place)
         for spec, widget in self._parts:
             widget.setParent(self)
             if isinstance(spec, Picture):
                 self._picture = widget
                 self._wanted, self._least = theme.ui_px(spec.height), theme.ui_px(spec.least)
-                self._keep = theme.ui_px(spec.keep)
                 widget.changed.connect(self.place)
                 widget.installEventFilter(self)
             elif isinstance(spec, DragLine):
@@ -300,21 +310,41 @@ class Body(QtWidgets.QWidget):
                 widget.moved.connect(self._dragged)
                 widget.released.connect(lambda: self.height_set.emit(self._wanted))
             else:
-                self._scrolls = widget
+                self._fills = widget
+                if self._pages():
+                    widget.viewport().installEventFilter(self)
+                    widget.rows_changed.connect(self.place)
                 widget.show()
 
-    def eventFilter(self, watched, event) -> bool:
-        """A wheel turn over the picture or the line scrolls the part under them."""
-        target = getattr(self._scrolls, "viewport", None)
-        if event.type() != QtCore.QEvent.Type.Wheel or target is None:
-            return super().eventFilter(watched, event)
-        QtWidgets.QApplication.sendEvent(target(), event)
-        return True
+    def _pages(self) -> bool:
+        """Whether the last part shows all of itself, so the page scrolls; else that part scrolls itself."""
+        return hasattr(self._fills, "content_height")
 
-    def _most(self) -> int:
-        """The tallest the picture area may be: the picture at full width, and room kept under it."""
-        line = self._line.line if self._line is not None else 0
-        return max(0, min(self._picture.full_height(self.width()), self.height() - line - self._keep))
+    def scrollbar(self) -> QtWidgets.QScrollBar:
+        return self._bar
+
+    def scroll_to_top(self) -> None:
+        self._bar.setValue(0)
+
+    def _wheel(self, event) -> None:
+        turn = event.pixelDelta().y()
+        if not turn:
+            step = getattr(self._fills, "row_height", lambda: theme.ui_px(19))()
+            turn = event.angleDelta().y() / 120.0 * QtWidgets.QApplication.wheelScrollLines() * step
+        self._bar.setValue(self._bar.value() - round(turn))
+
+    def wheelEvent(self, event) -> None:
+        if self._pages():
+            self._wheel(event)
+        else:
+            super().wheelEvent(event)
+
+    def eventFilter(self, watched, event) -> bool:
+        """A wheel turn anywhere on a page that scrolls moves the whole page."""
+        if event.type() != QtCore.QEvent.Type.Wheel or not self._pages():
+            return super().eventFilter(watched, event)
+        self._wheel(event)
+        return True
 
     def wanted_height(self) -> int:
         """The picture area's height as dragged or drawn; a picture may get less."""
@@ -324,37 +354,64 @@ class Body(QtWidgets.QWidget):
         self._wanted = max(self._least, int(height))
         self.place()
 
-    def picture_height(self) -> int:
-        """The picture area's height now: never more than the picture is at the body's full width."""
+    def picture_height(self, width=None) -> int:
+        """The picture area's height: never more than the picture is when it is as wide as the parts."""
         picture = self._picture
         if picture is None or picture.image() is None:
             return 0
-        return min(self._wanted, self._most())
+        return min(self._wanted, picture.full_height(self._wide if width is None else width))
 
     def _dragged(self, top: int) -> None:
         picture = self._picture
         if picture is None or picture.image() is None:
             return
-        self._wanted = max(self._least, min(top, self._most()))    # past the most a drag does nothing
+        most = picture.full_height(self._wide)    # past it a drag does nothing
+        self._wanted = max(self._least, min(top + self._bar.value(), most))
         self.place()
 
-    def place(self) -> None:
-        """Give every part its place: the picture, its line, then the part that fills the rest."""
-        width, height, top = self.width(), self.height(), 0
-        tall = self.picture_height()
-        for spec, widget in self._parts:
-            if isinstance(spec, Picture):
-                widget.setGeometry(0, top, width, tall)
-                widget.setVisible(tall > 0)
-                top += tall
-            elif isinstance(spec, DragLine):
-                widget.setVisible(tall > 0)
-                if tall > 0:
-                    widget.setGeometry(0, top - widget.grab, width, widget.line + 2 * widget.grab)
-                    widget.raise_()    # its room to grab lies over the parts beside it
-                    top += widget.line
-            else:
-                widget.setGeometry(0, top, width, max(0, height - top))
+    def _long(self, width: int) -> int:
+        """The page's length with its parts `width` wide."""
+        tall = self.picture_height(width)
+        line = self._line.line if tall and self._line is not None else 0
+        return tall + line + self._fills.content_height()
+
+    def place(self, *_value) -> None:
+        """Decide once whether the page needs its scrollbar, then give every part its place."""
+        if self._placing:
+            return
+        self._placing = True
+        try:
+            width, height = self.width(), self.height()
+            self._wide, bar = width, 0
+            if self._pages():
+                if self._long(width) > height:    # decided at the full width, and not gone back on
+                    bar = self._bar.sizeHint().width()
+                    self._wide = max(1, width - bar)
+                self._bar.setRange(0, max(0, self._long(self._wide) - height) if bar else 0)
+                self._bar.setPageStep(max(1, height))
+                self._bar.setSingleStep(getattr(self._fills, "row_height", lambda: theme.ui_px(19))())
+                self._bar.setGeometry(width - bar, 0, bar, height)
+                self._bar.setVisible(bar > 0)
+                self._bar.raise_()
+            top = -self._bar.value() if bar else 0
+            tall = self.picture_height()
+            for spec, widget in self._parts:
+                if isinstance(spec, Picture):
+                    widget.setGeometry(0, top, self._wide, tall)
+                    widget.setVisible(tall > 0)
+                    top += tall
+                elif isinstance(spec, DragLine):
+                    widget.setVisible(tall > 0)
+                    if tall > 0:
+                        widget.setGeometry(0, top - widget.grab, self._wide, widget.line + 2 * widget.grab)
+                        widget.raise_()    # its room to grab lies over the parts beside it
+                        top += widget.line
+                else:
+                    room = max(0, height - top)    # at least to the pane's bottom, so the stripes reach it
+                    widget.setGeometry(0, top, self._wide,
+                                       max(room, widget.content_height()) if self._pages() else room)
+        finally:
+            self._placing = False
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)

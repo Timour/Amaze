@@ -672,8 +672,7 @@ When one image file is selected, the pane shows the picture above the
 rows. The picture is shown whole, centred in its area. Drag the line
 under the picture to set the height of the area; the height is
 remembered. The area stops growing where the picture is as wide as the
-pane, and the rows always keep four rows of room under it. Scrolling
-over the picture scrolls the rows. EXR, HDR and other float files are shown with the OCIO display
+pane. The picture and the rows scroll together as one page. EXR, HDR and other float files are shown with the OCIO display
 view. `.rat` and `.pic` files have no picture. The button at the right
 of the header shows and hides the image preview, and the choice is
 remembered.
