@@ -255,6 +255,51 @@ def striped_rows(view) -> None:
     view.setAlternatingRowColors(True)
 
 
+class Table(QtWidgets.QTreeView):
+    """The app's one table: a standard tree view the host style paints. ▸r/one-table"""
+
+    row_chosen = QtCore.Signal(QtCore.QModelIndex)    # the user made another row current, by any means
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        striped_rows(self)
+        self._quiet = False    # True while the app itself moves the highlight
+        self._user = 0    # above 0 while Qt handles a mouse or key event of the user's
+
+    def selected_rows(self) -> list:
+        """The selection as one index per row, at the first column."""
+        model = self.selectionModel()
+        return [index for index in model.selectedIndexes() if index.column() == 0] if model is not None else []
+
+    def highlight(self, index) -> None:
+        """Make `index`'s row the current, selected one without `row_chosen`: the app's own move."""
+        self._quiet = True
+        try:
+            flag = QtCore.QItemSelectionModel.SelectionFlag
+            self.selectionModel().setCurrentIndex(index, flag.ClearAndSelect | flag.Rows)
+        finally:
+            self._quiet = False
+
+    def viewportEvent(self, event) -> bool:
+        return self._by_user(super().viewportEvent, event)
+
+    def keyPressEvent(self, event) -> None:
+        self._by_user(super().keyPressEvent, event)
+
+    def _by_user(self, handle, event):
+        """Run Qt's own handling of an input event, marked as the user's. ▸r/one-table"""
+        self._user += 1
+        try:
+            return handle(event)
+        finally:
+            self._user -= 1
+
+    def currentChanged(self, current, previous) -> None:
+        super().currentChanged(current, previous)
+        if self._user and not self._quiet and current.isValid():    # not when the data moved it
+            self.row_chosen.emit(current.siblingAtColumn(0))
+
+
 def fill_window(widget, hex_color: str) -> None:
     """Background via the palette; a stylesheet on any ancestor restyles the subtree's scrollbars."""
     palette = widget.palette()

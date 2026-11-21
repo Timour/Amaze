@@ -952,68 +952,36 @@ class BadgeFamilyTest(unittest.TestCase):
 
 
 class SidebarIndentTest(unittest.TestCase):
-    """Every sidebar row reserves the colour strip width, coloured or not, so labels line up."""
+    """Every sidebar row has the colour cell at the bar's width, coloured or not, so names line up."""
 
-    COLOR_ROLE = int(QtCore.Qt.ItemDataRole.UserRole) + 77
-
-    def _option_for(self, colour):
-        """The style option the delegate gives the style for one row; the strip is its decoration."""
-        role = self.COLOR_ROLE
-
-        class _Row(QtCore.QAbstractListModel):
-            def rowCount(self, parent=QtCore.QModelIndex()):
-                return 1
-
-            def data(self, index, r=QtCore.Qt.ItemDataRole.DisplayRole):
-                if r == QtCore.Qt.ItemDataRole.DisplayRole:
-                    return "Acrylic"
-                if r == role:
-                    return colour
-                return None
-
-        view = QtWidgets.QListView()
-        self.addCleanup(view.deleteLater)
-        delegate = delegates.SidebarItemDelegate(view)
-        delegate.color_role = role
-        model = _Row()
-        self._model = model                          # keep alive
-        option = QtWidgets.QStyleOptionViewItem()
-        option.rect = QtCore.QRect(0, 0, 220, 28)
-        option.widget = view
-        option.font = view.font()
-        option.palette = view.palette()
-        delegate.initStyleOption(option, model.index(0, 0))
-        return option
-
-    def test_plain_and_coloured_rows_start_their_labels_together(self):
+    def test_plain_and_coloured_rows_start_their_names_together_after_the_colour_cell(self):
+        from amaze.core import sidebar_model
         from amaze.helpers import theme
-        plain = self._option_for(None)
-        strip = self._option_for("#e28248")
+        from amaze.panel import sidebar
+        model = QtGui.QStandardItemModel()
+        for name, colour in (("All", None), ("Wood", "#e28248")):
+            cell = QtGui.QStandardItem()
+            if colour:
+                cell.setBackground(QtGui.QColor(colour))
+            model.appendRow([QtGui.QStandardItem(name), cell])
+        view = sidebar.SidebarTreeView()
+        self.addCleanup(view.deleteLater)
+        view.setItemDelegate(delegates.SidebarItemDelegate(view))
+        view.setModel(model)
+        view.resize(220, 100)
+        view.show()
+        QtWidgets.QApplication.processEvents()
         bar = theme.ui_px(4)
-        self.assertEqual(   # Qt lays the label out after the decoration, so equal widths align labels
-            plain.decorationSize, strip.decorationSize,
-            "the two rows reserve different widths, so their labels "
-            "cannot start at the same x")
-        self.assertEqual(
-            bar, plain.decorationSize.width(),
-            "the reserved strip is not the colour bar's width")
-        for option in (plain, strip):
-            self.assertTrue(
-                option.features
-                & QtWidgets.QStyleOptionViewItem.ViewItemFeature.
-                HasDecoration,
-                "a row does not declare a decoration, so nothing is "
-                "reserved on it at all")
-        strip_px = strip.icon.pixmap(strip.decorationSize).toImage()  # so the test can fail: the coloured strip has the colour, the plain one is clear
-        plain_px = plain.icon.pixmap(plain.decorationSize).toImage()
-        self.assertEqual(
-            QtGui.QColor("#e28248").rgb(),
-            strip_px.pixelColor(0, 0).rgb(),
-            "the coloured row's strip is not painted in its colour")
-        self.assertEqual(
-            0, plain_px.pixelColor(0, 0).alpha(),
-            "the plain row's placeholder is filled - it reserves the "
-            "width but must stay empty")
+        plain, strip = (view.visualRect(model.index(row, 0)) for row in (0, 1))
+        self.assertEqual(plain.x(), strip.x(), "the two names start at different places")
+        self.assertEqual(bar, plain.x(), "the name does not start right after the colour cell")
+        cells = [view.visualRect(model.index(row, sidebar_model.COLOR_COLUMN)) for row in (0, 1)]
+        self.assertEqual([(0, bar), (0, bar)], [(cell.x(), cell.width()) for cell in cells])
+        shown = view.viewport().grab().toImage()
+        ratio = shown.devicePixelRatio()
+        at = lambda row: shown.pixelColor(int(1 * ratio), int(cells[row].center().y() * ratio)).name()    # noqa: E731
+        self.assertEqual("#e28248", at(1), "the coloured row's cell is not painted in its colour")
+        self.assertNotEqual("#e28248", at(0))
 
 
 class HiddenCountsAreStillFetched(unittest.TestCase):

@@ -603,12 +603,11 @@ class DragDropListView(GridGestureMixin, QtWidgets.QListView):
     """The grid: one tile per item, IconMode or ListMode."""
 
 
-class DragDropTableView(GridGestureMixin, QtWidgets.QTreeView):
+class DragDropRowsView(GridGestureMixin, ui_helpers.Table):
     """List mode: the app's one kind of row list with its headline shown. ▸r/one-row-list"""
 
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
-        super().__init__(parent)
-        ui_helpers.striped_rows(self)    # Houdini's style paints the rows, the space under them and the headline
+        super().__init__(parent)    # the table: Houdini's style paints the rows, the space under them and the headline
         self.setHeaderHidden(False)
         self.setIndentation(0)
         self.setItemsExpandable(False)

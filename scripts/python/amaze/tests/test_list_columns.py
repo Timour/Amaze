@@ -192,7 +192,7 @@ class TheRealPanelInListMode(unittest.TestCase):
 
     def _columns(self):
         """Every shown column and its width, read off the real table as Qt measured it."""
-        table = self.panel.thumbtable
+        table = self.panel.thumbrows
         return {key: table.columnWidth(column)
                 for column, key in enumerate(grid_columns.KEYS)
                 if not table.isColumnHidden(column)}
@@ -248,7 +248,7 @@ class TheRealPanelInListMode(unittest.TestCase):
         self.addCleanup(self._mode, "grid")
         self.panel.sync_list_columns()
         QtWidgets.QApplication.processEvents()
-        table = self.panel.thumbtable
+        table = self.panel.thumbrows
         self._set_the_host_font(table)
         proxy = table.model()
         self.assertTrue(proxy.rowCount(), "no rows to measure")
@@ -276,8 +276,8 @@ class TheRealPanelInListMode(unittest.TestCase):
         """A list row fits its 16px thumbnail and one text line, as the view sizes its rows."""
         self._mode("list")
         self.addCleanup(self._mode, "grid")
-        height = self.panel.thumbtable.sizeHintForRow(0)
-        fm = QtGui.QFontMetrics(self.panel.thumbtable.font())
+        height = self.panel.thumbrows.sizeHintForRow(0)
+        fm = QtGui.QFontMetrics(self.panel.thumbrows.font())
         self.assertLessEqual(
             height, max(fm.height(), self.panel.LIST_THUMB_SIZE)
             + theme.ui_px(8),
@@ -292,14 +292,14 @@ class TheRealPanelInListMode(unittest.TestCase):
         """One of the two views on the model is shown; isHidden, as nothing is visible headless."""
         self._mode("list")
         self.addCleanup(self._mode, "grid")
-        self.assertFalse(self.panel.thumbtable.isHidden(),
+        self.assertFalse(self.panel.thumbrows.isHidden(),
                          "list mode does not show the table")
         self.assertTrue(self.panel.thumblist.isHidden(),
                         "list mode still shows the QListView - anything "
                         "sizing it is being measured off screen")
 
         self._mode("grid")
-        self.assertTrue(self.panel.thumbtable.isHidden(),
+        self.assertTrue(self.panel.thumbrows.isHidden(),
                         "grid mode still shows the table")
         self.assertFalse(self.panel.thumblist.isHidden(),
                          "grid mode does not show the QListView")

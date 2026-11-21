@@ -798,17 +798,15 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
 
 
 class SidebarItemDelegate(QtWidgets.QStyledItemDelegate):
-    """Paints sidebar rows (name, count, colour bar) through `initStyleOption` and the host style."""
+    """A sidebar row's name with its count, bold when selected; the host style paints the row."""
 
     PAD = theme.ui_px(6)
-    _swatch_cache = {}   # decoration QIcon per (side, rgba or None, arrow, ratio)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.show_counts = True    # False hides each category's count; All always shows its total
         self.drag_index = QtCore.QPersistentModelIndex()    # the row a drop would go to; no row when invalid
         self._drag_color = QtGui.QColor(amazetheme.TILE_SUBTITLE)    # until the panel sets the accent
-        self.color_role = None     # the role carrying a category's colour, or None for none
 
     def set_drag_color(self, color: QtGui.QColor) -> None:
         self._drag_color = QtGui.QColor(color)
@@ -823,64 +821,11 @@ class SidebarItemDelegate(QtWidgets.QStyledItemDelegate):
         return (show_capped_tooltip(event, view, index)
                 or super().helpEvent(event, view, option, index))
 
-    def _swatch_color(self, index):
-        """This row's category colour, or None; invalid values are ignored rather than painted."""
-        return role_color(index, self.color_role)
-
-    BAR = theme.ui_px(amazetheme.drawn_sidebar()["bar"])    # from G01; EVERY row reserves it, so all labels align
-    ARROW_GAP = theme.ui_px(amazetheme.SIDEBAR_ARROW_GAP)    # in a folder tree: bar, gap, arrow
-    ARROW_BOX = theme.ui_px(amazetheme.SIDEBAR_ARROW_BOX)
-
-    def _arrow(self, index):
-        """None in a flat sidebar; in a folder tree "open", "closed", or "" with no subfolders."""
-        view = self.parent()
-        model = index.model()
-        if not isinstance(view, QtWidgets.QTreeView) or not getattr(model, "unfolds", False):
-            return None
-        if not model.hasChildren(index):
-            return ""
-        return "open" if view.isExpanded(index) else "closed"
-
-    def _ratio(self) -> float:
-        view = self.parent()
-        return view.devicePixelRatioF() if isinstance(view, QtWidgets.QWidget) else 1.0
-
-    def _decoration(self, side: int, swatch, arrow):
-        """The row's decoration: the colour bar, then, in a folder tree, the arrow's box."""
-        if arrow is None:    # a flat sidebar: the bar alone, as G01 draws it
-            pixmap = QtGui.QPixmap(self.BAR, side)
-            pixmap.fill(swatch if swatch is not None else QtGui.QColor(0, 0, 0, 0))
-            return QtGui.QIcon(pixmap)
-        ratio = self._ratio()
-        width = self.BAR + self.ARROW_GAP + self.ARROW_BOX
-        pixmap = QtGui.QPixmap(round(width * ratio), round(side * ratio))
-        pixmap.setDevicePixelRatio(ratio)
-        pixmap.fill(QtGui.QColor(0, 0, 0, 0))
-        painter = QtGui.QPainter(pixmap)
-        if swatch is not None:
-            painter.fillRect(QtCore.QRectF(0, 0, self.BAR, side), swatch)
-        if arrow:
-            view = self.parent()
-            flag = QtWidgets.QStyle.StateFlag
-            option = QtWidgets.QStyleOptionViewItem()    # as QTreeView asks; the base class ends Houdini on Windows
-            view.initViewItemOption(option)
-            option.rect = QtCore.QRect(self.BAR + self.ARROW_GAP, 0, self.ARROW_BOX, side)
-            option.state = flag.State_Enabled | flag.State_Item | flag.State_Children
-            if arrow == "open":
-                option.state |= flag.State_Open
-            view.style().drawPrimitive(QtWidgets.QStyle.PrimitiveElement.PE_IndicatorBranch,
-                                       option, painter, view)    # Houdini's own chevron ▸r/tree-views
-        painter.end()
-        return QtGui.QIcon(pixmap)
-
-    def arrow_box(self, decoration: QtCore.QRect) -> QtCore.QRect:
-        """The part of a folder row's decoration its arrow is drawn in."""
-        return QtCore.QRect(decoration.x() + self.BAR + self.ARROW_GAP, decoration.y(),
-                            self.ARROW_BOX, decoration.height())
-
     def initStyleOption(self, option, index):
         """The row as view-item fields for the style; `option.text` does not change DisplayRole."""
         super().initStyleOption(option, index)
+        if index.column():
+            return    # the colour cell: its background, from the model
         name = option.text    # the row's DisplayRole, which the base class has just read
         count = index.data(category.SIDEBAR_COUNT_ROLE)    # read even when hidden; each All row computes its own count
         if not self.show_counts and name != "All":
@@ -891,18 +836,5 @@ class SidebarItemDelegate(QtWidgets.QStyledItemDelegate):
             font = QtGui.QFont(option.font)
             font.setBold(True)
             option.font = font
-        side = max(QtGui.QFontMetrics(option.font).height(), 1)    # from the font, never `option.rect`
-        swatch = self._swatch_color(index)
-        arrow = self._arrow(index)
-        key = (side, swatch.rgba() if swatch is not None else None, arrow,
-               self._ratio() if arrow is not None else 1.0)
-        icon = self._swatch_cache.get(key)
-        if icon is None:
-            icon = self._swatch_cache[key] = self._decoration(side, swatch, arrow)
-        option.icon = icon    # a DECORATION, so the style lays the name out after it
-        width = self.BAR if arrow is None else self.BAR + self.ARROW_GAP + self.ARROW_BOX
-        option.decorationSize = QtCore.QSize(width, side)
-        option.features |= (
-            QtWidgets.QStyleOptionViewItem.ViewItemFeature.HasDecoration)
         if self.drop_target(index):
             option.backgroundBrush = QtGui.QBrush(self._drag_color)    # drop-target feedback

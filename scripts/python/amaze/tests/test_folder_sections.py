@@ -459,7 +459,7 @@ class RemovingALocationLeavesNoTileOfIt(unittest.TestCase):
         self.assertEqual(tiles, self._tiles(), "the grid does not show the selected row")
         view = self.panel.cat_list
         self.assertEqual(row, view.currentIndex().row(), "the sidebar's current row is another")
-        self.assertEqual([row], [index.row() for index in view.selectedIndexes()],
+        self.assertEqual([row], [index.row() for index in view.selected_rows()],
                          "the sidebar highlights another row")
 
     def test_removing_the_selected_location_selects_all(self):

@@ -1,8 +1,9 @@
 """The model every sidebar list is: All, the top rows, the rows under a row. ▸r/sidebar-engine"""
 
-from PySide6 import QtCore
+from PySide6 import QtCore, QtGui
 
 _ROOT = QtCore.QModelIndex()
+COLOR_COLUMN = 1    # the cell beside the name whose background is the row's colour
 
 
 class SidebarModel(QtCore.QAbstractItemModel):
@@ -191,6 +192,9 @@ class SidebarModel(QtCore.QAbstractItemModel):
         return self.createIndex(kids.index(key), 0, self._id(parent.internalId(), key))
 
     def index(self, row: int, column: int = 0, parent=_ROOT) -> QtCore.QModelIndex:
+        if column == COLOR_COLUMN:    # the same row, its colour cell
+            name = self.index(row, 0, parent)
+            return self.createIndex(row, column, name.internalId()) if name.isValid() else name
         if column != 0 or row < 0:
             return QtCore.QModelIndex()
         if parent is None or not parent.isValid():
@@ -222,13 +226,22 @@ class SidebarModel(QtCore.QAbstractItemModel):
     def rowCount(self, parent=None) -> int:
         if parent is None or not parent.isValid():
             return len(self.top_keys()) + 1
+        if parent.column():
+            return 0    # rows hang under the name cell only, as Qt's own tree models have it
         node = self._nodes.get(parent.internalId())
         if node is None or node[1] is None:
             return 0
         return len(self._children(parent.internalId()))
 
     def columnCount(self, parent=None) -> int:
-        return 1
+        return 2    # the name, then the row's colour cell
+
+    def color_cell(self, index, role: int):
+        """What the colour cell answers: the row's colour as its background, and nothing else."""
+        if role != QtCore.Qt.ItemDataRole.BackgroundRole:
+            return None
+        color = QtGui.QColor(self.data(index.siblingAtColumn(0), category.SIDEBAR_COLOR_ROLE) or "")
+        return QtGui.QBrush(color) if color.isValid() else None
 
     def hasChildren(self, parent=None) -> bool:
         return self.rowCount(parent) > 0
@@ -241,6 +254,8 @@ class SidebarModel(QtCore.QAbstractItemModel):
 
     def data(self, index, role: int = 0):
         """SIDEBAR_KEY_ROLE from the row's key, "" on All; a subclass answers every other role."""
+        if index.isValid() and index.column() == COLOR_COLUMN:
+            return self.color_cell(index, role)
         if role != category.SIDEBAR_KEY_ROLE or not index.isValid():
             return None
         node = self._nodes.get(index.internalId())

@@ -670,6 +670,8 @@ class MatxSidebarModel(sidebar_model.SidebarModel):
         return self._rows[1:]
 
     def data(self, index, role=0):
+        if index.column():
+            return self.color_cell(index, role)
         if role not in (QtCore.Qt.ItemDataRole.DisplayRole, category.SIDEBAR_KEY_ROLE):
             return None    # the style asks for more roles per row on every repaint
         key = super().data(index, category.SIDEBAR_KEY_ROLE)

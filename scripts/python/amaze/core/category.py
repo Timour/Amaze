@@ -60,6 +60,8 @@ class Categories(sidebar_model.SidebarModel):
     def data(
         self, index: QtCore.QModelIndex | QtCore.QPersistentModelIndex, role: int = 0
     ) -> Any:
+        if index.column():
+            return self.color_cell(index, role)
         if role not in ROW_ROLES:
             return None    # the style asks for six more roles per row on every repaint
         key = super().data(index, SIDEBAR_KEY_ROLE)

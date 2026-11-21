@@ -913,7 +913,7 @@ class AmazePanel(QtWidgets.QWidget):
 
     def bind_grid_views(self, proxy, selection, delegate) -> None:
         """Point both grid views at one context's proxy, selection model and delegate."""
-        for view in (self.thumblist, getattr(self, "thumbtable", None)):
+        for view in (self.thumblist, getattr(self, "thumbrows", None)):
             if view is None:
                 continue
             view.setModel(proxy)
@@ -922,7 +922,7 @@ class AmazePanel(QtWidgets.QWidget):
         grid.sync_sort_indicator(self)    # the header's sort arrow matches this proxy's sort
         if delegate is not None:
             self.thumblist.setItemDelegate(delegate)
-            grid.bind_table_cell_delegates(self, delegate)    # per column, image and tick columns only; never the tile delegate
+            grid.bind_row_cell_delegates(self, delegate)    # per column, image and tick columns only; never the tile delegate
 
     _LIST = amazetheme.drawn_list()    # header, heading inset and column widths are L01's ▸r/list-from-frame
     _TOOLBAR = amazetheme.drawn_toolbar()    # the toolbar's height, edges, gaps and sizes are B01's
@@ -931,7 +931,7 @@ class AmazePanel(QtWidgets.QWidget):
 
     def sync_list_columns(self) -> None:
         """Re-fit list mode's columns for the context now showing; every `activate()` calls it."""
-        return grid.sync_table_columns(self)
+        return grid.sync_row_columns(self)
 
     COLUMN_DEFAULT_WIDTH = dict(_LIST["widths"], thumb=24)    #: starting widths; "thumb" is never shown, so L01 draws no column for it
 
@@ -1326,7 +1326,6 @@ class AmazePanel(QtWidgets.QWidget):
         )
         self.cat_list.setPalette(cat_list_palette)    # no selection colours: Houdini's style sheet paints them
         self.sidebar_delegate = delegates.SidebarItemDelegate(self.cat_list)    # name, count, colour bar
-        self.sidebar_delegate.color_role = category.SIDEBAR_COLOR_ROLE    # only asset sidebars provide it
 
     def init_ui(self) -> None:
         """Creates the panel-view on load"""
@@ -1420,27 +1419,27 @@ class AmazePanel(QtWidgets.QWidget):
         if thumb_layout is not None:
             thumb_layout.insertWidget(0, self.texture_progress)
 
-        self.thumbtable = dragdrop_widgets.DragDropTableView()    # list mode: a second view sharing the grid's proxy and selection model
-        self.thumbtable.setObjectName("thumbtable")
-        self.thumbtable.setHeader(    # before `grid.style_table_header` sets it up
+        self.thumbrows = dragdrop_widgets.DragDropRowsView()    # list mode: a second view sharing the grid's proxy and selection model
+        self.thumbrows.setObjectName("thumbrows")
+        self.thumbrows.setHeader(    # before `grid.set_up_rows_header` sets it up
             ui_helpers.GridHeaderView(
-                QtCore.Qt.Orientation.Horizontal, self.thumbtable))
-        self.thumbtable.setVisible(False)
+                QtCore.Qt.Orientation.Horizontal, self.thumbrows))
+        self.thumbrows.setVisible(False)
         if thumb_layout is not None:
-            thumb_layout.addWidget(self.thumbtable)
-        grid.style_table_header(self)
-        self.thumbtable.setContextMenuPolicy(    # the grid's menu and primary action
+            thumb_layout.addWidget(self.thumbrows)
+        grid.set_up_rows_header(self)
+        self.thumbrows.setContextMenuPolicy(    # the grid's menu and primary action
             QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
-        self.thumbtable.customContextMenuRequested.connect(
+        self.thumbrows.customContextMenuRequested.connect(
             self.thumblist_rc_menu)
-        self.thumbtable.doubleClicked.connect(self.import_asset_auto)
+        self.thumbrows.doubleClicked.connect(self.import_asset_auto)
 
         self._build_sidebar_palette()
         self.sidebar_delegate.set_drag_color(
             theme.accent(self.prefs.accent_color)
         )
         self.cat_list.setItemDelegate(self.sidebar_delegate)
-        self.cat_list.clicked.connect(self.update_selected_cat)
+        self.cat_list.row_chosen.connect(self._on_category_chosen)    # mouse, keyboard or the view: one way in
         self._cat_drop_filter = dragdrop_widgets.CategoryDropFilter(    # the sidebar as a drop target for recategorising grid assets
             self.cat_list, self
         )
@@ -1679,7 +1678,7 @@ class AmazePanel(QtWidgets.QWidget):
     def locate_folder_user(self, folders_model) -> None:
         """Sidebar "Locate Folder...": re-point the selected registered folder at a new location."""
         ui = getattr(hou, "ui", None)
-        indexes = self.cat_list.selectedIndexes()
+        indexes = self.cat_list.selected_rows()
         row = indexes[0].row() if indexes and not indexes[0].parent().isValid() else -1    # top rows
         if row <= 0 or not folders_model.registered_at(row):    # nothing selected, All or the scene row: no location
             if ui is not None:
@@ -1716,7 +1715,7 @@ class AmazePanel(QtWidgets.QWidget):
         view_model = self.cat_list.model() if self.cat_list else None
         if row is None or view_model is None:
             return
-        self.cat_list.setCurrentIndex(view_model.index(row, 0))
+        self.cat_list.highlight(view_model.index(row, 0))
         self.locate_folder_user(model)
         context = self.active_section()
         if context is not None:
@@ -1741,7 +1740,7 @@ class AmazePanel(QtWidgets.QWidget):
         """The sidebar's category, "" for All: selection, then current index; no section check."""
         if self.cat_list is None:
             return ""
-        indexes = self.cat_list.selectedIndexes()
+        indexes = self.cat_list.selected_rows()
         index = indexes[0] if indexes else ui_helpers.live_current_index(    # current but not selected after a restore
             self.cat_list)
         name = self.raw_category_name(index)
@@ -1764,7 +1763,7 @@ class AmazePanel(QtWidgets.QWidget):
         if context is None or self.cat_list is None:
             return
         names = [context.colour_key(index)    # stored name, or a location's path in File
-                 for index in self.cat_list.selectedIndexes()]
+                 for index in self.cat_list.selected_rows()]
         names = [name for name in names    # All is skipped
                  if name and not category.is_all(name)]
         if not names:
@@ -2066,7 +2065,7 @@ class AmazePanel(QtWidgets.QWidget):
         """Unregister the selected location(s), returning the removed paths; disk is untouched."""
         folders = self.file_folders_model
         rows = sorted(    # top rows only: a subfolder's row number is not a location's
-            (i.row() for i in self.cat_list.selectedIndexes() if not i.parent().isValid()),
+            (i.row() for i in self.cat_list.selected_rows() if not i.parent().isValid()),
             reverse=True
         )
         removed = []
@@ -2188,17 +2187,12 @@ class AmazePanel(QtWidgets.QWidget):
             and self.cat_list is not None
         ):
             model = self.cat_list.model()
-            selection_model = self.cat_list.selectionModel()
-            if model is not None and selection_model is not None:
+            if model is not None:
                 for row in range(model.rowCount()):
                     idx = model.index(row, 0)
                     if idx.data() == cat_text:
-                        selection_model.select(
-                            idx,
-                            QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect,
-                        )
-                        self.cat_list.setCurrentIndex(idx)
-                        self.update_selected_cat()    # the handler a real click runs
+                        self.cat_list.highlight(idx)
+                        self.update_selected_cat(idx)    # what a row the user chose runs
                         break
         scroll = state.get("scroll")
         if scroll:
@@ -2332,12 +2326,8 @@ class AmazePanel(QtWidgets.QWidget):
         if not self.cat_list or self.matx_source_model.rowCount() == 0:
             return
         idx = self.matx_source_model.index(0, 0)
-        sel = self.cat_list.selectionModel()
-        if sel is not None:
-            sel.select(
-                idx, QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect
-            )
-            self.cat_list.setCurrentIndex(idx)
+        if self.cat_list.selectionModel() is not None:
+            self.cat_list.highlight(idx)
         self.update_selected_cat()
 
     def exit_online_materials(self) -> None:
@@ -2359,12 +2349,9 @@ class AmazePanel(QtWidgets.QWidget):
         target = sidebar_proxy.index_of("")
         if not target.isValid():
             return None
-        selection_model = self.cat_list.selectionModel()
-        if selection_model is None:
+        if self.cat_list.selectionModel() is None:
             return None
-        selection_model.select(    # a `setModel()` leaves nothing selected
-            target, QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
-        self.cat_list.setCurrentIndex(target)
+        self.cat_list.highlight(target)    # a `setModel()` leaves nothing selected
         return self.raw_category_name(target)
 
     def edit_tile_icon(self, model, proxy, proxy_indexes,
@@ -3124,12 +3111,8 @@ class AmazePanel(QtWidgets.QWidget):
         if model is None:
             return False
         index = model.index_of(key)
-        if index.isValid():
-            view.setCurrentIndex(index)
-            selection_model = view.selectionModel()
-            if selection_model is not None:
-                selection_model.select(
-                    index, QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
+        if index.isValid() and view.selectionModel() is not None:
+            view.highlight(index)
         self.update_selected_cat()
         return index.isValid()
 
@@ -3147,22 +3130,20 @@ class AmazePanel(QtWidgets.QWidget):
         box.clear()
         self.filter_thumb_view()    # by hand: clear() emits no `textEdited`
 
-    def update_selected_cat(self) -> None:
-        """The sidebar selection changed: the active section shows that category or folder."""
-        indexes = self.cat_list.selectedIndexes()
-        if not indexes:    # a ctrl-click deselect is re-selected in place
-            current = ui_helpers.live_current_index(self.cat_list)
-            selection_model = self.cat_list.selectionModel()
-            if current is not None and selection_model is not None:
-                selection_model.select(
-                    current,
-                    QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect,
-                )
+    def _on_category_chosen(self, index) -> None:
+        """The user made another sidebar row current; a right press only moves the highlight."""
+        if QtWidgets.QApplication.mouseButtons() & QtCore.Qt.MouseButton.RightButton:
             return
+        self.update_selected_cat(index)
 
+    def update_selected_cat(self, index=None) -> None:
+        """The active section shows the category or folder of `index`, else of the selected row."""
+        if index is None:
+            rows = self.cat_list.selected_rows()
+            index = rows[0] if rows else None
         section = self.active_section()
-        if section is not None:
-            section.select_category(indexes[0])
+        if index is not None and section is not None:
+            section.select_category(index)
 
     def grid_update_preview(self, indexes) -> None:
         """Re-render the grid selection's thumbnails, through the active context."""

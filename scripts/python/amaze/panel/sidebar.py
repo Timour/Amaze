@@ -5,7 +5,7 @@ from __future__ import annotations
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from amaze import amazetheme
-from amaze.core import category, debug
+from amaze.core import category, debug, sidebar_model
 from amaze.helpers import theme, ui_helpers
 
 
@@ -16,89 +16,36 @@ def top_level(index):
     return index
 
 
-class SidebarTreeView(QtWidgets.QTreeView):
-    """The sidebar view: a flat list in the asset tabs, a folder tree in File. ▸r/tree-views"""
+class SidebarTreeView(ui_helpers.Table):
+    """The sidebar: the app's table with a colour cell, then the name and the style's own arrow."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        ui_helpers.striped_rows(self)    # each row draws its own arrow; a folder opens in one frame
-        self.setIndentation(theme.ui_px(amazetheme.SIDEBAR_INDENT))
         self._open: dict = {}    # id(model) -> the keys of the rows open in it
         self._pending_reveal = None    # (model, path) to select once its row is inserted
         self._watched = None
-        self._arrow_press = False
-        self._pressed = None    # the row under a left press, kept until the release
         self.expanded.connect(self._opened)
         self.collapsed.connect(self._closed)
+        self.row_chosen.connect(self._forget_reveal)    # a row the user chose cancels a pending folder reveal
 
-    def drawBranches(self, painter, rect, index):
-        """Draws nothing: no indent-column arrows; the delegate draws each row's arrow."""
+    def _forget_reveal(self, _index) -> None:
+        self._pending_reveal = None
 
-    def arrow_rect(self, index) -> QtCore.QRect:
-        """Where a row's arrow sits in the viewport; empty when the row has none."""
-        model = self.model()
-        delegate = self.itemDelegateForIndex(index) if index.isValid() else None
-        if (model is None or delegate is None or not hasattr(delegate, "arrow_box")
-                or not getattr(model, "unfolds", False) or not model.hasChildren(index)):
-            return QtCore.QRect()
-        option = QtWidgets.QStyleOptionViewItem()
-        self.initViewItemOption(option)
-        option.rect = self.visualRect(index)
-        delegate.initStyleOption(option, index)
-        decoration = self.style().subElementRect(
-            QtWidgets.QStyle.SubElement.SE_ItemViewItemDecoration, option, self)
-        return delegate.arrow_box(decoration)
-
-    def _on_arrow(self, event) -> QtCore.QModelIndex:
-        point = event.position().toPoint()
-        index = self.indexAt(point)
-        if event.button() == QtCore.Qt.MouseButton.LeftButton \
-                and self.arrow_rect(index).contains(point):
-            return index
-        return QtCore.QModelIndex()
-
-    def mousePressEvent(self, event):
-        index = self._on_arrow(event)
-        if index.isValid():    # the arrow opens or closes; it neither selects nor clicks
-            self.setExpanded(index, not self.isExpanded(index))
-            self._arrow_press = True
-            event.accept()
+    def _lay_out_columns(self, model) -> None:
+        """The colour cell first at the bar's width, then the name, which carries the arrows."""
+        header = self.header()
+        color = sidebar_model.COLOR_COLUMN
+        if model.columnCount() <= color:
             return
-        self._arrow_press = False
-        pressed = self.indexAt(event.position().toPoint())
-        if pressed.isValid():
-            self._pending_reveal = None    # a row the user clicked cancels a pending folder reveal
-        left = event.button() == QtCore.Qt.MouseButton.LeftButton
-        self._pressed = QtCore.QPersistentModelIndex(pressed) if left else None
-        super().mousePressEvent(event)
-
-    def mouseReleaseEvent(self, event):
-        if self._arrow_press:
-            self._arrow_press = False
-            event.accept()
-            return
-        pressed, self._pressed = self._pressed, None
-        under = self.indexAt(event.position().toPoint())
-        super().mouseReleaseEvent(event)    # Qt emits clicked only for a release on the pressed row
-        if pressed is None or not pressed.isValid() or QtCore.QModelIndex(pressed) == under:
-            return
-        current = self.currentIndex()
-        if current.isValid() and self.selectionModel().isSelected(current):
-            self.clicked.emit(current)    # released on another row or outside it: still counts as a click
-
-    def keyPressEvent(self, event):
-        before = QtCore.QPersistentModelIndex(self.currentIndex())
-        super().keyPressEvent(event)
-        if QtCore.QModelIndex(before) != self.currentIndex():
-            self._pending_reveal = None    # the user changed the current row: cancel the pending reveal
-
-    def mouseDoubleClickEvent(self, event):
-        index = self._on_arrow(event)
-        if index.isValid():    # each click on the arrow is one toggle
-            self.setExpanded(index, not self.isExpanded(index))
-            event.accept()
-            return
-        super().mouseDoubleClickEvent(event)
+        header.setMinimumSectionSize(1)
+        header.setStretchLastSection(False)
+        if header.visualIndex(color) != 0:
+            header.moveSection(header.visualIndex(color), 0)
+        header.setSectionResizeMode(color, QtWidgets.QHeaderView.ResizeMode.Fixed)
+        header.resizeSection(color, theme.ui_px(amazetheme.drawn_sidebar()["bar"]))
+        header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        self.setTreePosition(0)    # the arrows and the indent belong to the name, not to the first cell shown
+        self.setRootIsDecorated(bool(getattr(model, "unfolds", False)))    # a flat list has no arrow column
 
     def _remembers(self, model) -> bool:
         return model is not None and getattr(model, "unfolds", False)
@@ -112,6 +59,8 @@ class SidebarTreeView(QtWidgets.QTreeView):
                 except (RuntimeError, TypeError):
                     pass
         super().setModel(model)
+        if model is not None:
+            self._lay_out_columns(model)
         self._watched = model if self._remembers(model) else None
         if self._watched is not None:
             model.modelReset.connect(self._reopen)
@@ -145,8 +94,7 @@ class SidebarTreeView(QtWidgets.QTreeView):
             index = model.index_of(pending[1])
             if index.isValid():
                 self._pending_reveal = None
-                self.selectionModel().setCurrentIndex(
-                    index, QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
+                self.highlight(index)    # the app's move: the folder is already browsed
                 self.scrollTo(index)
 
     def reveal(self, path: str) -> None:

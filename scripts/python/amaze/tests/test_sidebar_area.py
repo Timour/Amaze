@@ -190,14 +190,14 @@ class TheSidebarMatchesItsDesignFrame(unittest.TestCase):
         self.assertIsInstance(splitter, QtWidgets.QSplitter)
         self.assertEqual(self.px(self._kind("splitter handle")[0][3]), splitter.handleWidth())
 
-    def test_every_row_reserves_the_drawn_bar(self):
+    def test_every_row_has_the_colour_cell_at_the_drawn_bars_width(self):
+        from amaze.core import sidebar_model
         view = self.panel.cat_list
         model = view.model()
         self.assertTrue(model is not None and model.rowCount(), "no sidebar rows - not a test")
-        option = QtWidgets.QStyleOptionViewItem()
-        view.initViewItemOption(option)
-        self.panel.sidebar_delegate.initStyleOption(option, model.index(0, 0))
-        self.assertEqual(self.px(self._kind("bar")[0][3]), option.decorationSize.width())
+        header = view.header()
+        self.assertEqual(0, header.visualIndex(sidebar_model.COLOR_COLUMN), "the colour cell is not first")
+        self.assertEqual(self.px(self._kind("bar")[0][3]), header.sectionSize(sidebar_model.COLOR_COLUMN))
 
 
 if __name__ == "__main__":

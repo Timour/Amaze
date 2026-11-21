@@ -174,7 +174,7 @@ class Section:
         cat_list = getattr(self.panel, "cat_list", None)
         if cat_list is None:
             return []
-        return list(cat_list.selectedIndexes())
+        return list(cat_list.selected_rows())
 
     def prefs_changed(self) -> None:
         """Preferences just closed: re-scan live filesystem or render state here. Default: nothing."""
@@ -313,9 +313,7 @@ class Section:
 
     @staticmethod
     def _highlight(view, index) -> None:
-        view.setCurrentIndex(index)
-        view.selectionModel().select(
-            index, QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
+        view.highlight(index)
 
     @staticmethod
     def _row_keyed(model, key: str):
@@ -1385,13 +1383,8 @@ class FolderSection(Section):
             target_row = 1 if folders.rowCount() > 1 else 0    # never All: it scans every location
         if panel.cat_list and folders.rowCount() > 0:
             target_index = folders.index(target_row, 0)
-            selection_model = panel.cat_list.selectionModel()
-            if selection_model is not None:
-                selection_model.select(
-                    target_index,
-                    QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect,
-                )
-                panel.cat_list.setCurrentIndex(target_index)
+            if panel.cat_list.selectionModel() is not None:
+                panel.cat_list.highlight(target_index)
             if inside:
                 self._browse(inside)
                 reveal = getattr(panel.cat_list, "reveal", None)

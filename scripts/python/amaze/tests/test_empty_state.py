@@ -19,7 +19,7 @@ def faces(panel) -> list:
     """Which of the grid pane's three widgets are shown: `table`, `list`, `blank`."""
     page = getattr(panel, "empty_page", None)
     return [name for name, widget in (
-        ("table", getattr(panel, "thumbtable", None)),
+        ("table", getattr(panel, "thumbrows", None)),
         ("list", panel.thumblist),
         ("blank", page)) if widget is not None and not widget.isHidden()]
 
@@ -34,7 +34,7 @@ def pane_hit(panel):
 
 def right_click_menu(testcase, panel, table) -> list:
     """(label, enabled) per entry of the menu a right-click in the grid pane opens."""
-    grid.show_table(panel, table)
+    grid.show_rows(panel, table)
     hit = pane_hit(panel)
     view = grid.visible_view(panel)
     testcase.assertTrue(hit is view or view.isAncestorOf(hit),
@@ -313,14 +313,14 @@ class OnlyOneGridPaneWidgetIsShown(unittest.TestCase):
 
     def test_the_blank_hides_both_views(self):
         empty_state.page(self.panel)
-        self.panel._table_mode = False
+        self.panel._rows_mode = False
         grid.apply_grid_face(self.panel, True)
         self.assertEqual(["blank"], self._shown())
         grid.apply_grid_face(self.panel, False)
         self.assertEqual(["list"], self._shown(),
                          "clearing the empty state did not restore the view mode")
         grid.apply_grid_face(self.panel, True)
-        grid.show_table(self.panel, True)    # a view-mode switch: only the model clears an empty state
+        grid.show_rows(self.panel, True)    # a view-mode switch: only the model clears an empty state
         self.assertEqual(["blank"], self._shown(),
                          "a view-mode change hid the empty state")
 

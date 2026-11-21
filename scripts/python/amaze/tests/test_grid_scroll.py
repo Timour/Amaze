@@ -23,7 +23,7 @@ from amaze.tests import test_support  # noqa: E402 - redirects the log
 class OneWheelHandlerServesBothViews(unittest.TestCase):
     """One wheel handler for both views and axes; a view without prefs uses `SCROLL_SPEED`."""
 
-    VIEWS = ("DragDropListView", "DragDropTableView")
+    VIEWS = ("DragDropListView", "DragDropRowsView")
 
     SPEED = dragdrop_widgets.GridGestureMixin.SCROLL_SPEED
     NOTCH = dragdrop_widgets.GridGestureMixin.WHEEL_NOTCH_PX
@@ -80,7 +80,7 @@ class OneWheelHandlerServesBothViews(unittest.TestCase):
                 view = self._view(name)
                 vertical = view.verticalScrollBar()
                 horizontal = view.horizontalScrollBar()
-                if name == "DragDropTableView":    # otherwise the horizontal check below never runs
+                if name == "DragDropRowsView":    # otherwise the horizontal check below never runs
                     self.assertTrue(horizontal.maximum(),
                                     "the table fixture has no horizontal range")
                 vertical.setValue(0)

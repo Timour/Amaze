@@ -14,7 +14,7 @@ from PySide6 import QtCore, QtGui, QtTest, QtWidgets
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 from amaze import amazetheme  # noqa: E402
-from amaze.core import category, file_library, folders, locations  # noqa: E402
+from amaze.core import category, file_library, folders, locations, sidebar_model  # noqa: E402
 from amaze.helpers import hostos, theme, ui_helpers  # noqa: E402
 from amaze.panel import delegates, sidebar  # noqa: E402
 from amaze.tests import test_support  # noqa: E402 - arms the sandbox
@@ -536,7 +536,7 @@ class _OnlineCategories(QtCore.QObject):
 
 
 class TheSidebarTreeView(unittest.TestCase):
-    """Rows show colour bar, arrow, name; the delegate draws the arrow, and Qt's is not drawn."""
+    """Rows are a colour cell, then the name with the style's own arrow; none of it the app's code."""
 
     def setUp(self):
         self.model, self.prefs, roots = _model(
@@ -549,9 +549,7 @@ class TheSidebarTreeView(unittest.TestCase):
         self.addCleanup(view.deleteLater)
         self.addCleanup(view.close)
         view.setAlternatingRowColors(True)
-        delegate = delegates.SidebarItemDelegate(view)
-        delegate.color_role = category.SIDEBAR_COLOR_ROLE
-        view.setItemDelegate(delegate)
+        view.setItemDelegate(delegates.SidebarItemDelegate(view))
         view.setModel(model)
         view.resize(220, 300)
         view.show()
@@ -607,22 +605,79 @@ class TheSidebarTreeView(unittest.TestCase):
         text = style.subElementRect(QtWidgets.QStyle.SubElement.SE_ItemViewItemText, option, view)
         return deco, text
 
-    def test_rows_read_bar_then_arrow_then_name(self):
-        self._scanned(self.loc)
-        bar = delegates.SidebarItemDelegate.BAR
-        room = bar + theme.ui_px(amazetheme.SIDEBAR_ARROW_GAP) + theme.ui_px(
-            amazetheme.SIDEBAR_ARROW_BOX)
-        texts = []
-        for path in (self.loc, self.other):
-            deco, text = self._rects(self.view, self.model.index_of(path))
-            self.assertEqual(room, deco.width(), "%s: not bar, gap and arrow" % path)
-            texts.append(text.x())
-        self.assertEqual(1, len(set(texts)), "names do not line up: %s" % texts)
+    def _press_bands(self, view, index, step=2):
+        """What a left click does at every `step` px across `index`'s row: [(first x, last x, what)]."""
+        chosen = []
+        view.row_chosen.connect(lambda i: chosen.append(i))
+        self.addCleanup(view.row_chosen.disconnect)
+        persistent, bands = QtCore.QPersistentModelIndex(index), []
+        for x in range(1, view.viewport().width() - 1, step):
+            view.expandAll()
+            view.highlight(view.model().index(0, 0))
+            test_support.pump_until(lambda: False, timeout=0.001)
+            index = QtCore.QModelIndex(persistent)
+            was_open, y = view.isExpanded(index), view.visualRect(index).center().y()
+            del chosen[:]
+            QtTest.QTest.mouseClick(view.viewport(), QtCore.Qt.MouseButton.LeftButton,
+                                    QtCore.Qt.KeyboardModifier.NoModifier, QtCore.QPoint(x, y))
+            toggled = view.isExpanded(QtCore.QModelIndex(persistent)) != was_open
+            what = ("toggles" if toggled else "") + (" chooses" if chosen else "")
+            what = what.strip() or "nothing"
+            if bands and bands[-1][2] == what:
+                bands[-1] = (bands[-1][0], x, what)
+            else:
+                bands.append((x, x, what))
+        return bands
+
+    def test_the_colour_cell_is_first_at_the_bars_width_and_the_name_carries_the_arrows(self):
+        view, header = self.view, self.view.header()
+        color = sidebar_model.COLOR_COLUMN
+        self.assertEqual(2, self.model.columnCount())
+        self.assertEqual((0, 1), (header.visualIndex(color), header.visualIndex(0)))
+        self.assertEqual(theme.ui_px(amazetheme.drawn_sidebar()["bar"]), header.sectionSize(color))
+        self.assertEqual(view.viewport().width() - header.sectionSize(color), header.sectionSize(0))
+        self.assertEqual(0, view.treePosition(), "the arrows are not in the name's column")
+        self.assertTrue(view.rootIsDecorated(), "a list with rows under rows has no arrow column")
         flat = QtGui.QStandardItemModel()
-        flat.appendRow(QtGui.QStandardItem("Wood"))
-        view = self._view(flat)
-        deco, _text = self._rects(view, flat.index(0, 0))
-        self.assertEqual(bar, deco.width(), "a flat sidebar reserved space for an arrow")
+        for name in ("All", "Wood"):
+            flat.appendRow([QtGui.QStandardItem(name), QtGui.QStandardItem()])
+        self.assertFalse(self._view(flat).rootIsDecorated(), "a flat list reserves an arrow column")
+
+    def test_a_rows_colour_is_its_colour_cells_background_and_no_other_cell_data(self):
+        self.model.set_color(self.loc, "#ff8000")
+        cell = self.model.index_of(self.loc).siblingAtColumn(sidebar_model.COLOR_COLUMN)
+        self.assertEqual("#ff8000", cell.data(QtCore.Qt.ItemDataRole.BackgroundRole).color().name())
+        self.assertIsNone(cell.data(QtCore.Qt.ItemDataRole.DisplayRole))
+        plain = self.model.index_of(self.other).siblingAtColumn(sidebar_model.COLOR_COLUMN)
+        self.assertIsNone(plain.data(QtCore.Qt.ItemDataRole.BackgroundRole))
+        self.assertEqual(0, self.model.rowCount(cell), "rows hang under a colour cell")
+
+    def test_one_place_on_a_row_opens_and_closes_it_and_every_other_place_chooses_it(self):
+        self._scanned(self.loc, _child(self.loc, "A"))
+        view = self.view
+        view.expandAll()
+        for path in (self.loc, _child(self.loc, "A")):
+            bands = self._press_bands(view, self.model.index_of(path))
+            kinds = [what for _a, _b, what in bands]
+            with self.subTest(row=path.rstrip("/").rsplit("/", 1)[-1], bands=bands):
+                self.assertEqual(1, kinds.count("toggles"), "the row opens and closes in other than one place")
+                self.assertNotIn("nothing", kinds, "a press on the row does nothing somewhere")
+                self.assertNotIn("toggles chooses", kinds)
+                self.assertTrue(all(kind in ("toggles", "chooses") for kind in kinds))
+
+    def test_the_user_choosing_a_row_is_one_signal_by_mouse_and_by_keyboard_only(self):
+        view, model = self.view, self.model
+        chosen = []
+        view.row_chosen.connect(lambda index: chosen.append(index.data(model.BrowseRole)))
+        view.highlight(model.index_of(self.loc))
+        self.assertEqual([], chosen, "the app's own move counted as the user's choice")
+        other = view.visualRect(model.index_of(self.other)).center()
+        QtTest.QTest.mouseClick(view.viewport(), QtCore.Qt.MouseButton.LeftButton,
+                                QtCore.Qt.KeyboardModifier.NoModifier, other)
+        self.assertEqual([self.other], chosen)
+        QtTest.QTest.keyClick(view, QtCore.Qt.Key.Key_Up)
+        self.assertEqual([self.other, self.loc], chosen, "the Up key did not choose the row above")
+        self.assertEqual([self.loc], [i.data(model.BrowseRole) for i in view.selected_rows()])
 
     def test_a_repaint_reads_each_rows_name_once(self):
         reads = []
@@ -641,86 +696,6 @@ class TheSidebarTreeView(unittest.TestCase):
         view.viewport().grab()
         self.assertEqual([0, 1, 2], sorted(reads),
                          "a repaint read a row's name more than once, or not at all")
-
-    def test_a_model_that_is_not_the_file_folders_gets_arrows_when_it_unfolds(self):
-        nested = _NestedCategories()
-        for name in ("All", "Wood", "Metal"):
-            nested.appendRow(QtGui.QStandardItem(name))
-        nested.item(1).appendRow(QtGui.QStandardItem("Oak"))
-        view = self._view(nested)
-        wood = nested.index(1, 0)
-        arrow = view.arrow_rect(wood)
-        self.assertFalse(arrow.isEmpty(), "a row with rows under it has no arrow")
-        self.assertTrue(view.arrow_rect(nested.index(2, 0)).isEmpty(),
-                        "a row with nothing under it has an arrow")
-        image = view.viewport().grab().toImage()
-        ratio = image.devicePixelRatio()
-        end = int((view.visualRect(wood).right() - 2) * ratio)
-        ink = [(x, y) for y in range(int(arrow.top() * ratio), int((arrow.bottom() + 1) * ratio))
-               for x in range(int(arrow.left() * ratio), int((arrow.right() + 1) * ratio))
-               if image.pixelColor(x, y) != image.pixelColor(end, y)]
-        self.assertTrue(ink, "nothing is drawn where the arrow is")
-        QtTest.QTest.mouseClick(view.viewport(), QtCore.Qt.MouseButton.LeftButton,
-                                QtCore.Qt.KeyboardModifier.NoModifier, arrow.center())
-        self.assertTrue(view.isExpanded(wood), "the arrow did not open the row")
-
-    def test_a_category_list_with_a_row_under_a_row_gets_an_arrow_and_stays_open(self):
-        """Any section can have arrows: a category list through its proxy, the File view's code."""
-        test_support.reset_database_singletons()
-        self.addCleanup(test_support.reset_database_singletons)
-        nested = _NestedCategoryList(test_support.fixture_prefs(self))
-        nested._categories[:] = ["_All", "Wood", "Metal"]
-        proxy = category.CategoriesSidebarProxy()
-        proxy.setSourceModel(nested)
-        self.assertTrue(proxy.unfolds, "the proxy does not answer `unfolds` as its list does")
-        view = self._view(proxy)
-        wood = proxy.index_of("Wood")
-        arrow = view.arrow_rect(wood)
-        self.assertFalse(arrow.isEmpty(), "a category with a row under it has no arrow")
-        self.assertTrue(view.arrow_rect(proxy.index_of("Metal")).isEmpty(),
-                        "a category with nothing under it has an arrow")
-        image = view.viewport().grab().toImage()
-        ratio = image.devicePixelRatio()
-        end = int((view.visualRect(wood).right() - 2) * ratio)
-        ink = [(x, y) for y in range(int(arrow.top() * ratio), int((arrow.bottom() + 1) * ratio))
-               for x in range(int(arrow.left() * ratio), int((arrow.right() + 1) * ratio))
-               if image.pixelColor(x, y) != image.pixelColor(end, y)]
-        self.assertTrue(ink, "nothing is drawn where the arrow is")
-        QtTest.QTest.mouseClick(view.viewport(), QtCore.Qt.MouseButton.LeftButton,
-                                QtCore.Qt.KeyboardModifier.NoModifier, arrow.center())
-        self.assertTrue(view.isExpanded(wood), "the arrow did not open the row")
-        oak = proxy.index_of("Oak")
-        self.assertEqual(wood, oak.parent(), "the proxy did not map the row under Wood")
-        self.assertEqual("Oak", oak.data())
-        self.assertFalse(view.visualRect(oak).isEmpty(), "the row under Wood is not shown")
-        flat = QtGui.QStandardItemModel()
-        flat.appendRow(QtGui.QStandardItem("Wood"))
-        view.setModel(flat)
-        view.setModel(proxy)
-        self.assertTrue(test_support.pump_until(lambda: view.isExpanded(proxy.index_of("Wood"))),
-                        "another list in the view closed the category that was open")
-
-    def test_a_click_on_the_arrow_opens_the_folder_and_selects_nothing(self):
-        self._scanned(self.loc)
-        view, loc = self.view, self.model.index_of(self.loc)
-        clicked = []
-        view.clicked.connect(lambda index: clicked.append(index.row()))
-        arrow = view.arrow_rect(loc)
-        self.assertFalse(arrow.isEmpty(), "a folder with subfolders has no arrow")
-        QtTest.QTest.mouseClick(view.viewport(), QtCore.Qt.MouseButton.LeftButton,
-                                QtCore.Qt.KeyboardModifier.NoModifier, arrow.center())
-        self.assertTrue(view.isExpanded(loc), "the arrow did not open the folder")
-        self.assertEqual([], clicked, "a click on the arrow also emitted `clicked`")
-        self.assertEqual([], view.selectedIndexes(), "the arrow selected the row")
-        QtTest.QTest.mouseClick(view.viewport(), QtCore.Qt.MouseButton.LeftButton,
-                                QtCore.Qt.KeyboardModifier.NoModifier, arrow.center())
-        self.assertFalse(view.isExpanded(loc), "a second click did not close it")
-        rect = view.visualRect(loc)
-        name = QtCore.QPoint(rect.right() - rect.width() // 4, rect.center().y())
-        QtTest.QTest.mouseClick(view.viewport(), QtCore.Qt.MouseButton.LeftButton,
-                                QtCore.Qt.KeyboardModifier.NoModifier, name)
-        self.assertEqual([loc.row()], clicked, "a click on the name did not click the row")
-        self.assertFalse(view.isExpanded(loc), "a click on the name opened the folder")
 
     def test_a_double_click_and_the_arrow_keys_open_and_close_a_folder(self):
         self._scanned(self.loc)
@@ -741,45 +716,6 @@ class TheSidebarTreeView(unittest.TestCase):
         self.assertFalse(view.isExpanded(loc), "Left did not close the folder")
         QtTest.QTest.keyClick(view, QtCore.Qt.Key.Key_Right)
         self.assertTrue(view.isExpanded(loc), "Right did not open the folder")
-
-    def test_the_arrow_is_asked_of_the_style_as_qts_own_tree_asks_for_it(self):
-        """Houdini's style ends Houdini on Windows when it gets the base `QStyleOption`."""
-        self._scanned(self.loc)
-        asked = []
-        style = mock.Mock()
-        style.drawPrimitive.side_effect = (
-            lambda element, option, painter, widget: asked.append((element, option, widget)))
-        delegate = self.view.itemDelegate()
-        with mock.patch.object(self.view, "style", return_value=style):
-            delegate._decoration(16, None, "closed")
-            delegate._decoration(16, None, "open")
-        self.assertEqual(2, len(asked), "the arrow was not asked of the view's style")
-        flag = QtWidgets.QStyle.StateFlag
-        for (element, option, widget), is_open in zip(asked, (False, True)):
-            self.assertEqual(QtWidgets.QStyle.PrimitiveElement.PE_IndicatorBranch, element)
-            self.assertIsInstance(option, QtWidgets.QStyleOptionViewItem,
-                                  "the style got an option Qt's own tree never passes")
-            self.assertIs(self.view, widget)
-            self.assertTrue(option.state & flag.State_Children, "not marked as having children")
-            self.assertEqual(is_open, bool(option.state & flag.State_Open))
-            self.assertEqual(delegate.ARROW_BOX, option.rect.width())
-
-    def test_qts_own_arrows_are_not_drawn(self):
-        self._scanned(self.loc, _child(self.loc, "A"))
-        view, model = self.view, self.model
-        view.setAlternatingRowColors(False)    # the indent then has the same background as the row's end
-        view.expand(model.index_of(self.loc))
-        test_support.pump_until(lambda: False, timeout=0.05)
-        nested = model.index_of(_child(self.loc, "A"))
-        self.assertTrue(model.hasChildren(nested), "premise: the nested folder has subfolders")
-        rect = view.visualRect(nested)
-        image = view.viewport().grab().toImage()
-        ratio = image.devicePixelRatio()
-        end = int((rect.right() - 2) * ratio)
-        ink = [(x, y) for y in range(int(rect.top() * ratio), int((rect.bottom() + 1) * ratio))
-               for x in range(int(rect.x() * ratio))    # the indent, left of the row
-               if image.pixelColor(x, y) != image.pixelColor(end, y)]
-        self.assertEqual([], ink[:5], "Qt drew an arrow of its own in the indent")
 
     def test_a_flat_sidebar_paints_its_rows_as_the_list_did(self):
         flat = QtGui.QStandardItemModel()
@@ -912,7 +848,7 @@ class TheSidebarTreeView(unittest.TestCase):
             test_support.pump_until(lambda: model.index_of(deep).isValid(), timeout=2.0)
         self.assertTrue(model.index_of(deep).isValid(), "premise: the read never finished")
         test_support.pump_until(lambda: False, timeout=0.05)
-        self.assertEqual([self.other], [i.data(model.BrowseRole) for i in view.selectedIndexes()],
+        self.assertEqual([self.other], [i.data(model.BrowseRole) for i in view.selected_rows()],
                          "the remembered folder replaced the clicked row's selection")
         self.assertEqual(self.other, view.currentIndex().data(model.BrowseRole))
 
@@ -1383,7 +1319,7 @@ class EverySectionIsEnteredByOneActivate(unittest.TestCase):
                    "sync_list_columns", "select_default_sidebar_row"]
     ORDER = {
         "file": ["refresh_counts", "setModel", "bind_grid_views", "set_conversion_bar_visible",
-                 "sync_list_columns", "setCurrentIndex", "update_selected_cat"],
+                 "sync_list_columns", "highlight", "update_selected_cat"],
         "online": ["setModel", "bind_grid_views", "set_conversion_bar_visible", "reload",
                    "sync_list_columns"],
     }
@@ -1408,7 +1344,7 @@ class EverySectionIsEnteredByOneActivate(unittest.TestCase):
         watched = ((panel.cat_list, "setModel"), (panel, "bind_grid_views"),
                    (panel, "set_conversion_bar_visible"), (panel, "sync_list_columns"),
                    (panel.file_folders_model, "refresh_counts"),
-                   (panel.matx_online_model, "reload"), (panel.cat_list, "setCurrentIndex"),
+                   (panel.matx_online_model, "reload"), (panel.cat_list, "highlight"),
                    (panel, "select_default_sidebar_row"), (panel, "update_selected_cat"))
         with contextlib.ExitStack() as stack:
             for owner, name in watched:

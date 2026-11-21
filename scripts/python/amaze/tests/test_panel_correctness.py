@@ -615,7 +615,7 @@ class TheOnlineGridIsFittedLikeTheOthers(unittest.TestCase):
         panel.show()
         self.addCleanup(panel.hide)
         QtWidgets.QApplication.processEvents()
-        table = panel.thumbtable
+        table = panel.thumbrows
         column = grid_columns.KEYS.index("name")
         before = table.columnWidth(column)
         model = panel.material_model
@@ -647,7 +647,7 @@ class EveryColumnIsInEveryColumnTable(unittest.TestCase):
     """A column missing from a table does not raise, it is only partly configured."""
 
     def test_every_column_has_a_width_a_roles_entry_and_real_ticks(self):
-        """The roles table from source: it is a local inside `sync_table_columns`."""
+        """The roles table from source: it is a local inside `sync_row_columns`."""
         import inspect
 
         from amaze.panel import grid as grid_mod
@@ -666,7 +666,7 @@ class EveryColumnIsInEveryColumnTable(unittest.TestCase):
         keys = set(grid_columns.KEYS)
         listed = set()
         for node in ast.walk(ast.parse(
-                inspect.getsource(grid_mod.sync_table_columns))):
+                inspect.getsource(grid_mod.sync_row_columns))):
             if isinstance(node, ast.Dict) and node.keys:
                 names = [k.value for k in node.keys
                          if isinstance(k, ast.Constant)

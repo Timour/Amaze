@@ -756,7 +756,7 @@ class GuardedSlotsTest(unittest.TestCase):
 class TheGestureRunsOnBOTHViews(unittest.TestCase):
     """One gesture mixin over `QAbstractItemView`; a `QDrag` would block per-move viewport picking."""
 
-    VIEWS = ("DragDropListView", "DragDropTableView")
+    VIEWS = ("DragDropListView", "DragDropRowsView")
 
     def test_both_views_are_built_on_the_one_gesture(self):
         """Not overridden: no harness runs the table view, so its own copy would go untested."""
@@ -777,7 +777,7 @@ class TheGestureRunsOnBOTHViews(unittest.TestCase):
 
     def test_the_table_view_selects_many_ROWS_and_hides_the_row_numbers(self):
         """The row IS the asset, so it is what a click selects and needs no number of its own."""
-        view = dragdrop_widgets.DragDropTableView()
+        view = dragdrop_widgets.DragDropRowsView()
         self.addCleanup(view.deleteLater)
         self.assertEqual(
             QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection,
@@ -791,7 +791,7 @@ class TheGestureRunsOnBOTHViews(unittest.TestCase):
 
     def test_the_debug_helper_does_not_raise_on_a_view_with_no_gridSize(self):
         """A table has no grid size, and this debug helper runs in the scroll path under Debug Mode."""
-        view = dragdrop_widgets.DragDropTableView()
+        view = dragdrop_widgets.DragDropRowsView()
         self.addCleanup(view.deleteLater)
         self.assertFalse(hasattr(view, "gridSize"))
         view.setModel(QtGui.QStandardItemModel(3, 1))

@@ -265,7 +265,7 @@ class ATickColumnIsAsWideAsTheTICK(unittest.TestCase):
     def test_the_hint_ignores_the_value_behind_the_mark(self):
         panel = self.panel
         column = grid_columns.KEYS.index("favorite")
-        table = panel.thumbtable
+        table = panel.thumbrows
         delegate = table.itemDelegateForColumn(column)
         self.assertIsInstance(delegate, delegates.TickCellDelegate)
         option = QtWidgets.QStyleOptionViewItem()
@@ -284,7 +284,7 @@ class ATickColumnIsAsWideAsTheTICK(unittest.TestCase):
             "the tick requests MORE room than printing the value would")
 
     def test_the_mark_starts_where_every_other_column_does(self):
-        table = self.panel.thumbtable
+        table = self.panel.thumbrows
         column = grid_columns.KEYS.index("favorite")
         delegate = table.itemDelegateForColumn(column)
         cell = QtCore.QRect(40, 0, 120, 20)
@@ -298,7 +298,7 @@ class ATickColumnIsAsWideAsTheTICK(unittest.TestCase):
 
     def test_a_tick_cell_PAINTS_ITSELF_when_the_row_is_selected(self):
         """A selected tick cell paints the highlight as a plain cell does, beside the mark."""
-        table = self.panel.thumbtable
+        table = self.panel.thumbrows
         column = grid_columns.KEYS.index("favorite")
         delegate = table.itemDelegateForColumn(column)
         index = table.model().index(0, column)
@@ -345,7 +345,7 @@ class ATickColumnIsAsWideAsTheTICK(unittest.TestCase):
 
     def test_every_tick_column_actually_gets_a_tick_delegate(self):
         """A column listed as a tick is still drawn as text if no delegate is set for it."""
-        table = self.panel.thumbtable
+        table = self.panel.thumbrows
         bound = {
             key for column, key in enumerate(grid_columns.KEYS)
             if isinstance(table.itemDelegateForColumn(column),
@@ -365,11 +365,11 @@ class OnlyTheSortedColumnReservesRoomForTheArrow(unittest.TestCase):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
     def setUp(self):
-        self.header = self.panel.thumbtable.header()
+        self.header = self.panel.thumbrows.header()
 
     def _shown(self):
         return [c for c in range(len(grid_columns.KEYS))
-                if not self.panel.thumbtable.isColumnHidden(c)]
+                if not self.panel.thumbrows.isColumnHidden(c)]
 
     def test_the_table_uses_grid_header_view(self):
         self.assertIsInstance(self.header, ui_helpers.GridHeaderView)
@@ -430,10 +430,10 @@ class EveryCellHasPADDINGEitherSide(unittest.TestCase):
     def test_the_table_has_NO_style_object_and_NO_stylesheet(self):
         """An unowned QProxyStyle bus-errored on teardown; a stylesheet takes over item drawing."""
         self.assertNotIsInstance(
-            self.panel.thumbtable.style(), QtWidgets.QProxyStyle,
+            self.panel.thumbrows.style(), QtWidgets.QProxyStyle,
             "the table has a style object again")
         self.assertEqual(
-            "", self.panel.thumbtable.styleSheet(),
+            "", self.panel.thumbrows.styleSheet(),
             "the table carries a stylesheet again")
 
     def test_the_band_is_the_GRIDS_highlight(self):
@@ -441,7 +441,7 @@ class EveryCellHasPADDINGEitherSide(unittest.TestCase):
         self.assertEqual(
             panel.thumblist.palette().color(
                 QtGui.QPalette.ColorRole.Highlight).name(),
-            panel.thumbtable.palette().color(
+            panel.thumbrows.palette().color(
                 QtGui.QPalette.ColorRole.Highlight).name(),
             "the table's selection is not the grid's own colour")
 
@@ -635,14 +635,14 @@ class TheTableViewIsWiredToTheSameEVERYTHING(unittest.TestCase):
     def test_selecting_in_one_selects_in_the_other(self):
         """Two views over one model and one selection model, so the bindings are not doubled."""
         panel = self.panel
-        self.assertIs(panel.thumblist.model(), panel.thumbtable.model())
+        self.assertIs(panel.thumblist.model(), panel.thumbrows.model())
         proxy = panel.thumblist.model()
         self.assertTrue(proxy.rowCount(), "no rows to select")
         panel.thumblist.selectionModel().select(
             proxy.index(0, 0),
             QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
         self.assertTrue(
-            panel.thumbtable.selectionModel().selectedIndexes(),
+            panel.thumbrows.selectionModel().selectedIndexes(),
             "the table has its own selection - they will diverge")
 
     def test_exactly_one_view_is_up_in_each_mode(self):
@@ -650,24 +650,24 @@ class TheTableViewIsWiredToTheSameEVERYTHING(unittest.TestCase):
         panel.show()
         self.addCleanup(panel.hide)
         self._mode("list")
-        self.assertTrue(panel.thumbtable.isVisible())
+        self.assertTrue(panel.thumbrows.isVisible())
         self.assertFalse(panel.thumblist.isVisible())
         self._mode("grid")
-        self.assertFalse(panel.thumbtable.isVisible())
+        self.assertFalse(panel.thumbrows.isVisible())
         self.assertTrue(panel.thumblist.isVisible())
 
 
     def test_the_table_does_NOT_use_the_tile_delegate(self):
         """That delegate paints a whole tile per index, and a table row is ten indexes."""
         panel = self.panel
-        self.assertIsNot(panel.thumbtable.itemDelegate(),
+        self.assertIsNot(panel.thumbrows.itemDelegate(),
                          panel.thumblist.itemDelegate())
 
     def test_LIST_MODE_HAS_NO_PICTURE_COLUMN(self):
         """List mode shows no thumbnail, so `DecorationRole` is never read and nothing is queued."""
         self._mode("list")
         self.assertTrue(
-            self.panel.thumbtable.isColumnHidden(
+            self.panel.thumbrows.isColumnHidden(
                 grid_columns.KEYS.index("thumb")),
             "list mode is showing a thumbnail column again")
 
@@ -676,11 +676,11 @@ class TheTableViewIsWiredToTheSameEVERYTHING(unittest.TestCase):
         panel = self.panel
         self._mode("list")
         self.assertTrue(
-            panel.thumbtable.isColumnHidden(
+            panel.thumbrows.isColumnHidden(
                 grid_columns.KEYS.index("open")),
             "Materials shows an Open column it can never fill")
         self.assertFalse(
-            panel.thumbtable.isColumnHidden(
+            panel.thumbrows.isColumnHidden(
                 grid_columns.KEYS.index("name")))
 
     def test_the_row_is_one_text_line_not_a_tile(self):
@@ -688,7 +688,7 @@ class TheTableViewIsWiredToTheSameEVERYTHING(unittest.TestCase):
         panel = self.panel
         self._mode("list")
         metrics = QtGui.QFontMetrics(panel.thumblist.font())  # a text line, since list rows hold no thumbnail
-        height = panel.thumbtable.sizeHintForRow(0)
+        height = panel.thumbrows.sizeHintForRow(0)
         self.assertLess(
             height, metrics.height() + theme.ui_px(12),
             "the row is taller than a line of text needs")
@@ -706,8 +706,8 @@ class TheTableViewIsWiredToTheSameEVERYTHING(unittest.TestCase):
         panel.thumblist.setFont(distinctive)
         self._mode("list")
         self.assertEqual(panel.thumblist.palette().base().color(),
-                         panel.thumbtable.palette().base().color())
-        self.assertEqual(17.5, panel.thumbtable.font().pointSizeF(),
+                         panel.thumbrows.palette().base().color())
+        self.assertEqual(17.5, panel.thumbrows.font().pointSizeF(),
                          "the table does not use the grid's font")
 
 
@@ -733,16 +733,16 @@ class TheHeaderSORTS(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
 
     def _column(self, key):
-        proxy = self.panel.thumbtable.model()
+        proxy = self.panel.thumbrows.model()
         index = grid_columns.KEYS.index(key)
         return [proxy.index(row, index).data()
                 for row in range(proxy.rowCount())]
 
     def test_sorting_by_a_column_orders_by_THAT_column(self):
         panel = self.panel
-        self.assertTrue(panel.thumbtable.isSortingEnabled())
+        self.assertTrue(panel.thumbrows.isSortingEnabled())
         column = grid_columns.KEYS.index("category")
-        panel.thumbtable.sortByColumn(
+        panel.thumbrows.sortByColumn(
             column, QtCore.Qt.SortOrder.AscendingOrder)
         QtWidgets.QApplication.processEvents()
         values = [v for v in self._column("category") if v]
@@ -754,11 +754,11 @@ class TheHeaderSORTS(unittest.TestCase):
     def test_the_order_REVERSES(self):
         panel = self.panel
         column = grid_columns.KEYS.index("name")
-        panel.thumbtable.sortByColumn(
+        panel.thumbrows.sortByColumn(
             column, QtCore.Qt.SortOrder.AscendingOrder)
         QtWidgets.QApplication.processEvents()
         up = [v for v in self._column("name") if v]
-        panel.thumbtable.sortByColumn(
+        panel.thumbrows.sortByColumn(
             column, QtCore.Qt.SortOrder.DescendingOrder)
         QtWidgets.QApplication.processEvents()
         down = [v for v in self._column("name") if v]
@@ -769,17 +769,17 @@ class TheHeaderSORTS(unittest.TestCase):
         """A filter keystroke must not reset the user's chosen column to Name."""
         panel = self.panel
         column = grid_columns.KEYS.index("category")
-        panel.thumbtable.sortByColumn(
+        panel.thumbrows.sortByColumn(
             column, QtCore.Qt.SortOrder.AscendingOrder)
         QtWidgets.QApplication.processEvents()
         panel.active_section().filter_text("a")
         QtWidgets.QApplication.processEvents()
         self.addCleanup(panel.active_section().filter_text, "")
         self.assertEqual(
-            column, panel.thumbtable.model().sourceModel().sort_column(),
+            column, panel.thumbrows.model().sourceModel().sort_column(),
             "the filter change reset the sort column")
         self.assertEqual(
-            column, panel.thumbtable.header().sortIndicatorSection(),
+            column, panel.thumbrows.header().sortIndicatorSection(),
             "the sort arrow moved off the sorted column")
 
 
@@ -806,8 +806,8 @@ class TheSelectionIsInROWS(unittest.TestCase):
 
     def _select_row(self, row):
         """Select like a click: current index on a visible cell, never hidden column 0; whole row."""
-        proxy = self.panel.thumbtable.model()
-        selection = self.panel.thumbtable.selectionModel()
+        proxy = self.panel.thumbrows.model()
+        selection = self.panel.thumbrows.selectionModel()
         flags = (QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect
                  | QtCore.QItemSelectionModel.SelectionFlag.Rows)
         name_column = grid_columns.KEYS.index("name")
@@ -865,7 +865,7 @@ class TheSelectionIsInROWS(unittest.TestCase):
     def test_a_dragged_column_width_is_kept_after_a_tab_switch(self):
         """Widths are set once per view; later syncs change visibility only."""
         panel = self.panel
-        header = panel.thumbtable.header()
+        header = panel.thumbrows.header()
         column = grid_columns.KEYS.index("name")
         dragged = header.sectionSize(column) + 77
         header.resizeSection(column, dragged)
@@ -907,7 +907,7 @@ class TheSelectionIsInROWS(unittest.TestCase):
 
     def test_the_table_offers_the_menu_and_the_primary_action(self):
         """The table gets the context menu and double-click connections `thumblist` has."""
-        table = self.panel.thumbtable
+        table = self.panel.thumbrows
 
         def connected(signal):
             return table.isSignalConnected(
@@ -985,7 +985,7 @@ class AColumnIsShownONLYIfTheModelCanFillIt(unittest.TestCase):
             for key in ("category", "tags", "license", "version", "open"):
                 column = grid_columns.KEYS.index(key)
                 can_fill = model._column_role(key) is not None
-                shown = not self.panel.thumbtable.isColumnHidden(column)
+                shown = not self.panel.thumbrows.isColumnHidden(column)
                 if shown and not can_fill:
                     self.fail(
                         "the %s section shows a %r column its model can "
@@ -997,7 +997,7 @@ class AColumnIsShownONLYIfTheModelCanFillIt(unittest.TestCase):
         """Source scan: the model alone decides, or the two disagree again."""
         import inspect
         from amaze.panel import grid as grid_module
-        source = inspect.getsource(grid_module.sync_table_columns)
+        source = inspect.getsource(grid_module.sync_row_columns)
         self.assertIn(
             "_column_role", source,
             "column visibility is still decided without asking the "
@@ -1016,15 +1016,15 @@ class TheCellDelegatesDoNotACCUMULATE(unittest.TestCase):
         app = QtWidgets.QApplication.instance()
         app.processEvents()
         app.sendPostedEvents(None, QtCore.QEvent.Type.DeferredDelete)
-        return [child for child in self.panel.thumbtable.children()
+        return [child for child in self.panel.thumbrows.children()
                 if isinstance(child, QtWidgets.QAbstractItemDelegate)]
 
     def test_rebinding_does_not_grow_the_delegate_count(self):
         delegate = self.panel.thumblist.itemDelegate()
-        grid.bind_table_cell_delegates(self.panel, delegate)
+        grid.bind_row_cell_delegates(self.panel, delegate)
         first = len(self._live())
         for _ in range(4):
-            grid.bind_table_cell_delegates(self.panel, delegate)
+            grid.bind_row_cell_delegates(self.panel, delegate)
         self.assertLessEqual(
             len(self._live()), first,
             "four more binds left more delegates alive than one did - "
@@ -1033,10 +1033,10 @@ class TheCellDelegatesDoNotACCUMULATE(unittest.TestCase):
     def test_the_table_still_has_its_delegates_afterwards(self):
         """Dropping the old set keeps the live one, or the cells stop painting."""
         delegate = self.panel.thumblist.itemDelegate()
-        grid.bind_table_cell_delegates(self.panel, delegate)
+        grid.bind_row_cell_delegates(self.panel, delegate)
         self._live()
         keys = grid_columns.KEYS
-        cell = self.panel.thumbtable.itemDelegateForColumn(
+        cell = self.panel.thumbrows.itemDelegateForColumn(
             keys.index("category"))
         self.assertIsNotNone(
             cell, "the category cell has no delegate, so it paints as text")
@@ -1054,7 +1054,7 @@ class TheHeaderSectionsAreClickable(unittest.TestCase):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
     def setUp(self):
-        self.header = self.panel.thumbtable.header()
+        self.header = self.panel.thumbrows.header()
 
     def test_the_sections_are_clickable(self):
         self.assertTrue(
@@ -1065,7 +1065,7 @@ class TheHeaderSectionsAreClickable(unittest.TestCase):
     def test_a_sort_indicator_change_reorders_the_rows(self):
         """The indicator sets the proxy's sort: pointing it the other way reorders the table."""
         name_col = grid_columns.KEYS.index("name")
-        model = self.panel.thumbtable.model()
+        model = self.panel.thumbrows.model()
         self.assertGreater(model.rowCount(), 1,
                            "one row cannot show an order")
         original = (self.header.sortIndicatorSection(),
@@ -1098,7 +1098,7 @@ class TheListMatchesItsDesignFrame(unittest.TestCase):
         self.px = theme.ui_px
         self.column = self._by_key("column")
         self.heading = self._by_key("heading")
-        self.table = panel.thumbtable
+        self.table = panel.thumbrows
         self.header = self.table.header()
 
     def _by_key(self, kind):

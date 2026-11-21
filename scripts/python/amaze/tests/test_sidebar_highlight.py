@@ -97,7 +97,7 @@ class _HighlightCase:
             _pump()
             current = ui_helpers.live_current_index(self.view)
             self.assertIsNotNone(current, "the sidebar highlights no row")
-            self.assertEqual([current], self.view.selectedIndexes(),
+            self.assertEqual([current], self.view.selected_rows(),
                              "the highlight is not the one current row")
             self.assertEqual(_grid_key(self.panel), _row_key(self.panel, current),
                              "the sidebar highlights another row than the grid shows")
@@ -236,7 +236,7 @@ class _AssetSidebarPaths(_HighlightCase):
         def reorder_cancelled_with_esc():
             self.select_row()
             self.reorder(self.row("Added"), self.row("Kept"), escape=True)
-        self.check("a reorder taken back with Esc", reorder_cancelled_with_esc, grid="Kept")
+        self.check("a reorder taken back with Esc", reorder_cancelled_with_esc, grid="Added")    # the pressed row was chosen
 
         if self.FILTERS_HIDE:
             def filter_hides():
@@ -443,7 +443,7 @@ class FileSidebarTest(_HighlightCase, unittest.TestCase):
         def reorder_cancelled_with_esc():
             self.select_row()
             self.reorder(self.row(second), self.row(loc), escape=True)
-        self.check("a reorder taken back with Esc", reorder_cancelled_with_esc, grid=loc)
+        self.check("a reorder taken back with Esc", reorder_cancelled_with_esc, grid=second)    # the pressed row was chosen
 
         def star():
             self.select_row()

@@ -444,6 +444,8 @@ class FolderTreeModel(sidebar_model.SidebarModel):
             (folder for folder in self.top_keys() if folder.rstrip("/") == key), key))
 
     def data(self, index, role: int = 0):
+        if index.column():
+            return self.color_cell(index, role)
         if role not in self.ROW_ROLES:
             return None    # the style asks for six more roles per row on every repaint
         if role == category.SIDEBAR_KEY_ROLE:

@@ -249,31 +249,31 @@ NEVER_SHOWN = "never-shown"
 
 def visible_view(panel):
     """The grid view the user is looking at, by isHidden, which also works headless."""
-    table = getattr(panel, "thumbtable", None)
+    table = getattr(panel, "thumbrows", None)
     if table is not None and not table.isHidden():
         return table
     return panel.thumblist
 
 
-def show_table(panel, showing: bool) -> None:
+def show_rows(panel, showing: bool) -> None:
     """Swap which grid view is visible; both share model and selection."""
-    table = getattr(panel, "thumbtable", None)
+    table = getattr(panel, "thumbrows", None)
     if table is None:
         return
     if showing:
         model = table.model()
         if model is not None and model.rowCount():
             table.set_row_height(sidebar_row_height(panel, table))    # the CATEGORY list sets the row height: two delegates measuring separately differed by 2px
-        table_palette = QtGui.QPalette(panel.thumblist.palette())
-        table_palette.setColor(
+        rows_palette = QtGui.QPalette(panel.thumblist.palette())
+        rows_palette.setColor(
             QtGui.QPalette.ColorRole.Text, delegates.AssetItemDelegate.TEXT_COLOR)    # resolved through the module, which is reloaded per Houdini session - never bound at import
-        table.setPalette(table_palette)
+        table.setPalette(rows_palette)
         table.setFont(panel.thumblist.font())
         table.viewport().setAutoFillBackground(True)    # never a QProxyStyle here ▸r/no-proxystyle
-        sync_table_columns(panel)
+        sync_row_columns(panel)
     page = getattr(panel, "empty_page", None)    # a visible empty page stays visible across a view-mode change, so read its state here
     blank_up = page is not None and not page.isHidden()
-    panel._table_mode = bool(showing)
+    panel._rows_mode = bool(showing)
     apply_grid_face(panel, blank_up)
 
 
@@ -287,9 +287,9 @@ def grid_pane_layout(panel):
 
 def apply_grid_face(panel, blank_up: bool) -> None:
     """The only function that sets the grid pane's visibility: one of table, list and empty page."""
-    table = getattr(panel, "thumbtable", None)
+    table = getattr(panel, "thumbrows", None)
     page = getattr(panel, "empty_page", None)
-    showing_table = bool(getattr(panel, "_table_mode", False))
+    showing_rows = bool(getattr(panel, "_rows_mode", False))
     if page is not None:
         page.setVisible(bool(blank_up))
     if blank_up and page is not None:
@@ -298,13 +298,13 @@ def apply_grid_face(panel, blank_up: bool) -> None:
         panel.thumblist.setVisible(False)
         return
     if table is not None:
-        table.setVisible(showing_table)
-    panel.thumblist.setVisible(not showing_table)
+        table.setVisible(showing_rows)
+    panel.thumblist.setVisible(not showing_rows)
 
 
-def bind_table_cell_delegates(panel, tile_delegate) -> None:
+def bind_row_cell_delegates(panel, tile_delegate) -> None:
     """Per-column delegates for cells Qt cannot paint as text, chosen by the active delegate."""
-    table = getattr(panel, "thumbtable", None)
+    table = getattr(panel, "thumbrows", None)
     if table is None:
         return
 
@@ -339,9 +339,9 @@ def bind_table_cell_delegates(panel, tile_delegate) -> None:
     table._amaze_cell_delegates = installed    # the delegates this call installed, for the next call to remove
 
 
-def sync_table_columns(panel) -> None:
+def sync_row_columns(panel) -> None:
     """Which columns the table shows, by the section, and their starting widths."""
-    table = getattr(panel, "thumbtable", None)
+    table = getattr(panel, "thumbrows", None)
     if table is None:
         return
     delegate = (panel.thumblist.itemDelegate()
@@ -393,7 +393,7 @@ def sync_table_columns(panel) -> None:
 
 def sync_sort_indicator(panel) -> None:
     """Set the shared header's sort arrow to the bound model's order. ▸r/one-header-many-proxies"""
-    table = getattr(panel, "thumbtable", None)
+    table = getattr(panel, "thumbrows", None)
     proxy = table.model() if table is not None else None
     model = proxy.sourceModel() if proxy is not None else None
     if not isinstance(model, grid_engine.GridEngine):
@@ -402,9 +402,9 @@ def sync_sort_indicator(panel) -> None:
         model.sort_column(), model.sort_order())
 
 
-def style_table_header(panel) -> None:
+def set_up_rows_header(panel) -> None:
     """Set up the list's headline, which the style paints; a heading click sorts, an edge drag resizes."""
-    header = panel.thumbtable.header()
+    header = panel.thumbrows.header()
     header.setFixedHeight(panel.HEADER_HEIGHT)
     header.setStretchLastSection(False)
     header.setHighlightSections(False)
@@ -413,7 +413,7 @@ def style_table_header(panel) -> None:
     header.setSortIndicator(
         grid_columns.KEYS.index("name"),
         QtCore.Qt.SortOrder.AscendingOrder)    # on Name: section 0 is the hidden picture column
-    panel.thumbtable.setSortingEnabled(True)    # a click sorts the MODEL, through the proxy
+    panel.thumbrows.setSortingEnabled(True)    # a click sorts the MODEL, through the proxy
     header.setSectionsClickable(True)    # needed on a replacement header ▸r/replacement-header-clickable
     header.setDefaultAlignment(
         QtCore.Qt.AlignmentFlag.AlignLeft
@@ -429,7 +429,7 @@ def apply_view_mode(panel) -> None:
     try:
         if panel.prefs.view_mode == "list":
             restore_drag_mode(panel)    # list mode is the row list; the QListView stays in IconMode
-            show_table(panel, True)    # show_table ends with sync_table_columns
+            show_rows(panel, True)    # show_rows ends with sync_row_columns
         else:
             panel.thumblist.setViewMode(QtWidgets.QListView.ViewMode.IconMode)
             restore_drag_mode(panel)
@@ -443,7 +443,7 @@ def apply_view_mode(panel) -> None:
             panel.thumblist.setGridSize(
                 delegates.AssetItemDelegate.grid_cell_size(ts, panel.thumblist.font())
             )    # extra height over the icon for the two text lines
-            show_table(panel, False)
+            show_rows(panel, False)
         panel.thumblist.setResizeMode(QtWidgets.QListView.ResizeMode.Adjust)
     except Exception as e:
         debug.event("grid", "view mode switch failed - falling back "
@@ -454,7 +454,7 @@ def apply_view_mode(panel) -> None:
             panel.thumblist.setGridSize(
                 delegates.AssetItemDelegate.grid_cell_size(ts, panel.thumblist.font())
             )
-            show_table(panel, False)
+            show_rows(panel, False)
         except Exception:
             pass
     sync_view_mode_controls(panel)

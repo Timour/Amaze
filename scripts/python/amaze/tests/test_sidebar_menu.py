@@ -94,12 +94,12 @@ class TheSidebarMenusAreWhatSHIPPED(unittest.TestCase):
                 self.skipTest("the %s sidebar has no row %d" % (key, row))
             selection.select(
                 model.index(row, 0),
-                flags.ClearAndSelect if position == 0 else flags.Select)
+                (flags.ClearAndSelect if position == 0 else flags.Select) | flags.Rows)
         selection.setCurrentIndex(model.index(rows[0], 0), flags.NoUpdate)
         self.assertEqual(
-            len(rows), len(selection.selectedIndexes()),
+            len(rows), len(selection.selectedRows()),
             "the helper selected %d rows, not %d"
-            % (len(selection.selectedIndexes()), len(rows)))
+            % (len(selection.selectedRows()), len(rows)))
 
         seen = []
         with mock.patch.object(QtWidgets.QMenu, "exec_",
@@ -495,7 +495,7 @@ class _FourAssetSidebars:
         view = self.panel.cat_list
         row = self._row(stored)
         self.assertEqual(row, view.currentIndex().row(), "the sidebar's current row is another")
-        self.assertEqual([row], [index.row() for index in view.selectedIndexes()],
+        self.assertEqual([row], [index.row() for index in view.selected_rows()],
                          "the sidebar highlights another row")
 
     def _each_section(self, case):

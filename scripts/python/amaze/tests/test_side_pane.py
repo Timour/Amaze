@@ -87,22 +87,21 @@ class EveryPartIsBuiltInOnePlace(unittest.TestCase):
                                and path.startswith("panel" + os.sep))
                 self.assertEqual(["panel/side_pane.py"], found)
 
-    def test_every_list_is_a_tree_view_made_by_the_one_function(self):
-        views = {path: re.findall(r"class (\w+)\(([^)]*Q(?:Tree|Table|List)(?:View|Widget)\b[^)]*)\)", text)
-                 for path, text in _sources()}
-        found = sorted((path, name, base.split(".")[-1].split(",")[-1].strip())
-                       for path, classes in views.items() for name, base in classes)
-        self.assertEqual([
-            ("dialogs/library_dialog.py", "DrawnList", "QTreeWidget"),
-            ("panel/dragdrop_widgets.py", "DragDropListView", "QListView"),    # the tile grid, not a row list
-            ("panel/dragdrop_widgets.py", "DragDropTableView", "QTreeView"),
-            ("panel/side_pane.py", "RowsView", "QTreeWidget"),
-            ("panel/sidebar.py", "SidebarTreeView", "QTreeView"),
-        ], found, "a list was added that is not a tree view, or one of the app's lists changed kind")
+    def test_every_table_is_the_one_table_class(self):
+        qt_views = r"class (\w+)\(([^)]*Q(?:Tree|Table|List)(?:View|Widget)\b[^)]*)\)"
+        ours = r"class (\w+)\(([^)]*ui_helpers\.Table[^)]*)\)"
+        direct, tables = [], []
         for path, text in _sources():
-            names = [name for name, base in views[path] if "Tree" in base]
-            if names:
-                self.assertIn("ui_helpers.striped_rows(self)", text, "%s builds a list without striped_rows" % path)
+            direct += [(path, name, base.split(".")[-1].split(",")[-1].strip()) for name, base in re.findall(qt_views, text)]
+            tables += [(path, name) for name, _base in re.findall(ours, text)]
+        self.assertEqual([
+            ("dialogs/library_dialog.py", "DrawnList", "QTreeWidget"),    # to move onto Table
+            ("helpers/ui_helpers.py", "Table", "QTreeView"),    # the one table
+            ("panel/dragdrop_widgets.py", "DragDropListView", "QListView"),    # the tile grid, not a table
+            ("panel/side_pane.py", "RowsView", "QTreeWidget"),    # to move onto Table
+        ], sorted(direct), "a table was added that is not the one table class")
+        self.assertEqual([("panel/dragdrop_widgets.py", "DragDropRowsView"), ("panel/sidebar.py", "SidebarTreeView")],
+                         sorted(tables))
 
     def test_the_pages_are_descriptions(self):
         for module in (notes_panel, info_panel):
