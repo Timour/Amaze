@@ -165,43 +165,39 @@ class TheInfoPaneMatchesItsDesignFrame(_PaneCase):
 
     def _painted(self):
         image = QtGui.QImage(self.table.size(), QtGui.QImage.Format.Format_RGB32)
+        image.fill(QtGui.QColor(amazetheme.COMMENT_PAGE_BG))    # the page the table sits on
         self.table.render(image)
         return image
 
-    def test_odd_rows_are_filled_and_the_divider_is_two_pixels_on_its_x(self):
+    def test_the_table_is_the_apps_one_kind_of_row_list(self):
+        from amaze.helpers import ui_helpers
+        table = self.table
+        self.assertIsInstance(table, QtWidgets.QTreeView, "the table paints its own rows")
+        reference = QtWidgets.QTreeView()
+        self.addCleanup(reference.deleteLater)
+        ui_helpers.striped_rows(reference)
+        for read in ("alternatingRowColors", "isHeaderHidden", "rootIsDecorated", "uniformRowHeights", "isAnimated"):
+            with self.subTest(setting=read):
+                self.assertEqual(getattr(reference, read)(), getattr(table, read)())
+        self.assertTrue(table.alternatingRowColors())
+
+    def test_the_style_stripes_the_rows_and_the_divider_is_two_pixels_on_its_x(self):
         image = self._painted()
-        row_bg, page = (QtGui.QColor(c).name() for c in (amazetheme.INFO_ROW_BG, amazetheme.COMMENT_PAGE_BG))
-        divider = QtGui.QColor(amazetheme.INFO_DIVIDER).name()
-        first, second = (self.table._row_top(i) + self.px(1) for i in (0, 1))
-        x = self.px(self.node("divider")[1])
-        self.assertEqual(row_bg, image.pixelColor(self.px(5), first).name(), "row 1 is not filled")
-        self.assertEqual(page, image.pixelColor(self.px(5), second).name(), "row 2 is filled")
-        line = self.px(amazetheme.INFO_DIVIDER_WIDTH)
+        second = self.table.palette().color(QtGui.QPalette.ColorRole.AlternateBase).name()
+        rows = [image.pixelColor(self.px(5), self.table._row_top(i) + self.px(1)).name() for i in range(4)]
+        self.assertEqual([False, True, False, True], [row == second for row in rows],
+                         "rows 2 and 4, and only they, take the style's second row colour")
         self.assertEqual(2, amazetheme.INFO_DIVIDER_WIDTH)
+        line, x = self.px(amazetheme.INFO_DIVIDER_WIDTH), self.px(self.node("divider")[1])
         start = x - line // 2    # centred: 99 and 100 for a 2px line on x 100
-        across = [image.pixelColor(at, first).name() for at in range(start - 1, start + line + 1)]
-        self.assertEqual([row_bg] + [divider] * line + [row_bg], across,
+        y = self.table._row_top(1) + self.px(1)    # the line shows on a row of the second colour
+        across = [image.pixelColor(at, y).name() == second for at in range(start - 1, start + line + 1)]
+        self.assertEqual([True] + [False] * line + [True], across,
                          "the divider is not %dpx centred on x %d" % (line, x))
 
-
-    def test_the_filled_rows_and_the_divider_run_on_to_the_bottom(self):
-        image = self._painted()
-        row_bg, page = (QtGui.QColor(c).name() for c in (amazetheme.INFO_ROW_BG, amazetheme.COMMENT_PAGE_BG))
-        divider = QtGui.QColor(amazetheme.INFO_DIVIDER).name()
-        body, x = self.node("body"), self.px(self.node("divider")[1])
+    def test_the_table_and_the_drawn_divider_reach_the_bottom(self):
+        body, drawn = self.node("body"), self.node("divider")
         self.assertEqual(self.px(body[4]), self.table.height(), "the table does not reach the pane's bottom")
-        below = [row for row in amazetheme.drawn_nodes("N02", "row")
-                 if int(amazetheme.drawn_name(row)[1]) > len(self.table.rows())]
-        self.assertEqual(2, len(below), "the frame draws two filled rows below the last one")
-        for row in below:
-            top = self.px(row[2] - body[2])
-            with self.subTest(row=row[0]):
-                self.assertEqual(row_bg, image.pixelColor(self.px(5), top + self.px(1)).name())
-                self.assertEqual(page, image.pixelColor(self.px(5), top + self.px(row[4]) + self.px(1)).name(),
-                                 "the row after it is filled too")
-                self.assertEqual(divider, image.pixelColor(x - 1, top + self.px(1)).name(),
-                                 "the divider stops above this row")
-        drawn = self.node("divider")
         self.assertEqual(body[2] + body[4], drawn[2] + drawn[4], "the drawn divider ends above the frame's bottom")
 
 

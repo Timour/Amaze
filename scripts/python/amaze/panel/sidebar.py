@@ -6,7 +6,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from amaze import amazetheme
 from amaze.core import category, debug
-from amaze.helpers import theme
+from amaze.helpers import theme, ui_helpers
 
 
 def top_level(index):
@@ -21,10 +21,7 @@ class SidebarTreeView(QtWidgets.QTreeView):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setHeaderHidden(True)
-        self.setRootIsDecorated(False)    # each row draws its own arrow, after its colour bar
-        self.setUniformRowHeights(True)
-        self.setAnimated(False)    # a folder opens in one frame: Houdini's style builds the view animated
+        ui_helpers.striped_rows(self)    # each row draws its own arrow; a folder opens in one frame
         self.setIndentation(theme.ui_px(amazetheme.SIDEBAR_INDENT))
         self._open: dict = {}    # id(model) -> the keys of the rows open in it
         self._pending_reveal = None    # (model, path) to select once its row is inserted

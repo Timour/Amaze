@@ -14,7 +14,7 @@ import hou  # noqa: E402,F401
 
 from amaze import amazetheme  # noqa: E402
 from amaze.dialogs import library_dialog  # noqa: E402
-from amaze.helpers import theme  # noqa: E402
+from amaze.helpers import theme, ui_helpers  # noqa: E402
 from amaze.prefs import prefs as prefs_mod  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
@@ -58,21 +58,6 @@ def colours_down(view, x):
     ratio = picture.devicePixelRatio()
     return [QtGui.QColor(picture.pixel(int(x * ratio), int(y * ratio))).name()
             for y in range(view.viewport().height())]
-
-
-def filled_rows_expected(frame_key, height, selected_row, selected_colour):
-    """The colour each y of a list `height` high must show: the drawn filled rows, the bar."""
-    drawn, px = amazetheme.drawn_list_rows(frame_key), theme.ui_px
-    expected = [QtGui.QColor(amazetheme.LIST_BACKGROUND).name()] * height
-    top = px(drawn["filled_top"])
-    while top < height:
-        for y in range(top, min(height, top + px(drawn["filled_h"]))):
-            expected[y] = QtGui.QColor(amazetheme.FILLED_ROW).name()
-        top += px(drawn["filled_step"])
-    bar = selected_row * px(drawn["pitch"]) + px(drawn["box_y"])
-    for y in range(bar, bar + px(drawn["box_h"])):
-        expected[y] = QtGui.QColor(selected_colour).name()
-    return expected
 
 
 def _reloaded(preferences):
@@ -278,16 +263,17 @@ class TheManageWindowMatchesItsDesignFrame(unittest.TestCase):
                 self.assertEqual((px(19 - 8), px(top), px(15)), (name[0], name[1], name[3]))
                 self.assertEqual((px(130 - 8), px(top), px(15)), (path[0], path[1], path[3]))
 
-    def test_the_filled_rows_and_the_bar_run_to_the_bottom_of_the_list(self):
-        self.dialog._list.item(1).setSelected(True)
-        QtWidgets.QApplication.processEvents()
+    def test_the_list_is_the_apps_one_kind_of_row_list(self):
         view = self.dialog._list
-        x = view.viewport().width() - 2    # right of every text
-        self.assertEqual(filled_rows_expected("D15", view.viewport().height(), 1,
-                                              amazetheme.D15_SELECTED_BACKGROUND),
-                         colours_down(view, x))
-        self.assertGreater(view.viewport().height(), 19 * view.count(),
-                           "premise: the list is taller than its rows")
+        self.assertIsInstance(view, QtWidgets.QTreeView, "the list paints its own rows")
+        reference = QtWidgets.QTreeView()
+        self.addCleanup(reference.deleteLater)
+        ui_helpers.striped_rows(reference)
+        for read in ("alternatingRowColors", "isHeaderHidden", "rootIsDecorated", "uniformRowHeights", "isAnimated"):
+            with self.subTest(setting=read):
+                self.assertEqual(getattr(reference, read)(), getattr(view, read)())
+        self.assertEqual("", view.styleSheet(), "the list sets colours of its own over the style's")
+        self.assertFalse(hasattr(view, "filled_rows"), "the list still fills rows itself")
 
     def test_the_selected_bar_is_the_whole_row_with_square_corners(self):
         view = self.dialog._list
@@ -313,42 +299,6 @@ class TheManageWindowMatchesItsDesignFrame(unittest.TestCase):
         painted = {text: colour for *_box, text, colour in painted_texts(self.dialog._list, last)}
         self.assertEqual("#787878", painted.pop(amazetheme.LABEL_NOT_CONNECTED))
         self.assertEqual(["#646464", "#787878"], sorted(painted.values()))
-
-
-class EveryDrawnListHasTheListBackground(unittest.TestCase):
-    """D15 and D01 both build their list with `drawn_list`, so one test covers both."""
-
-    def _dialogs(self):
-        from amaze.dialogs import versions_dialog
-        prefs = test_support.fixture_prefs(self)
-        for name in ("C", "B", "A"):
-            prefs.note_library_opened(_folder(self, name))
-        listed = [{"n": n, "name": "Version %d" % n, "date": "2026-10-2%d 09:00" % n}
-                  for n in (1, 2, 3)]
-        return (("D15", library_dialog.ManageLibrariesDialog(prefs)),
-                ("D01", versions_dialog.VersionsDialog("brushed_steel", listed, 2)))
-
-    def test_the_list_ground_is_the_drawn_list_colour(self):
-        for frame, dialog in self._dialogs():
-            with self.subTest(frame=frame):
-                self.addCleanup(dialog.deleteLater)
-                dialog.show()
-                self.addCleanup(dialog.hide)
-                QtWidgets.QApplication.processEvents()
-                picture = dialog.grab().toImage()
-                ratio = picture.devicePixelRatio()
-                corner = dialog._list.mapTo(dialog, dialog._list.rect().topLeft())
-                x, y, high = corner.x(), corner.y(), dialog._list.height()
-
-                def color_at(at_x, at_y, picture=picture, ratio=ratio):    # bound per subTest
-                    return QtGui.QColor(picture.pixel(int(at_x * ratio),
-                                                      int(at_y * ratio))).name()
-
-                background = QtGui.QColor(amazetheme.LIST_BACKGROUND).name()
-                bare = y + theme.ui_px(19 * 3) + 1    # the fourth row: unfilled, below the items
-                self.assertEqual(background, color_at(x + 10, bare),
-                                 "the list's ground under its unfilled rows is not the list colour")
-                self.assertIn("border-radius: 0", dialog._list.styleSheet(), "the frames draw a square list box")
 
 
 if __name__ == "__main__":

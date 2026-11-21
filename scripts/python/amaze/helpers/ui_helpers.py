@@ -246,6 +246,15 @@ def faded_pixmap(pixmap: QtGui.QPixmap, opacity: float, dpr: float) -> QtGui.QPi
     return faded
 
 
+def striped_rows(view) -> None:
+    """Make a tree view the app's one kind of row list; the style paints its rows. ▸r/one-row-list"""
+    view.setHeaderHidden(True)
+    view.setRootIsDecorated(False)
+    view.setUniformRowHeights(True)
+    view.setAnimated(False)
+    view.setAlternatingRowColors(True)
+
+
 def fill_window(widget, hex_color: str) -> None:
     """Background via the palette; a stylesheet on any ancestor restyles the subtree's scrollbars."""
     palette = widget.palette()

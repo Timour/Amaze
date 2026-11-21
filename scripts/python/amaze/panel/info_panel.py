@@ -56,15 +56,44 @@ class _Preview(QtWidgets.QWidget):
             painter.end()
 
 
-class _InfoTable(QtWidgets.QWidget):
-    """The rows, painted: labels on the left, values on the right, a line between the columns."""
+class _InfoRows(QtWidgets.QStyledItemDelegate):
+    """A row's two texts at their drawn places; the row itself is the style's."""
+
+    def sizeHint(self, option, index) -> QtCore.QSize:
+        return QtCore.QSize(0, theme.ui_px(_DRAWN["row"]))
+
+    def paint(self, painter, option, index) -> None:
+        table = self.parent()
+        label, value = table.shown_text(index.row())
+        box = table.text_rects(index.row())[index.column()]
+        painter.save()
+        painter.setFont(table.font())
+        painter.setPen(QtGui.QColor(amazetheme.INFO_TEXT))
+        painter.drawText(box, QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter,
+                         value if index.column() else label)
+        painter.restore()
+
+
+class _InfoTable(QtWidgets.QTreeWidget):
+    """The rows: labels on the left, values on the right, a line between the columns."""
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
+        ui_helpers.striped_rows(self)
         self._rows = ()
+        self.setColumnCount(2)
+        self.setIndentation(0)
+        self.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
         self.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
         self.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.NoContextMenu)
-        ui_helpers.fill_window(self, PAGE_BG)
+        self.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.NoSelection)
+        self.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)    # the pane scrolls
+        self.header().setMinimumSectionSize(1)
+        self.header().setStretchLastSection(True)
+        self.header().resizeSection(0, theme.ui_px(_DRAWN["divider_x"]))
+        self.setItemDelegate(_InfoRows(self))
 
     def rows(self) -> tuple:
         return self._rows
@@ -72,8 +101,12 @@ class _InfoTable(QtWidgets.QWidget):
     def set_rows(self, rows) -> None:
         """Show `rows`, (label, value) pairs; the table is at least as tall as its rows."""
         self._rows = tuple((str(label), str(value)) for label, value in rows)
+        self.clear()
+        for label, value in self._rows:
+            item = QtWidgets.QTreeWidgetItem([label, value])
+            item.setFlags(QtCore.Qt.ItemFlag.ItemIsEnabled)
+            self.addTopLevelItem(item)
         self.setMinimumHeight(self._row_top(len(self._rows)))    # the scroll area scrolls past it
-        self.update()
 
     @staticmethod
     def _row_top(index: int) -> int:
@@ -85,7 +118,7 @@ class _InfoTable(QtWidgets.QWidget):
         value_x = theme.ui_px(_DRAWN["value_x"])
         divider_x = theme.ui_px(_DRAWN["divider_x"])
         label_w = divider_x - (value_x - divider_x) - label_x    # the divider's gap on its left too
-        value_w = self.width() - value_x - label_x    # the label's inset on the right edge
+        value_w = self.viewport().width() - value_x - label_x    # the label's inset on the right edge
         return label_x, max(0, label_w), value_x, max(0, value_w)
 
     def text_rects(self, index: int) -> tuple:
@@ -121,39 +154,32 @@ class _InfoTable(QtWidgets.QWidget):
         value = self._rows[index][1]
         return value if self.shown_text(index)[1] != value else ""
 
+    def _show_tooltip(self, event) -> bool:
+        text = self.tooltip_at(event.pos())
+        if text:
+            QtWidgets.QToolTip.showText(event.globalPos(), ui_helpers.tooltip_text(text), self)
+        else:
+            QtWidgets.QToolTip.hideText()
+            event.ignore()
+        return True
+
     def event(self, event) -> bool:
         if event.type() == QtCore.QEvent.Type.ToolTip:
-            text = self.tooltip_at(event.pos())
-            if text:
-                QtWidgets.QToolTip.showText(event.globalPos(), ui_helpers.tooltip_text(text), self)
-            else:
-                QtWidgets.QToolTip.hideText()
-                event.ignore()
-            return True
+            return self._show_tooltip(event)
         return super().event(event)
 
-    def paintEvent(self, _event) -> None:
-        row_h = theme.ui_px(_DRAWN["row"])
-        align = QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter
-        painter = QtGui.QPainter(self)
+    def viewportEvent(self, event) -> bool:
+        if event.type() == QtCore.QEvent.Type.ToolTip:
+            return self._show_tooltip(event)
+        return super().viewportEvent(event)
+
+    def paintEvent(self, event) -> None:
+        super().paintEvent(event)    # the rows, striped by the style to the bottom
+        painter = QtGui.QPainter(self.viewport())
         try:
-            painter.setFont(self.font())
-            index = 0
-            while self._row_top(index) < self.height():    # the filled rows run on below the last
-                if index % 2 == 0:    # rows 1, 3, 5... are filled; the rows between show the page
-                    painter.fillRect(0, self._row_top(index), self.width(), row_h,
-                                     QtGui.QColor(amazetheme.INFO_ROW_BG))
-                index += 1
-            for index in range(len(self._rows)):
-                label, value = self.shown_text(index)
-                label_box, value_box = self.text_rects(index)
-                painter.setPen(QtGui.QColor(amazetheme.INFO_TEXT))
-                painter.drawText(label_box, align, label)
-                painter.drawText(value_box, align, value)
             line = theme.ui_px(amazetheme.INFO_DIVIDER_WIDTH)
-            painter.fillRect(theme.ui_px(_DRAWN["divider_x"]) - line // 2, self._row_top(0),
-                             line, self.height() - self._row_top(0),    # to the pane's bottom
-                             QtGui.QColor(amazetheme.INFO_DIVIDER))
+            painter.fillRect(theme.ui_px(_DRAWN["divider_x"]) - line // 2, 0, line, self.viewport().height(),
+                             self.palette().brush(QtGui.QPalette.ColorRole.Base))    # the rows' ground
         finally:
             painter.end()
 

@@ -89,53 +89,54 @@ def _draw(painter, metrics, text, rect, color, elide) -> None:
     painter.drawText(rect, _ALIGN, metrics.elidedText(text, elide, rect.width()))
 
 
-def set_list_background(view) -> None:
-    """A drawn list's background: the drawn list colour, square-cornered as the frames draw it."""
-    view.setStyleSheet(
-        "QListWidget { background-color: %s; border: none; border-radius: 0; }" % amazetheme.LIST_BACKGROUND)
+class Row(QtWidgets.QTreeWidgetItem):
+    """One row of a drawn list; its text and data are read and set without naming the one column."""
+
+    def text(self, column: int = 0) -> str:
+        return super().text(column)
+
+    def data(self, *where):
+        return super().data(*((0,) + where if len(where) == 1 else where))
+
+    def setData(self, *what) -> None:
+        super().setData(*((0,) + what if len(what) == 2 else what))
 
 
-class DrawnList(QtWidgets.QListWidget):
-    """A list that fills rows 1, 3, 5... to its bottom, past its items ▸r/drawn-list-filled-rows"""
+class DrawnList(QtWidgets.QTreeWidget):
+    """A dialog's list of rows: the app's one kind of row list, with a list's own calls."""
 
-    def __init__(self, frame_key: str) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self._drawn = amazetheme.drawn_list_rows(frame_key)
+        ui_helpers.striped_rows(self)
+        self.setIndentation(0)
 
-    def filled_rows(self) -> list:
-        """The filled rows' rectangles in the viewport, as the list is scrolled now."""
-        drawn, px = self._drawn, theme.ui_px
-        origin = self.visualItemRect(self.item(0)).top() if self.count() else 0
-        top, step, high = origin + px(drawn["filled_top"]), px(drawn["filled_step"]), \
-            px(drawn["filled_h"])
-        inset, width = px(drawn["filled_x"]), self.viewport().width()
-        rows = []
-        while top < self.viewport().height():
-            if top + high > 0:    # a row scrolled out above is not painted
-                rows.append(QtCore.QRect(inset, top, width - 2 * inset, high))
-            top += step
-        return rows
+    def count(self) -> int:
+        return self.topLevelItemCount()
 
-    def paintEvent(self, event) -> None:
-        painter = QtGui.QPainter(self.viewport())
-        try:
-            for row in self.filled_rows():
-                painter.fillRect(row, QtGui.QColor(amazetheme.FILLED_ROW))
-        finally:
-            painter.end()
-        super().paintEvent(event)
+    def item(self, row: int):
+        return self.topLevelItem(row)
+
+    def row(self, item) -> int:
+        return self.indexOfTopLevelItem(item)
+
+    def addItem(self, item) -> None:
+        self.addTopLevelItem(item)
+
+    def takeItem(self, row: int):
+        return self.takeTopLevelItem(row)
+
+    def setCurrentRow(self, row: int) -> None:
+        self.setCurrentItem(self.topLevelItem(row))
 
 
-def drawn_list(frame_key: str, selection_mode, delegate) -> QtWidgets.QListWidget:
-    """A drawn list: no frame, no sideways scroll, `delegate` painting rows on the filled rows."""
-    view = DrawnList(frame_key)
+def drawn_list(frame_key: str, selection_mode, delegate) -> DrawnList:
+    """A drawn list: no frame, no sideways scroll, `delegate` painting each row's texts and bar."""
+    view = DrawnList()
     view.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
     view.setSelectionMode(selection_mode)
     view.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-    view.setUniformItemSizes(True)
     delegate.setParent(view)    # the view does not own its delegate ▸r/replaced-delegate-stays-alive
     view.setItemDelegate(delegate)
-    set_list_background(view)
     ui_helpers.fit_drawn(view, frame_key, "QListWidget", None)
     return view
 
@@ -177,7 +178,7 @@ class ManageLibrariesDialog(AssetDialog):
     def _fill(self, open_library: str) -> None:
         current = hostos.comparable_path(open_library) if open_library else ""
         for folder in self._prefs.libraries:
-            item = QtWidgets.QListWidgetItem(library_name(folder))
+            item = Row([library_name(folder)])
             item.setData(FOLDER_ROLE, folder)
             item.setData(REACHED_ROLE, os.path.isdir(folder))
             if hostos.comparable_path(folder) == current:

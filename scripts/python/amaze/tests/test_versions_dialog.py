@@ -4,6 +4,7 @@ import contextlib
 import inspect
 import os
 import unittest
+from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
@@ -17,8 +18,7 @@ from amaze import amazetheme  # noqa: E402
 from amaze.dialogs import base_dialog, versions_dialog  # noqa: E402
 from amaze.helpers import theme, ui_helpers  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401
-from amaze.tests.test_library_list import (colours_down, filled_rows_expected,  # noqa: E402
-                                           painted_texts)
+from amaze.tests.test_library_list import colours_down, painted_texts  # noqa: E402
 
 LISTED = [    # the stored version list's order: oldest first
     {"n": 1, "name": "Version 1", "date": "2026-10-21 09:00"},
@@ -122,31 +122,17 @@ class TheVersionsWindowMatchesItsDesignFrame(unittest.TestCase):
                 self.assertEqual(px(250 - 8), day[0] + day[2],
                                  "the day does not end where the frame's dates end")
 
-    def test_the_filled_rows_and_the_bar_run_to_the_bottom_of_the_list(self):
-        view = self.dialog._list    # the active version, the second row, is selected
-        self.assertEqual(filled_rows_expected("D01", view.viewport().height(), 1,
-                                              amazetheme.D01_SELECTED_BACKGROUND),
-                         colours_down(view, view.viewport().width() - 2))
-        self.assertEqual(("#383838", "#2d2d2d"), (amazetheme.FILLED_ROW, amazetheme.LIST_BACKGROUND))
-
-    def test_the_filled_rows_follow_the_rows_when_the_list_scrolls(self):
-        many = [{"n": n, "name": "Version %d" % n, "date": "2026-10-21 09:00"}
-                for n in range(1, 41)]
-        dialog = versions_dialog.VersionsDialog("brushed_steel", many, 1)    # the last row
-        self.addCleanup(dialog.deleteLater)
-        dialog.show()
-        self.addCleanup(dialog.hide)
-        QtWidgets.QApplication.processEvents()
-        view = dialog._list
-        self.assertGreater(view.verticalScrollBar().value(), 0, "premise: the list is scrolled")
-        column = colours_down(view, view.viewport().width() - 2)
-        filled, ground = (QtGui.QColor(c).name()
-                          for c in (amazetheme.FILLED_ROW, amazetheme.LIST_BACKGROUND))
-        for row in range(view.count() - 1):    # the last one is the picked, green bar
-            rect = view.visualItemRect(view.item(row))
-            if rect.top() >= 0:
-                with self.subTest(row=row):
-                    self.assertEqual(filled if row % 2 == 0 else ground, column[rect.top()])
+    def test_the_list_is_the_apps_one_kind_of_row_list(self):
+        view = self.dialog._list
+        self.assertIsInstance(view, QtWidgets.QTreeView, "the list paints its own rows")
+        reference = QtWidgets.QTreeView()
+        self.addCleanup(reference.deleteLater)
+        ui_helpers.striped_rows(reference)
+        for read in ("alternatingRowColors", "isHeaderHidden", "rootIsDecorated", "uniformRowHeights", "isAnimated"):
+            with self.subTest(setting=read):
+                self.assertEqual(getattr(reference, read)(), getattr(view, read)())
+        self.assertEqual("", view.styleSheet(), "the list sets colours of its own over the style's")
+        self.assertFalse(hasattr(view, "filled_rows"), "the list still fills rows itself")
 
     def test_the_picked_row_is_a_green_bar_over_the_whole_row(self):
         green = QtGui.QColor(amazetheme.D01_SELECTED_BACKGROUND).name()

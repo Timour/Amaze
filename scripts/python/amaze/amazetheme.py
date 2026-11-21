@@ -99,8 +99,6 @@ D15_DIM_TEXT_COLOR = "#787878"        # a library that cannot be reached: its na
 D15_DIM_PATH_TEXT_COLOR = "#646464"   # and its path
 D15_SELECTED_TEXT_COLOR = "#1b1b1b"        # a picked row's name, on its red bar
 D15_SELECTED_PATH_TEXT_COLOR = "#383838"   # and its path
-LIST_BACKGROUND = "#2d2d2d"    # ▸ D01's and D15's list box, under its rows
-FILLED_ROW = "#383838"         # rows 1, 3, 5... of a drawn list or table; the rows between show its ground
 GRID_BACKGROUND = "#2d2d2d"        # ▸ T01: the grid's background as drawn; list text contrast is computed against it
 PREFS_DIVIDER_ABOVE = 8  # inside the divider's own row box
 PREFS_DIVIDER_BELOW = 6  # so a divider costs ROW_GAP + ABOVE + H + BELOW + ROW_GAP = 27
@@ -131,10 +129,8 @@ COMMENT_DIM_ADD_COLOR = "#565656"         # the + art; Houdini's menu triangle k
 ONLINE_ICON_COLOR = "#3fc28a"    # ▸ the toolbar's Online button while the online world is open
 INFO_ICON_COLOR = "#fdba00"      # ▸ the info pane (N02): its header icon, and its toolbar button while open
 INFO_ICON_ART_COLOR = "#5d7abd"  # the colour icon_info.svg is drawn in; INFO_ICON_COLOR replaces it
-INFO_ROW_BG = FILLED_ROW         # the fill of rows 1, 3, 5...; the rows between show the page
 INFO_TEXT = "#cdc8bc"            # labels and values
-INFO_DIVIDER = "#2d2d2d"         # the line between the two columns, the page's own colour
-INFO_DIVIDER_WIDTH = 2           # that line's weight in px, centred on the drawn divider's x
+INFO_DIVIDER_WIDTH = 2           # the line between the two columns, centred on the drawn divider's x
 INFO_HIDE_PREVIEW = "Hide Preview"    # the header button's tooltip while the picture is shown
 INFO_SHOW_PREVIEW = "Show Preview"    # and while it is hidden
 
@@ -282,14 +278,14 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
         "frame": (269, 344),
         "nodes": (
             ("QListWidget", 8, 12, 253, 286, None),
-            ("QListWidget ▸ row ▸ 5", 8, 88, 253, 19, None),
-            ("QListWidget ▸ row ▸ 3", 8, 50, 253, 19, None),
-            ("QListWidget ▸ row ▸ 1", 8, 12, 253, 19, None),
-            ("QListWidget ▸ row ▸ 7", 8, 126, 253, 19, None),
-            ("QListWidget ▸ row ▸ 9", 8, 164, 253, 19, None),
-            ("QListWidget ▸ row ▸ 11", 8, 202, 253, 19, None),
-            ("QListWidget ▸ row ▸ 13", 8, 240, 253, 19, None),
-            ("QListWidget ▸ row ▸ 15", 8, 278, 253, 19, None),
+            ("QListWidget ▸ row ▸ 2", 8, 31, 253, 19, None),
+            ("QListWidget ▸ row ▸ 4", 8, 69, 253, 19, None),
+            ("QListWidget ▸ row ▸ 6", 8, 107, 253, 19, None),
+            ("QListWidget ▸ row ▸ 8", 8, 145, 253, 19, None),
+            ("QListWidget ▸ row ▸ 10", 8, 183, 253, 19, None),
+            ("QListWidget ▸ row ▸ 12", 8, 221, 253, 19, None),
+            ("QListWidget ▸ row ▸ 14", 8, 259, 253, 19, None),
+            ("QListWidget ▸ row ▸ 16", 8, 297, 253, 19, None),
             ("QListWidget ▸ item ▸ selected", 8, 31, 253, 19, None),
             ("QPushButton", 130, 311, 60, 21, None),
             ("QPushButton", 196, 311, 65, 21, None),
@@ -697,11 +693,10 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
         "frame": (420, 227),
         "nodes": (
             ("QListWidget", 8, 12, 404, 171, None),
-            ("QListWidget ▸ row ▸ 5", 8, 88, 404, 19, None),
-            ("QListWidget ▸ row ▸ 3", 8, 50, 404, 19, None),
-            ("QListWidget ▸ row ▸ 1", 8, 12, 404, 19, None),
-            ("QListWidget ▸ row ▸ 7", 8, 126, 404, 19, None),
-            ("QListWidget ▸ row ▸ 9", 8, 164, 404, 19, None),
+            ("QListWidget ▸ row ▸ 2", 8, 31, 404, 19, None),
+            ("QListWidget ▸ row ▸ 4", 8, 69, 404, 19, None),
+            ("QListWidget ▸ row ▸ 6", 8, 107, 404, 19, None),
+            ("QListWidget ▸ row ▸ 8", 8, 145, 404, 19, None),
             ("QListWidget ▸ item ▸ selected", 8, 31, 404, 19, None),
             ("QListWidget ▸ item", 19, 14, 71, 15, "Studio Library"),
             ("QListWidget ▸ item ▸ path", 130, 14, 158, 15, "/Volumes/Server/Amaze/Studio"),
@@ -999,16 +994,14 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("header", 0, 0, 450, 30, None),
             ("icon ▸ preview ▸ icon_preview_hide.svg", 424, 6, 18, 18, None),
             ("body", 0, 330, 450, 291, None),
-            ("row ▸ 1", 0, 330, 450, 19, None),
             ("row ▸ 2", 0, 349, 450, 19, None),
-            ("row ▸ 3", 0, 368, 450, 19, None),
             ("row ▸ 4", 0, 387, 450, 19, None),
-            ("row ▸ 5", 0, 406, 450, 19, None),
-            ("row ▸ 7", 0, 444, 450, 19, None),
-            ("row ▸ 9", 0, 482, 450, 19, None),
-            ("row ▸ 11", 0, 520, 450, 19, None),
-            ("row ▸ 13", 0, 558, 450, 19, None),
-            ("row ▸ 15", 0, 596, 450, 19, None),
+            ("row ▸ 6", 0, 425, 450, 19, None),
+            ("row ▸ 8", 0, 463, 450, 19, None),
+            ("row ▸ 10", 0, 501, 450, 19, None),
+            ("row ▸ 12", 0, 539, 450, 19, None),
+            ("row ▸ 14", 0, 577, 450, 19, None),
+            ("row ▸ 16", 0, 615, 450, 19, None),
             ("text ▸ name", 36, 7, 37, 15, "Flower"),
             ("text ▸ type", 79, 7, 20, 15, "JPG"),
             ("label ▸ 1", 12, 332, 30, 15, "Name"),
@@ -1325,8 +1318,6 @@ def drawn_list_rows(frame_key: str = "D15") -> dict:
                       key=lambda n: (n[2], n[1]))
 
     view, = named("QListWidget")
-    filled = sorted((n for n in layout["nodes"] if n[0].startswith("QListWidget ▸ row ▸ ")),
-                    key=lambda n: n[2])
     names, paths = named("QListWidget ▸ item"), named("QListWidget ▸ item ▸ path")
     box, = named("QListWidget ▸ item ▸ selected")
     flag = (named("QListWidget ▸ item ▸ not connected") or paths)[0]    # D01 draws no flag
@@ -1349,10 +1340,6 @@ def drawn_list_rows(frame_key: str = "D15") -> dict:
         "name_x": names[0][1] - box[1],
         "path_x": paths[0][1] - box[1],
         "flag_right": box[1] + box[3] - (flag[1] + flag[3]),
-        "filled_x": filled[0][1] - view[1],    # the filled rows: inset, first top, height, step
-        "filled_top": filled[0][2] - view[2],
-        "filled_h": filled[0][4],
-        "filled_step": filled[1][2] - filled[0][2],
     }
 
 
@@ -1451,7 +1438,7 @@ def drawn_info(frame_key: str = "N02") -> dict:
         return drawn_node(frame_key, kind, owner)
 
     header, icon, name = node("header"), node("icon", "header"), node("text", "name")
-    row, label, value = node("row", "1"), node("label", "1"), node("value", "1")
+    row, label, value = node("row", "2"), node("label", "2"), node("value", "2")
     button = node("icon", "preview")
     return {
         "width": width,
@@ -1462,7 +1449,7 @@ def drawn_info(frame_key: str = "N02") -> dict:
         "gap": name[1] - (icon[1] + icon[3]),
         "icon": icon[3],
         "row": row[4],
-        "first_row": row[2] - node("body")[2],    # the first row's top inside the body
+        "first_row": row[2] - row[4] - node("body")[2],    # the first row's top; `row` is the second
         "label_x": label[1] - row[1],
         "value_x": value[1] - row[1],
         "text_y": label[2] - row[2],    # the text's drop inside its row

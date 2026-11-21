@@ -8,7 +8,7 @@ from amaze import amazetheme
 from amaze import tooltips
 from amaze.core import versions
 from amaze.dialogs.base_dialog import AssetDialog
-from amaze.dialogs.library_dialog import ListRows, drawn_list
+from amaze.dialogs.library_dialog import ListRows, Row, drawn_list
 from amaze.helpers import theme, ui_helpers
 
 NUMBER_ROLE = QtCore.Qt.ItemDataRole.UserRole + 10    # the version's number in its ledger
@@ -46,7 +46,7 @@ class VersionsDialog(AssetDialog):
         self.finish(ok_cancel=False, margins=drawn["margins"])
 
         for entry in reversed(listed):    # the ledger lists oldest first
-            item = QtWidgets.QListWidgetItem(versions.version_label(entry))
+            item = Row([versions.version_label(entry)])
             item.setData(NUMBER_ROLE, int(entry.get("n", 0)))
             item.setData(DATE_ROLE, str(entry.get("date") or "").split(" ")[0])
             self._list.addItem(item)
