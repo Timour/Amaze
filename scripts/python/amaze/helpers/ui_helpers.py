@@ -715,6 +715,7 @@ class SectionTabBar(QtWidgets.QWidget):
     CHIP_GAP = theme.ui_px(_DRAWN["chip_gap"])
     CHIP_INSET = theme.ui_px(_DRAWN["chip_inset"])
     ICONS = _DRAWN["icons"]    # a section's art and its drawn size; a tab with no entry is its label alone
+    ICON_BLEED = theme.ui_px(amazetheme.TAB_ICON_BLEED)    # room around an icon's box for its outline
 
     STRIP_COLOR = theme.color("surface")   # theme-derived; matches the toolbar row
     TRAY_COLOR = theme.color("surface_low")   # matches the category backdrop, so the tray looks connected to the sidebar below
@@ -781,7 +782,7 @@ class SectionTabBar(QtWidgets.QWidget):
         pixmap = self._icon_pixmaps.get((key, ratio))
         if pixmap is None:
             art, _width, height = self.ICONS[key][:3]
-            pixmap = bled_pixmap(amaze.package_file("ui", art), theme.ui_px(height), ratio, 0)
+            pixmap = bled_pixmap(amaze.package_file("ui", art), theme.ui_px(height), ratio, self.ICON_BLEED)
             self._icon_pixmaps[(key, ratio)] = pixmap
         return pixmap
 
@@ -904,7 +905,8 @@ class SectionTabBar(QtWidgets.QWidget):
                 painter.setPen(self.TEXT_UNSELECTED)
             icon = self.icon_rect(key, rect)
             if icon is not None:    # the art keeps its own colours, selected or not
-                painter.drawPixmap(icon.topLeft(), self._icon_pixmap(key))
+                painter.drawPixmap(icon.topLeft() - QtCore.QPointF(self.ICON_BLEED, self.ICON_BLEED),
+                                   self._icon_pixmap(key))    # the outline overhangs the icon's own box
             text = rect.adjusted(self.CHIP_PAD_X + self._icon_room(key), 0, -self.CHIP_PAD_X, 0)
             painter.drawText(text, QtCore.Qt.AlignmentFlag.AlignCenter, label)
 

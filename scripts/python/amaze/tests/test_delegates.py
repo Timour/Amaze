@@ -1,6 +1,7 @@
 """Delegate painting contracts: Qt paints every visible item with one shared painter."""
 
 import os
+import re
 import sys
 import unittest
 from unittest import mock
@@ -562,6 +563,19 @@ class TheRendererIconIsOnTheSubtitlesLine(unittest.TestCase):
                     if "<feBlend" in handle.read():
                         held.append(name)
         self.assertEqual([], held, "Qt 6.8 draws none of a filter that holds feBlend")
+
+    def test_no_shipped_art_uses_a_shape_it_defines_further_down(self):
+        folder = os.path.join(os.path.dirname(os.path.abspath(amazetheme.__file__)), "ui")
+        early = []
+        for name in sorted(os.listdir(folder)):
+            if name.endswith(".svg"):
+                with open(os.path.join(folder, name), encoding="utf-8") as handle:
+                    text = handle.read()
+                for use in re.finditer(r'<use[^>]*href="#([^"]+)"', text):
+                    if text.find('id="%s"' % use.group(1)) > use.start():
+                        early.append(name)
+                        break
+        self.assertEqual([], early, "Qt 6.8 draws nothing for a <use> whose shape is defined after it")
 
     def test_the_subtitle_ends_a_text_inset_before_the_icon(self):
         name, subtitle, pixmaps, _cell = self._painted("Redshift")

@@ -132,6 +132,22 @@ class TheTabStripMatchesItsDesignFrame(unittest.TestCase):
                 self.assertGreater(len(set(first[key])), 2, "no icon is painted")
                 self.assertEqual(first[key], second[key])
 
+    def test_an_icon_is_painted_with_the_outline_that_overhangs_its_box(self):
+        room = self.px(amazetheme.TAB_ICON_BLEED)
+        self.assertGreater(room, 0)
+        for (key, _label), rect in self.bar._chip_rects():
+            box = self.bar.icon_rect(key, rect)
+            pixmap = self.bar._icon_pixmap(key)
+            image, ratio = pixmap.toImage(), pixmap.devicePixelRatio()
+            with self.subTest(tab=key):
+                self.assertEqual((box.width() + 2 * room, box.height() + 2 * room),
+                                 (image.width() / ratio, image.height() / ratio),
+                                 "the icon has no room around its own box")
+        image = self.bar._icon_pixmap("cop").toImage()    # S01: Node's outline is 0.5 px left of its box
+        edge = int(room * image.devicePixelRatio()) - 1
+        self.assertTrue(any(image.pixelColor(edge, y).alpha() for y in range(image.height())),
+                        "the outline left of the Node icon's box is not painted")
+
     def test_a_tab_with_no_icon_is_its_name_between_the_pads(self):
         bar = ui_helpers.SectionTabBar([("GPUOpen", "GPUOpen"), ("RGL", "RGL")])
         self.addCleanup(bar.deleteLater)

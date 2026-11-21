@@ -141,6 +141,7 @@ CODE_TILE_BACKGROUND = "#1b1b1b"    # and the background under it, the same as t
 BADGE_REST_OPACITY = 0.75       # every button badge's icon at rest; the backdrop stays as drawn
 BADGE_HOVER_OPACITY = 1.0       # and the icon under the pointer
 RENDERER_ICON_BLEED = 4         # px painted around a renderer icon's own box, for its shadow
+TAB_ICON_BLEED = 1              # px painted around a tab icon's own box, for its outline (S01: at most 1)
 MENU_ICON = 16                  # ▸ C13: a menu entry's icon box, the size Houdini draws it ▸r/menu-checked-look
 LIST_TEXT_COLOR = "#d8d6d4"            # a table is read down its columns, so every column is drawn in this except Category
 LIST_SELECTED_TEXT = "#000000"  # every column of a selected row
