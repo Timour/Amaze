@@ -919,7 +919,7 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("label ▸ code", 226, 9, 26, 15, "Code"),
             ("icon ▸ code ▸ tab_code.svg", 209, 10, 15, 13, None),
             ("label ▸ gradient", 103, 9, 28, 15, "Color"),
-            ("icon ▸ gradient ▸ tab_gradient.svg", 86, 10, 15, 13, None),
+            ("icon ▸ gradient ▸ tab_color.svg", 86, 10, 15, 13, None),
             ("label ▸ cop", 165, 9, 27, 15, "Node"),
             ("icon ▸ cop ▸ tab_cop.svg", 148, 10, 15, 13, None),
         ),
