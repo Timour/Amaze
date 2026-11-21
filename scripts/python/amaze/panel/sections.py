@@ -282,9 +282,8 @@ class Section:
             pass
 
     def _reselect_sidebar_row_if_shown(self) -> None:
-        """Run `reselect_sidebar_row` only while this section is shown and no press-hold reorder runs."""
-        reorder = getattr(self.panel, "sidebar_reorder", None)
-        if self.panel.active_section() is self and not (reorder is not None and reorder.reordering()):
+        """Run `reselect_sidebar_row` only while this section is shown."""
+        if self.panel.active_section() is self:
             self.reselect_sidebar_row()
 
     def reselect_after_removal(self, removed) -> None:
@@ -320,34 +319,6 @@ class Section:
         """The sidebar row keyed `key`, or None: a category, a folder already read, an online category."""
         index = model.index_of(key)
         return index if index.isValid() else None
-
-    reorders_sidebar = False  # SidebarReorder acts only where True; the five methods below ask the list
-
-    def sidebar_movable(self, index) -> bool:
-        """Whether THIS row can be dragged to reorder, as this section's sidebar list answers."""
-        listed = self._p(self.sidebar_attr)
-        return listed is not None and bool(listed.movable(index))
-
-    def move_sidebar_row(self, index, to_view_row: int) -> bool:
-        """Move the row at `index` to view row `to_view_row`; the list clamps it to its movable rows."""
-        listed = self._p(self.sidebar_attr)
-        return listed is not None and bool(listed.move_row(index, to_view_row))
-
-    def sidebar_order_snapshot(self):
-        """The order before the drag, which Esc restores."""
-        listed = self._p(self.sidebar_attr)
-        return None if listed is None else listed.order_snapshot()
-
-    def restore_sidebar_order(self, snapshot) -> None:
-        listed = self._p(self.sidebar_attr)
-        if listed is not None and snapshot is not None:
-            listed.restore_order(snapshot)
-
-    def commit_sidebar_order(self) -> None:
-        """One write per drag, on mouse release."""
-        listed = self._p(self.sidebar_attr)
-        if listed is not None:
-            listed.commit_order()
 
     def double_click(self, index) -> None:
         """Run `click_on_row` with the row's own DropRule; the online section overrides this."""
@@ -498,7 +469,6 @@ class Section:
 class AssetSection(Section):
     """Material, Node and Code: an AssetLibrary model and a Categories sidebar behind the proxy."""
 
-    reorders_sidebar = True
 
     model_attr = ""
     proxy_attr = ""
@@ -1358,7 +1328,6 @@ class FolderSection(Section):
         if proxy is not None:
             proxy.set_kind_filter(value)
 
-    reorders_sidebar = True    # the reorder in FOLDER terms: locations only, this machine's own order
 
     def before_sidebar_shown(self) -> None:
         self._p(self.sidebar_attr).refresh_counts()    # every count is read again on entering

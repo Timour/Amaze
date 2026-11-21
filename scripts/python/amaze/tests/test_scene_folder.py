@@ -60,8 +60,9 @@ class TheSceneRowInTheFileTab(_SceneCase):
 
     def test_no_drag_and_no_location_entry_reaches_it(self):
         row, section = self._row(), self.section
-        self.assertFalse(section.sidebar_movable(row), "the scene row can be dragged")
-        self.assertTrue(section.sidebar_movable(self.folders.index(self.folders._offset(), 0)),
+        drag = QtCore.Qt.ItemFlag.ItemIsDragEnabled
+        self.assertFalse(self.folders.flags(row) & drag, "the scene row can be dragged")
+        self.assertTrue(self.folders.flags(self.folders.index(self.folders._offset(), 0)) & drag,
                         "premise: a location can be dragged")
         self.assertFalse(section.on_a_location([row], row),
                          "Locate, Rename, Remove, Show and Label stay enabled on the scene row")

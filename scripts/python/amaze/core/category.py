@@ -277,7 +277,7 @@ class Categories(sidebar_model.SidebarModel):
         self.save()
 
     def order_snapshot(self) -> list:
-        """The current order, copied - what Esc restores."""
+        """The order now, copied."""
         return list(self._categories)
 
     def restore_order(self, snapshot: list) -> None:
@@ -377,7 +377,7 @@ class Categories(sidebar_model.SidebarModel):
         return True
 
 
-class CategoriesSidebarProxy(QtCore.QSortFilterProxyModel):
+class CategoriesSidebarProxy(sidebar_model.RowMoves, QtCore.QSortFilterProxyModel):
     """Sidebar proxy: stored order, empty categories hidden; never sort() it. ▸r/press-gestures"""
 
     def __init__(self, parent: QtCore.QObject | None = None) -> None:
@@ -404,6 +404,9 @@ class CategoriesSidebarProxy(QtCore.QSortFilterProxyModel):
             model.drop_count_cache()
         self.invalidateFilter()
 
+    def flags(self, index):
+        return self.move_flags(index, super().flags(index))
+
     def movable(self, index) -> bool:
         """Whether a shown row may be dragged to reorder: every row below All."""
         if index is None or not index.isValid() or index.row() < 1:
@@ -421,7 +424,7 @@ class CategoriesSidebarProxy(QtCore.QSortFilterProxyModel):
         return model.move_category(from_source, to_source)
 
     def order_snapshot(self):
-        """The stored order before a drag, every hidden row included; what Esc restores."""
+        """The stored order now, every hidden row included."""
         model = self.sourceModel()
         return None if model is None else model.order_snapshot()
 

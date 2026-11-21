@@ -107,7 +107,10 @@ class FolderTreeModel(sidebar_model.SidebarModel):
                            int(PathRole), int(BrowseRole), COUNT_ROLE, category.SIDEBAR_COLOR_ROLE,
                            category.SIDEBAR_KEY_ROLE))    # every role a folder row answers
     unfolds = True    # its rows reserve space for an expand arrow ▸r/tree-views
-    flags = QtCore.QAbstractItemModel.flags    # Qt's own: the base's override costs a Python call per row
+
+    def flags(self, index):
+        """Qt's own flags, plus what a location needs to be dragged to another place."""
+        return self.move_flags(index, QtCore.QAbstractItemModel.flags(self, index))
 
     folders_attr = ""           # prefs attribute holding the folder list, e.g. `file_folders`
     favorites_attr = ""         # prefs attribute holding full-path favourites for this section
@@ -555,15 +558,15 @@ class FolderTreeModel(sidebar_model.SidebarModel):
         return self.move_folder(index.row(), to_row)
 
     def order_snapshot(self) -> list:
-        """The locations in their order before a drag; what Esc restores."""
+        """The locations in their order now, copied."""
         return list(self._folders())
 
     def commit_order(self) -> None:
-        """Save the order the drag staged, once, on release."""
+        """Save the order a move staged, once."""
         locations.commit_registered_order(self.preferences)
 
     def move_folder(self, from_row: int, to_row: int) -> bool:
-        """Move one location to another TOP row - the press-hold reorder, persisted on release."""
+        """Move one location to another TOP row; `commit_order` saves it."""
         if not self.move_folder_method:
             return False
         folders = self._folders()

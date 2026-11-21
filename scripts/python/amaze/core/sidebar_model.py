@@ -4,9 +4,66 @@ from PySide6 import QtCore, QtGui
 
 _ROOT = QtCore.QModelIndex()
 COLOR_COLUMN = 1    # the cell beside the name whose background is the row's colour
+MOVE_MIME = "application/x-amaze-sidebar-row"    # a top row dragged to another place in its own list
 
 
-class SidebarModel(QtCore.QAbstractItemModel):
+class RowMoves:
+    """Qt's own drag and drop for reordering top rows; the list answers `movable` and `move_row`."""
+
+    def move_flags(self, index, flags):
+        """`flags` plus what Qt needs for a row that may be dragged, and for a drop between rows."""
+        item = QtCore.Qt.ItemFlag
+        if not index.isValid():
+            return flags | item.ItemIsDropEnabled    # between two top rows
+        if self.movable(index.siblingAtColumn(0)):
+            flags |= item.ItemIsDragEnabled | item.ItemIsDropEnabled
+        return flags
+
+    def supportedDropActions(self):
+        return QtCore.Qt.DropAction.MoveAction
+
+    def supportedDragActions(self):
+        return QtCore.Qt.DropAction.MoveAction
+
+    def mimeTypes(self):
+        return [MOVE_MIME]
+
+    def mimeData(self, indexes):
+        data = QtCore.QMimeData()
+        rows = sorted({index.row() for index in indexes if not index.parent().isValid()})
+        if rows:
+            data.setData(MOVE_MIME, str(rows[0]).encode("ascii"))
+        return data
+
+    def _move_target(self, data, row, parent):
+        """(from row, the row it becomes) for a drop Qt reports, or None when it is not a row move."""
+        if not data.hasFormat(MOVE_MIME):
+            return None
+        try:
+            moved = int(bytes(data.data(MOVE_MIME)).decode("ascii"))
+        except ValueError:
+            return None
+        if parent.isValid():    # dropped on a row: it takes that row's place
+            if parent.parent().isValid():
+                return None
+            return moved, parent.row()
+        between = self.rowCount() if row < 0 else row    # Qt gives the row it would sit before
+        return moved, between - 1 if between > moved else between
+
+    def canDropMimeData(self, data, action, row, column, parent):
+        target = self._move_target(data, row, parent)
+        return bool(target is not None and target[0] != target[1]
+                    and self.movable(self.index(target[1], 0)))
+
+    def dropMimeData(self, data, action, row, column, parent):
+        """Move the row and save the order; False, so Qt removes nothing itself."""
+        target = self._move_target(data, row, parent)
+        if target is not None and self.move_row(self.index(target[0], 0), target[1]):
+            self.commit_order()
+        return False
+
+
+class SidebarModel(RowMoves, QtCore.QAbstractItemModel):
     """All on row 0, then the top rows, each with the rows under it; a row's id is kept by its key."""
 
     unfolds = False    # True where rows may hold rows under them; the view then draws arrows ▸r/tree-views
@@ -46,6 +103,7 @@ class SidebarModel(QtCore.QAbstractItemModel):
         return False
 
     def order_snapshot(self):
+        """The order now, copied; `restore_order` puts one back."""
         return None
 
     def restore_order(self, snapshot) -> None:
@@ -250,7 +308,7 @@ class SidebarModel(QtCore.QAbstractItemModel):
         flags = super().flags(index)
         if index.isValid() and not self.unfolds:
             flags |= QtCore.Qt.ItemFlag.ItemNeverHasChildren    # as Qt's list model marks its rows
-        return flags
+        return self.move_flags(index, flags)
 
     def data(self, index, role: int = 0):
         """SIDEBAR_KEY_ROLE from the row's key, "" on All; a subclass answers every other role."""

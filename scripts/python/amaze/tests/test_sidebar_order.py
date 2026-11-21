@@ -336,223 +336,70 @@ class PanelWiresNoSidebarSortTest(unittest.TestCase):
             "`category_names_from`")
 
 
-class ReorderContractTest(unittest.TestCase):
-    """Every section has the reorder methods; the gesture calls them on the CONTEXT."""
+class QtRowMoveTest(unittest.TestCase):
+    """Reordering is Qt's own drag and drop; the list says which rows move and does the move."""
 
-    def test_the_five_sections_reorder_and_online_does_not(self):
-        from amaze.panel import sections
-        for cls in sections.SECTION_CLASSES:
-            self.assertTrue(
-                getattr(cls, "reorders_sidebar", False),
-                "%s does not support the reorder gesture" % cls.key)
-        self.assertFalse(
-            getattr(sections.OnlineContext, "reorders_sidebar", True),
-            "the online sources are fixed - nothing to reorder")
+    MOVE = QtCore.Qt.DropAction.MoveAction
+    ROOT = QtCore.QModelIndex()
 
-    def test_the_contract_methods_exist_on_the_base(self):
-        from amaze.panel import sections
-        for name in ("sidebar_movable", "move_sidebar_row",
-                     "sidebar_order_snapshot", "restore_sidebar_order",
-                     "commit_sidebar_order"):
-            self.assertTrue(
-                callable(getattr(sections.Section, name, None)),
-                "Section.%s missing - the gesture has nothing to call"
-                % name)
-
-
-class _RecordingSection:
-    """Records the section calls the gesture makes; the state machine is under test."""
-
-    reorders_sidebar = True
-
-    def __init__(self, model, proxy):
-        self.model = model
-        self.proxy = proxy
-        self.commits = 0
-        self.moves = []
-        self.reselects = 0
-
-    def reselect_sidebar_row(self):
-        self.reselects += 1
-
-    def sidebar_movable(self, index):
-        return index.isValid() and index.row() > 0
-
-    def move_sidebar_row(self, index, to_view_row):
-        frm = self.proxy.mapToSource(self.proxy.index(index.row(), 0)).row()
-        to = self.proxy.mapToSource(self.proxy.index(to_view_row, 0)).row()
-        moved = self.model.move_category(frm, to)
-        if moved:
-            self.moves.append((frm, to))
-        return moved
-
-    def sidebar_order_snapshot(self):
-        return self.model.order_snapshot()
-
-    def restore_sidebar_order(self, snapshot):
-        self.model.restore_order(snapshot)
-
-    def commit_sidebar_order(self):
-        self.commits += 1
-
-
-def _mouse(kind, pos, buttons=QtCore.Qt.MouseButton.LeftButton):
-    return QtGui.QMouseEvent(
-        kind, QtCore.QPointF(pos), QtCore.QPointF(pos),
-        QtCore.QPointF(pos), QtCore.Qt.MouseButton.LeftButton,
-        buttons, QtCore.Qt.KeyboardModifier.NoModifier)
-
-
-class HoldGestureTest(unittest.TestCase):
-    """The press-hold state machine, replayed headlessly; no test sleeps."""
-
-    def _harness(self, entries=("_All", "a", "b", "c")):
-        from amaze.panel import sidebar
-
-        model = _categories(self, list(entries))
+    def _list(self, entries=("_All", "a", "b", "c")):
+        prefs = test_support.fixture_prefs(self)
+        self.addCleanup(test_support.reset_database_singletons)
+        model = category.Categories(preferences=prefs)
+        model._categories[:] = list(entries)
         proxy = category.CategoriesSidebarProxy()
         proxy.setSourceModel(model)
-        proxy.hide_empty = False
+        return model, proxy
 
-        view = QtWidgets.QListView()
+    def test_a_row_below_all_may_be_dragged_and_all_may_not(self):
+        _model, proxy = self._list()
+        item = QtCore.Qt.ItemFlag
+        self.assertFalse(proxy.flags(proxy.index(0, 0)) & item.ItemIsDragEnabled, "All can be dragged")
+        for row in (1, 2, 3):
+            self.assertTrue(proxy.flags(proxy.index(row, 0)) & item.ItemIsDragEnabled)
+        self.assertTrue(proxy.flags(self.ROOT) & item.ItemIsDropEnabled, "nothing can be dropped between rows")
+        self.assertEqual(self.MOVE, proxy.supportedDropActions())
+
+    def test_a_drop_between_rows_and_a_drop_on_a_row_move_it_and_save_once(self):
+        model, proxy = self._list()
+        with mock.patch.object(model, "save") as save:
+            data = proxy.mimeData([proxy.index(3, 0)])    # c, dropped before a
+            self.assertTrue(proxy.canDropMimeData(data, self.MOVE, 1, 0, self.ROOT))
+            self.assertFalse(proxy.dropMimeData(data, self.MOVE, 1, 0, self.ROOT),
+                             "a True here lets Qt remove the dragged row itself")
+            self.assertEqual(["_All", "c", "a", "b"], model.order_snapshot())
+            save.assert_called_once_with()
+            data = proxy.mimeData([proxy.index(1, 0)])    # c again, dropped on b
+            proxy.dropMimeData(data, self.MOVE, -1, -1, proxy.index(3, 0))
+            self.assertEqual(["_All", "a", "b", "c"], model.order_snapshot())
+            self.assertEqual(2, save.call_count)
+
+    def test_nothing_is_dropped_above_all_or_where_it_already_is(self):
+        model, proxy = self._list()
+        data = proxy.mimeData([proxy.index(2, 0)])
+        self.assertFalse(proxy.canDropMimeData(data, self.MOVE, 0, 0, self.ROOT), "a row can go above All")
+        self.assertFalse(proxy.canDropMimeData(data, self.MOVE, -1, -1, proxy.index(0, 0)))
+        self.assertFalse(proxy.canDropMimeData(data, self.MOVE, 2, 0, self.ROOT), "a drop where it is counts")
+        other = QtCore.QMimeData()
+        other.setText("a tile")
+        self.assertFalse(proxy.canDropMimeData(other, self.MOVE, 1, 0, self.ROOT))
+        with mock.patch.object(model, "save") as save:
+            proxy.dropMimeData(other, self.MOVE, 1, 0, self.ROOT)
+            save.assert_not_called()
+        self.assertEqual(["_All", "a", "b", "c"], model.order_snapshot())
+
+    def test_the_sidebar_is_set_to_qts_own_row_move(self):
+        from amaze.panel import sidebar
+        view = sidebar.SidebarTreeView()
         self.addCleanup(view.deleteLater)
-        view.setModel(proxy)
-        view.resize(200, 300)
+        self.assertTrue(view.dragEnabled())
+        self.assertEqual(QtWidgets.QAbstractItemView.DragDropMode.InternalMove, view.dragDropMode())
+        self.assertTrue(view.showDropIndicator())
+        self.assertFalse(hasattr(sidebar, "SidebarReorder"), "the press-and-hold gesture is back")
 
-        section = _RecordingSection(model, proxy)
-
-        class _Panel:
-            cat_list = view
-
-            def active_section(self):
-                return section
-
-        controller = sidebar.SidebarReorder(_Panel())
-        return model, proxy, view, section, controller
-
-    def _row_center(self, view, row):
-        return view.visualRect(view.model().index(row, 0)).center()
-
-    def _press(self, view, controller, row):
-        pos = self._row_center(view, row)
-        event = _mouse(QtCore.QEvent.Type.MouseButtonPress, pos)
-        controller.eventFilter(view.viewport(), event)
-        return pos
-
-    def _move(self, view, controller, pos):
-        event = _mouse(QtCore.QEvent.Type.MouseMove, pos)
-        return controller.eventFilter(view.viewport(), event)
-
-    def _release(self, view, controller, pos):
-        event = _mouse(QtCore.QEvent.Type.MouseButtonRelease, pos,
-                       buttons=QtCore.Qt.MouseButton.NoButton)
-        return controller.eventFilter(view.viewport(), event)
-
-    def test_the_hold_time_is_the_platforms_own(self):
-        _model, _proxy, view, _section, controller = self._harness()
-        self._press(view, controller, 1)
-        self.assertTrue(controller._hold_timer.isActive())
-        self.assertEqual(
-            QtWidgets.QApplication.startDragTime(),
-            controller._hold_timer.interval())
-
-    def test_a_press_on_all_never_arms(self):
-        _model, _proxy, view, _section, controller = self._harness()
-        self._press(view, controller, 0)
-        self.assertFalse(controller._hold_timer.isActive())
-
-    def test_a_release_before_the_hold_stays_a_click(self):
-        model, _proxy, view, section, controller = self._harness()
-        pos = self._press(view, controller, 1)
-        self._release(view, controller, pos)
-        self.assertFalse(controller._hold_timer.isActive())
-        self.assertEqual([], section.moves)
-        self.assertEqual(0, section.commits)
-        self.assertEqual(["_All", "a", "b", "c"], model._categories)
-
-    def test_a_move_past_the_threshold_cancels_the_hold(self):
-        _model, _proxy, view, section, controller = self._harness()
-        pos = self._press(view, controller, 1)
-        distance = QtWidgets.QApplication.startDragDistance() + 2
-        away = QtCore.QPoint(pos.x() + distance, pos.y())
-        self._move(view, controller, away)
-        self.assertFalse(controller._hold_timer.isActive())
-        controller._hold_fired()  # a late timer must find nothing armed
-        self.assertFalse(controller.reordering())
-
-    def test_the_fired_hold_moves_rows_and_commits_once(self):
-        model, _proxy, view, section, controller = self._harness()
-        self._press(view, controller, 1)
-        controller._hold_fired()
-        self.assertTrue(controller.reordering())
-        target = self._row_center(view, 3)
-        self._move(view, controller, target)
-        self.assertEqual(["_All", "b", "c", "a"], model._categories)
-        self._release(view, controller, target)
-        self.assertFalse(controller.reordering())
-        self.assertEqual(1, section.commits)
-
-    def test_nothing_moves_above_all(self):
-        model, _proxy, view, section, controller = self._harness()
-        self._press(view, controller, 2)
-        controller._hold_fired()
-        self._move(view, controller, self._row_center(view, 0))
-        self.assertEqual(
-            "_All", model._categories[0],
-            "the drag placed a row above All")
-        self._release(view, controller, self._row_center(view, 1))
-        self.assertEqual(["_All", "b", "a", "c"], model._categories)
-
-    def test_escape_restores_the_order_and_commits_nothing(self):
-        model, _proxy, view, section, controller = self._harness()
-        self._press(view, controller, 1)
-        controller._hold_fired()
-        self._move(view, controller, self._row_center(view, 3))
-        self.assertNotEqual(["_All", "a", "b", "c"], model._categories)
-        esc = QtGui.QKeyEvent(QtCore.QEvent.Type.KeyPress,
-                              QtCore.Qt.Key.Key_Escape,
-                              QtCore.Qt.KeyboardModifier.NoModifier)
-        controller.eventFilter(view, esc)
-        self.assertFalse(controller.reordering())
-        self.assertEqual(["_All", "a", "b", "c"], model._categories)
-        self.assertEqual(1, section.reselects,
-                         "`reselect_sidebar_row` was not called to restore the cleared highlight")
-        self._release(view, controller, self._row_center(view, 3))
-        self.assertEqual(0, section.commits)
-
-    def test_a_release_without_a_move_commits_nothing(self):
-        """A save that changes nothing still spends a write."""
-        _model, _proxy, view, section, controller = self._harness()
-        pos = self._press(view, controller, 1)
-        controller._hold_fired()
-        self._release(view, controller, pos)
-        self.assertEqual(0, section.commits)
-
-    def test_a_reset_returns_every_field_to_its_initial_state(self):
-        """The initial state is written ONCE: a field that `_reset` misses fails here."""
-        _model, _proxy, view, _section, controller = self._harness()
-        born = dict(vars(controller))
-        self._press(view, controller, 1)
-        controller._hold_fired()
-        self._move(view, controller, self._row_center(view, 3))
-        controller._reset()
-        self.assertEqual(born, dict(vars(controller)))
-
-    def test_a_reset_unsets_the_closed_hand_cursor(self):
-        _model, _proxy, view, _section, controller = self._harness()
-        self._press(view, controller, 1)
-        controller._hold_fired()
-        self.assertEqual(QtCore.Qt.CursorShape.ClosedHandCursor,
-                         view.viewport().cursor().shape())
-        controller._reset()
-        self.assertNotEqual(QtCore.Qt.CursorShape.ClosedHandCursor,
-                            view.viewport().cursor().shape())
-
-    def test_a_section_that_does_not_reorder_never_arms(self):
-        _model, _proxy, view, section, controller = self._harness()
-        section.reorders_sidebar = False
-        self._press(view, controller, 1)
-        self.assertFalse(controller._hold_timer.isActive())
+    def test_the_online_list_moves_nothing(self):
+        from amaze.core import matx_library, sidebar_model
+        self.assertIs(sidebar_model.SidebarModel.movable, matx_library.MatxSidebarModel.movable)
 
 
 class FolderOrderTest(unittest.TestCase):

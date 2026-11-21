@@ -889,7 +889,7 @@ class TheFileTabBrowsesSubfolders(unittest.TestCase):
 
     def test_a_subfolder_is_never_removed_moved_or_relocated_as_a_location(self):
         section = self.panel.sections["file"]
-        self.assertFalse(section.sidebar_movable(self.sub), "a subfolder can be dragged")
+        self.assertFalse(self.folders.movable(self.sub), "a subfolder can be dragged")
         before = list(self.folders._folders())
         self._select_row(self.sub)
         self.assertEqual([], self.panel.remove_file_folder_user(),
@@ -1131,7 +1131,7 @@ class EverySidebarListAnswersTheReorder(unittest.TestCase):
     """Each sidebar list moves its own rows in view rows; Section holds the reorder methods once."""
 
     CALLS = ("movable", "move_row", "order_snapshot", "restore_order", "commit_order")
-    SECTION_CALLS = ("sidebar_movable", "move_sidebar_row", "sidebar_order_snapshot",
+    SECTION_CALLS = ("sidebar_movable", "move_sidebar_row", "sidebar_order_snapshot",    # none may come back
                      "restore_sidebar_order", "commit_sidebar_order")
 
     def test_the_list_in_the_view_answers_the_five_calls(self):
@@ -1156,7 +1156,7 @@ class EverySidebarListAnswersTheReorder(unittest.TestCase):
         from amaze.panel import sections
         for cls in list(sections.SECTION_CLASSES) + [sections.OnlineContext]:
             for klass in cls.__mro__:
-                if klass in (sections.Section, object):
+                if klass is object:
                     continue
                 for method in self.SECTION_CALLS:
                     self.assertNotIn(method, vars(klass),

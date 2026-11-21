@@ -1,4 +1,4 @@
-"""The sidebar view, its row reorder, and what may be dropped on a row. ▸o/section-api"""
+"""The sidebar view, and what may be dropped on a row. ▸o/section-api"""
 
 from __future__ import annotations
 
@@ -27,6 +27,9 @@ class SidebarTreeView(ui_helpers.Table):
         self.expanded.connect(self._opened)
         self.collapsed.connect(self._closed)
         self.row_chosen.connect(self._forget_reveal)    # a row the user chose cancels a pending folder reveal
+        self.setDragEnabled(True)    # Qt's own row move; the model says which rows and does the move
+        self.setDragDropMode(QtWidgets.QAbstractItemView.DragDropMode.InternalMove)
+        self.setDropIndicatorShown(True)
 
     def _forget_reveal(self, _index) -> None:
         self._pending_reveal = None
@@ -113,167 +116,6 @@ class SidebarTreeView(ui_helpers.Table):
             opened.add(here)
         self._pending_reveal = (model, path)
         self._reopen()
-
-
-class SidebarReorder(QtCore.QObject):
-    """Press-and-hold row reorder; the Section moves rows, this keeps state. ▸r/press-gestures"""
-
-    EDGE_SCROLL_MARGIN = 16
-
-    def __init__(self, panel):
-        view = panel.cat_list
-        super().__init__(view)
-        self._panel = panel
-        self._clear()
-        self._hold_timer = QtCore.QTimer(self)
-        self._hold_timer.setSingleShot(True)
-        self._hold_timer.timeout.connect(self._hold_fired)
-        view.installEventFilter(self)
-        view.viewport().installEventFilter(self)
-
-    def reordering(self) -> bool:
-        return self._reordering
-
-    def _clear(self) -> None:
-        """Clear the state: no press, no grabbed row, no snapshot, nothing moved."""
-        self._pressed_pos = None
-        self._grabbed = None
-        self._snapshot = None
-        self._changed = False
-        self._reordering = False
-
-    def _reset(self) -> None:
-        """Stop the hold timer, clear the state, and restore the cursor."""
-        self._hold_timer.stop()
-        was_reordering = self._reordering
-        self._clear()
-        if was_reordering:
-            view = self._panel.cat_list
-            if view is not None:
-                view.viewport().unsetCursor()
-
-    def _section(self):
-        section = self._panel.active_section()
-        if section is None or not getattr(section, "reorders_sidebar",
-                                          False):
-            return None
-        return section
-
-    @debug.guarded("SidebarReorder.eventFilter")
-    def eventFilter(self, watched, event):
-        etype = event.type()
-        if etype == QtCore.QEvent.Type.MouseButtonPress:
-            return self._on_press(event)
-        if etype == QtCore.QEvent.Type.MouseMove:
-            return self._on_move(event)
-        if etype == QtCore.QEvent.Type.MouseButtonRelease:
-            return self._on_release(event)
-        if (etype == QtCore.QEvent.Type.KeyPress
-                and self._reordering
-                and event.key() == QtCore.Qt.Key.Key_Escape):
-            self._abort()
-            return True
-        return False
-
-    def _on_press(self, event) -> bool:
-        self._reset()
-        if event.button() != QtCore.Qt.MouseButton.LeftButton:
-            return False
-        section = self._section()
-        view = self._panel.cat_list
-        if section is None or view is None:
-            return False
-        pos = event.position().toPoint()
-        index = view.indexAt(pos)
-        if not section.sidebar_movable(index):
-            return False
-        self._pressed_pos = pos
-        self._grabbed = QtCore.QPersistentModelIndex(
-            view.model().index(index.row(), 0))
-        # Read on each press: the value is the platform's setting, not ours.
-        self._hold_timer.setInterval(
-            QtWidgets.QApplication.startDragTime())
-        self._hold_timer.start()
-        return False
-
-    @debug.guarded("SidebarReorder._hold_fired")
-    def _hold_fired(self) -> None:
-        if self._reordering or self._pressed_pos is None:
-            return
-        section = self._section()
-        view = self._panel.cat_list
-        if (section is None or view is None
-                or self._grabbed is None or not self._grabbed.isValid()):
-            self._reset()
-            return
-        self._snapshot = section.sidebar_order_snapshot()
-        self._reordering = True
-        view.viewport().setCursor(QtCore.Qt.CursorShape.ClosedHandCursor)
-
-    def _on_move(self, event) -> bool:
-        if self._reordering:
-            self._follow(event.position().toPoint())
-            return True
-        if self._hold_timer.isActive() and self._pressed_pos is not None:
-            moved = (event.position().toPoint()
-                     - self._pressed_pos).manhattanLength()
-            if moved >= QtWidgets.QApplication.startDragDistance():
-                # It was a click (or an idle wiggle), not a hold.
-                self._reset()
-        return False
-
-    def _follow(self, pos) -> None:
-        """Move the grabbed row to the row under the cursor, clamped. ▸r/press-gestures"""
-        section = self._section()
-        view = self._panel.cat_list
-        if (section is None or view is None
-                or self._grabbed is None or not self._grabbed.isValid()):
-            self._abort()
-            return
-        area = view.viewport().rect()
-        clamped = QtCore.QPoint(
-            min(max(pos.x(), area.left()), area.right()),
-            min(max(pos.y(), area.top()), area.bottom()))
-        if pos.y() < area.top() + self.EDGE_SCROLL_MARGIN:
-            bar = view.verticalScrollBar()
-            bar.setValue(bar.value() - bar.singleStep())
-        elif pos.y() > area.bottom() - self.EDGE_SCROLL_MARGIN:
-            bar = view.verticalScrollBar()
-            bar.setValue(bar.value() + bar.singleStep())
-        target = top_level(view.indexAt(clamped))    # over a subfolder: its top-level location row
-        if not target.isValid():
-            return
-        to_row = max(1, target.row())
-        if to_row == self._grabbed.row():
-            return
-        if section.move_sidebar_row(
-                QtCore.QModelIndex(self._grabbed), to_row):
-            self._changed = True
-
-    def _on_release(self, event) -> bool:
-        if event.button() != QtCore.Qt.MouseButton.LeftButton:
-            return False
-        if self._reordering:
-            section = self._section()
-            changed = self._changed
-            self._reset()
-            if changed and section is not None:
-                section.commit_sidebar_order()
-        else:
-            self._reset()
-        # Not consumed: the view gets the release, and the row under the cursor is the grabbed row.
-        return False
-
-    def _abort(self) -> None:
-        """On Esc or a model change mid-drag: restore the order, and select the grid's row again."""
-        section = self._section()
-        snapshot = self._snapshot
-        self._reset()
-        if section is None:
-            return
-        if snapshot is not None:
-            section.restore_sidebar_order(snapshot)    # a reset, which clears the highlight
-        section.reselect_sidebar_row()
 
 
 def droppable_index(panel, pos):

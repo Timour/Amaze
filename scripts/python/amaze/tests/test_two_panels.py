@@ -215,9 +215,9 @@ class TwoPanelsShareOneLibraryTest(unittest.TestCase):
             before = list(folders._folders())
             section = self.a.sections["file"]
             last = folders.index(folders.rowCount() - 1, 0)
-            self.assertTrue(section.move_sidebar_row(last, folders._offset()),
+            self.assertTrue(folders.move_row(last, folders._offset()),
                             "premise: the last location did not move to the first row")
-            section.commit_sidebar_order()
+            folders.commit_order()
             saved = prefs.Prefs()
             saved.load()
         self.assertEqual([before[-1]] + before[:-1], list(saved.file_folders),

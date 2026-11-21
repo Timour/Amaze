@@ -152,17 +152,15 @@ class _HighlightCase:
         self._move_with_button_held(to)
         QtTest.QTest.mouseRelease(self.view.viewport(), LEFT, NOMOD, to)
 
-    def reorder(self, grabbed, over, release_at=None, escape=False, turn=False):
-        """Press and hold `grabbed`, move over `over`, run events, press Esc if asked, release."""
-        to = self.at(over)
-        QtTest.QTest.mousePress(self.view.viewport(), LEFT, NOMOD, self.at(grabbed))
-        self.panel.sidebar_reorder._hold_fired()
-        self._move_with_button_held(to)
+    def reorder(self, grabbed, over, escape=False, turn=False):
+        """Press `grabbed` as a drag does, then drop it on `over` as Qt would; `escape` drops nothing."""
+        QtTest.QTest.mouseClick(self.view.viewport(), LEFT, NOMOD, self.at(grabbed))
+        model = self.view.model()
         if turn:
             _pump()
-        if escape:
-            QtTest.QTest.keyClick(self.view, QtCore.Qt.Key.Key_Escape)
-        QtTest.QTest.mouseRelease(self.view.viewport(), LEFT, NOMOD, release_at or to)
+        if not escape:
+            data = model.mimeData([grabbed])
+            model.dropMimeData(data, QtCore.Qt.DropAction.MoveAction, -1, -1, over)
 
     def switch_library(self):
         test_support.apply_library(self, self.panel, test_support.seeded_library(self))

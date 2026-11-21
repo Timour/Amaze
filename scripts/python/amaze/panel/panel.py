@@ -525,7 +525,6 @@ class AmazePanel(QtWidgets.QWidget):
 
         self.sections = sections.build_sections(self)    # one object per tab; shared handlers dispatch through self.active_section()
 
-        self.sidebar_reorder = sidebar.SidebarReorder(self)    # the press-hold sidebar reorder
 
         first_key = next(    # the first enabled section
             (k for k, _ in self.ALL_SECTIONS if k in self.prefs.enabled_sections),
