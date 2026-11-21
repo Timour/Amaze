@@ -127,6 +127,7 @@ COMMENT_DIM_ICON_COLOR = "#ffffff"        # in white
 COMMENT_DIM_ADD_COLOR = "#565656"         # the + art; Houdini's menu triangle keeps its colour
 
 ONLINE_ICON_COLOR = "#3fc28a"    # ▸ the toolbar's Online button while the online world is open
+TOOLBAR_SEARCH_END_GAP = 6    # the least space between the Search box and Comments, in a narrow panel
 INFO_ICON_COLOR = "#fdba00"      # ▸ the info pane (N02): its header icon, and its toolbar button while open
 INFO_ICON_ART_COLOR = "#5d7abd"  # the colour icon_info.svg is drawn in; INFO_ICON_COLOR replaces it
 INFO_TEXT = "#cdc8bc"            # labels and values

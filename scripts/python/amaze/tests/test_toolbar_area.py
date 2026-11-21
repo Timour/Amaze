@@ -230,6 +230,20 @@ class TheToolbarMatchesFrameB01(unittest.TestCase):
                 self.assertEqual(tuple(self.px(v) for v in drawn[1:5]),
                                  (widget.x(), widget.y(), widget.width(), widget.height()))
 
+    def test_a_narrow_panel_keeps_six_pixels_between_the_box_and_comments(self):
+        from PySide6 import QtCore
+        from amaze import amazetheme
+        self.assertEqual(6, amazetheme.TOOLBAR_SEARCH_END_GAP)
+        box, comments = self._widget("line_filter"), self._widget("btn_notes")
+        least = self.panel.toolbar_layout.minimumSize().width()    # narrower than this nothing fits
+        for width in (least, least + 40, least + 120):
+            self.panel.toolbar_layout.setGeometry(QtCore.QRect(0, 0, width, self.px(self.frame["frame"][1])))
+            QtWidgets.QApplication.processEvents()
+            with self.subTest(width=width):
+                self.assertLess(box.width(), self.px(self.node[("field", "line_filter")][3]),
+                                "premise: the box is squeezed at this width")
+                self.assertEqual(self.px(6), comments.geometry().left() - (box.geometry().right() + 1))
+
     def test_the_row_is_in_the_frames_order_with_the_stretch_after_the_box(self):
         from amaze.tests import test_support
         field_x = self.node[("field", "line_filter")][1]

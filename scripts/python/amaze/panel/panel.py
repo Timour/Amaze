@@ -1555,6 +1555,7 @@ class AmazePanel(QtWidgets.QWidget):
         layout.addWidget(controls["filter_label"])
         layout.addSpacing(px(drawn["label_gap"]))
         layout.addWidget(controls["line_filter"], 1)
+        layout.addSpacing(px(amazetheme.TOOLBAR_SEARCH_END_GAP))    # kept when the panel is narrow
         layout.addStretch()
         buttons(self.TOOLBAR_RIGHT)
 
