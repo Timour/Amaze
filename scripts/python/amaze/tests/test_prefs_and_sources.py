@@ -258,14 +258,11 @@ class LoadNeverRaisesAndAlwaysValidates(unittest.TestCase):
                                   ("rendersamples", 0, 1),
                                   ("rendersamples", 4096.0, 1024),
                                   ("render_on_import", "0", 0),
-                                  ("render_on_import", 7, 1),
-                                  ("obj_drag_outline", "0", 0),
-                                  ("obj_drag_outline", 7, 1)):
+                                  ("render_on_import", 7, 1)):
             with self.subTest(setting=name, value=given):
                 setattr(p, name, given)
                 self.assertEqual(kept, getattr(p, name))
-        for name in ("rendersize", "rendersamples", "render_on_import",
-                     "obj_drag_outline"):
+        for name in ("rendersize", "rendersamples", "render_on_import"):
             with self.subTest(setting=name, value=None):
                 with self.assertRaises((TypeError, ValueError)):
                     setattr(p, name, None)    # the raise is what makes load() keep the default

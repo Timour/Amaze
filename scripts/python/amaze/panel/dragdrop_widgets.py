@@ -152,22 +152,27 @@ class GridGestureMixin:
             ):
                 self._begin_drag()
             if self._dragging:
-                from amaze.core import dragengine
-                if self._switch_to_qdrag_over_parm_pane():
-                    return
-                self._move_preview()
-                if self._drag_panel is not None:    # drop-target feedback is driven from the cursor position
-                    pane_tab, pane_kind, _fresh = (    # one pane lookup per move, shared by every call below ▸p/drag-move-cost
-                        dragengine.pane_under_cursor_tracked())
-                    self._drag_panel._update_category_drag_hover_global()
-                    dragengine.hover_update(
-                        self._drag_panel, self._drag_section,
-                        pane_tab, pane_kind
-                    )
-                    self._update_drop_outline(self._drag_panel, pane_tab,
-                                              pane_kind)    # the outline, cleared by dragengine.end() on every exit path
+                try:
+                    self._follow_drag()
+                except Exception:    # logged by the guard, which re-raises: the drag does not stay half on
+                    self._end_drag(miss=True)
+                    self._drag_start = None
+                    raise
             return
         super().mouseMoveEvent(event)
+
+    def _follow_drag(self) -> None:
+        """One move of a running drag: the tag, the drop targets and the highlight follow."""
+        from amaze.core import dragengine
+        if self._switch_to_qdrag_over_parm_pane():
+            return
+        self._move_preview()
+        if self._drag_panel is None:
+            return
+        pane_tab, pane_kind, _fresh = dragengine.pane_under_cursor_tracked()    # one lookup per move ▸p/drag-move-cost
+        self._drag_panel._update_category_drag_hover_global()
+        dragengine.hover_update(self._drag_panel, self._drag_section, pane_tab, pane_kind)
+        self._update_drop_outline(self._drag_panel, pane_tab, pane_kind)    # the outline; _end_drag clears it
 
     def _overlay_label(self, text: str = "") -> QtWidgets.QLabel:
         """Frameless, always-on-top, click-through label - the shared window setup for cursor overlays."""
@@ -199,6 +204,8 @@ class GridGestureMixin:
         from amaze.core import dragengine
         self._dragging = True
         dragengine.begin(self._drag_section or "")
+        self.grabKeyboard()    # Esc reaches keyPressEvent whatever has the focus; released in _end_drag
+        QtWidgets.QApplication.instance().applicationStateChanged.connect(self._on_application_state)
         name = ""
         index = self._drag_row()
         if index is not None:
@@ -209,6 +216,40 @@ class GridGestureMixin:
         self._preview = label
         self._move_preview()
         label.show()
+
+    def _end_drag(self, miss: bool = False) -> None:
+        """The one end of a drag, for every way out: what the drag set is taken back."""
+        from amaze.core import dragengine
+        if not self._dragging:
+            return
+        self._dragging = False
+        self.releaseKeyboard()
+        try:
+            QtWidgets.QApplication.instance().applicationStateChanged.disconnect(
+                self._on_application_state)
+        except (RuntimeError, TypeError):
+            pass    # not connected: the drag was not begun through _begin_drag
+        dragengine.end()
+        if self._drag_panel is not None:
+            self._drag_panel._set_drag_hover_row(-1)
+        self._finish_preview(not miss)
+
+    def _on_application_state(self, state) -> None:
+        """The name tag is hidden while another application is in front."""
+        if self._preview is not None:
+            self._preview.setVisible(state == QtCore.Qt.ApplicationState.ApplicationActive)
+
+    def keyPressEvent(self, event: QtGui.QKeyEvent) -> None:
+        if self._dragging and event.key() == QtCore.Qt.Key.Key_Escape:
+            self._end_drag()
+            self._drag_start = None    # the press is over: the moves that follow start nothing
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def hideEvent(self, event: QtGui.QHideEvent) -> None:
+        self._end_drag()    # a view hidden or closed mid-drag gets no release
+        super().hideEvent(event)
 
     def _move_preview(self) -> None:
         if self._preview is not None:
@@ -275,7 +316,6 @@ class GridGestureMixin:
 
     def _switch_to_qdrag_over_parm_pane(self) -> bool:
         """Switch a File row drag over a Parameters pane to a real QDrag; Qt then runs the drag."""
-        from amaze.core import dragengine
         if self._drag_section != "file":
             return False
         ui = getattr(hou, "ui", None)
@@ -287,12 +327,8 @@ class GridGestureMixin:
             return False
         if pane is None or pane.type() != hou.paneTabType.Parm:
             return False
-        self._finish_preview(True)    # a switch to QDrag, not a failed drop: remove the tag, no red X
-        self._dragging = False
+        self._end_drag()    # a switch to QDrag, not a failed drop: no red X
         self._drag_start = None
-        dragengine.end()
-        if self._drag_panel is not None:
-            self._drag_panel._set_drag_hover_row(-1)
         self._run_file_path_drag()
         return True
 
@@ -336,24 +372,13 @@ class GridGestureMixin:
         from amaze.core import dragengine
         from amaze.helpers import helpers
         if self._dragging and event.button() != QtCore.Qt.MouseButton.LeftButton:    # a right or middle release mid-drag cancels the drag and removes the tag
-            if self._preview is not None:
-                self._preview.hide()
-            self._dragging = False
-            dragengine.end()
-            if self._drag_panel is not None:
-                self._drag_panel._set_drag_hover_row(-1)
-            self._finish_preview(False)
+            self._end_drag(miss=True)
             event.accept()
             return
         if self._dragging:
-            if self._preview is not None:
-                self._preview.hide()    # hidden before any drop work; _finish_preview deletes it
-            self._dragging = False
-            dragengine.end()    # restores the hover highlight, on EVERY exit path
+            self._end_drag()    # before any drop work: the tag and every highlight are gone
             panel = self._drag_panel
             idx = self._drag_row()    # None when the row was removed mid-drag: a failed drop
-            if panel is not None:
-                panel._set_drag_hover_row(-1)   # clear the drop-target highlight
             outcome = False
             try:
                 if panel is not None and idx is not None:
@@ -382,7 +407,8 @@ class GridGestureMixin:
                 debug.refuse(str(refusal),    # Houdini's own message; `outcome` stays False so the red X shows ▸p/refuse-vs-alert
                              section=self._drag_section)
             finally:
-                self._finish_preview(outcome)
+                if not outcome:
+                    self._show_drop_indicator("icon_drop_miss.svg", "#ff3319")
 
     @staticmethod
     def _preview_node_type(panel, rule, section, dest, index=None) -> str:

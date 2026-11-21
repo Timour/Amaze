@@ -20,10 +20,8 @@ _hover = {
     "serial": -1,
     "last_pick": 0.0,
     "last_hit": 0.0,
-    "world": None,
-    "viewer": None,
+    "viewer": None,    # the LOP viewer whose prim highlight is set
     "cur": None,
-    "orig": None,
     "dirty": False,
 }
 
@@ -51,6 +49,13 @@ def _pick_log_budget(hit=None) -> bool:
     return True
 
 
+def _dbg_once(key: str, msg: str, **data) -> None:
+    """Record `msg` once per gesture: the callers run on every move."""
+    if not _hover.get(key):
+        _hover[key] = True
+        _dbg(msg, **data)
+
+
 def _dbg_on() -> bool:
     """Whether debug logging is on, for records whose DATA is costly to gather."""
     try:
@@ -66,18 +71,17 @@ def begin(section_key: str, ids=()) -> None:
     serial += 1
     _hover["logged"] = 0
     _hover["logged_hit"] = 0
-    _hover["probes_left"] = 40
-    _hover["explained"] = False
-    _hover["snap_failure_logged"] = False
+    for key in ("snap_failure_logged", "scale_failure_logged", "window_failure_logged", "world_failure_logged"):
+        _hover[key] = False
     _reset_move()
     _move["snap_pos"] = None
     _move["release_snap_pos"] = None    # the previous release has already read it
 
 
 def end() -> None:
-    """End a gesture, however it ended: restore the highlight, keep the snap point for the drop."""
+    """End a gesture, however it ended: take the highlight off, keep the snap point for the drop."""
     release_snap_pos = _move.get("snap_pos")    # the release reads it after this clears the outline
-    _restore_highlight()
+    _end_highlight()
     ghost_clear()
     _reset_move()
     _move["release_snap_pos"] = release_snap_pos
@@ -202,9 +206,7 @@ def _snap_delta(editor, rect):
         if result.isValid():
             return result.delta()
     except Exception as exc:                              # noqa: BLE001
-        if not _hover.get("snap_failure_logged"):    # once a gesture: this runs on every move
-            _hover["snap_failure_logged"] = True
-            _dbg("placement snap unavailable", error=repr(exc))
+        _dbg_once("snap_failure_logged", "placement snap unavailable", error=repr(exc))
     return None
 
 
@@ -569,56 +571,6 @@ def pane_tab_under_cursor():
 
 
 
-def _probe_transforms(tab, viewer, world):
-    """Debug Mode only: one pick per candidate transform, once per gesture. ▸r/pick-boundary"""
-    try:
-        from PySide6 import QtGui
-        window = tab.qtWindow()
-        local = window.mapFromGlobal(QtGui.QCursor.pos())
-        w, h = window.width(), window.height()
-        lx, ly = local.x(), local.y()
-        scale = 1.0
-        try:
-            res = viewer.curViewport().resolutionInPixels()
-            if res and w:
-                scale = float(res[0]) / float(w)
-        except Exception:                                # noqa: BLE001
-            pass
-        cands = {
-            "A_logical_bottomleft": (lx, h - ly),
-            "B_logical_topleft": (lx, ly),
-            "C_device_bottomleft": (lx * scale, (h - ly) * scale),
-            "D_device_topleft": (lx * scale, ly * scale),
-        }
-        hits = {}
-        any_hit = False
-        for name, (cx, cy) in cands.items():
-            try:
-                if world == "lop":
-                    depth, path = viewer.locateSceneGraphPrim(int(cx), int(cy))
-                    got = "" if (depth is None or depth < 0) else str(path)
-                else:
-                    vp = viewer.curViewport()
-                    node = vp.queryNodeAtPixel(int(cx), int(cy))
-                    got = node.path() if node is not None else ""
-            except Exception as exc:                     # noqa: BLE001
-                got = "raised:%s" % type(exc).__name__
-            hits[name] = got or "-"
-            if got and not got.startswith("raised:"):
-                any_hit = True
-        if not any_hit and _hover.get("probes_left", 0) > 0:
-            return False        # nothing under the cursor yet - keep going
-        _dbg("transform probe", world=str(world), cursor=(lx, ly),
-             widget=(w, h), scale=round(scale, 3),
-             candidates={k: [int(v[0]), int(v[1])] for k, v in cands.items()},
-             results=hits, any_hit=any_hit,
-             houdini=hou.applicationVersionString())
-        return any_hit
-    except Exception as exc:                             # noqa: BLE001
-        _dbg("transform probe failed", error=str(exc))
-        return False
-
-
 def _scene_viewer_under_cursor():
     """(viewer, x, y, height, scale) under the cursor, or (None, 0, 0, 0, 1.0). ▸r/pick-boundary"""
     tab = pane_tab_under_cursor()
@@ -655,9 +607,11 @@ def _scene_viewer_geometry(tab):
             res = tab.curViewport().resolutionInPixels()
             if res and window.width():
                 scale = float(res[0]) / float(window.width())
-        except Exception:                                # noqa: BLE001
+        except hou.Error as exc:
+            _dbg_once("scale_failure_logged", "viewport resolution not read", error=repr(exc))
             scale = 1.0
-    except Exception:                                    # noqa: BLE001
+    except (hou.Error, AttributeError, RuntimeError) as exc:    # no Qt window: the pane's rect is used
+        _dbg_once("window_failure_logged", "viewer window not read", error=repr(exc))
         x, y = None, None
     if x is None or y is None:
         x = cursor.x() - geo.left()
@@ -697,7 +651,8 @@ def _viewer_world(viewer):
     try:
         pwd = viewer.pwd()
         cat = pwd.childTypeCategory().name().lower()
-    except Exception:
+    except (hou.Error, AttributeError) as exc:
+        _dbg_once("world_failure_logged", "viewer network not read", error=repr(exc))
         return None
     if "lop" in cat:
         return "lop"
@@ -800,12 +755,64 @@ def _pick(viewer, world, x, y, scale=1.0, widget_h=0):
 
 
 
+GLOW_WIDGET = "RE_OpenGLDrawable"    # the host's viewport widget ▸r/viewport-drop-glow
+GLOW_FILE = "$HFS/houdini/pic/Mandril.pic"    # the file the viewport is told about
+
+
+class ViewportGlow:
+    """The host's own drop glow at object level, asked for with drag events. ▸r/viewport-drop-glow"""
+
+    def __init__(self) -> None:
+        self._widget = None    # the viewport told a drag is over it; its window is fetched per send
+        self._data = None
+
+    @staticmethod
+    def _window(widget):
+        import shiboken6
+        if widget is None or not shiboken6.isValid(widget):
+            return None
+        return widget.windowHandle()
+
+    def follow(self) -> None:
+        """Tell the viewport under the pointer that a file is dragged over it; clear off one."""
+        from PySide6 import QtCore, QtGui
+        app = QtCore.QCoreApplication.instance()    # the host's QApplication: it finds the widget at a point
+        pos = QtGui.QCursor.pos()
+        widget = app.widgetAt(pos) if app is not None else None
+        window = self._window(widget) if widget is not None and widget.objectName() == GLOW_WIDGET else None
+        if window is None:
+            self.clear()
+            return
+        if self._data is None:
+            self._data = QtCore.QMimeData()
+            self._data.setUrls([QtCore.QUrl.fromLocalFile(hou.text.expandString(GLOW_FILE))])
+        actions = (QtCore.Qt.DropAction.CopyAction | QtCore.Qt.DropAction.MoveAction
+                   | QtCore.Qt.DropAction.LinkAction)
+        held = (QtCore.Qt.MouseButton.LeftButton, QtCore.Qt.KeyboardModifier.NoModifier)
+        local = window.mapFromGlobal(pos)
+        if widget is not self._widget:
+            self.clear()
+            app.sendEvent(window, QtGui.QDragEnterEvent(local, actions, self._data, *held))
+            self._widget = widget
+        app.sendEvent(window, QtGui.QDragMoveEvent(local, actions, self._data, *held))
+
+    def clear(self) -> None:
+        """Tell the viewport the drag left; the host unlights the object on the next mouse move."""
+        from PySide6 import QtCore, QtGui
+        widget, self._widget = self._widget, None
+        window = self._window(widget)
+        if window is not None:
+            QtCore.QCoreApplication.sendEvent(window, QtGui.QDragLeaveEvent())
+
+
+glow = ViewportGlow()
+
+
 def hover_update(panel, section_key, pane_tab=None,
                  pane_kind=_NO_PANE_KIND) -> None:
-    """Per-move hover, throttled: pick and highlight; pass the tracked pane. ▸p/drag-move-cost"""
+    """Per-move hover, throttled: glow at object level, prim highlight in LOPs. ▸p/drag-move-cost"""
     if section_key != "material":
         return
-    _hover["outline"] = bool(getattr(getattr(panel, "prefs", None), "obj_drag_outline", 1))
     now = time.time()
     if now - _hover["last_pick"] < PICK_INTERVAL:
         return
@@ -816,35 +823,26 @@ def hover_update(panel, section_key, pane_tab=None,
         viewer, x, y, wh, scale = None, 0, 0, 0, 1.0
     else:
         viewer, x, y, wh, scale = _scene_viewer_geometry(pane_tab)
-    if viewer is None:
-        _set_highlight(None, None, "", now, force_clear=True)
+    world = _viewer_world(viewer) if viewer is not None else None
+    if world == "obj":
+        _set_prim_highlight(None, "", now, force_clear=True)
+        glow.follow()
         return
-    world = _viewer_world(viewer)
-    if world is None:
-        _set_highlight(None, None, "", now, force_clear=True)
+    glow.clear()
+    if world != "lop":
+        _set_prim_highlight(None, "", now, force_clear=True)
         return
-    if world == "obj" and _dbg_on() and not _hover.get("explained"):
-        _hover["explained"] = True
-        try:
-            _dbg("pick capability", **hostver.explain_pick(scale))
-        except Exception as exc:                         # noqa: BLE001
-            _dbg("pick capability unavailable", error=str(exc))
-    if _dbg_on() and _hover.get("probes_left", 0) > 0:
-        _hover["probes_left"] -= 1
-        if _probe_transforms(viewer, viewer, world):
-            _hover["probes_left"] = 0
-    _set_highlight(viewer, world,
-                   _pick(viewer, world, x, y, scale, wh), now)
+    _set_prim_highlight(viewer, _pick(viewer, world, x, y, scale, wh), now)
 
 
-def _set_highlight(viewer, world, target, now, force_clear=False):
-    """Update the highlight for one pick, LOP or OBJ. ▸r/pick-boundary"""
+def _set_prim_highlight(viewer, target, now, force_clear=False):
+    """The LOP viewer's own prim highlight for one pick; it touches no selection. ▸r/pick-boundary"""
     if _hover["serial"] != serial or (
         viewer is not None
         and _hover["viewer"] is not None
         and viewer != _hover["viewer"]
     ):
-        _restore_highlight()
+        _clear_prim_highlight()
         _hover["serial"] = serial
     if not target:
         if not force_clear and _hover["cur"] and \
@@ -854,67 +852,38 @@ def _set_highlight(viewer, world, target, now, force_clear=False):
         _hover["last_hit"] = now
     if viewer is not None and _hover["viewer"] is None:
         _hover["viewer"] = viewer
-        _hover["world"] = world
-        if world == "lop":
-            _hover["orig"] = None
-        else:
-            try:
-                _hover["orig"] = [n.path() for n in hou.selectedNodes()]
-            except Exception:
-                _hover["orig"] = None
-    if target == (_hover["cur"] or ""):
-        if _hover["world"] == "lop" and _hover["viewer"] is not None \
-                and _hover["cur"]:
-            try:
-                _hover["viewer"].setSceneGraphHighlight([_hover["cur"]])
-            except Exception:
-                pass
+    shown = _hover["viewer"]
+    if shown is None:
         return
+    if target == (_hover["cur"] or "") and not target:
+        return
+    if target != (_hover["cur"] or ""):
+        _dbg("hover", world="lop", target=str(target))
     _hover["cur"] = target or None
-    _dbg("hover", world=str(world), target=str(target))
-    w = _hover["world"]
-    v = _hover["viewer"]
     _hover["dirty"] = True
     try:
-        if w == "lop" and v is not None:
-            v.setSceneGraphHighlight([target] if target else [])
-        elif w == "obj" and _hover.get("outline", True):    # the OBJ Drag Outline preference
-            with hou.undos.disabler():
-                if target:
-                    node = hou.node(target)
-                    if node is not None:
-                        node.setSelected(True, clear_all_selected=True)
-                else:
-                    hou.clearAllSelected()
-    except Exception:
-        pass
+        shown.setSceneGraphHighlight([target] if target else [])    # set again: the viewer drops it
+    except hou.Error as exc:
+        _dbg("prim highlight refused", error="%s: %s" % (type(exc).__name__, exc))
 
 
-def _restore_highlight() -> None:
-    v, w, orig = _hover["viewer"], _hover["world"], _hover["orig"]
-    dirty = _hover["dirty"]
+def _clear_prim_highlight() -> None:
+    viewer, dirty = _hover["viewer"], _hover["dirty"]
     _hover["viewer"] = None
-    _hover["world"] = None
     _hover["cur"] = None
-    _hover["orig"] = None
     _hover["dirty"] = False
-    if v is None or not dirty:
+    if viewer is None or not dirty:
         return
     try:
-        if w == "lop":
-            v.setSceneGraphHighlight([])
-        elif orig is not None:
-            with hou.undos.disabler():
-                hou.clearAllSelected()
-                for p in orig:
-                    try:
-                        n = hou.node(p)
-                        if n is not None:
-                            n.setSelected(True)
-                    except Exception:                    # noqa: BLE001
-                        continue    # one node that raises must not keep the rest unselected
-    except Exception:
-        pass
+        viewer.setSceneGraphHighlight([])
+    except hou.Error as exc:
+        _dbg("prim highlight not cleared", error="%s: %s" % (type(exc).__name__, exc))
+
+
+def _end_highlight() -> None:
+    """Every highlight a gesture set is taken off: the glow and the prim highlight."""
+    glow.clear()
+    _clear_prim_highlight()
 
 
 def viewport_release_target(panel):

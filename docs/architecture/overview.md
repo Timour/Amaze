@@ -771,11 +771,17 @@ and the rect-tracked pane (`ghost_tick` / `pane_under_cursor_tracked` —
 target checks at the picking rate, the pane kept by its screen rect
 and checked again slowly, the outline following every move; a full
 per-move lookup kept the event loop fully busy at the mouse's event rate,
-2026-08-23), the hover highlight with
-restore-on-end, release-target resolution (`viewport_release_target`),
+2026-08-23), the hover highlight (in LOPs the viewer's own prim highlight;
+at object level the host's own drop glow, asked for by `ViewportGlow` with drag
+events sent to the viewport's window while no drag runs - no selection is read
+or changed), release-target resolution (`viewport_release_target`),
 container placement (`first_materiallibrary(connected_to=)`,
 `find_assignmaterial`), Houdini's stock LOP helpers (`stock_lop()`), and
 `keep_editor_focus` — a viewport release never moves the user's editors.
+A drag has ONE end, `GridGestureMixin._end_drag`, reached by the release, Esc
+(the view grabs the keyboard for the length of the drag), another mouse button,
+a hidden view and an error while following the pointer; it is the only caller
+of `dragengine.end()`. The name tag is hidden while another application is in front.
 Sections' release handlers call the import code; the panel keeps
 the shared plumbing. The one native drag left is the texture file drag.
 Rules: an item is placed where it is dropped; nothing is created before release;

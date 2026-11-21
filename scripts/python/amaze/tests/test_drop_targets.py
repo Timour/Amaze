@@ -448,7 +448,8 @@ class ATrackedMissIsNotLookedUpAgain(unittest.TestCase):
                 dragengine, "_scene_viewer_under_cursor",
                 side_effect=lambda: (calls.append(1)
                                      or (None, 0, 0, 0, 1.0))), \
-                mock.patch.object(dragengine, "_set_highlight"):
+                mock.patch.object(dragengine, "_set_prim_highlight"), \
+                mock.patch.object(dragengine.glow, "clear"):
             dragengine._hover["last_pick"] = 0
             dragengine.hover_update(None, "material", *args, **kwargs)
         return calls

@@ -739,8 +739,8 @@ destination.
 
 During a drag over a Solaris viewport, the prim under the pointer is
 highlighted with Houdini's scene graph highlight. Over an OBJ viewport
-the object under the pointer is outlined by selecting it, which **OBJ
-Drag Outline** in Preferences switches off. A drop on an invalid target shows
+the object under the pointer lights up the way it does for Houdini's own
+drags, and the selection is not changed. A drop on an invalid target shows
 a miss indicator
 <img src="scripts/python/amaze/ui/icon_drop_miss.svg" width="14">.
 
@@ -805,9 +805,7 @@ this machine, the cache and log of Redshift's preview renders included.
 (Octane)**, **RAM Cache (MB)**, **Geometry Shading**, **Geometry
 Background** and **Render Thumbs on Import**. Below the divider:
 **Conversion Threads** for texture conversion, **Download
-Resolution** and **Parallel Downloads** for the online sources, and
-**OBJ Drag Outline**, the outline of the object under the pointer while
-a material drags over an OBJ viewport.
+Resolution** and **Parallel Downloads** for the online sources.
 
 ### Show/Hide
 

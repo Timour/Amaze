@@ -456,8 +456,6 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("QLabel", 44, 378, 96, 15, "Parallel Downloads"),
             ("QSpinBox ▸ text", 153, 378, 6, 15, "8"),
             ("QLineEdit ▸ text", 154, 378, 6, 15, "8"),
-            ("ToggleSwitch", 148, 405, 23, 15, None),
-            ("ToggleSwitch ▸ text", 179, 405, 86, 15, "OBJ Drag Outline"),
         ),
     },
     "P03a": {   # Preferences - Show/Hide ▸ Renderer

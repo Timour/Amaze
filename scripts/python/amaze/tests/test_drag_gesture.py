@@ -804,48 +804,7 @@ class TheGestureRunsOnBOTHViews(unittest.TestCase):
 
 
 class TheEnginesCleanupContinuesPastOneFailure(unittest.TestCase):
-    """Release cleanup goes past a node that raises; a failing snap is logged once per gesture."""
-
-    def test_the_obj_outline_follows_the_preference(self):
-        """OBJ Drag Outline off: the hover selects nothing; on: it selects the object under the pointer."""
-        import time
-        from amaze.core import dragengine
-        self.addCleanup(dragengine._hover.update, dict(dragengine._hover))
-        for outline, selected in ((False, 0), (True, 1)):
-            with self.subTest(outline=outline):
-                node = mock.Mock()
-                dragengine._hover.update(viewer=None, world=None, cur=None, orig=None,
-                                         dirty=False, outline=outline,
-                                         serial=dragengine.serial)
-                with mock.patch.object(hou, "node", return_value=node), \
-                        mock.patch.object(hou, "selectedNodes", return_value=[]):
-                    dragengine._set_highlight(mock.Mock(), "obj", "/obj/box", time.time())
-                self.assertEqual(selected, node.setSelected.call_count)
-
-    def test_the_hover_reads_the_preference_off_the_panel(self):
-        import types
-        from amaze.core import dragengine
-        self.addCleanup(dragengine._hover.update, dict(dragengine._hover))
-        panel = types.SimpleNamespace(prefs=types.SimpleNamespace(obj_drag_outline=0))
-        dragengine.hover_update(panel, "material", pane_tab=None,
-                                pane_kind=hou.paneTabType.NetworkEditor)
-        self.assertFalse(dragengine._hover.get("outline", True),
-                         "the hover ignored the preference")
-
-    def test_one_node_that_raises_does_not_keep_the_rest_unselected(self):
-        """The hover's OBJ highlight restores the user's selection node by node."""
-        from amaze.core import dragengine
-        bad = mock.Mock()
-        bad.setSelected.side_effect = hou.OperationFailed("gone")
-        good = mock.Mock()
-        found = {"/obj/bad": bad, "/obj/good": good}
-        self.addCleanup(dragengine._hover.update, dict(dragengine._hover))
-        dragengine._hover.update(viewer=mock.Mock(), world="obj", dirty=True,
-                                 orig=["/obj/bad", "/obj/good"])
-        with mock.patch.object(hou, "node", side_effect=found.get), \
-                mock.patch.object(hou, "clearAllSelected"):
-            dragengine._restore_highlight()
-        good.setSelected.assert_called_once_with(True)
+    """A failing snap is logged once per gesture."""
 
     def test_a_snap_that_cannot_run_is_recorded_once_a_gesture(self):
         from amaze.core import dragengine
@@ -1050,6 +1009,168 @@ class TheSnapGetsOnlyTheRectsThatCanMoveIt(unittest.TestCase):
             return None if vec is None else (vec.x(), vec.y())
         return (result.isValid(), flat(result.delta()),
                 flat(result.snapvertical), flat(result.snaphorizontal))
+
+
+class _DragEvents(QtCore.QObject):
+    """Records the drag events a window is sent."""
+
+    KINDS = {QtCore.QEvent.Type.DragEnter: "enter", QtCore.QEvent.Type.DragMove: "move",
+             QtCore.QEvent.Type.DragLeave: "leave", QtCore.QEvent.Type.Drop: "drop"}
+
+    def __init__(self, window) -> None:
+        super().__init__()
+        self.seen = []
+        window.installEventFilter(self)
+
+    def eventFilter(self, _watched, event) -> bool:
+        kind = self.KINDS.get(event.type())
+        if kind:
+            self.seen.append(kind)
+        return False
+
+
+class TheObjectLevelHighlightIsTheHostsOwnGlow(unittest.TestCase):
+    """Over an OBJ viewport the engine sends drag events and selects nothing. ▸r/viewport-drop-glow"""
+
+    def setUp(self):
+        from amaze.core import dragengine
+        self.engine = dragengine
+        self.viewport = QtWidgets.QWidget()
+        self.viewport.setObjectName(dragengine.GLOW_WIDGET)
+        self.viewport.setGeometry(40, 40, 200, 200)
+        self.viewport.show()
+        self.addCleanup(self.viewport.deleteLater)
+        self.events = _DragEvents(self.viewport.windowHandle())
+        self.glow = dragengine.ViewportGlow()
+        self.addCleanup(self.glow.clear)
+
+    def _over(self, widget):
+        return mock.patch.object(QtWidgets.QApplication, "widgetAt", return_value=widget)
+
+    def test_the_viewport_is_told_once_that_a_drag_entered_and_then_that_it_moves(self):
+        with self._over(self.viewport):
+            for _ in range(3):
+                self.glow.follow()
+        self.assertEqual(["enter", "move", "move", "move"], self.events.seen)
+
+    def test_leaving_the_viewport_and_ending_tell_it_the_drag_left_and_nothing_is_dropped(self):
+        other = QtWidgets.QWidget()
+        self.addCleanup(other.deleteLater)
+        with self._over(self.viewport):
+            self.glow.follow()
+        with self._over(other):
+            self.glow.follow()
+            self.glow.follow()    # already off the viewport: nothing more is sent
+        self.assertEqual(["enter", "move", "leave"], self.events.seen)
+        with self._over(self.viewport):
+            self.glow.follow()
+        self.glow.clear()
+        self.glow.clear()
+        self.assertEqual(["enter", "move", "leave", "enter", "move", "leave"], self.events.seen)
+        self.assertNotIn("drop", self.events.seen)
+
+    def test_a_viewport_that_was_deleted_during_the_drag_is_not_reached_for(self):
+        import shiboken6
+        gone = QtWidgets.QWidget()
+        gone.setObjectName(self.engine.GLOW_WIDGET)
+        gone.show()
+        with self._over(gone):
+            self.glow.follow()
+        shiboken6.delete(gone)
+        self.glow.clear()    # must not raise on the deleted widget
+        self.assertIsNone(self.glow._widget)
+
+    def test_the_engine_ends_a_gesture_by_clearing_the_glow(self):
+        with mock.patch.object(self.engine.glow, "clear") as clear:
+            self.engine.begin("material")
+            self.engine.end()
+        clear.assert_called()
+
+    def test_over_an_obj_viewport_the_hover_follows_with_the_glow_and_never_picks(self):
+        engine = self.engine
+        self.addCleanup(engine._hover.update, dict(engine._hover))
+        engine._hover["last_pick"] = 0
+        viewer = mock.Mock()
+        with mock.patch.object(engine, "_scene_viewer_geometry", return_value=(viewer, 5, 5, 100, 1.0)), \
+                mock.patch.object(engine, "_viewer_world", return_value="obj"), \
+                mock.patch.object(engine, "_pick") as pick, \
+                mock.patch.object(engine.glow, "follow") as follow:
+            engine.hover_update(None, "material", viewer, hou.paneTabType.SceneViewer)
+        follow.assert_called_once_with()
+        pick.assert_not_called()
+
+    def test_no_drag_code_changes_the_selection(self):
+        import inspect
+        source = inspect.getsource(self.engine)
+        for call in ("setSelected(", "clearAllSelected(", "selectedNodes("):
+            with self.subTest(call=call):
+                self.assertNotIn(call, source, "the drag engine reads or changes the selection")
+
+
+class ADragHasOneEndForEveryWayOut(unittest.TestCase):
+    """Esc, a hidden view, another button and the release all end through `_end_drag`."""
+
+    def _armed(self):
+        h = _Harness(self, section="material")
+        h.press()
+        start = h.item_pos()
+        h.move(QtCore.QPoint(start.x() + 60, start.y() + 60))
+        self.assertTrue(h.view._dragging, "premise: the gesture started")
+        self.assertIsNotNone(h.view._preview, "premise: the name tag is up")
+        return h
+
+    def _ended(self, view, ends):
+        self.assertFalse(view._dragging, "the drag is still on")
+        self.assertIsNone(view._preview, "the name tag was left behind")
+        self.assertEqual(1, len(ends), "the engine was not ended exactly once")
+
+    def test_escape_ends_the_drag_without_a_miss_icon_and_the_release_drops_nothing(self):
+        from amaze.core import dragengine
+        h = self._armed()
+        with mock.patch.object(dragengine, "end") as end, \
+                mock.patch.object(h.view, "_show_drop_indicator") as icon, \
+                mock.patch.object(h.view, "_apply_drop_rule") as drop:
+            QtWidgets.QApplication.sendEvent(h.view, QtGui.QKeyEvent(
+                QtCore.QEvent.Type.KeyPress, QtCore.Qt.Key.Key_Escape,
+                QtCore.Qt.KeyboardModifier.NoModifier))
+            self._ended(h.view, end.call_args_list)
+            h.release()
+        icon.assert_not_called()
+        drop.assert_not_called()
+
+    def test_a_view_hidden_mid_drag_ends_the_drag(self):
+        from amaze.core import dragengine
+        h = self._armed()
+        with mock.patch.object(dragengine, "end") as end:
+            h.view.hide()
+            self._ended(h.view, end.call_args_list)
+
+    def test_the_name_tag_is_hidden_while_another_application_is_in_front(self):
+        h = self._armed()
+        self.addCleanup(h.view._end_drag)
+        tag = h.view._preview
+        h.view._on_application_state(QtCore.Qt.ApplicationState.ApplicationInactive)
+        self.assertFalse(tag.isVisible(), "the tag shows over another application")
+        h.view._on_application_state(QtCore.Qt.ApplicationState.ApplicationActive)
+        self.assertTrue(tag.isVisible(), "the tag did not come back")
+
+    def test_an_error_while_following_the_pointer_ends_the_drag(self):
+        from amaze.core import dragengine
+        h = self._armed()
+        start = h.item_pos()
+        with mock.patch.object(dragengine, "end") as end, \
+                mock.patch.object(h.view, "_follow_drag", side_effect=RuntimeError("the host refused")):
+            with self.assertRaises(RuntimeError):
+                h.view.mouseMoveEvent(_event(QtCore.QEvent.Type.MouseMove,
+                                             QtCore.QPoint(start.x() + 80, start.y() + 80)))
+            self._ended(h.view, end.call_args_list)
+
+    def test_the_engine_is_ended_in_one_place(self):
+        import inspect
+        source = inspect.getsource(dragdrop_widgets)
+        self.assertEqual(1, source.count("dragengine.end()"),
+                         "a drag ends the engine in more than one place")
+        self.assertIn("dragengine.end()", inspect.getsource(dragdrop_widgets.GridGestureMixin._end_drag))
 
 
 if __name__ == "__main__":

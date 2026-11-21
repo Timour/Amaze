@@ -180,11 +180,6 @@ def obj_pick_wants_device_pixels(device_scale):
     return OBJ_PICK_DEVICE_PIXELS.resolve(Env(scale=device_scale))
 
 
-def explain_pick(device_scale):
-    """OBJ_PICK_DEVICE_PIXELS's base, overrides and resolved value, for the debug log."""
-    return OBJ_PICK_DEVICE_PIXELS.explain(Env(scale=device_scale))
-
-
 def has_new_cops():
     """Whether this Houdini has the new COPs (copnet) with full OCIO."""
     return NEW_COPS.resolve(Env())
