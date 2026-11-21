@@ -80,15 +80,15 @@ The **toolbar**, from left to right:
 | <img src="scripts/python/amaze/ui/icon_categories.svg" width="20"> | **Show Categories** | Shows and hides the sidebar. |
 | <img src="scripts/python/amaze/ui/icon_renderer.svg" width="20"> | **Import/Export** | [Generate Material](#generate-material), Gallery Import (.gal), Import Package (.amazepkg), Export Asset (.amazepkg) and Export Category (.amazepkg). |
 | <img src="scripts/python/amaze/ui/icon_view.svg" width="20"> | **Filter** | Filters the grid: Material by renderer, Color by the number of colors, Node by network type, Code by language and File by kind. |
-| <img src="scripts/python/amaze/ui/icon_online.svg" width="20"> | **Online** | Switches between the library and the online sources. |
-| <img src="scripts/python/amaze/ui/icon_comments.svg" width="20"> | **Comments** | Opens and closes the [Comments pane](#comments). Purple while the pane is open. |
+| <img src="scripts/python/amaze/ui/icon_online.svg" width="20"> | **Online** | Switches between the library and the online sources. Green while the online sources are showing. |
 | <img src="scripts/python/amaze/ui/grid.svg" width="20"> <img src="scripts/python/amaze/ui/list.svg" width="20"> | **Grid / List** | Switches between grid view and list view. |
 | <img src="scripts/python/amaze/ui/favourite_on.svg" width="20"> | **Favorites** | Shows favorites only. |
+| <img src="scripts/python/amaze/ui/icon_library.svg" width="20"> | **Preferences** | Opens [Preferences](#preferences). |
+| <img src="scripts/python/amaze/ui/icon_screenshot.svg" width="20"> | **Capture** | Captures the Scene View as the selected tile's picture. In the File section with no tile selected, captures it as the open scene's picture. |
 | <img src="docs/images/Icon-slider.svg" width="20"> | **Size slider** | Sets the thumbnail size, 64–512 px, and the row height in list view. |
 | <img src="scripts/python/amaze/ui/icon_search.svg" width="20"> | **Search** | Searches names and tags in the current section. A leading colon searches tags only: `:metal` finds everything tagged metal. |
-| <img src="scripts/python/amaze/ui/icon_screenshot.svg" width="20"> | **Capture** | Captures the Scene View as the selected tile's picture. In the File section with no tile selected, captures it as the open scene's picture. |
+| <img src="scripts/python/amaze/ui/icon_comments.svg" width="20"> | **Comments** | Opens and closes the [Comments pane](#comments). Purple while the pane is open. |
 | <img src="scripts/python/amaze/ui/icon_info.svg" width="20"> | **Info** | Opens and closes the [Info pane](#info). Yellow while the pane is open. |
-| <img src="scripts/python/amaze/ui/icon_library.svg" width="20"> | **Preferences** | Opens [Preferences](#preferences). |
 
 The **Import/Export** and **Filter** menus:
 
@@ -615,9 +615,8 @@ strip under its thumbnail, and the category's sidebar row gets a
 matching bar on its left edge. In [list view](#the-panel-at-a-glance),
 the Category column takes the colour. **Label ▸ Remove** removes it.
 
-The name and type text switches between dark and light to stay
-readable. A renamed category keeps its colour; a deleted category takes
-its colour with it.
+A renamed category keeps its colour; a deleted category takes its
+colour with it.
 
 An asset has one category. Tags place an asset in several groups at
 once.
@@ -630,7 +629,7 @@ once.
 ## Comments
 
 The <img src="scripts/python/amaze/ui/icon_comments.svg" width="16">
-**Comments** button in the toolbar, between Online and Grid/List, opens
+**Comments** button in the toolbar, at the right end, before Info, opens
 and closes the **Comments pane**, a page per asset docked next to the
 grid. The button is purple while the pane is open.
 
@@ -664,7 +663,7 @@ files.
 ## Info
 
 The <img src="scripts/python/amaze/ui/icon_info.svg" width="16">
-**Info** button in the toolbar, between Capture and Preferences, opens
+**Info** button in the toolbar, at the right end, opens
 and closes the **Info pane**. The pane sits where the Comments pane
 sits, and opening one closes the other. The button is yellow while the
 pane is open.
@@ -672,7 +671,9 @@ pane is open.
 When one image file is selected, the pane shows the picture above the
 rows. The picture fills the width of the pane, and its height depends
 on its aspect ratio. EXR, HDR and other float files are shown with the
-OCIO display view. `.rat` and `.pic` files have no picture.
+OCIO display view. `.rat` and `.pic` files have no picture. The button
+at the right of the header shows and hides the image preview, and the
+choice is remembered.
 
 The pane lists facts about the selected tile, one per row:
 

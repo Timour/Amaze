@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.41.0
+
+- Toolbar: Preferences and Capture sit after Favorites, and Comments and Info are at the right end. Online is green while it is on. The comment icon is redrawn.
+- The section tabs have a line along the bottom.
+- Info pane: a new button to show and hide image preview.
+- Versions and Manage Libraries: the lists have rows like the sidebar's, and the selected row is a bar across the whole row, green in Versions and red in Manage Libraries.
+- Tiles: a category's colour is a thin strip under the picture. The name and type keep their own colours.
+- Tiles: the default pictures for code, material, node, color and file tiles are redrawn. An online material with no picture has a pink one.
+- Every list's rows and every panel colour come from Houdini's colour theme, so Amaze follows the theme set in Edit ▸ Color Theme.
+
 ## 1.40.0
 
 - Info pane: when one image file is selected, the pane shows the picture above the rows. The picture fills the width of the pane, and its height depends on its aspect ratio. EXR, HDR and other float files are shown with the OCIO display view. `.rat` and `.pic` files have no picture.
