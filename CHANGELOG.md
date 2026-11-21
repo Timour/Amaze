@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.44.0
+
+- Every list is the same kind of table, painted by Houdini: the sidebar, List mode, the Info pane's rows, Versions and Manage Libraries.
+- Sidebar: a row's colour sits first, then Houdini's arrow and the name. A category is shown as soon as it is selected, by mouse or by the arrow keys.
+- Sidebar: drag a row to reorder it. A line shows where it will go. The half-second press is gone.
+- Info pane: label and value are plain table cells; a long value is cut in the middle and its tooltip shows all of it.
+- Versions and Manage Libraries: two columns, and the selected row has Houdini's selection colour.
+- Section tabs: the icons keep their outlines, the Color tab has a new icon, and the tab strip has Houdini's tab bar colour.
+- Tiles: the default pictures are redrawn and share one dark ground.
+- Preferences: one line runs under the tab bar from edge to edge.
+
 ## 1.43.0
 
 - Section tabs: each tab shows its section's icon before its name.
