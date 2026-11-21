@@ -554,11 +554,11 @@ class RenameAndSortKeepTheGridsRowSelected(_FourAssetSidebars, unittest.TestCase
         categories = self.panel.active_section().stack().categories
         categories.check_add_category("Aaa")    # appended last, so the sort moves it
         self.panel.refresh_sidebar_categories()
-        before = categories.order_snapshot()
+        before = list(categories._categories)
         index = self._press(stored)
         self.panel.active_section().menu_sort_categories([index], index)
         QtWidgets.QApplication.processEvents()
-        self.assertNotEqual(before, categories.order_snapshot(), "premise: no row moved")
+        self.assertNotEqual(before, list(categories._categories), "premise: no row moved")
 
     def test_renaming_another_category_keeps_the_selection(self):
         def case(kept, gone, everything, kept_tiles):

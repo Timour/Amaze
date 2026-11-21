@@ -167,20 +167,6 @@ class TestOpinionComposition(unittest.TestCase):
                                    priority=10)))
         self.assertEqual("strong", cap.resolve(self._env()))
 
-    def test_explain_names_the_condition_that_vetoed(self):
-        """explain() names which condition vetoed, not just that one did."""
-        hv = self._hv()
-        report = hv.OBJ_PICK_DEVICE_PIXELS.explain(
-            self._env(macos=False, windows=True))
-        self.assertFalse(report["resolved"])
-        vetoes = [o["failed_conditions"] for o in report["overrides"]
-                  if not o["applied"]]
-        self.assertTrue(any("macOS" in (v or "") for v in vetoes),
-                        "explain() did not name the macOS veto: %s" % vetoes)
-        judged = hv.OBJ_PICK_DEVICE_PIXELS.explain(self._env())["env"]
-        self.assertIn("21", judged)
-        self.assertIn("macos", judged)
-
     def test_only_the_h21_mac_retina_case_takes_the_workaround(self):
         hv = self._hv()
         for env, wanted in (({}, True),
@@ -205,8 +191,6 @@ class TestOpinionComposition(unittest.TestCase):
             base="base", base_evidence="e" * 50,
             overrides=(hv.Override("never", (("boom", _boom),), "e" * 50),))
         self.assertEqual("base", cap.resolve(self._env()))
-        report = cap.explain(self._env())
-        self.assertIn("raised", report["overrides"][0]["failed_conditions"])
 
     def test_every_opinion_and_base_has_real_evidence(self):
         """Every base and opinion carries evidence; a version branch without it is a guess."""

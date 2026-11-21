@@ -2206,7 +2206,7 @@ class OnlineTilePaintingTest(unittest.TestCase):
                    "tiles in a grid of colours is a package that "
                    "'does not show up'")
         self.assertEqual(image.pixelColor(2, 2).name(),
-                         QtGui.QColor(amazetheme.CODE_TILE_BACKGROUND).name(),
+                         QtGui.QColor(amazetheme.TILE_GROUND).name(),
                          "the snippet preview is not on the background "
                          "the Code section uses")
 

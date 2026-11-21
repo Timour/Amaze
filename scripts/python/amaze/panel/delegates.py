@@ -235,10 +235,10 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
                     if "centre" not in (place[0], place[2]))    # the corner badges' drawn size
     DRAWN_THUMB = theme.ui_px(_TILE["thumb"])    # the thumbnail side the T frames draw
     TEXT_COLOR = QtGui.QColor(amazetheme.TILE_TEXT)
-    THUMB_BG_COLOR = theme.color("surface_low")    # the dark card behind the thumbnail and text
+    THUMB_BG_COLOR = theme.live("surface_low")    # the dark card behind the thumbnail and text
 
-    GRID_NAME_COLOR = theme.color("text")           # the grid tile's name, in the neutral grey
-    GRID_SUBTITLE_COLOR = theme.color("text_dim")   # and the subtitle a dimmer grey, never the accent
+    GRID_NAME_COLOR = theme.live("text")           # the grid tile's name, in the neutral grey
+    GRID_SUBTITLE_COLOR = theme.live("text_dim")   # and the subtitle a dimmer grey, never the accent
     GRID_TEXT_INSET = theme.ui_px(_TILE["text_inset"])
     GRID_BOTTOM_PAD = theme.ui_px(_TILE["bottom_pad"])
     GRID_IMG_TEXT_GAP = theme.ui_px(_TILE["img_text_gap"])
@@ -662,15 +662,9 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
 
     @classmethod
     def _renderer_pixmap(cls, name, dpr=1.0):
-        """A renderer's icon at DEVICE resolution: its own shape plus the bleed around it; cached."""
-        height = cls.RENDERER_ICONS[name][0]
-        key = ("renderer", name, height, round(dpr, 3))
-        pixmap = cls._badge_cache.get(key)
-        if pixmap is None:
-            pixmap = ui_helpers.bled_pixmap(amaze.package_file("ui", name + ".svg"),
-                                            height, dpr, cls.RENDERER_ICON_BLEED)
-            cls._badge_cache[key] = pixmap
-        return pixmap
+        """A renderer's icon at DEVICE resolution: its own shape plus the bleed around it."""
+        return ui_helpers.bled_pixmap(amaze.package_file("ui", name + ".svg"),
+                                      cls.RENDERER_ICONS[name][0], dpr, cls.RENDERER_ICON_BLEED)
 
     def sizeHint(self, option, index):
         """The view's own `gridSize`, exactly, when it has one; else the base hint."""
@@ -799,8 +793,6 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
 
 class SidebarItemDelegate(QtWidgets.QStyledItemDelegate):
     """A sidebar row's name with its count, bold when selected; the host style paints the row."""
-
-    PAD = theme.ui_px(6)
 
     def __init__(self, parent=None):
         super().__init__(parent)

@@ -29,10 +29,11 @@ class RowMoves:
         return [MOVE_MIME]
 
     def mimeData(self, indexes):
+        """The dragged top row's key: rows may shift while the drag is held, its key does not."""
         data = QtCore.QMimeData()
-        rows = sorted({index.row() for index in indexes if not index.parent().isValid()})
-        if rows:
-            data.setData(MOVE_MIME, str(rows[0]).encode("ascii"))
+        tops = sorted((index for index in indexes if not index.parent().isValid()), key=lambda index: index.row())
+        if tops:
+            data.setData(MOVE_MIME, str(tops[0].siblingAtColumn(0).data(category.SIDEBAR_KEY_ROLE)).encode("utf-8"))
         return data
 
     def _move_target(self, data, row, parent):
@@ -40,9 +41,12 @@ class RowMoves:
         if not data.hasFormat(MOVE_MIME):
             return None
         try:
-            moved = int(bytes(data.data(MOVE_MIME)).decode("ascii"))
-        except ValueError:
+            picked = self.index_of(bytes(data.data(MOVE_MIME)).decode("utf-8"))
+        except UnicodeDecodeError:
             return None
+        if not picked.isValid() or picked.parent().isValid():
+            return None    # the row is gone or hidden, or not a top row
+        moved = picked.row()
         if parent.isValid():    # dropped on a row: it takes that row's place
             if parent.parent().isValid():
                 return None

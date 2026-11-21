@@ -7,7 +7,7 @@ import unittest
 from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtGui, QtTest, QtWidgets
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
@@ -316,13 +316,6 @@ class APictureForAnImageFile(_PaneCase):
         self.assertIsNotNone(self.pane.preview.image())
         self.assertTrue(self.pane.preview.isVisible())
 
-    def test_the_button_art_is_the_drawn_colour(self):
-        self.pane.set_subject(self._file("/lib/a.exr", "a"))
-        image, wanted = self._art(), QtGui.QColor(amazetheme.INFO_BUTTON_COLOR)
-        found = {image.pixelColor(x, y).name() for x in range(image.width()) for y in range(image.height())
-                 if image.pixelColor(x, y).alpha() == 255}
-        self.assertEqual({wanted.name()}, found)
-
     def _show(self, width, height):
         self.pictures.image = _picture(width, height)
         self.pane.set_subject(self._file("/lib/a.exr", "a"))
@@ -349,6 +342,21 @@ class APictureForAnImageFile(_PaneCase):
         self.assertEqual([], saves, "the height was saved while the drag was still on")
         self.pane.drag_line.released.emit()
         self.assertEqual([200], saves)
+
+    def test_a_click_on_the_line_that_does_not_move_it_saves_nothing(self):
+        saves = []
+        self.pane._preferences.save = lambda: saves.append(self.pane._preferences.info_preview_height)
+        self._show(400, 1200)
+        line, left, plain = self.pane.drag_line, QtCore.Qt.MouseButton.LeftButton, QtCore.Qt.KeyboardModifier.NoModifier
+        middle = QtCore.QPoint(line.width() // 2, line.height() // 2)
+        QtTest.QTest.mouseClick(line, left, plain, middle)
+        self.assertEqual([], saves, "a click on the line saved the settings")
+        QtTest.QTest.mousePress(line, left, plain, middle)
+        QtWidgets.QApplication.sendEvent(line, QtGui.QMouseEvent(
+            QtCore.QEvent.Type.MouseMove, QtCore.QPointF(middle + QtCore.QPoint(0, 30)),
+            QtCore.QPointF(line.mapToGlobal(middle + QtCore.QPoint(0, 30))), left, left, plain))
+        QtTest.QTest.mouseRelease(line, left, plain, middle + QtCore.QPoint(0, 30))
+        self.assertEqual(1, len(saves), "a drag of the line was not saved once")
 
     def test_the_line_stops_where_the_picture_touches_both_sides(self):
         preview, body = self._show(900, 600)

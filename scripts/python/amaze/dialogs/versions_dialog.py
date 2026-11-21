@@ -12,7 +12,6 @@ from amaze.dialogs.library_dialog import DialogTable
 from amaze.helpers import theme, ui_helpers
 
 NUMBER_ROLE = QtCore.Qt.ItemDataRole.UserRole + 10    # the version's number in its ledger
-DATE_ROLE = QtCore.Qt.ItemDataRole.UserRole + 11      # the day it was saved
 
 
 class VersionsDialog(AssetDialog):
@@ -26,7 +25,8 @@ class VersionsDialog(AssetDialog):
         self.chosen = active
         drawn = amazetheme.drawn_list_rows(self.FRAME_KEY)
 
-        self._list = DialogTable(self.FRAME_KEY, QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
+        self._list = DialogTable(self.FRAME_KEY, QtWidgets.QAbstractItemView.SelectionMode.SingleSelection,
+                                 whole_second=True)
         self._list.setToolTip(ui_helpers.tooltip_text(tooltips.PANEL_VERSION_ROW))
         self._select, self._cancel, buttons = self.drawn_pair(amazetheme.BTN_SELECT,
                                                               self._on_accept)
@@ -45,7 +45,6 @@ class VersionsDialog(AssetDialog):
             date = str(entry.get("date") or "").split(" ")[0]
             cell = self._list.add_row(versions.version_label(entry), date)
             cell.setData(int(entry.get("n", 0)), NUMBER_ROLE)
-            cell.setData(date, DATE_ROLE)
             if int(entry.get("n", 0)) == active:
                 self._list.select(cell)
         self._list.selectionModel().selectionChanged.connect(self._sync_select)

@@ -157,11 +157,11 @@ DRAWN_EXEMPT = (    # (does this node need no pin, why): every other drawn node 
      "the comments pane is a document and a painted margin: it reads its "
      "sizes through drawn_comments, held by TheCommentsPaneMatchesItsDesignFrame"),
     (lambda f, n: f == "N02",
-     "the info pane's rows are PAINTED: it reads its sizes through drawn_info, "
-     "held by test_info_panel ▸ TheInfoPaneMatchesItsDesignFrame"),
+     "the info pane's rows are drawn by Houdini's style: it reads its sizes through "
+     "drawn_info, held by test_info_panel ▸ TheInfoPaneMatchesItsDesignFrame"),
     (lambda f, n: f in ("D15", "D01") and n[0].startswith("QListWidget ▸ "),
-     "a row is PAINTED by the list and its delegate: they read their sizes through "
-     "drawn_list_rows, held by TheManageWindowMatchesItsDesignFrame and test_versions_dialog"),
+     "a row is drawn by Houdini's style, not pixel-matched: the list reads its column "
+     "from drawn_list_rows, held by TheManageWindowMatchesItsDesignFrame and test_versions_dialog"),
     (lambda f, n: f in ("P03a", "P03b") and n[0].startswith("Line "),
      "a line PAINTED along the sub-tab page's top or right edge, wherever "
      "the style puts the page: held by TheShowHidePageHasItsLines"),

@@ -455,7 +455,7 @@ def _text_field():
 DESCRIPTION = side_pane.Page(    # what the page is made of; the engine builds it
     drawn=_DRAWN,
     header=side_pane.Header(
-        "icon_comments.svg", amazetheme.COMMENT_ICON_COLOR, _DRAWN["add_pad"],
+        "icon_comments.svg", amazetheme.COMMENT_ICON_ART_COLOR, amazetheme.COMMENT_ICON_COLOR, _DRAWN["add_pad"],
         (side_pane.Button("add_button", tuple(_DRAWN["add"]), make=lambda: _AddButton()),)),
     body=(side_pane.Widget("text_edit", _text_field),))
 

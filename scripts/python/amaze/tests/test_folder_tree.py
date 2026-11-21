@@ -1179,15 +1179,15 @@ class EverySidebarListAnswersTheReorder(unittest.TestCase):
                              "premise: the empty category is not hidden between two shown ones")
             self.assertFalse(proxy.movable(proxy.index(0, 0)), "All can be dragged")
             self.assertTrue(all(proxy.movable(proxy.index(row, 0)) for row in (1, 2, 3)))
-            before = model.order_snapshot()
+            before = list(model._categories)
             self.assertTrue(proxy.move_row(proxy.index(3, 0), 0), "c did not move")
-            self.assertEqual(["_All", "c", "a", "hidden", "b"], model.order_snapshot(),
+            self.assertEqual(["_All", "c", "a", "hidden", "b"], list(model._categories),
                              "the move did not map view rows to stored rows, or went above All")
             with mock.patch.object(model, "save") as save:
                 proxy.commit_order()
             save.assert_called_once_with()
             model.restore_order(before)
-            self.assertEqual(["_All", "a", "hidden", "b", "c"], model.order_snapshot())
+            self.assertEqual(["_All", "a", "hidden", "b", "c"], list(model._categories))
 
     def test_in_file_a_location_moves_and_a_subfolder_the_scene_row_and_All_do_not(self):
         panel = test_support.fixture_panel(self)
@@ -1208,7 +1208,7 @@ class EverySidebarListAnswersTheReorder(unittest.TestCase):
         self.assertFalse(model.movable(sub), "a subfolder can be dragged")
         first = model.index(model._offset(), 0)
         self.assertTrue(model.movable(first), "a location cannot be dragged")
-        before = model.order_snapshot()
+        before = list(model._folders())
         self.assertTrue(model.move_row(model.index(model._offset() + 1, 0), 0),
                         "the second location did not move")
         self.assertEqual(list(reversed(before[:2])) + before[2:], list(model._folders()),

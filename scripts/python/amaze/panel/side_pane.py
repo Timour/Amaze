@@ -23,8 +23,9 @@ class Button(NamedTuple):
 
 
 class Header(NamedTuple):
-    """Icon, name and type, then the buttons at the right end, `right_pad` px from the edge."""
+    """Icon drawn in `art_color` and shown in `color`, name and type, then the buttons."""
     icon: str
+    art_color: str
     color: str
     right_pad: int
     buttons: tuple = ()
@@ -119,6 +120,7 @@ class DragLineView(QtWidgets.QWidget):
         self.line = theme.ui_px(height)
         self.grab = theme.ui_px(amazetheme.DRAG_LINE_GRAB)
         self._press = None    # the pointer's y inside the line at the press
+        self._moved = False
         self.setCursor(QtCore.Qt.CursorShape.SplitVCursor)
         self.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
         self.hide()
@@ -133,41 +135,34 @@ class DragLineView(QtWidgets.QWidget):
     def mousePressEvent(self, event) -> None:
         if event.button() == QtCore.Qt.MouseButton.LeftButton:
             self._press = event.position().toPoint().y() - self.grab
+            self._moved = False
             event.accept()
 
     def mouseMoveEvent(self, event) -> None:
         if self._press is not None:
+            self._moved = True
             self.moved.emit(self.mapToParent(event.position().toPoint()).y() - self._press)
 
     def mouseReleaseEvent(self, event) -> None:
         if self._press is not None and event.button() == QtCore.Qt.MouseButton.LeftButton:
             self._press = None
-            self.released.emit()
+            if self._moved:    # a click that moved nothing has nothing to remember
+                self.released.emit()
 
 
-class RowsView(ui_helpers.Table):
-    """Label and value rows: the app's table with two columns."""
+class RowsView(ui_helpers.TwoColumnTable):
+    """Label and value rows that neither take focus nor select; the page scrolls them."""
 
     rows_changed = QtCore.Signal()    # another number of rows: the page is another length
 
     def __init__(self, drawn: dict, parent=None) -> None:
-        super().__init__(parent)
+        super().__init__(theme.ui_px(drawn["label_width"]), parent=parent)
         self._drawn = drawn
         self._rows = ()
-        self._items = QtGui.QStandardItemModel(0, 2, self)
-        self.setModel(self._items)
-        self.setIndentation(0)
-        self.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
         self.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
         self.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.NoContextMenu)
         self.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.NoSelection)
-        self.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.setTextElideMode(QtCore.Qt.TextElideMode.ElideMiddle)    # a long path keeps both its ends
-        self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)    # the page scrolls
-        self.header().setMinimumSectionSize(1)
-        self.header().setStretchLastSection(True)
-        self.header().resizeSection(0, theme.ui_px(drawn["label_width"]))
 
     def rows(self) -> tuple:
         return self._rows
@@ -175,13 +170,9 @@ class RowsView(ui_helpers.Table):
     def set_rows(self, rows) -> None:
         """Show `rows`, (label, value) pairs; a value's tooltip is the whole value."""
         self._rows = tuple((str(label), str(value)) for label, value in rows)
-        self._items.setRowCount(0)
+        self.clear_rows()
         for label, value in self._rows:
-            cells = [QtGui.QStandardItem(label), QtGui.QStandardItem(value)]
-            for cell in cells:
-                cell.setFlags(QtCore.Qt.ItemFlag.ItemIsEnabled)
-            cells[1].setToolTip(ui_helpers.tooltip_text(value))
-            self._items.appendRow(cells)
+            self.add_row(label, value)[1].setToolTip(ui_helpers.tooltip_text(value))
         self.rows_changed.emit()
 
     def row_height(self) -> int:
@@ -422,7 +413,7 @@ class SidePage(QtWidgets.QWidget):
         ui_helpers.set_text_color(self.type_label, "text", text)
         self._icon_label.setPixmap(ui_helpers.faded_pixmap(ui_helpers.device_pixmap(
             amaze.package_file("ui", spec.icon), theme.ui_px(self.description.drawn["icon"]), dpr,
-            {amazetheme.COMMENT_ICON_ART_COLOR: amazetheme.COMMENT_DIM_ICON_COLOR if dimmed else spec.color}),
+            {spec.art_color: amazetheme.COMMENT_DIM_ICON_COLOR if dimmed else spec.color}),
             amazetheme.COMMENT_DIM_ICON_OPACITY if dimmed else 1.0, dpr))
 
 
@@ -443,6 +434,15 @@ class Pane(QtWidgets.QWidget):
         """The width last dragged to, else the drawn width: what a pane that does not stretch is given."""
         remembered = int(getattr(self._preferences, self._pref_key, 0) or 0)
         return QtCore.QSize(remembered or self._default_px, super().sizeHint().height())
+
+    def remember_width(self, splitter) -> bool:
+        """Store the width the splitter gives this pane; False while it is hidden or has none."""
+        index = splitter.indexOf(self)
+        sizes = splitter.sizes()
+        if self.isHidden() or not 0 <= index < len(sizes) or sizes[index] <= 0:
+            return False
+        setattr(self._preferences, self._pref_key, sizes[index])
+        return True
 
     def add_page(self, page: SidePage) -> None:
         self._stack.addWidget(page)

@@ -104,7 +104,10 @@ class TheVersionsWindowMatchesItsDesignFrame(unittest.TestCase):
         self.assertEqual(2, view.model().columnCount())
         self.assertIs(QtWidgets.QStyledItemDelegate, type(view.itemDelegate()), "the list paints its own rows")
         self.assertEqual("", view.styleSheet(), "the list sets colours of its own over the style's")
-        self.assertEqual(theme.ui_px(amazetheme.drawn_list_rows("D01")["second_x"]), view.header().sectionSize(0))
+        resize = QtWidgets.QHeaderView.ResizeMode
+        self.assertEqual((resize.Stretch, resize.ResizeToContents),
+                         (view.header().sectionResizeMode(0), view.header().sectionResizeMode(1)),
+                         "the date column does not fit the date, or the name does not take the rest")
 
 
 class TheDayIsTheSecondColumn(unittest.TestCase):
@@ -115,6 +118,20 @@ class TheDayIsTheSecondColumn(unittest.TestCase):
         self.assertEqual(["2026-10-23", "2026-10-22", "2026-10-21"],
                          [view.cell(row, 1).text() for row in range(view.count())])
 
+    def test_the_date_column_is_wide_enough_for_the_date_at_any_font_size(self):
+        dialog = _dialog(self)
+        view = dialog._list
+        dialog.show()
+        self.addCleanup(dialog.hide)
+        for scale in (1.0, 1.5):    # a larger host font or UI size
+            font = QtGui.QFont(view.font())
+            font.setPointSizeF(view.font().pointSizeF() * scale)
+            view.setFont(font)
+            QtWidgets.QApplication.processEvents()
+            with self.subTest(scale=scale):
+                self.assertGreaterEqual(view.header().sectionSize(1), view.sizeHintForColumn(1),
+                                        "the date column is narrower than the date: it is cut short")
+
 
 class TheListShowsTheSavedVersions(unittest.TestCase):
     """Newest first, each row shows name and save date; the active version is selected on open."""
@@ -122,7 +139,7 @@ class TheListShowsTheSavedVersions(unittest.TestCase):
     def test_the_rows_are_newest_first_with_the_day_saved(self):
         dialog = _dialog(self)
         rows = [(dialog._list.cell(i).text(),
-                 dialog._list.cell(i).data(versions_dialog.DATE_ROLE))
+                 dialog._list.cell(i, 1).text())
                 for i in range(dialog._list.count())]
         self.assertEqual([("Version 3", "2026-10-23"),
                           ("Look Development test", "2026-10-22"),

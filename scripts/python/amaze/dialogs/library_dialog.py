@@ -11,7 +11,6 @@ from amaze.dialogs.base_dialog import AssetDialog
 from amaze.helpers import hostos, theme, ui_helpers
 
 FOLDER_ROLE = QtCore.Qt.ItemDataRole.UserRole           # the library's folder, as the list holds it
-REACHED_ROLE = QtCore.Qt.ItemDataRole.UserRole + 1      # False for a folder that cannot be reached now
 
 
 def library_name(folder: str) -> str:
@@ -24,43 +23,23 @@ def shown_path(folder: str) -> str:
     return hostos.storage_path_key(folder).rstrip("/") or folder
 
 
-class DialogTable(ui_helpers.Table):
-    """A dialog's rows: the app's table over its own two columns, a name and a second text."""
+class DialogTable(ui_helpers.TwoColumnTable):
+    """A dialog's rows: a name and a second text, laid out as its frame draws the list."""
 
-    def __init__(self, frame_key: str, selection_mode) -> None:
-        super().__init__()
-        self._items = QtGui.QStandardItemModel(0, 2, self)
-        self.setModel(self._items)
-        self.setIndentation(0)
-        self.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+    def __init__(self, frame_key: str, selection_mode, whole_second: bool = False) -> None:
+        super().__init__(theme.ui_px(amazetheme.drawn_list_rows(frame_key)["second_x"]), whole_second)
         self.setSelectionMode(selection_mode)
-        self.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.setTextElideMode(QtCore.Qt.TextElideMode.ElideMiddle)    # a long path keeps both its ends
-        drawn = amazetheme.drawn_list_rows(frame_key)
-        self.header().setMinimumSectionSize(1)
-        self.header().setStretchLastSection(True)
-        self.header().resizeSection(0, theme.ui_px(drawn["second_x"]))
         ui_helpers.fit_drawn(self, frame_key, "QListWidget", None)
 
     def add_row(self, name: str, second: str, selectable: bool = True, dim: bool = False):
         """Add a row and return its name cell, which carries the row's data."""
-        cells = [QtGui.QStandardItem(name), QtGui.QStandardItem(second)]
         flags = QtCore.Qt.ItemFlag.ItemIsEnabled
         if selectable:
             flags |= QtCore.Qt.ItemFlag.ItemIsSelectable
-        for cell in cells:
-            cell.setFlags(flags)
-            if dim:
-                cell.setForeground(QtGui.QColor(amazetheme.D15_DIM_TEXT_COLOR))
-        self._items.appendRow(cells)
+        cells = super().add_row(name, second, flags)
+        for cell in cells if dim else ():
+            cell.setForeground(theme.color("text_dim"))
         return cells[0]
-
-    def count(self) -> int:
-        return self._items.rowCount()
-
-    def cell(self, row: int, column: int = 0):
-        return self._items.item(row, column)
 
     def selected(self) -> list:
         """The name cells of the selected rows."""
@@ -114,7 +93,6 @@ class ManageLibrariesDialog(AssetDialog):
                 library_name(folder), path if reached else "%s, %s" % (path, amazetheme.LABEL_NOT_CONNECTED),
                 selectable=hostos.comparable_path(folder) != current, dim=not reached)
             cell.setData(folder, FOLDER_ROLE)
-            cell.setData(reached, REACHED_ROLE)
 
     def _sync_remove(self, *_selection) -> None:
         self._remove.setEnabled(bool(self._list.selected()))

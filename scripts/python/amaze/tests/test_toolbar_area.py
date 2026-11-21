@@ -149,6 +149,24 @@ class TheToolbarFollowsTheContextLive(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
 
 
+class TheColoursFollowAHoudiniThemeSwitch(unittest.TestCase):
+    """A theme switch sets new `pluto_` colours and a new app palette; what Amaze colours follows it."""
+
+    def test_a_theme_switch_recolours_the_search_field_slider_and_tiles(self):
+        from PySide6 import QtCore, QtGui
+        from amaze.panel import delegates
+        panel = test_support.fixture_panel(self)
+        app = QtWidgets.QApplication.instance()
+        switched = QtGui.QColor("#123456")
+        for role in ("pluto_field", "pluto_surfaceLow"):
+            self.addCleanup(app.setProperty, role, app.property(role))
+            app.setProperty(role, switched)
+        QtWidgets.QApplication.sendEvent(panel, QtCore.QEvent(QtCore.QEvent.Type.ApplicationPaletteChange))
+        self.assertIn("#123456", panel.line_filter.styleSheet(), "the search field kept the old theme")
+        self.assertEqual(switched, panel.click_slider.RIGHT_COLOR, "the slider kept the old theme")
+        self.assertEqual(switched, delegates.AssetItemDelegate.THUMB_BG_COLOR.fget(None), "the tiles kept the old theme")
+
+
 class TheToolbarMatchesFrameB01(unittest.TestCase):
     """The toolbar's height, edges, gaps and controls match frame B01. ▸r/toolbar-from-frame"""
 

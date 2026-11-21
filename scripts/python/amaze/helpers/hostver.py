@@ -70,24 +70,6 @@ class Capability(object):
                 value, best = override.value, override
         return value
 
-    def explain(self, env):
-        """Every override, whether it applied, and which conditions failed, for the debug log."""
-        considered = []
-        for override in self.overrides:
-            applied, failed = override.applies_to(env)
-            considered.append({
-                "value": override.value,
-                "when": override.describe(),
-                "applied": applied,
-                "failed_conditions": failed,
-                "priority": override.priority,
-            })
-        return {
-            "env": repr(env),
-            "base": self.base,
-            "resolved": self.resolve(env),
-            "overrides": considered,
-        }
 
 
 def _houdini_below(build):

@@ -9,7 +9,7 @@ from PySide6 import QtWidgets, QtCore, QtGui, QtQml, QtQuick, QtSvg
 
 import amaze
 from amaze import amazetheme, messages
-from amaze.core import debug
+from amaze.core import debug, grid_columns
 from amaze.helpers import theme
 from hutil.qt.common import qmlviews    # Houdini's own QML panels' base ▸r/houdini-qml-tabs
 
@@ -215,8 +215,19 @@ def device_pixmap(path, side, dpr, color_replacements=None, opacity=None):
     return pixmap
 
 
+_BLED_CACHE: dict = globals().get("_BLED_CACHE", {})    # bled_pixmap's results by every argument
+
+
 def bled_pixmap(path, height, dpr, bleed) -> QtGui.QPixmap:
     """An SVG `height` logical px high in its own shape, `bleed` px of room around it; null if unread."""
+    key = (path, height, round(dpr, 3), bleed)
+    if key not in _BLED_CACHE:
+        _BLED_CACHE[key] = _render_bled(path, height, dpr, bleed)
+    return QtGui.QPixmap(_BLED_CACHE[key])    # shares the pixels: a caller's change stays its own
+
+
+def _render_bled(path, height, dpr, bleed) -> QtGui.QPixmap:
+    """`bled_pixmap` drawn anew."""
     renderer = QtSvg.QSvgRenderer(path) if path and os.path.exists(path) else None
     if renderer is None or not renderer.isValid():
         return QtGui.QPixmap()
@@ -270,8 +281,7 @@ class Table(QtWidgets.QTreeView):
 
     def selected_rows(self) -> list:
         """The selection as one index per row, at the first column."""
-        model = self.selectionModel()
-        return [index for index in model.selectedIndexes() if index.column() == 0] if model is not None else []
+        return grid_columns.selected_rows(self.selectionModel())
 
     def highlight(self, index) -> None:
         """Make `index`'s row the current, selected one without `row_chosen`: the app's own move."""
@@ -302,6 +312,44 @@ class Table(QtWidgets.QTreeView):
             self.row_chosen.emit(current.siblingAtColumn(0))
 
 
+
+class TwoColumnTable(Table):
+    """The app's table over two columns; `whole_second` keeps the second column's text whole."""
+
+    def __init__(self, first_width: int, whole_second: bool = False, parent=None) -> None:
+        super().__init__(parent)
+        self._items = QtGui.QStandardItemModel(0, 2, self)
+        self.setModel(self._items)
+        self.setIndentation(0)
+        self.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        self.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setTextElideMode(QtCore.Qt.TextElideMode.ElideMiddle)    # a long path keeps both its ends
+        header, resize = self.header(), QtWidgets.QHeaderView.ResizeMode
+        header.setMinimumSectionSize(1)
+        header.setStretchLastSection(not whole_second)
+        header.resizeSection(0, first_width)
+        if whole_second:    # never cut: the second column fits its text, the first takes the rest
+            header.setSectionResizeMode(0, resize.Stretch)
+            header.setSectionResizeMode(1, resize.ResizeToContents)
+
+    def add_row(self, first: str, second: str, flags=QtCore.Qt.ItemFlag.ItemIsEnabled) -> list:
+        """Append a row of two cells with `flags`; returns the cells."""
+        cells = [QtGui.QStandardItem(first), QtGui.QStandardItem(second)]
+        for cell in cells:
+            cell.setFlags(flags)
+        self._items.appendRow(cells)
+        return cells
+
+    def clear_rows(self) -> None:
+        self._items.setRowCount(0)
+
+    def count(self) -> int:
+        return self._items.rowCount()
+
+    def cell(self, row: int, column: int = 0):
+        return self._items.item(row, column)
+
 def fill_window(widget, hex_color: str) -> None:
     """Background via the palette; a stylesheet on any ancestor restyles the subtree's scrollbars."""
     palette = widget.palette()
@@ -313,7 +361,7 @@ def fill_window(widget, hex_color: str) -> None:
 
 def set_text_color(label, role: str, opacity: float = 1.0) -> None:
     """Label text in one of the theme's text colours, via the palette, same reasoning as fill_window."""
-    color = QtGui.QColor(theme.color_hex(role))
+    color = theme.color(role)
     color.setAlphaF(opacity)
     palette = label.palette()
     palette.setColor(QtGui.QPalette.ColorRole.WindowText, color)
@@ -452,16 +500,16 @@ class ClickSlider(QtWidgets.QSlider):
 
     LEFT_COLOR = QtGui.QColor(amazetheme.SLIDER_LEFT)   # the accent default; `set_accent_color` overrides it from prefs
     LEFT_WIDTH = theme.ui_px(3)
-    RIGHT_COLOR = QtGui.QColor(theme.color_hex("field"))   # the groove follows the Houdini theme
+    RIGHT_COLOR = theme.live("field")   # the groove follows the Houdini theme
     RIGHT_WIDTH = theme.ui_px(3)
     HANDLE_COLOR = QtGui.QColor(amazetheme.SLIDER_HANDLE)
     HANDLE_DIAMETER = theme.ui_px(11)   # 11: Qt centres an ellipse pen on the edge, so half the border's width falls inside
-    HANDLE_BORDER_COLOR = QtGui.QColor(theme.color_hex("surface"))   # was #2d2d2d, the toolbar row's own grey, so the handle border looks cut out of the bar
+    HANDLE_BORDER_COLOR = theme.live("surface")   # was #2d2d2d, the toolbar row's own grey, so the handle border looks cut out of the bar
     HANDLE_BORDER_WIDTH = theme.ui_px(1)
     DEFAULT_VALUE = 128        # a size, unscaled, and one of the SNAP_MARKS so a drag can stop on it
     SNAP_MARKS = (64, 128, 192, 256, 320, 384, 448, 512)
     SNAP_RADIUS = 5
-    TICK_COLOR = QtGui.QColor(theme.color_hex("text_dim"))   # was #696969, byte-identical to this role
+    TICK_COLOR = theme.live("text_dim")   # was #696969, byte-identical to this role
     TICK_PIXEL_SIZE = theme.ui_px(1)   # the snap-mark tick is pixel art: 5 squares of this size, centre and four neighbours
     TICK_PATTERN = (
         ".X.",

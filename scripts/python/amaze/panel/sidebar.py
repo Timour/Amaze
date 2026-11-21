@@ -5,7 +5,7 @@ from __future__ import annotations
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from amaze import amazetheme
-from amaze.core import category, debug, sidebar_model
+from amaze.core import category, sidebar_model
 from amaze.helpers import theme, ui_helpers
 
 
@@ -225,26 +225,3 @@ def update_hover_global(panel) -> None:
         set_hover_row(panel, -1)
         return
     update_hover(panel, pos)
-
-
-def can_drop(panel, event) -> bool:
-    """Only drags from this panel's grid, into a section that takes drops; False for the rest."""
-    context = panel.active_section()
-    return bool(context is not None
-                and (context.takes_category_drops or context.takes_file_drops)
-                and event.source() is panel.thumblist)
-
-
-def handle_drop(panel, event) -> bool:
-    """Recategorise on a category, move the files on a folder; CONSUME the drop either way."""
-    if not can_drop(panel, event):
-        return False
-    pos = event.position().toPoint()
-    folder = folder_at_point(panel, pos)
-    if folder is not None:
-        panel.move_files_active(folder)
-        return True
-    category = category_at_point(panel, pos)
-    if category is not None:
-        panel.assign_category_active(category)
-    return True

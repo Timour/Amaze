@@ -930,6 +930,7 @@ class _Prefs:
         self.geometry_shading_mode = "hiddenlineghost"
         self.geometry_bg = "black"
         self.render_rat_files = True    # the tests here that convert a .rat predate the switch
+        self.system_file_icons = True
         self._records: dict = {}
         self._order: list = []
         self._favourites: list = []

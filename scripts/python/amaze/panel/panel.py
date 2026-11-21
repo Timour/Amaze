@@ -537,6 +537,7 @@ class AmazePanel(QtWidgets.QWidget):
         self.click_slider.setValue(grid.active_thumbsize(self))
         self.slide()
         self.apply_view_state()
+        self._apply_theme_colours()
         self._sync_online_chip()    # the online models exist from here on
 
     def open(self) -> None:
@@ -976,8 +977,10 @@ class AmazePanel(QtWidgets.QWidget):
         return ""
 
     def event(self, event):
-        """On DeferredDelete, flush the Comments pane and the pending size save; children get no hide."""
-        if event.type() == QtCore.QEvent.Type.DeferredDelete:
+        """DeferredDelete flushes the panes and size save; a theme switch re-colours. ▸r/theme-switch"""
+        if event.type() == QtCore.QEvent.Type.ApplicationPaletteChange:    # Houdini set a new theme's palette
+            self._apply_theme_colours()
+        if event.type() == QtCore.QEvent.Type.DeferredDelete:    # children get no hide
             pane = getattr(self, "notes_panel", None)
             if pane is not None:
                 pane.flush()
@@ -1314,18 +1317,29 @@ class AmazePanel(QtWidgets.QWidget):
                 flexible = splitter.widget(i) not in fixed_width
                 splitter.setStretchFactor(i, 1 if flexible else 0)
 
+    def _apply_theme_colours(self) -> None:
+        """Every palette and stylesheet the panel sets from the theme; run at build and on a theme switch."""
+        for view, role in ((self.cat_list, "surface_low"), (self.thumblist, "surface")):
+            palette = view.palette()
+            palette.setColor(QtGui.QPalette.ColorRole.Base, theme.color(role))
+            view.setPalette(palette)
+        if getattr(self, "toolbar_row", None) is not None:
+            self.toolbar_row.setStyleSheet("background-color: %s; border: none; border-bottom: 1px solid %s;"
+                                           % (theme.color_hex("surface"), theme.color_hex("field")))
+        self.line_filter.setStyleSheet("QLineEdit { border: none; background-color: %s; padding-left: %dpx; }"
+                                       % (theme.color_hex("field"), theme.ui_px(20)))
+        if getattr(self, "filter_label", None) is not None:
+            self.filter_label.setStyleSheet("color: %s;" % theme.color_hex("text_bright"))
+
     def _build_sidebar_palette(self) -> None:
         """The category list's palette and selection colours."""
         self.cat_list = self.ui.catview  # type: ignore
         cat_list_palette = self.cat_list.palette()    # palette, never a stylesheet: the viewport paints from Base/Text
         cat_list_palette.setColor(
-            QtGui.QPalette.ColorRole.Base, theme.color("surface_low")
-        )
-        cat_list_palette.setColor(
             QtGui.QPalette.ColorRole.Text, delegates.AssetItemDelegate.TEXT_COLOR
         )
         self.cat_list.setPalette(cat_list_palette)    # no selection colours: Houdini's style sheet paints them
-        self.sidebar_delegate = delegates.SidebarItemDelegate(self.cat_list)    # name, count, colour bar
+        self.sidebar_delegate = delegates.SidebarItemDelegate(self.cat_list)    # the name and its count
 
     def init_ui(self) -> None:
         """Creates the panel-view on load"""
@@ -1366,12 +1380,6 @@ class AmazePanel(QtWidgets.QWidget):
             self.toolbar_row.setAttribute(
                 QtCore.Qt.WidgetAttribute.WA_StyledBackground, True
             )
-            self.toolbar_row.setStyleSheet(    # `border: none` first, or Houdini's sheet adds a border; QSS px are unscaled
-                "background-color: " + theme.color_hex("surface")
-                + "; border: none;"
-                + " border-bottom: 1px solid "
-                + theme.color_hex("field") + ";"
-            )
             self.toolbar_row.setFixedHeight(theme.ui_px(self._TOOLBAR["height"]))    # ▸r/toolbar-from-frame
             self.toolbar_layout = QtWidgets.QHBoxLayout(self.toolbar_row)
             self.toolbar_layout.setSpacing(0)
@@ -1406,9 +1414,6 @@ class AmazePanel(QtWidgets.QWidget):
         self.thumblist.doubleClicked.connect(self.import_asset_auto)
         self.thumblist.clicked.connect(self._refresh_notes_subject)    # idempotent
         self.thumblist.clicked.connect(self._refresh_info_subject)
-        thumblist_palette = self.thumblist.palette()    # Houdini paints the background; text contrast is computed against Base
-        thumblist_palette.setColor(QtGui.QPalette.ColorRole.Base, QtGui.QColor(amazetheme.GRID_BACKGROUND))
-        self.thumblist.setPalette(thumblist_palette)
 
         self.texture_progress = ui_helpers.ThinProgressBar()    # the thin bar above thumbview, hidden until there is work
         self.texture_progress.set_accent_color(theme.accent(self.prefs.accent_color))
@@ -1445,9 +1450,6 @@ class AmazePanel(QtWidgets.QWidget):
         self._key_choice_timer.setSingleShot(True)
         self._key_choice_timer.setInterval(SIDEBAR_KEY_PAUSE_MS)
         self._key_choice_timer.timeout.connect(self._show_key_choice)
-        self._cat_drop_filter = dragdrop_widgets.CategoryDropFilter(    # the sidebar as a drop target for recategorising grid assets
-            self.cat_list, self
-        )
 
         self.line_filter = self.ui.line_filter  # type: ignore
         self._filter_timer = QtCore.QTimer(self)    # only `textEdited` starts it, never setText ▸p/filter-pass-cost
@@ -1459,11 +1461,6 @@ class AmazePanel(QtWidgets.QWidget):
         self.line_filter.setPlaceholderText(sections.Section.search_hint)    # every hint is ""
         self.line_filter.setToolTip(ui_helpers.tooltip_text(
             tooltips.PANEL_SEARCH))
-        self.line_filter.setStyleSheet(    # on the widget itself, never an ancestor; room for the icon
-            "QLineEdit { border: none; background-color: "
-            + theme.color_hex("field")
-            + "; padding-left: %dpx; }" % theme.ui_px(20)
-        )
         self.line_filter.setFixedHeight(theme.ui_px(self._TOOLBAR["field_h"]))    # ▸r/toolbar-from-frame
         self.line_filter.setMinimumWidth(theme.ui_px(38))    # overrides the .ui's own 80 minimum - setMinimumWidth takes precedence at runtime
         self.line_filter.setMaximumWidth(theme.ui_px(self._TOOLBAR["field_w"]))
@@ -1493,9 +1490,6 @@ class AmazePanel(QtWidgets.QWidget):
         if self.toolbar_layout is not None:
             self.filter_label = QtWidgets.QLabel("Search")    # a real QLabel beside the box
             self.filter_label.setObjectName("filter_label")
-            self.filter_label.setStyleSheet(
-                "color: " + theme.color_hex("text_bright") + ";"
-            )
             self._toolbar_controls += [self.filter_label, self.line_filter]
 
         self.current_section = "material"
@@ -1527,10 +1521,6 @@ class AmazePanel(QtWidgets.QWidget):
         self.click_slider.stepped = self.prefs.step_size
         self._build_slider_and_layout()
 
-    TOOLBAR_LEFT = ("btn_categories", "btn_menu_view", "btn_menu_filter", "btn_online",
-                    "cb_viewmode", "cb_favsonly", "btn_prefs", "btn_hip_capture")
-    TOOLBAR_RIGHT = ("btn_notes", "btn_info")    # pinned to the right edge by a stretch
-
     def _lay_out_toolbar(self) -> None:
         """Lay the row out left to right as frame B01 draws it, every gap read off the frame."""
         if self.toolbar_layout is None:
@@ -1540,6 +1530,10 @@ class AmazePanel(QtWidgets.QWidget):
         layout = self.toolbar_layout
         layout.setContentsMargins(px(drawn["edge"]), 0, px(drawn["right_edge"]), 0)
 
+        placed = set(drawn["left"] + drawn["right"]) | {"click_slider", "filter_label", "line_filter"}
+        for name in sorted(set(controls) - placed):
+            debug.note("toolbar control not in frame B01, so not shown", control=name)
+
         def buttons(names):
             present = [controls[name] for name in names if name in controls]
             for index, widget in enumerate(present):
@@ -1547,7 +1541,7 @@ class AmazePanel(QtWidgets.QWidget):
                     layout.addSpacing(px(drawn["gap"]))
                 layout.addWidget(widget)
 
-        buttons(self.TOOLBAR_LEFT)
+        buttons(drawn["left"])
         layout.addSpacing(px(drawn["slider_gap"]))
         layout.addWidget(controls["click_slider"], 1)    # these two fill to their widths first ▸r/toolbar-tabs-840
         layout.addSpacing(px(drawn["search_gap"]))
@@ -1556,7 +1550,7 @@ class AmazePanel(QtWidgets.QWidget):
         layout.addWidget(controls["line_filter"], 1)
         layout.addSpacing(px(amazetheme.TOOLBAR_SEARCH_END_GAP))    # kept when the panel is narrow
         layout.addStretch()
-        buttons(self.TOOLBAR_RIGHT)
+        buttons(drawn["right"])    # pinned to the right edge by the stretch
 
     @staticmethod
     def category_names_from(model) -> list[str]:
@@ -2728,12 +2722,6 @@ class AmazePanel(QtWidgets.QWidget):
     def _update_category_drag_hover_global(self) -> None:
         sidebar.update_hover_global(self)
 
-    def _can_drop_category(self, event) -> bool:
-        return sidebar.can_drop(self, event)
-
-    def _handle_category_drop(self, event) -> bool:
-        return sidebar.handle_drop(self, event)
-
     def _network_items_at_cursor(self, editor):
         """Droppable items under the cursor in a network editor, as (item, ...) tuples."""
         try:
@@ -2795,18 +2783,9 @@ class AmazePanel(QtWidgets.QWidget):
         splitter = pane.parentWidget()
         if not isinstance(splitter, QtWidgets.QSplitter):
             return
-        sizes = splitter.sizes()
-        changed = False
-        for widget, pref_key in (
-                (pane, "notes_panel_width"),
-                (getattr(self, "cat_wrapper", None), "sidebar_width")):
-            if widget is None or widget.isHidden():
-                continue
-            index = splitter.indexOf(widget)
-            if 0 <= index < len(sizes) and sizes[index] > 0:
-                setattr(self.prefs, pref_key, sizes[index])
-                changed = True
-        if changed:
+        panes = [widget for widget in (pane, getattr(self, "cat_wrapper", None)) if widget is not None]
+        recorded = [widget.remember_width(splitter) for widget in panes]
+        if any(recorded):
             self._thumbsize_save_timer.start()
 
     def toggle_notes_panel(self) -> None:

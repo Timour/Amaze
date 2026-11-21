@@ -169,17 +169,13 @@ class ManageLibrariesTest(unittest.TestCase):
     def test_no_band_sits_over_the_list(self):
         self.assertIsNone(self.dialog.findChild(QtWidgets.QLabel, "amaze_header_band_text"))
 
-    def test_a_folder_that_cannot_be_reached_is_marked(self):
-        reached = {item.text(): item.data(library_dialog.REACHED_ROLE) for item in self._rows()}
-        self.assertEqual({"Studio": True, "Archive": True, "Archive-gone": False}, reached)
-
     def test_the_second_column_is_the_folder_and_says_when_it_is_not_connected(self):
         view = self.dialog._list
         seconds = {view.cell(row).text(): view.cell(row, 1).text() for row in range(view.count())}
         self.assertEqual(library_dialog.shown_path(self.a), seconds["Studio"])
         self.assertEqual("%s, %s" % (library_dialog.shown_path(self.gone), amazetheme.LABEL_NOT_CONNECTED),
                          seconds["Archive-gone"])
-        dim = QtGui.QColor(amazetheme.D15_DIM_TEXT_COLOR).name()
+        dim = theme.color("text_dim").name()
         gone = [view.cell(2, column).foreground().color().name() for column in (0, 1)]
         self.assertEqual([dim, dim], gone, "a library not connected is not dimmed")
         self.assertNotEqual(dim, view.cell(0).foreground().color().name())

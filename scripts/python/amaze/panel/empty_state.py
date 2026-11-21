@@ -155,7 +155,7 @@ class EmptyPage(QtWidgets.QWidget):
         self._quote.setWordWrap(True)
         self._quote.setAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter
                                  | QtCore.Qt.AlignmentFlag.AlignTop)
-        dim = QtGui.QColor(theme.color_hex("text"))
+        dim = theme.color("text")
         dim.setAlphaF(0.5)
         quote_palette = self._quote.palette()    # a palette, not a stylesheet: the text is painted with the alpha kept ▸r/palette-alpha
         quote_palette.setColor(QtGui.QPalette.ColorRole.WindowText, dim)

@@ -95,7 +95,6 @@ _DEFAULTS = {        # Houdini's default dark theme, for a session that publishe
     "surface_low": "#282828",  # sidebar backdrop, thumb bg
     "surface": "#2d2d2d",  # toolbar row, tab strip, line_tags
     "field": "#434343",  # filter box fill, toolbar divider
-    "row": "#2f2f2f",  # a row list's darker row: the line between the info table's columns
     "text_dim": "#656565",  # grid tile subtitle
     "text": "#a6a6a6",  # grid tile name
     "text_bright": "#dddddd",  # "Filter" label
@@ -107,7 +106,6 @@ _ROLES = {           # an Amaze colour -> the role Houdini's theme publishes it 
     "surface_low": "surfaceLow",
     "surface": "bg",
     "field": "field",
-    "row": "viewSurface",
     "text_dim": "dimFg",
     "text": "secondarySurfaceFg",
     "text_bright": "fg",
@@ -134,6 +132,11 @@ def color(name: str) -> QtGui.QColor:
 
 def color_hex(name: str) -> str:
     return color(name).name()
+
+
+def live(name: str) -> property:
+    """A class attribute that is `color(name)` each time it is read, so a theme switch shows at once."""
+    return property(lambda _owner: color(name))
 
 
 def houdini_color(name: str, fallback: str) -> QtGui.QColor:

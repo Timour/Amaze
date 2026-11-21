@@ -89,7 +89,7 @@ class EveryPartIsBuiltInOnePlace(unittest.TestCase):
 
     def test_every_table_is_the_one_table_class(self):
         qt_views = r"class (\w+)\(([^)]*Q(?:Tree|Table|List)(?:View|Widget)\b[^)]*)\)"
-        ours = r"class (\w+)\(([^)]*ui_helpers\.Table[^)]*)\)"
+        ours = r"class (\w+)\(([^)]*ui_helpers\.(?:TwoColumn)?Table[^)]*)\)"
         direct, tables = [], []
         for path, text in _sources():
             direct += [(path, name, base.split(".")[-1].split(",")[-1].strip()) for name, base in re.findall(qt_views, text)]
@@ -100,6 +100,8 @@ class EveryPartIsBuiltInOnePlace(unittest.TestCase):
         ], sorted(direct), "a table was added that is not the one table class")
         self.assertEqual([("dialogs/library_dialog.py", "DialogTable"), ("panel/dragdrop_widgets.py", "DragDropRowsView"),
                           ("panel/side_pane.py", "RowsView"), ("panel/sidebar.py", "SidebarTreeView")], sorted(tables))
+        built = [path for path, text in _sources() for _hit in re.findall(r"QStandardItemModel\(0, 2", text)]
+        self.assertEqual(["helpers/ui_helpers.py"], built, "a second two-column table is set up on its own")
 
     def test_the_pages_are_descriptions(self):
         for module in (notes_panel, info_panel):
@@ -107,6 +109,17 @@ class EveryPartIsBuiltInOnePlace(unittest.TestCase):
                 self.assertIsInstance(module.DESCRIPTION, side_pane.Page)
         self.assertEqual(("preview", "drag_line", "table"), tuple(part.name for part in info_panel.DESCRIPTION.body))
         self.assertEqual(("text_edit",), tuple(part.name for part in notes_panel.DESCRIPTION.body))
+
+    def test_each_header_recolours_the_colour_its_own_icon_is_drawn_in(self):
+        import amaze
+        for module in (notes_panel, info_panel):
+            header = module.DESCRIPTION.header
+            with self.subTest(module=module.__name__), \
+                    open(amaze.package_file("ui", header.icon), encoding="utf-8") as handle:
+                self.assertIn(header.art_color.lower(), handle.read().lower(),
+                              "the header swaps a colour its icon file is not drawn in")
+        source = open(side_pane.__file__, encoding="utf-8").read()
+        self.assertNotIn("COMMENT_ICON_ART_COLOR", source, "the engine recolours every page's icon as the Comments one")
 
 
 class TheSidePaneKeepsOnePlaceAndWidth(unittest.TestCase):

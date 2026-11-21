@@ -557,10 +557,6 @@ class FolderTreeModel(sidebar_model.SidebarModel):
         to_row = max(self._offset(), min(int(to_row), self.rowCount() - 1))
         return self.move_folder(index.row(), to_row)
 
-    def order_snapshot(self) -> list:
-        """The locations in their order now, copied."""
-        return list(self._folders())
-
     def commit_order(self) -> None:
         """Save the order a move staged, once."""
         locations.commit_registered_order(self.preferences)
@@ -602,7 +598,7 @@ class FolderTreeModel(sidebar_model.SidebarModel):
         return True
 
     def restore_order(self, paths) -> None:
-        """Put a snapshot's order back: the reorder's Esc, a reset. ▸p/folder-sidebar"""
+        """Put the locations in `paths`' order, as one reset: what the sort actions use. ▸p/folder-sidebar"""
         if not self.move_folder_method:
             return
         paths = [p for p in (paths or [])]

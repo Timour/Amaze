@@ -276,10 +276,6 @@ class Categories(sidebar_model.SidebarModel):
         self.restore_order(ordered)
         self.save()
 
-    def order_snapshot(self) -> list:
-        """The order now, copied."""
-        return list(self._categories)
-
     def restore_order(self, snapshot: list) -> None:
         """Put a snapshot's order back, in place, under a reset pair. ▸r/model-contracts"""
         if list(snapshot) == self._categories:

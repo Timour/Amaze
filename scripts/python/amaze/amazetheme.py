@@ -93,9 +93,6 @@ P01_REPAIR_PRESSED = "#d4503a"  # the Repair button while held down
 P01_REPAIR_TEXT_COLOR = "#f9f9f9"      # the Repair button's text
 P01_REPAIR_RADIUS = 4           # the corners Houdini draws on a standard button ▸r/plain-button-style
 P01_LIGHT_COUNT_GAP = 6         # a light to its count, as drawn for two of the three
-D15_DIM_TEXT_COLOR = "#787878"        # a library that cannot be reached: its name and `not connected`
-D15_DIM_PATH_TEXT_COLOR = "#646464"   # and its path
-GRID_BACKGROUND = "#2d2d2d"        # ▸ T01: the grid's background as drawn; list text contrast is computed against it
 PREFS_DIVIDER_ABOVE = 8  # inside the divider's own row box
 PREFS_DIVIDER_BELOW = 6  # so a divider costs ROW_GAP + ABOVE + H + BELOW + ROW_GAP = 27
 
@@ -128,7 +125,6 @@ INFO_ICON_COLOR = "#fdba00"      # ▸ the info pane (N02): its header icon, and
 INFO_ICON_ART_COLOR = "#5d7abd"  # the colour icon_info.svg is drawn in; INFO_ICON_COLOR replaces it
 INFO_HIDE_PREVIEW = "Hide Preview"    # the header button's tooltip while the picture is shown
 INFO_SHOW_PREVIEW = "Show Preview"    # and while it is hidden
-INFO_BUTTON_COLOR = "#dddddd"       # the colour the header buttons' art is drawn in
 INFO_PREVIEW_LEAST = 38             # px: the lowest the drag line takes the picture area, two rows
 DRAG_LINE_COLOR = "#202020"         # the line under the picture; dragging it sets the picture area's height
 DRAG_LINE_GRAB = 3                  # px above and below the line that also take the drag
@@ -138,7 +134,6 @@ TILE_TEXT = "#cdc8bc"           # ▸ the tile and list delegates
 TILE_SUBTITLE = "#5d7abd"       # the sidebar's drag highlight until the panel applies the accent
 CODE_TEXT_OPACITY = 0.5         # T05B: a code tile's text at half strength, under its run button
 TILE_GROUND = "#1b1b1b"             # under every generic tile icon; the art is drawn without one (T05-T13)
-CODE_TILE_BACKGROUND = TILE_GROUND  # and under the code preview, the same
 BADGE_REST_OPACITY = 0.75       # every button badge's icon at rest; the backdrop stays as drawn
 BADGE_HOVER_OPACITY = 1.0       # and the icon under the pointer
 RENDERER_ICON_BLEED = 4         # px painted around a renderer icon's own box, for its shadow
@@ -1342,16 +1337,21 @@ def drawn_toolbar(frame_key: str = "B01") -> dict:
     def right(n):
         return n[1] + n[3]
 
-    first, second = node("button", "btn_categories"), node("button", "btn_menu_view")
     slider, label = node("slider", "click_slider"), node("label", "filter_label")
     field, search = node("field", "line_filter"), node("icon", "line_filter")
+    buttons = sorted(drawn_by_owner(frame_key, "button").items(), key=lambda item: item[1][1])
+    left = [(owner, n) for owner, n in buttons if n[1] < slider[1]]
+    right_end = [(owner, n) for owner, n in buttons if n[1] > field[1]]
+    (_, first), (_, second) = left[0], left[1]
     icons = {owner: n[3] for owner, n in drawn_by_owner(frame_key, "icon").items()}
     return {
+        "left": tuple(owner for owner, _n in left),    # the buttons left of the slider, in drawn order
+        "right": tuple(owner for owner, _n in right_end),    # and those right of the search field
         "height": layout["frame"][1],
         "edge": first[1],
-        "right_edge": layout["frame"][0] - right(node("button", "btn_info")),
+        "right_edge": layout["frame"][0] - right(right_end[-1][1]),
         "gap": second[1] - right(first),
-        "slider_gap": slider[1] - right(node("button", "btn_hip_capture")),
+        "slider_gap": slider[1] - right(left[-1][1]),
         "search_gap": label[1] - right(slider),
         "label_gap": field[1] - right(label),
         "button": first[3],

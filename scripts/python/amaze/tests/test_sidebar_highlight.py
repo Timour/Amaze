@@ -320,7 +320,7 @@ class _AssetSidebarPaths(_HighlightCase):
         section = self.panel.active_section()
         categories = section.stack().categories
         self.select_row()
-        order, calls = categories.order_snapshot(), []
+        order, calls = list(categories._categories), []
         with mock.patch.object(section, "reselect_sidebar_row", lambda: calls.append(1)):
             categories.restore_order(order[:1] + order[:0:-1])    # one reset
             categories.restore_order(order)    # and a second, in the same turn

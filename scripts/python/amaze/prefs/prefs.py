@@ -7,6 +7,7 @@ from amaze.core import renderers
 from amaze.helpers import hostos
 from amaze.prefs.persistence import (
     SHARED_KEYS,
+    USER_KEYS,
     _Persistence,
     _default_sections,
     _normalised_dir,
@@ -76,10 +77,10 @@ class Prefs(_Persistence):
         self.data = {}
         for _prop, attr, default in SHARED_KEYS.values():  # load() reads the same table
             setattr(self, attr, default)
+        for _prop, attr, default in USER_KEYS.values():  # per user; load() reads the same table
+            setattr(self, attr, default)
         self._shared_seen: dict = {}  # stored key -> the value last read from or written to the library
-        self._show_categories = True
         self._section_filters: dict = {}  # the Filter menu's choice per section key, as the entry's id
-        self._view_mode = "grid"
         self._thumbsize = 128  # the grid view; `_thumbsize_list` is the list view. Both match ClickSlider.DEFAULT_VALUE
         self._thumbsize_list = 128
         self._library_user = ""  # who this is; blank = no user chosen yet, never filled in automatically ▸p/identity-is-chosen
@@ -87,25 +88,9 @@ class Prefs(_Persistence):
         self._file_favorites: list[str] = []
         self._last_file_folder = ""
         self._file_location_records: dict = {}  # last-known copy of the library's location records, path -> record
-        self._show_notes = False
-        self._show_info = False
-        self._info_preview = True
-        self._info_preview_height = 0
-        self._notes_panel_width = 0  # 0 = never dragged, so the 450px launch width applies
-        self._sidebar_width = 0  # same rule, 220px design width
-        self._icon_line_weight = "template"  # "template" (thin 10px stroke) or "feather" (the icon set's default)
-        self._sidebar_counts = True  # entry counts on INDIVIDUAL categories/folders; "All" always shows its total regardless
-        self._render_rat_files = False
-        self._system_file_icons = True
         self._cache_dir = ""  # "" = this OS's own convention via hostos.cache_root()
         self._libraries: list[str] = []  # the Library list, the most recently opened first
-        self._hide_empty_categories = True  # for Materials, "empty" respects the active renderer filter
         self._enabled_sections = _default_sections()
-        self._accent_color = "#5d7abd"  # size slider / progress bar; matches ClickSlider.LEFT_COLOR
-        self._scroll_speed = 0.75  # wheel factor for the grid/list, chosen by testing live and shown as a percent in Preferences
-        self._step_size = True  # the toolbar size slider stops only on its marks
-        self._debug_mode = False
-        self._addon_betas = False  # Check for Updates on the Add-On tab takes each add-on's newest beta
         self._users_blocks: dict = {}  # uid -> that user's keys on THIS machine
 
     @property

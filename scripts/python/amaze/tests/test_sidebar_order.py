@@ -221,13 +221,12 @@ class MoveCategoryTest(unittest.TestCase):
 
 
 class OrderSnapshotTest(unittest.TestCase):
-    """Esc mid-gesture puts the order back exactly."""
+    """`restore_order` puts an order back exactly, in place: what the sort actions use."""
 
     def test_restore_returns_the_snapshot_order_in_place(self):
         model = _categories(self, ["_All", "a", "b", "c"])
         held = model._categories
-        snap = model.order_snapshot()
-        self.assertIsNot(snap, model._categories, "the snapshot is the live list")
+        snap = list(model._categories)
         model.move_category(1, 3)
         model.move_category(2, 1)
         seen = []
@@ -367,11 +366,11 @@ class QtRowMoveTest(unittest.TestCase):
             self.assertTrue(proxy.canDropMimeData(data, self.MOVE, 1, 0, self.ROOT))
             self.assertFalse(proxy.dropMimeData(data, self.MOVE, 1, 0, self.ROOT),
                              "a True here lets Qt remove the dragged row itself")
-            self.assertEqual(["_All", "c", "a", "b"], model.order_snapshot())
+            self.assertEqual(["_All", "c", "a", "b"], list(model._categories))
             save.assert_called_once_with()
             data = proxy.mimeData([proxy.index(1, 0)])    # c again, dropped on b
             proxy.dropMimeData(data, self.MOVE, -1, -1, proxy.index(3, 0))
-            self.assertEqual(["_All", "a", "b", "c"], model.order_snapshot())
+            self.assertEqual(["_All", "a", "b", "c"], list(model._categories))
             self.assertEqual(2, save.call_count)
 
     def test_nothing_is_dropped_above_all_or_where_it_already_is(self):
@@ -386,7 +385,7 @@ class QtRowMoveTest(unittest.TestCase):
         with mock.patch.object(model, "save") as save:
             proxy.dropMimeData(other, self.MOVE, 1, 0, self.ROOT)
             save.assert_not_called()
-        self.assertEqual(["_All", "a", "b", "c"], model.order_snapshot())
+        self.assertEqual(["_All", "a", "b", "c"], list(model._categories))
 
     def test_the_sidebar_is_set_to_qts_own_row_move(self):
         from amaze.panel import sidebar
@@ -407,13 +406,22 @@ class QtRowMoveTest(unittest.TestCase):
         self.assertFalse(view.dragDropOverwriteMode(), "every drop lands ON a row: no line between rows")
         self.assertTrue(view.showDropIndicator())
 
+    def test_a_drag_moves_the_row_it_picked_up_after_the_rows_shift(self):
+        model, proxy = self._list()
+        data = proxy.mimeData([proxy.index(3, 0)])    # c is picked up
+        model.remove_category("a")    # mid-drag the list changes: c is now row 2, row 3 is gone
+        with mock.patch.object(model, "save", return_value=True):
+            proxy.dropMimeData(data, self.MOVE, 1, 0, self.ROOT)    # dropped between All and b
+        self.assertEqual(["_All", "c", "b"], list(model._categories),
+                         "the drop moved whatever row now has the number it was picked up at")
+
     def test_a_move_the_library_refuses_to_save_is_put_back(self):
         model, proxy = self._list()
         data = proxy.mimeData([proxy.index(3, 0)])    # c, dropped between All and a
         with mock.patch.object(model, "save", return_value=False) as save:
             proxy.dropMimeData(data, self.MOVE, 1, 0, self.ROOT)
             save.assert_called_once_with()
-        self.assertEqual(["_All", "a", "b", "c"], model.order_snapshot(),
+        self.assertEqual(["_All", "a", "b", "c"], list(model._categories),
                          "the sidebar shows an order the library never stored")
 
     def test_the_online_list_moves_nothing(self):

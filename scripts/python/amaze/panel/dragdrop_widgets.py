@@ -605,42 +605,6 @@ class DragDropCentralWidget(QtWidgets.QWidget):
         helpers.run_at_top_of_loop(_route, "drop save")    # a bare timer can fire during a builder's processEvents call
 
 
-class CategoryDropFilter(QtCore.QObject):
-    """Makes the category sidebar a drop target for drags from the grid, recategorising them."""
-
-    def __init__(self, cat_list, panel) -> None:
-        super().__init__(cat_list)
-        self._list = cat_list
-        self._panel = panel
-        cat_list.setAcceptDrops(True)
-        cat_list.installEventFilter(self)
-
-    def eventFilter(self, obj, event) -> bool:
-        et = event.type()
-        if et in (
-            QtCore.QEvent.Type.DragEnter,
-            QtCore.QEvent.Type.DragMove,
-        ):
-            if self._panel._can_drop_category(event):
-                self._panel._update_category_drag_hover(    # accent-purple highlight, so which category the drop will hit is visible
-                    event.position().toPoint()
-                )
-                event.acceptProposedAction()
-                return True
-            return False
-        if et == QtCore.QEvent.Type.DragLeave:
-            self._panel._set_drag_hover_row(-1)
-            return False
-        if et == QtCore.QEvent.Type.Drop:
-            handled = self._panel._handle_category_drop(event)
-            self._panel._set_drag_hover_row(-1)
-            if handled:
-                event.acceptProposedAction()
-                return True
-            return False
-        return False
-
-
 class DragDropListView(GridGestureMixin, QtWidgets.QListView):
     """The grid: one tile per item, IconMode or ListMode."""
 

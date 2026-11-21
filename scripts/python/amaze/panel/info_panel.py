@@ -15,7 +15,7 @@ WIDER_READ_MS = 150    # a pane dragged wider reads its picture again this long 
 DESCRIPTION = side_pane.Page(    # what the page is made of; the engine builds it
     drawn=_DRAWN,
     header=side_pane.Header(
-        "icon_info.svg", amazetheme.INFO_ICON_COLOR, _DRAWN["preview_button_pad"],
+        "icon_info.svg", amazetheme.INFO_ICON_ART_COLOR, amazetheme.INFO_ICON_COLOR, _DRAWN["preview_button_pad"],
         (side_pane.Button("preview_button", _DRAWN["preview_button"]),)),
     body=(side_pane.Picture("preview", _DRAWN["preview_height"], amazetheme.INFO_PREVIEW_LEAST),
           side_pane.DragLine("drag_line", _DRAWN["drag_line"]),
