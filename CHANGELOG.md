@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.46.0
+
+- Dragging a material over an OBJ viewport lights the object the way Houdini's own drags do. The selection is not changed, so the scene view and the network editor stay where they are.
+- Esc cancels a drag.
+- The name tag of a drag is hidden while another application is in front.
+- Preferences: OBJ Drag Outline is removed.
+
 ## 1.45.1
 
 - Section tabs: a tab under the pointer has a highlight behind it, and the tabs' highlights meet in the middle, like Houdini's own tabs.
