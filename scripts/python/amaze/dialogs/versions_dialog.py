@@ -29,7 +29,8 @@ class VersionsDialog(AssetDialog):
         self._list = drawn_list(
             self.FRAME_KEY, QtWidgets.QAbstractItemView.SelectionMode.SingleSelection,
             ListRows(None, self.FRAME_KEY, amazetheme.D01_SELECTED_BACKGROUND,
-                     lambda index: str(index.data(DATE_ROLE) or ""), whole_second=True))
+                     lambda index: str(index.data(DATE_ROLE) or ""), whole_second=True,
+                     selected_text=None))
         self._list.setToolTip(ui_helpers.tooltip_text(tooltips.PANEL_VERSION_ROW))
         self._select, self._cancel, buttons = self.drawn_pair(amazetheme.BTN_SELECT,
                                                               self._on_accept)

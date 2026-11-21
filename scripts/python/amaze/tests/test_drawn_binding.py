@@ -159,8 +159,8 @@ DRAWN_EXEMPT = (    # (does this node need no pin, why): every other drawn node 
     (lambda f, n: f == "N02",
      "the info pane's rows are PAINTED: it reads its sizes through drawn_info, "
      "held by test_info_panel ▸ TheInfoPaneMatchesItsDesignFrame"),
-    (lambda f, n: f in ("D15", "D01") and n[0].startswith("QListWidget ▸ item"),
-     "a row is PAINTED by the list's delegate: it reads its sizes through "
+    (lambda f, n: f in ("D15", "D01") and n[0].startswith("QListWidget ▸ "),
+     "a row is PAINTED by the list and its delegate: they read their sizes through "
      "drawn_list_rows, held by TheManageWindowMatchesItsDesignFrame and test_versions_dialog"),
     (lambda f, n: f in ("P03a", "P03b") and n[0].startswith("Line "),
      "a line PAINTED along the sub-tab page's top or right edge, wherever "

@@ -9,7 +9,7 @@ HEADER_BAND_TEXT_BOLD = True    # the drawn weight on D11
 
 FORM_DIALOG_MARGIN = 5        # ▸ the content margin every compact form dialog uses
 
-D01_SELECTED_BACKGROUND = "#755400"   # ▸ D01 Versions: the picked version's row
+D01_SELECTED_BACKGROUND = "#297d54"   # ▸ D01 Versions: the picked version's row
 
 D02_MARGINS = (8, 12, 8, 12)   # ▸ D02 Customize (Tile Icon): left, top, right, bottom
 D02_CELL = 34            # one icon button in the chooser grid
@@ -97,8 +97,10 @@ P01_LIGHT_COUNT_GAP = 6         # a light to its count, as drawn for two of the 
 D15_SELECTED_BACKGROUND = UPDATE_WARNING_FILL   # ▸ D15 Manage Libraries: a row picked for removal
 D15_DIM_TEXT_COLOR = "#787878"        # a library that cannot be reached: its name and `not connected`
 D15_DIM_PATH_TEXT_COLOR = "#646464"   # and its path
-LIST_BACKGROUND = ("ListBG", "#272727")    # ▸ D01's and D15's list: Houdini's list colour, UIDark's value headless
-LIST_RADIUS = 3                # its corners, and a picked row's
+D15_SELECTED_TEXT_COLOR = "#1b1b1b"        # a picked row's name, on its red bar
+D15_SELECTED_PATH_TEXT_COLOR = "#383838"   # and its path
+LIST_BACKGROUND = "#2d2d2d"    # ▸ D01's and D15's list box, under its rows
+FILLED_ROW = "#383838"         # rows 1, 3, 5... of a drawn list or table; the rows between show its ground
 GRID_BACKGROUND = "#2d2d2d"        # ▸ T01: the grid's background as drawn; list text contrast is computed against it
 PREFS_DIVIDER_ABOVE = 8  # inside the divider's own row box
 PREFS_DIVIDER_BELOW = 6  # so a divider costs ROW_GAP + ABOVE + H + BELOW + ROW_GAP = 27
@@ -127,7 +129,7 @@ COMMENT_DIM_ADD_COLOR = "#565656"         # the + art; Houdini's menu triangle k
 
 INFO_ICON_COLOR = "#fdba00"      # ▸ the info pane (N02): its header icon, and its toolbar button while open
 INFO_ICON_ART_COLOR = "#5d7abd"  # the colour icon_info.svg is drawn in; INFO_ICON_COLOR replaces it
-INFO_ROW_BG = "#383838"          # the fill of rows 1, 3, 5...; the rows between show the page
+INFO_ROW_BG = FILLED_ROW         # the fill of rows 1, 3, 5...; the rows between show the page
 INFO_TEXT = "#cdc8bc"            # labels and values
 INFO_DIVIDER = "#2d2d2d"         # the line between the two columns, the page's own colour
 INFO_DIVIDER_WIDTH = 2           # that line's weight in px, centred on the drawn divider's x
@@ -277,17 +279,25 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
         "frame": (269, 344),
         "nodes": (
             ("QListWidget", 8, 12, 253, 286, None),
-            ("QListWidget ▸ item ▸ selected", 14, 38, 241, 22, None),
-            ("QListWidget ▸ item", 19, 18, 90, 15, "Version 2 with red "),
-            ("QListWidget ▸ item ▸ path", 194, 18, 56, 15, "2026-10-23"),
-            ("QListWidget ▸ item", 19, 42, 168, 15, "Johns version more saturated w..."),
-            ("QListWidget ▸ item ▸ path", 194, 42, 56, 15, "2026-10-22"),
-            ("QListWidget ▸ item", 19, 66, 116, 15, "Look Development test"),
-            ("QListWidget ▸ item ▸ path", 195, 66, 56, 15, "2026-10-22"),
+            ("QListWidget ▸ row ▸ 5", 8, 88, 253, 19, None),
+            ("QListWidget ▸ row ▸ 3", 8, 50, 253, 19, None),
+            ("QListWidget ▸ row ▸ 1", 8, 12, 253, 19, None),
+            ("QListWidget ▸ row ▸ 7", 8, 126, 253, 19, None),
+            ("QListWidget ▸ row ▸ 9", 8, 164, 253, 19, None),
+            ("QListWidget ▸ row ▸ 11", 8, 202, 253, 19, None),
+            ("QListWidget ▸ row ▸ 13", 8, 240, 253, 19, None),
+            ("QListWidget ▸ row ▸ 15", 8, 278, 253, 19, None),
+            ("QListWidget ▸ item ▸ selected", 8, 31, 253, 19, None),
             ("QPushButton", 130, 311, 60, 21, None),
             ("QPushButton", 196, 311, 65, 21, None),
-            ("QPushButton ▸ text", 145, 314, 31, 15, "Select"),
+            ("QListWidget ▸ item", 19, 14, 90, 15, "Version 2 with red "),
+            ("QListWidget ▸ item ▸ path", 194, 14, 56, 15, "2026-10-23"),
+            ("QListWidget ▸ item ▸ path", 194, 33, 56, 15, "2026-10-22"),
+            ("QListWidget ▸ item ▸ path", 194, 52, 56, 15, "2026-10-22"),
+            ("QListWidget ▸ item", 19, 33, 168, 15, "Johns version more saturated w..."),
+            ("QListWidget ▸ item", 19, 52, 116, 15, "Look Development test"),
             ("QPushButton ▸ text", 211, 314, 34, 15, "Cancel"),
+            ("QPushButton ▸ text", 145, 314, 31, 15, "Select"),
         ),
     },
     "D02": {   # Customize (Tile Icon)
@@ -683,21 +693,26 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
     "D15": {   # Manage Libraries - the Library list, opened from Preferences ▸ Library
         "frame": (420, 227),
         "nodes": (
-            ("QListWidget", 8, 12, 404, 170, None),
-            ("QListWidget ▸ item", 19, 18, 71, 15, "Studio Library"),
-            ("QListWidget ▸ item ▸ path", 130, 18, 158, 15, "/Volumes/Server/Amaze/Studio"),
-            ("QListWidget ▸ item ▸ selected", 14, 38, 392, 22, None),
-            ("QListWidget ▸ item", 19, 42, 69, 15, "Client Archive"),
-            ("QListWidget ▸ item ▸ path", 130, 42, 170, 15, "/Volumes/Projects/Archive/Amaze"),
-            ("QListWidget ▸ item", 19, 66, 95, 15, "Look Development"),
-            ("QListWidget ▸ item ▸ path", 130, 66, 91, 15, "~/Amaze/LookDev"),
-            ("QListWidget ▸ item", 19, 90, 56, 15, "Old Library"),
-            ("QListWidget ▸ item ▸ path", 130, 90, 148, 15, "/Volumes/Backup/Amaze/Old"),
-            ("QListWidget ▸ item ▸ not connected", 328, 90, 72, 15, "not connected"),
+            ("QListWidget", 8, 12, 404, 171, None),
+            ("QListWidget ▸ row ▸ 5", 8, 88, 404, 19, None),
+            ("QListWidget ▸ row ▸ 3", 8, 50, 404, 19, None),
+            ("QListWidget ▸ row ▸ 1", 8, 12, 404, 19, None),
+            ("QListWidget ▸ row ▸ 7", 8, 126, 404, 19, None),
+            ("QListWidget ▸ row ▸ 9", 8, 164, 404, 19, None),
+            ("QListWidget ▸ item ▸ selected", 8, 31, 404, 19, None),
+            ("QListWidget ▸ item", 19, 14, 71, 15, "Studio Library"),
+            ("QListWidget ▸ item ▸ path", 130, 14, 158, 15, "/Volumes/Server/Amaze/Studio"),
+            ("QListWidget ▸ item", 19, 33, 69, 15, "Client Archive"),
+            ("QListWidget ▸ item ▸ path", 130, 33, 170, 15, "/Volumes/Projects/Archive/Amaze"),
+            ("QListWidget ▸ item", 19, 52, 95, 15, "Look Development"),
+            ("QListWidget ▸ item ▸ path", 130, 52, 91, 15, "~/Amaze/LookDev"),
+            ("QListWidget ▸ item", 19, 71, 56, 15, "Old Library"),
+            ("QListWidget ▸ item ▸ path", 130, 71, 148, 15, "/Volumes/Backup/Amaze/Old"),
+            ("QListWidget ▸ item ▸ not connected", 327, 71, 72, 15, "not connected"),
             ("QPushButton", 237, 193, 104, 22, None),
             ("QPushButton", 347, 193, 65, 22, None),
-            ("QPushButton ▸ text", 245, 197, 88, 15, "Remove from List"),
             ("QPushButton ▸ text", 363, 196, 34, 15, "Cancel"),
+            ("QPushButton ▸ text", 245, 197, 88, 15, "Remove from List"),
         ),
     },
     "T01": {   # the grid tile, drawn at TILE_DRAWN_SIZE - its spacing is what the delegate paints
@@ -1306,6 +1321,8 @@ def drawn_list_rows(frame_key: str = "D15") -> dict:
                       key=lambda n: (n[2], n[1]))
 
     view, = named("QListWidget")
+    filled = sorted((n for n in layout["nodes"] if n[0].startswith("QListWidget ▸ row ▸ ")),
+                    key=lambda n: n[2])
     names, paths = named("QListWidget ▸ item"), named("QListWidget ▸ item ▸ path")
     box, = named("QListWidget ▸ item ▸ selected")
     flag = (named("QListWidget ▸ item ▸ not connected") or paths)[0]    # D01 draws no flag
@@ -1328,6 +1345,10 @@ def drawn_list_rows(frame_key: str = "D15") -> dict:
         "name_x": names[0][1] - box[1],
         "path_x": paths[0][1] - box[1],
         "flag_right": box[1] + box[3] - (flag[1] + flag[3]),
+        "filled_x": filled[0][1] - view[1],    # the filled rows: inset, first top, height, step
+        "filled_top": filled[0][2] - view[2],
+        "filled_h": filled[0][4],
+        "filled_step": filled[1][2] - filled[0][2],
     }
 
 

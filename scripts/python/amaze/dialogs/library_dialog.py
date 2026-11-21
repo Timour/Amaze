@@ -30,10 +30,13 @@ class ListRows(QtWidgets.QStyledItemDelegate):
 
     def __init__(self, parent=None, frame_key: str = "D15",
                  selected_background: str = amazetheme.D15_SELECTED_BACKGROUND, second=None,
-                 whole_second: bool = False) -> None:
+                 whole_second: bool = False,
+                 selected_text=(amazetheme.D15_SELECTED_TEXT_COLOR,
+                                amazetheme.D15_SELECTED_PATH_TEXT_COLOR)) -> None:
         super().__init__(parent)
         self._drawn = amazetheme.drawn_list_rows(frame_key)
         self._selected_background = selected_background
+        self._selected_text = selected_text    # (name, second) on the bar; None keeps the usual
         self._second = second or (lambda index: shown_path(str(index.data(FOLDER_ROLE) or "")))
         self._whole_second = whole_second    # a short text such as a date: drawn whole, never cut
 
@@ -51,12 +54,15 @@ class ListRows(QtWidgets.QStyledItemDelegate):
         right = box.x() + box.width() - px(drawn["flag_right"])
         name_x = box.x() + px(drawn["name_x"])
         path_x = box.x() + px(drawn["path_x"])
+        name_color = theme.color("text_bright") if reached else \
+            QtGui.QColor(amazetheme.D15_DIM_TEXT_COLOR)
+        second_color = theme.color("text") if reached else \
+            QtGui.QColor(amazetheme.D15_DIM_PATH_TEXT_COLOR)
         painter.save()
         if option.state & QtWidgets.QStyle.StateFlag.State_Selected:
-            painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
-            painter.setPen(QtCore.Qt.PenStyle.NoPen)
-            painter.setBrush(QtGui.QColor(self._selected_background))
-            painter.drawRoundedRect(box, px(amazetheme.LIST_RADIUS), px(amazetheme.LIST_RADIUS))
+            painter.fillRect(box, QtGui.QColor(self._selected_background))
+            if self._selected_text:
+                name_color, second_color = (QtGui.QColor(c) for c in self._selected_text)
         painter.setFont(option.font)
         if not reached:
             flag = amazetheme.LABEL_NOT_CONNECTED
@@ -71,12 +77,10 @@ class ListRows(QtWidgets.QStyledItemDelegate):
             name_end, elide = path_x - px(drawn["name_x"]), QtCore.Qt.TextElideMode.ElideNone
         _draw(painter, metrics, str(index.data() or ""),
               QtCore.QRect(name_x, top, max(0, name_end - name_x), high),
-              theme.color("text_bright") if reached else QtGui.QColor(amazetheme.D15_DIM_TEXT_COLOR),
-              QtCore.Qt.TextElideMode.ElideRight)
+              name_color, QtCore.Qt.TextElideMode.ElideRight)
         _draw(painter, metrics, second,
               QtCore.QRect(path_x, top, max(0, right - path_x), high),
-              theme.color("text") if reached else QtGui.QColor(amazetheme.D15_DIM_PATH_TEXT_COLOR),
-              elide)
+              second_color, elide)
         painter.restore()
 
 
@@ -86,15 +90,45 @@ def _draw(painter, metrics, text, rect, color, elide) -> None:
 
 
 def set_list_background(view) -> None:
-    """A drawn list's background: Houdini's list colour, with the drawn corner radius."""
+    """A drawn list's background: the drawn list colour, square-cornered as the frames draw it."""
     view.setStyleSheet(
-        "QListWidget { background-color: %s; border: none; border-radius: %dpx; }"
-        % (theme.list_background().name(), theme.ui_px(amazetheme.LIST_RADIUS)))
+        "QListWidget { background-color: %s; border: none; border-radius: 0; }" % amazetheme.LIST_BACKGROUND)
+
+
+class DrawnList(QtWidgets.QListWidget):
+    """A list that fills rows 1, 3, 5... to its bottom, past its items ▸r/drawn-list-filled-rows"""
+
+    def __init__(self, frame_key: str) -> None:
+        super().__init__()
+        self._drawn = amazetheme.drawn_list_rows(frame_key)
+
+    def filled_rows(self) -> list:
+        """The filled rows' rectangles in the viewport, as the list is scrolled now."""
+        drawn, px = self._drawn, theme.ui_px
+        origin = self.visualItemRect(self.item(0)).top() if self.count() else 0
+        top, step, high = origin + px(drawn["filled_top"]), px(drawn["filled_step"]), \
+            px(drawn["filled_h"])
+        inset, width = px(drawn["filled_x"]), self.viewport().width()
+        rows = []
+        while top < self.viewport().height():
+            if top + high > 0:    # a row scrolled out above is not painted
+                rows.append(QtCore.QRect(inset, top, width - 2 * inset, high))
+            top += step
+        return rows
+
+    def paintEvent(self, event) -> None:
+        painter = QtGui.QPainter(self.viewport())
+        try:
+            for row in self.filled_rows():
+                painter.fillRect(row, QtGui.QColor(amazetheme.FILLED_ROW))
+        finally:
+            painter.end()
+        super().paintEvent(event)
 
 
 def drawn_list(frame_key: str, selection_mode, delegate) -> QtWidgets.QListWidget:
-    """A drawn list: no frame, no sideways scroll, `delegate` painting rows on the background."""
-    view = QtWidgets.QListWidget()
+    """A drawn list: no frame, no sideways scroll, `delegate` painting rows on the filled rows."""
+    view = DrawnList(frame_key)
     view.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
     view.setSelectionMode(selection_mode)
     view.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)

@@ -17,6 +17,8 @@ from amaze import amazetheme  # noqa: E402
 from amaze.dialogs import base_dialog, versions_dialog  # noqa: E402
 from amaze.helpers import theme, ui_helpers  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401
+from amaze.tests.test_library_list import (colours_down, filled_rows_expected,  # noqa: E402
+                                           painted_texts)
 
 LISTED = [    # the stored version list's order: oldest first
     {"n": 1, "name": "Version 1", "date": "2026-10-21 09:00"},
@@ -97,23 +99,71 @@ class TheVersionsWindowMatchesItsDesignFrame(unittest.TestCase):
         self.assertIsNone(self.dialog.findChild(QtWidgets.QLabel, "amaze_header_band_text"))
         self.assertEqual("brushed_steel", self.dialog.windowTitle())
 
-    def test_a_picked_row_is_painted_in_the_drawn_selection(self):
-        rows = amazetheme.drawn_list_rows("D01")
+    def test_each_row_is_19_px_from_the_list_top(self):
+        names = sorted(n[2] for n in amazetheme.DIALOG_LAYOUT["D01"]["nodes"]
+                       if n[0] == "QListWidget ▸ item")
+        self.assertEqual(19, names[1] - names[0], "premise: the frame draws 19 px rows")
+        view = self.dialog._list
+        for row in range(view.count()):
+            with self.subTest(row=row):
+                rect = view.visualItemRect(view.item(row))
+                self.assertEqual((0, theme.ui_px(19 * row), view.viewport().width(),
+                                  theme.ui_px(19)),
+                                 (rect.x(), rect.y(), rect.width(), rect.height()))
+
+    def test_the_name_and_the_day_sit_where_the_frame_draws_them(self):
         px = theme.ui_px
-        picture = self.dialog._list.viewport().grab().toImage()
-        ratio = picture.devicePixelRatio()
-        top = px(rows["pitch"]) + px(rows["box_y"])    # the active version is the second row
+        for row in range(self.dialog._list.count()):
+            name, day = painted_texts(self.dialog._list, row)
+            with self.subTest(row=row):
+                self.assertEqual((px(19 - 8), px(19 * row + 2), px(15)),
+                                 (name[0], name[1], name[3]))
+                self.assertEqual((px(19 * row + 2), px(15)), (day[1], day[3]))
+                self.assertEqual(px(250 - 8), day[0] + day[2],
+                                 "the day does not end where the frame's dates end")
 
-        def color_at(x, y):
-            return QtGui.QColor(picture.pixel(int(x * ratio), int(y * ratio))).name()
+    def test_the_filled_rows_and_the_bar_run_to_the_bottom_of_the_list(self):
+        view = self.dialog._list    # the active version, the second row, is selected
+        self.assertEqual(filled_rows_expected("D01", view.viewport().height(), 1,
+                                              amazetheme.D01_SELECTED_BACKGROUND),
+                         colours_down(view, view.viewport().width() - 2))
+        self.assertEqual(("#383838", "#2d2d2d"), (amazetheme.FILLED_ROW, amazetheme.LIST_BACKGROUND))
 
-        selected = QtGui.QColor(amazetheme.D01_SELECTED_BACKGROUND).name()
-        self.assertEqual(selected, color_at(px(rows["box_x"]) + 1, top + 1),
-                         "the selected row is not painted at its position in the design")
-        self.assertNotEqual(selected, color_at(px(rows["box_x"]) + 1, top - 1),
-                            "the selection fills the gap the frame leaves above the row")
-        self.assertNotEqual(selected, color_at(px(rows["box_x"]), top),
-                            "the picked row's corner is square; the frame rounds it")
+    def test_the_filled_rows_follow_the_rows_when_the_list_scrolls(self):
+        many = [{"n": n, "name": "Version %d" % n, "date": "2026-10-21 09:00"}
+                for n in range(1, 41)]
+        dialog = versions_dialog.VersionsDialog("brushed_steel", many, 1)    # the last row
+        self.addCleanup(dialog.deleteLater)
+        dialog.show()
+        self.addCleanup(dialog.hide)
+        QtWidgets.QApplication.processEvents()
+        view = dialog._list
+        self.assertGreater(view.verticalScrollBar().value(), 0, "premise: the list is scrolled")
+        column = colours_down(view, view.viewport().width() - 2)
+        filled, ground = (QtGui.QColor(c).name()
+                          for c in (amazetheme.FILLED_ROW, amazetheme.LIST_BACKGROUND))
+        for row in range(view.count() - 1):    # the last one is the picked, green bar
+            rect = view.visualItemRect(view.item(row))
+            if rect.top() >= 0:
+                with self.subTest(row=row):
+                    self.assertEqual(filled if row % 2 == 0 else ground, column[rect.top()])
+
+    def test_the_picked_row_is_a_green_bar_over_the_whole_row(self):
+        green = QtGui.QColor(amazetheme.D01_SELECTED_BACKGROUND).name()
+        px, view = theme.ui_px, self.dialog._list
+        for x in (0, view.viewport().width() - 1):
+            with self.subTest(x=x):
+                column = colours_down(view, x)
+                self.assertEqual([green] * px(19), column[px(19):px(38)])
+                self.assertNotEqual(green, column[px(19) - 1])
+                self.assertNotEqual(green, column[px(38)])
+        self.assertEqual("#297d54", green)
+
+    def test_the_text_on_the_green_bar_keeps_its_usual_colours(self):
+        plain = [text[5] for text in painted_texts(self.dialog._list, 1)]
+        picked = [text[5] for text in painted_texts(self.dialog._list, 1, selected=True)]
+        self.assertEqual([theme.color("text_bright").name(), theme.color("text").name()], plain)
+        self.assertEqual(plain, picked)
 
 
 class TheDayIsNeverCut(unittest.TestCase):
