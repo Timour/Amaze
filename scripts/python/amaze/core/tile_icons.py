@@ -9,7 +9,7 @@ from collections import OrderedDict
 from PySide6 import QtCore, QtGui
 
 import amaze
-from amaze import messages
+from amaze import amazetheme, messages
 from amaze.core import debug, material
 from amaze.helpers import hostos
 
@@ -67,10 +67,31 @@ def choice_for(model, row: int, spec) -> dict:
     return spec
 
 
+def on_ground(image):
+    """`image` over the tile ground, opaque; the generic art is drawn without a ground of its own."""
+    shown = QtGui.QImage(image.size(), QtGui.QImage.Format.Format_RGB32)
+    shown.fill(QtGui.QColor(amazetheme.TILE_GROUND))
+    painter = QtGui.QPainter(shown)
+    try:
+        painter.drawImage(0, 0, image)
+    finally:
+        painter.end()
+    return shown
+
+
+_generic_images = {}    # {(art, the drawn image's cache key): the image on the tile ground}
+
+
 def generic_image(art: str):
-    """A generic face: the T frame's `face ▸ <art>.svg`, exported whole, or None for no art."""
+    """A generic face: the T frame's `face ▸ <art>.svg` on the tile ground, or None for no art."""
     from amaze.helpers import ui_helpers
-    return ui_helpers.svg_image(art + ".svg") if art else None
+    drawn = ui_helpers.svg_image(art + ".svg") if art else None
+    if drawn is None:
+        return None
+    key = (art, drawn.cacheKey())    # a redrawn SVG, after `forget_svg_images`, is another key
+    if key not in _generic_images:
+        _generic_images[key] = on_ground(drawn)
+    return _generic_images[key]
 
 
 def chosen_image(model, row: int):

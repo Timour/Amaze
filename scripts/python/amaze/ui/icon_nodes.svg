@@ -1,10 +1,8 @@
 <svg width="130" height="130" viewBox="0 0 130 130" fill="none" xmlns="http://www.w3.org/2000/svg">
-<g clip-path="url(#clip0_624_31)">
-<path d="M129.62 0H0.379617C0.16996 0 0 0.171059 0 0.38207V129.618C0 129.829 0.16996 130 0.379617 130H129.62C129.83 130 130 129.829 130 129.618V0.38207C130 0.171059 129.83 0 129.62 0Z" fill="#1B1B1B"/>
 <path d="M42 68C42 68 41.7821 72.7579 43.5 74.5C46.9955 78.0446 53.5218 77 58.5 77C65 77 65 82 65 82C65 82 63.8332 73.295 67.5 68C71.9813 61.5289 83.7576 62.6724 87 55.5C88.3094 52.6036 88 48 88 48" stroke-width="2" stroke="#969696"/>
 <rect x="71" y="29" width="34" height="15" rx="3" stroke-width="2" stroke="#969696"/>
 <rect x="48" y="86" width="34" height="15" rx="3" stroke-width="2" stroke="#FFCF22"/>
-<mask id="stroke0_624_31" fill="white">
+<mask id="stroke0_624_31" fill="#FFFFFF">
 <path d="M56 49C58.2091 49 60 50.7909 60 53V62C60 64.2091 58.2091 66 56 66H28C25.7909 66 24 64.2091 24 62V53C24 50.7909 25.7909 49 28 49H56Z"/>
 </mask>
 <path d="M56 49C58.2091 49 60 50.7909 60 53V62C60 64.2091 58.2091 66 56 66H28C25.7909 66 24 64.2091 24 62V53C24 50.7909 25.7909 49 28 49H56Z" stroke-width="4" stroke="#969696" mask="url(#stroke0_624_31)"/>
@@ -15,10 +13,4 @@
 <circle cx="88" cy="46" r="3" fill="#D9D9D9" stroke-width="2" stroke="#1B1B1B"/>
 <circle cx="80" cy="27" r="3" fill="#D9D9D9" stroke-width="2" stroke="#1B1B1B"/>
 <circle cx="96" cy="27" r="3" fill="#D9D9D9" stroke-width="2" stroke="#1B1B1B"/>
-</g>
-<defs>
-<clipPath id="clip0_624_31">
-<rect width="130" height="130" fill="white"/>
-</clipPath>
-</defs>
 </svg>

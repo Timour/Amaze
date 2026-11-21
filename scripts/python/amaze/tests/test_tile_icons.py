@@ -259,6 +259,26 @@ class FaceRuleTest(unittest.TestCase):
             self.assertIsNotNone(image, "ui/%s.svg is missing or does not render" % art)
             self.assertEqual(image.width(), image.height(), art)
 
+    def test_every_generic_icon_is_drawn_without_a_ground_and_shown_on_the_tile_ground(self):
+        from amaze import amazetheme
+        from amaze.core import code_library, gradient_library, library, matx_icon, matx_library
+        from amaze.helpers import ui_helpers
+        ground = QtGui.QColor(amazetheme.TILE_GROUND)
+        for art in (library.MaterialLibrary.TILE_FACE, cop_library.CopLibrary.TILE_FACE,
+                    matx_library.ONLINE_FACE, code_library.CodeLibrary.TILE_FACE,
+                    gradient_library.GradientLibrary.TILE_FACE, "icon_hip", "face_file", "face_rat",
+                    matx_icon.SHARED_TEMPLATE[:-4]):
+            with self.subTest(art=art):
+                shown = tile_icons.generic_image(art)
+                self.assertFalse(shown.hasAlphaChannel(), "the icon is shown without a ground")
+                if art == "icon_hip":
+                    continue    # Houdini's mark fills its whole box, corners included
+                drawn = ui_helpers.svg_image(art + ".svg")
+                self.assertEqual(0, drawn.pixelColor(2, 2).alpha(), "the art carries a ground of its own")
+                self.assertEqual(ground.rgba(), shown.pixelColor(2, 2).rgba(), "the tile ground is not under it")
+        swatches = matx_icon.render({"color": [1.0, 0.0, 0.0]}, 64)
+        self.assertEqual(ground.rgba(), swatches.pixelColor(1, 1).rgba(), "the swatch icon has no tile ground")
+
 
 class FaceChoiceTest(unittest.TestCase):
     """A face choice reaches the tile through the shared model; a row's own default is not stored."""

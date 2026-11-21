@@ -7,6 +7,7 @@ import re
 from PySide6 import QtGui
 
 import amaze
+from amaze.core import tile_icons
 from amaze.helpers import ui_helpers
 
 TRANSMISSIVE_ALPHA = 0.25
@@ -68,9 +69,9 @@ def icon_svg(values: dict, source: str = "") -> str:
 
 
 def render(values: dict, size: int, source: str = "") -> QtGui.QImage:
-    """A square icon for one material's values, rendered from the SVG onto a transparent image."""
+    """A square icon for one material's values, rendered from the SVG onto the tile ground."""
     image = QtGui.QImage(
         size, size, QtGui.QImage.Format.Format_ARGB32_Premultiplied
     )
     ui_helpers.paint_svg(image, icon_svg(values, source).encode("utf-8"))
-    return image
+    return tile_icons.on_ground(image)
