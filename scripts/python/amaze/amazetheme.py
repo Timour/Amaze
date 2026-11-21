@@ -783,6 +783,7 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
         "nodes": (
             ("tile card", 4, 4, 130, 173, None),
             ("thumbnail", 4, 4, 130, 130, None),
+            ("tile name", 9, 139, 120, 15, "Badges, long name te..."),
             ("tile subtitle", 9, 157, 43, 15, "Redshift"),
             ("renderer icon ▸ renderer_redshift", 112, 155, 16, 18, None),
         ),
@@ -792,6 +793,7 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
         "nodes": (
             ("tile card", 4, 4, 130, 173, None),
             ("thumbnail", 4, 4, 130, 130, None),
+            ("tile name", 9, 139, 120, 15, "Badges, long name te..."),
             ("tile subtitle", 9, 157, 37, 15, "Octane"),
             ("renderer icon ▸ renderer_octane", 112, 156, 16, 16, None),
         ),
