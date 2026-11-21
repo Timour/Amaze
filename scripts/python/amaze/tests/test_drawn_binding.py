@@ -916,6 +916,22 @@ class TheShowHidePageHasItsLines(unittest.TestCase):
         self.assertNotEqual(line_color, picture.pixel(right // 2, bottom // 2),
                             "the page is filled, not lined")
 
+    def test_one_line_runs_under_the_tab_bar_across_the_whole_window(self):
+        from amaze.dialogs import prefs_dialog
+        dialog = prefs_dialog.PrefsDialog(test_support.fixture_prefs(self), panel=None)
+        self.addCleanup(dialog.deleteLater)
+        dialog.show()
+        self.addCleanup(dialog.hide)
+        QtWidgets.QApplication.processEvents()
+        bar = dialog._tabs.tabBar()
+        bottom = bar.mapTo(dialog, QtCore.QPoint(0, bar.height())).y()
+        thick = theme.ui_px(1)
+        self.assertEqual(QtCore.QRect(0, bottom - thick, dialog.width(), thick), dialog._tab_line.geometry(),
+                         "the line is not the tab bar's last row, edge to edge")    # P01's Line 3
+        picture = dialog.grab(dialog._tab_line.geometry()).toImage()
+        self.assertEqual({theme.color("tab_bar").rgb()},
+                         {picture.pixel(x, 0) for x in range(picture.width())}, "the row is not one colour")
+
 
 class TheFormFamilyMatchesItsFrame(unittest.TestCase):
     """D09 and D13 take every margin and gap from their frames. ▸r/form-from-frame"""

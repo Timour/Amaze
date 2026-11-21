@@ -212,6 +212,34 @@ class _PageLines(QtWidgets.QWidget):
         painter.end()
 
 
+class _TabLine(QtWidgets.QWidget):
+    """P01's line: the tab bar's last row in the tab bar's colour, from one window edge to the other."""
+
+    def __init__(self, dialog, tabs: QtWidgets.QTabWidget) -> None:
+        super().__init__(dialog)
+        self._bar = tabs.tabBar()
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        for watched in (dialog, tabs, self._bar):
+            watched.installEventFilter(self)
+        self._follow()
+
+    def _follow(self) -> None:
+        dialog, thick = self.parentWidget(), theme.ui_px(1)
+        bottom = self._bar.mapTo(dialog, QtCore.QPoint(0, self._bar.height())).y()
+        self.setGeometry(0, bottom - thick, dialog.width(), thick)
+        self.raise_()
+
+    def eventFilter(self, watched, event) -> bool:
+        if event.type() in (QtCore.QEvent.Type.Resize, QtCore.QEvent.Type.Move, QtCore.QEvent.Type.Show):
+            self._follow()
+        return False
+
+    def paintEvent(self, _event) -> None:
+        painter = QtGui.QPainter(self)    # Houdini's style ends the first and last tab a row short of the others
+        painter.fillRect(self.rect(), theme.color("tab_bar"))
+        painter.end()
+
+
 class PrefsDialog(base_dialog.AssetDialog):
     """Preferences on AssetDialog: live changes, no OK/Cancel, resizable, tabs as the content."""
 
@@ -254,6 +282,7 @@ class PrefsDialog(base_dialog.AssetDialog):
             theme.ui_px(amazetheme.PREFS_FRAME[0]),
             theme.ui_px(amazetheme.PREFS_FRAME[1]),
         )
+        self._tab_line = _TabLine(self, tabs)
 
 
     def _tab_page(self, width: int = amazetheme.PREFS_CONTENT_WIDTH):
