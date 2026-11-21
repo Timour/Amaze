@@ -144,6 +144,7 @@ _reload(model_registry)    # last of the models: it lists all ten classes
 _reload_loaded("amaze.dialogs.base_dialog")    # FIRST of the dialogs: each binds its AssetDialog class
 _reload_loaded("amaze.dialogs.library_dialog")
 _reload_loaded("amaze.dialogs.prefs_dialog")
+_reload_loaded("amaze.dialogs.prefs_window")
 _reload_loaded("amaze.dialogs.save_dialog")
 _reload_loaded("amaze.dialogs.icon_dialog")
 _reload_loaded("amaze.dialogs.gradient_dialog")
@@ -284,7 +285,7 @@ class AmazePanel(QtWidgets.QWidget):
         self.cop_category_model = None
         self.code_model = None
         self.code_category_model = None
-        self.file_files_model = None    # show_prefs hands it to Preferences, which takes None
+        self.file_files_model = None    # Preferences reads it through the panel, and takes None
         self.file_folders_model = None
         self.matx_online_model = None    # setup() builds the online world; `enter_online_mode` refuses without it
         self._sync_online_chip()
@@ -551,11 +552,8 @@ class AmazePanel(QtWidgets.QWidget):
         debug.event("session", "library reloaded")
 
     def set_library(self) -> None:
-        """Open Preferences on its Library tab, where a library is picked with its user."""
-        self.show_prefs()
-        dialog = getattr(self, "_prefs_dialog", None)
-        if dialog is not None:
-            dialog.show_frame("P01")
+        """Open Preferences on its Library page, where a library is picked with its user."""
+        self.show_prefs(page="Library")
 
     def takes_library(self, folder: str) -> bool:
         """Accept a picked folder only once its index reads: Repair first, or nothing is written."""
@@ -1857,48 +1855,29 @@ class AmazePanel(QtWidgets.QWidget):
                 rows.append(row)
         material_actions.render_thumbnails(model, rows)    # one husk per renderer ▸r/husk-startup
 
-    def show_prefs(self) -> None:
-        """Show Preferences, non-modal, with or without a library; a second open raises it."""
+    def show_prefs(self, page: str = "") -> None:
+        """Show Preferences, made as Houdini's own: one window per panel, a second open raises it."""
         if self._thumbsize_save_timer.isActive():    # flush a pending size save first
             self._thumbsize_save_timer.stop()
             self.prefs.save()
-        from amaze.dialogs import prefs_dialog
-        existing = getattr(self, "_prefs_dialog", None)
-        if existing is not None:
-            try:
-                existing.show()
-                existing.raise_()
-                existing.activateWindow()
-                return
-            except RuntimeError:
-                self._prefs_dialog = None
-        dlg = prefs_dialog.PrefsDialog(
-            self.prefs, panel=self,
-            file_files_model=self.file_files_model,
-        )
+        from amaze.dialogs import prefs_window
+        window = getattr(self, "_prefs_window", None)
         try:
-            dlg.setParent(    # floats over Houdini; keep it non-modal
-                hou.qt.mainWindow(), QtCore.Qt.WindowType.Dialog
-            )
-        except AttributeError:
-            pass
-        dlg.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose, True)    # or repeated opens accumulate hidden instances
-        self._prefs_dialog = dlg
-        applied = {"done": False}    # `finished` and `destroyed` both arrive; this applies once
-
-        def _closed(*_a):
-            if applied["done"]:
-                return
-            applied["done"] = True
-            self._prefs_dialog_closed()
-
-        dlg.finished.connect(_closed)
-        dlg.destroyed.connect(_closed)
-        self.destroyed.connect(dlg.close)    # the dialog must not outlive the panel it applies to
-        dlg.show()
+            open_now = window is not None and window.isVisible()
+        except RuntimeError:    # closed: the window deleted itself, as Houdini's does
+            open_now = False
+        if not open_now:
+            window = self._prefs_window = prefs_window.AmazePrefsWindow(self.prefs, panel=self)
+            window.sharedState().applied.connect(self._prefs_dialog_closed)    # Apply, and Accept
+            self.destroyed.connect(window.close)    # the window must not outlive the panel it applies to
+        window.show()
+        window.raise_()
+        window.requestActivate()
+        if page:
+            window.setPageName(page)
 
     def _prefs_dialog_closed(self) -> None:
-        """Apply everything Preferences changed, once the non-modal dialog reports it closed."""
+        """Apply everything Preferences changed: on the window's Apply or Accept, the old dialog's close."""
         try:
             self.isVisible()    # the panel may be deleted already
         except RuntimeError:

@@ -741,7 +741,7 @@ copied per dialog.
 | **Edit Info Dialog** | Materials | `edit_material_info` / `details_dialog` |
 | **Code Dialog** | Code | `dialogs/code_dialog.py` ✓ AssetDialog — typing a snippet (New Snippet, Edit), its versions behind the band's **+**; Apply saves and stays open. Houdini's Fixed face and its syntax colours (`helpers/vex_syntax.py`); a node's code saves through the Save Dialog |
 | **Save Dialog** | every section a scene node saves into | `dialogs/save_dialog.py` ✓ AssetDialog — D09: Section, Name, Category, Language, Tags. The Section row is guessed from the node and changeable; `dialogs/gradient_dialog.py` keeps only `CategoryDialog` |
-| **Preferences** | — (app-wide) | `dialogs/prefs_dialog.py` ✓ AssetDialog (live-apply: no OK/Cancel, 12px recorded margin) |
+| **Preferences** | — (app-wide) | `dialogs/prefs_window.py` — Houdini's own kind of QML Preferences window: Houdini's prefs state on Amaze's Prefs, its `houdini.prefs` rows, Apply / Accept / Cancel; its pages are `ui/prefs/*.qml`, only Look built so far. `dialogs/prefs_dialog.py` (AssetDialog, live-apply) is the old one, no longer opened |
 | **Icon Dialog** | any tile | `dialogs/icon_dialog.py` ✓ AssetDialog (non-modal) |
 | **Manage Libraries** | — (app-wide) | `dialogs/library_dialog.py` ✓ AssetDialog — D15: the Library list, the most recently opened first; Remove from List takes libraries off it and leaves their folders alone |
 | **Versions** | Materials | `dialogs/versions_dialog.py` ✓ AssetDialog — D01: a material's versions, newest first; Select makes the picked one active |
@@ -1230,6 +1230,9 @@ dialogs/library_dialog.py the Library list's Manage window: it removes
                           libraries from the list, never a folder
 dialogs/versions_dialog.py a material's versions as a list; Select
                           makes the picked one active
+dialogs/prefs_window.py   Preferences as Houdini's own QML window: its
+                          prefs state reads and writes Amaze's Prefs;
+                          the pages are ui/prefs/*.qml
 dialogs/update_dialog.py  what an update asks and shows - Continue or
                           Cancel when it updates the library, then how
                           the install went; the About tab, the shelf's
