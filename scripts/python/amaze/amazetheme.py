@@ -9,7 +9,6 @@ HEADER_BAND_TEXT_BOLD = True    # the drawn weight on D11
 
 FORM_DIALOG_MARGIN = 5        # ▸ the content margin every compact form dialog uses
 
-D01_SELECTED_BACKGROUND = "#297d54"   # ▸ D01 Versions: the picked version's row
 
 D02_MARGINS = (8, 12, 8, 12)   # ▸ D02 Customize (Tile Icon): left, top, right, bottom
 D02_CELL = 34            # one icon button in the chooser grid
@@ -94,11 +93,8 @@ P01_REPAIR_PRESSED = "#d4503a"  # the Repair button while held down
 P01_REPAIR_TEXT_COLOR = "#f9f9f9"      # the Repair button's text
 P01_REPAIR_RADIUS = 4           # the corners Houdini draws on a standard button ▸r/plain-button-style
 P01_LIGHT_COUNT_GAP = 6         # a light to its count, as drawn for two of the three
-D15_SELECTED_BACKGROUND = UPDATE_WARNING_FILL   # ▸ D15 Manage Libraries: a row picked for removal
 D15_DIM_TEXT_COLOR = "#787878"        # a library that cannot be reached: its name and `not connected`
 D15_DIM_PATH_TEXT_COLOR = "#646464"   # and its path
-D15_SELECTED_TEXT_COLOR = "#1b1b1b"        # a picked row's name, on its red bar
-D15_SELECTED_PATH_TEXT_COLOR = "#383838"   # and its path
 GRID_BACKGROUND = "#2d2d2d"        # ▸ T01: the grid's background as drawn; list text contrast is computed against it
 PREFS_DIVIDER_ABOVE = 8  # inside the divider's own row box
 PREFS_DIVIDER_BELOW = 6  # so a divider costs ROW_GAP + ABOVE + H + BELOW + ROW_GAP = 27
@@ -130,8 +126,6 @@ ONLINE_ICON_COLOR = "#3fc28a"    # ▸ the toolbar's Online button while the onl
 TOOLBAR_SEARCH_END_GAP = 6    # the least space between the Search box and Comments, in a narrow panel
 INFO_ICON_COLOR = "#fdba00"      # ▸ the info pane (N02): its header icon, and its toolbar button while open
 INFO_ICON_ART_COLOR = "#5d7abd"  # the colour icon_info.svg is drawn in; INFO_ICON_COLOR replaces it
-INFO_TEXT = "#cdc8bc"            # labels and values
-INFO_DIVIDER_WIDTH = 2           # the line between the two columns, centred on the drawn divider's x
 INFO_HIDE_PREVIEW = "Hide Preview"    # the header button's tooltip while the picture is shown
 INFO_SHOW_PREVIEW = "Show Preview"    # and while it is hidden
 INFO_BUTTON_COLOR = "#dddddd"       # the colour the header buttons' art is drawn in
@@ -1315,7 +1309,7 @@ def drawn_code_dialog(frame_key: str = "D11") -> dict:
 
 
 def drawn_list_rows(frame_key: str = "D15") -> dict:
-    """A drawn list's margins, its row pitch, the painted row box and where each text sits in it."""
+    """A dialog list's margins, its size, the gap to its buttons and where its second column starts."""
     layout = DIALOG_LAYOUT[frame_key]
 
     def named(name):
@@ -1323,11 +1317,8 @@ def drawn_list_rows(frame_key: str = "D15") -> dict:
                       key=lambda n: (n[2], n[1]))
 
     view, = named("QListWidget")
-    names, paths = named("QListWidget ▸ item"), named("QListWidget ▸ item ▸ path")
-    box, = named("QListWidget ▸ item ▸ selected")
-    flag = (named("QListWidget ▸ item ▸ not connected") or paths)[0]    # D01 draws no flag
+    paths = named("QListWidget ▸ item ▸ path")
     buttons = named("QPushButton")
-    pitch = names[1][2] - names[0][2]
     width, height = layout["frame"]
     return {
         "margins": (view[1], view[2],                    # left, top: neither list has a header band
@@ -1336,15 +1327,7 @@ def drawn_list_rows(frame_key: str = "D15") -> dict:
         "view": (view[3], view[4]),
         "button_top": buttons[0][2] - (view[2] + view[4]),    # the list's bottom to the buttons
         "button_gap": buttons[1][1] - (buttons[0][1] + buttons[0][3]),
-        "pitch": pitch,
-        "box_x": box[1] - view[1],
-        "box_y": (box[2] - view[2]) % pitch,
-        "box_h": box[4],
-        "text_y": next(n[2] for n in names if box[2] <= n[2] < box[2] + box[4]) - box[2],
-        "text_h": names[0][4],
-        "name_x": names[0][1] - box[1],
-        "path_x": paths[0][1] - box[1],
-        "flag_right": box[1] + box[3] - (flag[1] + flag[3]),
+        "second_x": min(n[1] for n in paths) - view[1],    # the name column's width
     }
 
 
@@ -1442,14 +1425,14 @@ def drawn_comments(frame_key: str = "N01") -> dict:
 
 
 def drawn_info(frame_key: str = "N02") -> dict:
-    """The info pane's width, header, row height, columns and divider, off its frame."""
+    """The info pane's width, header, row height and label column, off its frame."""
     width = DIALOG_LAYOUT[frame_key]["frame"][0]
 
     def node(kind, owner=None):
         return drawn_node(frame_key, kind, owner)
 
     header, icon, name = node("header"), node("icon", "header"), node("text", "name")
-    row, label, value = node("row", "2"), node("label", "2"), node("value", "2")
+    row = node("row", "2")
     button, preview = node("icon", "preview"), node("preview")
     return {
         "width": width,
@@ -1462,8 +1445,5 @@ def drawn_info(frame_key: str = "N02") -> dict:
         "gap": name[1] - (icon[1] + icon[3]),
         "icon": icon[3],
         "row": row[4],
-        "label_x": label[1] - row[1],
-        "value_x": value[1] - row[1],
-        "text_y": label[2] - row[2],    # the text's drop inside its row
-        "divider_x": node("divider")[1] - row[1],
+        "label_width": node("divider")[1] - row[1],    # the value column starts at the drawn divider
     }

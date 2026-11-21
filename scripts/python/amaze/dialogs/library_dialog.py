@@ -12,7 +12,6 @@ from amaze.helpers import hostos, theme, ui_helpers
 
 FOLDER_ROLE = QtCore.Qt.ItemDataRole.UserRole           # the library's folder, as the list holds it
 REACHED_ROLE = QtCore.Qt.ItemDataRole.UserRole + 1      # False for a folder that cannot be reached now
-_ALIGN = QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter
 
 
 def library_name(folder: str) -> str:
@@ -25,120 +24,53 @@ def shown_path(folder: str) -> str:
     return hostos.storage_path_key(folder).rstrip("/") or folder
 
 
-class ListRows(QtWidgets.QStyledItemDelegate):
-    """A row as a drawn list paints it: name, second column, `not connected` when unreachable."""
+class DialogTable(ui_helpers.Table):
+    """A dialog's rows: the app's table over its own two columns, a name and a second text."""
 
-    def __init__(self, parent=None, frame_key: str = "D15",
-                 selected_background: str = amazetheme.D15_SELECTED_BACKGROUND, second=None,
-                 whole_second: bool = False,
-                 selected_text=(amazetheme.D15_SELECTED_TEXT_COLOR,
-                                amazetheme.D15_SELECTED_PATH_TEXT_COLOR)) -> None:
-        super().__init__(parent)
-        self._drawn = amazetheme.drawn_list_rows(frame_key)
-        self._selected_background = selected_background
-        self._selected_text = selected_text    # (name, second) on the bar; None keeps the usual
-        self._second = second or (lambda index: shown_path(str(index.data(FOLDER_ROLE) or "")))
-        self._whole_second = whole_second    # a short text such as a date: drawn whole, never cut
-
-    def sizeHint(self, option, index):
-        return QtCore.QSize(option.rect.width(), theme.ui_px(self._drawn["pitch"]))
-
-    def paint(self, painter, option, index):
-        drawn, px = self._drawn, theme.ui_px
-        row = option.rect
-        box = QtCore.QRect(row.x() + px(drawn["box_x"]), row.y() + px(drawn["box_y"]),
-                           row.width() - 2 * px(drawn["box_x"]), px(drawn["box_h"]))
-        reached = index.data(REACHED_ROLE) is not False
-        metrics = QtGui.QFontMetrics(option.font)
-        top, high = box.y() + px(drawn["text_y"]), px(drawn["text_h"])
-        right = box.x() + box.width() - px(drawn["flag_right"])
-        name_x = box.x() + px(drawn["name_x"])
-        path_x = box.x() + px(drawn["path_x"])
-        name_color = theme.color("text_bright") if reached else \
-            QtGui.QColor(amazetheme.D15_DIM_TEXT_COLOR)
-        second_color = theme.color("text") if reached else \
-            QtGui.QColor(amazetheme.D15_DIM_PATH_TEXT_COLOR)
-        painter.save()
-        if option.state & QtWidgets.QStyle.StateFlag.State_Selected:
-            painter.fillRect(box, QtGui.QColor(self._selected_background))
-            if self._selected_text:
-                name_color, second_color = (QtGui.QColor(c) for c in self._selected_text)
-        painter.setFont(option.font)
-        if not reached:
-            flag = amazetheme.LABEL_NOT_CONNECTED
-            wide = metrics.horizontalAdvance(flag)
-            _draw(painter, metrics, flag, QtCore.QRect(right - wide, top, wide, high),
-                  QtGui.QColor(amazetheme.D15_DIM_TEXT_COLOR), QtCore.Qt.TextElideMode.ElideNone)
-            right -= wide + px(drawn["flag_right"])
-        second = self._second(index)
-        name_end, elide = path_x, QtCore.Qt.TextElideMode.ElideMiddle
-        if self._whole_second:
-            path_x = min(path_x, right - metrics.horizontalAdvance(second) - 1)    # 1: subpixel
-            name_end, elide = path_x - px(drawn["name_x"]), QtCore.Qt.TextElideMode.ElideNone
-        _draw(painter, metrics, str(index.data() or ""),
-              QtCore.QRect(name_x, top, max(0, name_end - name_x), high),
-              name_color, QtCore.Qt.TextElideMode.ElideRight)
-        _draw(painter, metrics, second,
-              QtCore.QRect(path_x, top, max(0, right - path_x), high),
-              second_color, elide)
-        painter.restore()
-
-
-def _draw(painter, metrics, text, rect, color, elide) -> None:
-    painter.setPen(color)
-    painter.drawText(rect, _ALIGN, metrics.elidedText(text, elide, rect.width()))
-
-
-class Row(QtWidgets.QTreeWidgetItem):
-    """One row of a drawn list; its text and data are read and set without naming the one column."""
-
-    def text(self, column: int = 0) -> str:
-        return super().text(column)
-
-    def data(self, *where):
-        return super().data(*((0,) + where if len(where) == 1 else where))
-
-    def setData(self, *what) -> None:
-        super().setData(*((0,) + what if len(what) == 2 else what))
-
-
-class DrawnList(QtWidgets.QTreeWidget):
-    """A dialog's list of rows: the app's one kind of row list, with a list's own calls."""
-
-    def __init__(self) -> None:
+    def __init__(self, frame_key: str, selection_mode) -> None:
         super().__init__()
-        ui_helpers.striped_rows(self)
+        self._items = QtGui.QStandardItemModel(0, 2, self)
+        self.setModel(self._items)
         self.setIndentation(0)
+        self.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        self.setSelectionMode(selection_mode)
+        self.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setTextElideMode(QtCore.Qt.TextElideMode.ElideMiddle)    # a long path keeps both its ends
+        drawn = amazetheme.drawn_list_rows(frame_key)
+        self.header().setMinimumSectionSize(1)
+        self.header().setStretchLastSection(True)
+        self.header().resizeSection(0, theme.ui_px(drawn["second_x"]))
+        ui_helpers.fit_drawn(self, frame_key, "QListWidget", None)
+
+    def add_row(self, name: str, second: str, selectable: bool = True, dim: bool = False):
+        """Add a row and return its name cell, which carries the row's data."""
+        cells = [QtGui.QStandardItem(name), QtGui.QStandardItem(second)]
+        flags = QtCore.Qt.ItemFlag.ItemIsEnabled
+        if selectable:
+            flags |= QtCore.Qt.ItemFlag.ItemIsSelectable
+        for cell in cells:
+            cell.setFlags(flags)
+            if dim:
+                cell.setForeground(QtGui.QColor(amazetheme.D15_DIM_TEXT_COLOR))
+        self._items.appendRow(cells)
+        return cells[0]
 
     def count(self) -> int:
-        return self.topLevelItemCount()
+        return self._items.rowCount()
 
-    def item(self, row: int):
-        return self.topLevelItem(row)
+    def cell(self, row: int, column: int = 0):
+        return self._items.item(row, column)
 
-    def row(self, item) -> int:
-        return self.indexOfTopLevelItem(item)
+    def selected(self) -> list:
+        """The name cells of the selected rows."""
+        return [self._items.itemFromIndex(index) for index in self.selected_rows()]
 
-    def addItem(self, item) -> None:
-        self.addTopLevelItem(item)
+    def select(self, cell) -> None:
+        self.highlight(cell.index())
 
-    def takeItem(self, row: int):
-        return self.takeTopLevelItem(row)
-
-    def setCurrentRow(self, row: int) -> None:
-        self.setCurrentItem(self.topLevelItem(row))
-
-
-def drawn_list(frame_key: str, selection_mode, delegate) -> DrawnList:
-    """A drawn list: no frame, no sideways scroll, `delegate` painting each row's texts and bar."""
-    view = DrawnList()
-    view.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
-    view.setSelectionMode(selection_mode)
-    view.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-    delegate.setParent(view)    # the view does not own its delegate ▸r/replaced-delegate-stays-alive
-    view.setItemDelegate(delegate)
-    ui_helpers.fit_drawn(view, frame_key, "QListWidget", None)
-    return view
+    def remove(self, cell) -> None:
+        self._items.removeRow(cell.row())
 
 
 class ManageLibrariesDialog(AssetDialog):
@@ -154,10 +86,8 @@ class ManageLibrariesDialog(AssetDialog):
         self.removed: list = []    # the folders taken off the list
         drawn = amazetheme.drawn_list_rows()
 
-        self._list = drawn_list(
-            self.FRAME_KEY,
-            QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection,    # one or more
-            ListRows())
+        self._list = DialogTable(
+            self.FRAME_KEY, QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)    # one or more
         self._remove, self._cancel, buttons = self.drawn_pair(    # Cancel closes; removals already made are kept
             amazetheme.BTN_REMOVE_FROM_LIST, self._remove_selected)
         self._cancel.setDefault(True)
@@ -172,29 +102,30 @@ class ManageLibrariesDialog(AssetDialog):
         self.finish(ok_cancel=False, margins=drawn["margins"])
 
         self._fill(open_library)
-        self._list.itemSelectionChanged.connect(self._sync_remove)
+        self._list.selectionModel().selectionChanged.connect(self._sync_remove)
         self._sync_remove()
 
     def _fill(self, open_library: str) -> None:
         current = hostos.comparable_path(open_library) if open_library else ""
         for folder in self._prefs.libraries:
-            item = Row([library_name(folder)])
-            item.setData(FOLDER_ROLE, folder)
-            item.setData(REACHED_ROLE, os.path.isdir(folder))
-            if hostos.comparable_path(folder) == current:
-                item.setFlags(item.flags() & ~QtCore.Qt.ItemFlag.ItemIsSelectable)
-            self._list.addItem(item)
+            reached = os.path.isdir(folder)
+            path = shown_path(folder)
+            cell = self._list.add_row(
+                library_name(folder), path if reached else "%s, %s" % (path, amazetheme.LABEL_NOT_CONNECTED),
+                selectable=hostos.comparable_path(folder) != current, dim=not reached)
+            cell.setData(folder, FOLDER_ROLE)
+            cell.setData(reached, REACHED_ROLE)
 
-    def _sync_remove(self) -> None:
-        self._remove.setEnabled(bool(self._list.selectedItems()))
+    def _sync_remove(self, *_selection) -> None:
+        self._remove.setEnabled(bool(self._list.selected()))
 
     def _remove_selected(self) -> None:
         """Take the selected libraries off the list and save it."""
-        chosen = self._list.selectedItems()
-        folders = [str(item.data(FOLDER_ROLE)) for item in chosen]
+        chosen = self._list.selected()
+        folders = [str(cell.data(FOLDER_ROLE)) for cell in chosen]
         if not folders or not self._prefs.remove_libraries(folders):
             return
         self._prefs.save()
         self.removed.extend(folders)
-        for item in chosen:
-            self._list.takeItem(self._list.row(item))
+        for cell in chosen:
+            self._list.remove(cell)

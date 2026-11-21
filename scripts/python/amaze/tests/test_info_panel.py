@@ -115,7 +115,7 @@ class TheInfoPaneMatchesItsDesignFrame(_PaneCase):
     def test_drawn_info_reads_the_frame(self):
         self.assertEqual(
             {"width": 450, "header": 30, "pad": 10, "gap": 6, "icon": 20, "row": 19,
-             "label_x": 12, "value_x": 109, "text_y": 2, "divider_x": 100,
+             "label_width": 100,
              "preview_button": 15, "preview_button_pad": 8, "preview_height": 298, "drag_line": 2},
             amazetheme.drawn_info())
 
@@ -154,24 +154,19 @@ class TheInfoPaneMatchesItsDesignFrame(_PaneCase):
                 for y in range(line.height())]
         self.assertEqual([None] * line.grab + [amazetheme.DRAG_LINE_COLOR] * line.line + [None] * line.grab, rows)
 
-    def test_every_drawn_row_is_where_the_table_paints_it(self):
-        body = self.node("body")
-        self.assertEqual(self.px(body[2]), self._at(self.table).y(), "the table does not start below the preview")
-        for row in amazetheme.drawn_nodes("N02", "row"):
-            index = int(amazetheme.drawn_name(row)[1]) - 1
-            with self.subTest(row=index + 1):
-                self.assertEqual(self.px(row[2] - body[2]), self.table.row_top(index))
-                self.assertEqual(self.px(row[4]), self.table.row_top(index + 1) - self.table.row_top(index))
-
-    def test_every_drawn_text_box_is_where_the_table_paints_it(self):
-        body = self.node("body")
-        for number in range(1, 13):
-            label_rect, value_rect = self.table.text_rects(number - 1)
-            for drawn, rect in ((self.node("label", str(number)), label_rect),
-                                (self.node("value", str(number)), value_rect)):
-                with self.subTest(node=drawn[0]):
-                    self.assertEqual((self.px(drawn[1]), self.px(drawn[2] - body[2]), self.px(drawn[4])),
-                                     (rect.x(), rect.y(), rect.height()))
+    def test_the_rows_start_under_the_line_one_row_height_apart_in_two_columns(self):
+        body, table = self.node("body"), self.table
+        self.assertEqual(self.px(body[2]), self._at(table).y(), "the table does not start below the preview")
+        model, high = table.model(), table.row_height()
+        self.assertEqual(2, model.columnCount())
+        for row in range(model.rowCount()):
+            label, value = (table.visualRect(model.index(row, column)) for column in (0, 1))
+            with self.subTest(row=row + 1):
+                self.assertEqual((row * high, high), (label.y(), label.height()))
+                self.assertEqual((0, self.px(self.node("divider")[1])), (label.x(), label.width()))
+                self.assertEqual(label.right() + 1, value.x(), "the value does not start where the label column ends")
+        drawn = self.node("row", "2")
+        self.assertEqual(drawn[4], amazetheme.drawn_info()["row"])
 
     def _painted(self):
         image = QtGui.QImage(self.table.size(), QtGui.QImage.Format.Format_RGB32)
@@ -191,19 +186,17 @@ class TheInfoPaneMatchesItsDesignFrame(_PaneCase):
                 self.assertEqual(getattr(reference, read)(), getattr(table, read)())
         self.assertTrue(table.alternatingRowColors())
 
-    def test_the_style_stripes_the_rows_and_the_divider_is_two_pixels_on_its_x(self):
+    def test_the_style_stripes_the_rows_and_no_line_is_painted_between_the_columns(self):
         image = self._painted()
-        rows = [image.pixelColor(self.px(5), self.table.row_top(i) + self.px(1)).name() for i in range(5)]
+        tops = [self.table.visualRect(self.table.model().index(i, 0)).y() for i in range(5)]
+        rows = [image.pixelColor(self.px(60), top + self.px(1)).name() for top in tops]
         second = rows[1]    # the style's second row colour, whatever the palette is
         self.assertEqual([False, True, False, True, False], [row == second for row in rows],
                          "rows 2 and 4, and only they, take the style's second row colour")
-        self.assertEqual(2, amazetheme.INFO_DIVIDER_WIDTH)
-        line, x = self.px(amazetheme.INFO_DIVIDER_WIDTH), self.px(self.node("divider")[1])
-        start = x - line // 2    # centred: 99 and 100 for a 2px line on x 100
-        y = self.table.row_top(1) + self.px(1)    # the line shows on a row of the second colour
-        across = [image.pixelColor(at, y).name() == second for at in range(start - 1, start + line + 1)]
-        self.assertEqual([True] + [False] * line + [True], across,
-                         "the divider is not %dpx centred on x %d" % (line, x))
+        y = tops[1] + self.px(1)
+        x = self.px(self.node("divider")[1])
+        across = {image.pixelColor(at, y).name() for at in range(x - self.px(3), x + self.px(3))}
+        self.assertEqual({second}, across, "a line is painted between the two columns")
 
     def test_the_table_and_the_drawn_divider_reach_the_bottom(self):
         body, drawn = self.node("body"), self.node("divider")
@@ -592,33 +585,20 @@ class ALongValue(_PaneCase):
         QtWidgets.QApplication.processEvents()
         self.table = self.pane.table
 
-    def _centre(self, index):
-        return QtCore.QPoint(self.table.width() // 2,
-                             (self.table.row_top(index) + self.table.row_top(index + 1)) // 2)
+    def test_a_long_value_is_cut_in_the_middle_by_the_table_itself(self):
+        self.assertEqual(QtCore.Qt.TextElideMode.ElideMiddle, self.table.textElideMode())
+        self.assertEqual(self.LONG, self.table.model().index(1, 1).data(), "the value was cut before it reached the table")
 
-    def test_it_is_elided_in_the_middle_and_keeps_both_ends(self):
-        shown = self.table.shown_text(1)[1]
-        self.assertNotEqual(self.LONG, shown)
-        self.assertIn("…", shown)
-        self.assertTrue(shown.startswith("/Pro") and shown.endswith(".exr"), shown)
+    def test_every_value_has_the_whole_value_as_its_tooltip_and_a_label_has_none(self):
+        model = self.table.model()
+        self.assertIn("brushed_steel_basecolor.exr", model.index(1, 1).data(QtCore.Qt.ItemDataRole.ToolTipRole))
+        self.assertIn("840 KB", model.index(2, 1).data(QtCore.Qt.ItemDataRole.ToolTipRole))
+        self.assertFalse(model.index(1, 0).data(QtCore.Qt.ItemDataRole.ToolTipRole))
 
-    def test_its_row_has_the_whole_value_as_a_tooltip_a_short_one_none(self):
-        at = lambda index: self.table.viewport().mapFrom(self.table, self._centre(index))    # noqa: E731
-        self.assertEqual(self.LONG, self.table.tooltip_at(at(1)))
-        self.assertEqual("", self.table.tooltip_at(at(2)), "a value that fits has a tooltip")
-        self.assertEqual("", self.table.tooltip_at(at(0)))
-
-    def test_the_tooltip_event_shows_it(self):
-        point = self._centre(1)
-        event = QtGui.QHelpEvent(QtCore.QEvent.Type.ToolTip, point, self.table.mapToGlobal(point))
-        QtWidgets.QApplication.sendEvent(self.table, event)
-        self.addCleanup(QtWidgets.QToolTip.hideText)
-        self.assertIn("brushed_steel_basecolor.exr", QtWidgets.QToolTip.text())
-
-    def test_the_table_takes_no_focus_and_no_menu(self):
-        self.assertEqual(QtCore.Qt.FocusPolicy.NoFocus, self.table.focusPolicy())
-        self.assertEqual(QtCore.Qt.FocusPolicy.NoFocus, self.pane.body_widget.focusPolicy())
-        self.assertEqual(QtCore.Qt.ContextMenuPolicy.NoContextMenu, self.table.contextMenuPolicy())
+    def test_no_cell_is_selected_or_edited(self):
+        model = self.table.model()
+        self.assertEqual(QtCore.Qt.ItemFlag.ItemIsEnabled, model.index(1, 1).flags())
+        self.assertEqual(QtWidgets.QAbstractItemView.SelectionMode.NoSelection, self.table.selectionMode())
 
 
 class _Context:

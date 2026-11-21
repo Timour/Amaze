@@ -18,7 +18,6 @@ from amaze import amazetheme  # noqa: E402
 from amaze.dialogs import base_dialog, versions_dialog  # noqa: E402
 from amaze.helpers import theme, ui_helpers  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401
-from amaze.tests.test_library_list import colours_down, painted_texts  # noqa: E402
 
 LISTED = [    # the stored version list's order: oldest first
     {"n": 1, "name": "Version 1", "date": "2026-10-21 09:00"},
@@ -99,84 +98,22 @@ class TheVersionsWindowMatchesItsDesignFrame(unittest.TestCase):
         self.assertIsNone(self.dialog.findChild(QtWidgets.QLabel, "amaze_header_band_text"))
         self.assertEqual("brushed_steel", self.dialog.windowTitle())
 
-    def test_each_row_is_19_px_from_the_list_top(self):
-        names = sorted(n[2] for n in amazetheme.DIALOG_LAYOUT["D01"]["nodes"]
-                       if n[0] == "QListWidget ▸ item")
-        self.assertEqual(19, names[1] - names[0], "premise: the frame draws 19 px rows")
+    def test_the_list_is_the_apps_one_table_with_two_columns_and_no_painter(self):
         view = self.dialog._list
-        for row in range(view.count()):
-            with self.subTest(row=row):
-                rect = view.visualItemRect(view.item(row))
-                self.assertEqual((0, theme.ui_px(19 * row), view.viewport().width(),
-                                  theme.ui_px(19)),
-                                 (rect.x(), rect.y(), rect.width(), rect.height()))
-
-    def test_the_name_and_the_day_sit_where_the_frame_draws_them(self):
-        px = theme.ui_px
-        for row in range(self.dialog._list.count()):
-            name, day = painted_texts(self.dialog._list, row)
-            with self.subTest(row=row):
-                self.assertEqual((px(19 - 8), px(19 * row + 2), px(15)),
-                                 (name[0], name[1], name[3]))
-                self.assertEqual((px(19 * row + 2), px(15)), (day[1], day[3]))
-                self.assertEqual(px(250 - 8), day[0] + day[2],
-                                 "the day does not end where the frame's dates end")
-
-    def test_the_list_is_the_apps_one_kind_of_row_list(self):
-        view = self.dialog._list
-        self.assertIsInstance(view, QtWidgets.QTreeView, "the list paints its own rows")
-        reference = QtWidgets.QTreeView()
-        self.addCleanup(reference.deleteLater)
-        ui_helpers.striped_rows(reference)
-        for read in ("alternatingRowColors", "isHeaderHidden", "rootIsDecorated", "uniformRowHeights", "isAnimated"):
-            with self.subTest(setting=read):
-                self.assertEqual(getattr(reference, read)(), getattr(view, read)())
+        self.assertIsInstance(view, ui_helpers.Table, "the list is not the app's one table")
+        self.assertEqual(2, view.model().columnCount())
+        self.assertIs(QtWidgets.QStyledItemDelegate, type(view.itemDelegate()), "the list paints its own rows")
         self.assertEqual("", view.styleSheet(), "the list sets colours of its own over the style's")
-        self.assertFalse(hasattr(view, "filled_rows"), "the list still fills rows itself")
-
-    def test_the_picked_row_is_a_green_bar_over_the_whole_row(self):
-        green = QtGui.QColor(amazetheme.D01_SELECTED_BACKGROUND).name()
-        px, view = theme.ui_px, self.dialog._list
-        for x in (0, view.viewport().width() - 1):
-            with self.subTest(x=x):
-                column = colours_down(view, x)
-                self.assertEqual([green] * px(19), column[px(19):px(38)])
-                self.assertNotEqual(green, column[px(19) - 1])
-                self.assertNotEqual(green, column[px(38)])
-        self.assertEqual("#297d54", green)
-
-    def test_the_text_on_the_green_bar_keeps_its_usual_colours(self):
-        plain = [text[5] for text in painted_texts(self.dialog._list, 1)]
-        picked = [text[5] for text in painted_texts(self.dialog._list, 1, selected=True)]
-        self.assertEqual([theme.color("text_bright").name(), theme.color("text").name()], plain)
-        self.assertEqual(plain, picked)
+        self.assertEqual(theme.ui_px(amazetheme.drawn_list_rows("D01")["second_x"]), view.header().sectionSize(0))
 
 
-class TheDayIsNeverCut(unittest.TestCase):
-    """The date has a fixed short format and gets its full width, even when the font is wider."""
+class TheDayIsTheSecondColumn(unittest.TestCase):
+    """Each row's second cell is the day it was saved, whole."""
 
-    def test_every_row_draws_its_whole_date(self):
-        dialog = _dialog(self)
-        drawn = []
-
-        class _Recorder(QtGui.QPainter):
-            def drawText(self, *args):
-                drawn.append(args[-1])
-                return super().drawText(*args)
-
-        surface = QtGui.QPixmap(dialog._list.viewport().size())
-        painter = _Recorder(surface)
-        option = QtWidgets.QStyleOptionViewItem()
-        option.font = dialog._list.font()
-        delegate = dialog._list.itemDelegate()
-        try:
-            for row in range(dialog._list.count()):
-                option.rect = dialog._list.visualItemRect(dialog._list.item(row))
-                delegate.paint(painter, option, dialog._list.model().index(row, 0))
-        finally:
-            painter.end()
-        for day in ("2026-10-23", "2026-10-22", "2026-10-21"):
-            self.assertIn(day, drawn, "a row's date was cut short")
+    def test_every_row_shows_its_whole_date(self):
+        view = _dialog(self)._list
+        self.assertEqual(["2026-10-23", "2026-10-22", "2026-10-21"],
+                         [view.cell(row, 1).text() for row in range(view.count())])
 
 
 class TheListShowsTheSavedVersions(unittest.TestCase):
@@ -184,15 +121,15 @@ class TheListShowsTheSavedVersions(unittest.TestCase):
 
     def test_the_rows_are_newest_first_with_the_day_saved(self):
         dialog = _dialog(self)
-        rows = [(dialog._list.item(i).text(),
-                 dialog._list.item(i).data(versions_dialog.DATE_ROLE))
+        rows = [(dialog._list.cell(i).text(),
+                 dialog._list.cell(i).data(versions_dialog.DATE_ROLE))
                 for i in range(dialog._list.count())]
         self.assertEqual([("Version 3", "2026-10-23"),
                           ("Look Development test", "2026-10-22"),
                           ("Version 1", "2026-10-21")], rows)
 
     def test_the_active_version_is_picked_at_open(self):
-        picked = _dialog(self, active=1)._list.selectedItems()
+        picked = _dialog(self, active=1)._list.selected()
         self.assertEqual([1], [item.data(versions_dialog.NUMBER_ROLE) for item in picked])
 
 
@@ -201,14 +138,14 @@ class SelectAndCancel(unittest.TestCase):
 
     def test_select_accepts_with_the_picked_version(self):
         dialog = _dialog(self)
-        dialog._list.setCurrentRow(0)
+        dialog._list.select(dialog._list.cell(0))
         dialog._select.click()
         self.assertEqual(QtWidgets.QDialog.DialogCode.Accepted, dialog.result())
         self.assertEqual(3, dialog.chosen)
 
     def test_cancel_keeps_the_active_version(self):
         dialog = _dialog(self)
-        dialog._list.setCurrentRow(0)
+        dialog._list.select(dialog._list.cell(0))
         dialog._cancel.click()
         self.assertEqual(QtWidgets.QDialog.DialogCode.Rejected, dialog.result())
         self.assertEqual(2, dialog.chosen)

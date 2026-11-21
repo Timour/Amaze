@@ -145,140 +145,53 @@ class DragLineView(QtWidgets.QWidget):
             self.released.emit()
 
 
-class _RowTexts(QtWidgets.QStyledItemDelegate):
-    """A row's two texts at their drawn places; the row itself is the style's."""
-
-    def sizeHint(self, option, index) -> QtCore.QSize:
-        return QtCore.QSize(0, self.parent().row_height())
-
-    def paint(self, painter, option, index) -> None:
-        table, row = self.parent(), index.row()
-        label, value = table.shown_text(row)
-        box = table.text_rects(row)[index.column()]
-        box.moveTop(option.rect.y() + (box.y() - table.row_top(row)))    # where the row is scrolled to
-        painter.save()
-        painter.setFont(table.font())
-        painter.setPen(QtGui.QColor(amazetheme.INFO_TEXT))
-        painter.drawText(box, QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter,
-                         value if index.column() else label)
-        painter.restore()
-
-
-class RowsView(QtWidgets.QTreeWidget):
-    """The rows: labels on the left, values on the right, a line between the columns."""
+class RowsView(ui_helpers.Table):
+    """Label and value rows: the app's table with two columns."""
 
     rows_changed = QtCore.Signal()    # another number of rows: the page is another length
 
     def __init__(self, drawn: dict, parent=None) -> None:
         super().__init__(parent)
-        ui_helpers.striped_rows(self)
         self._drawn = drawn
         self._rows = ()
-        self.setColumnCount(2)
+        self._items = QtGui.QStandardItemModel(0, 2, self)
+        self.setModel(self._items)
         self.setIndentation(0)
         self.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
         self.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
         self.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.NoContextMenu)
         self.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.NoSelection)
         self.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.setTextElideMode(QtCore.Qt.TextElideMode.ElideMiddle)    # a long path keeps both its ends
         self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)    # the page scrolls
         self.header().setMinimumSectionSize(1)
         self.header().setStretchLastSection(True)
-        self.header().resizeSection(0, theme.ui_px(drawn["divider_x"]))
-        self.setItemDelegate(_RowTexts(self))
+        self.header().resizeSection(0, theme.ui_px(drawn["label_width"]))
 
     def rows(self) -> tuple:
         return self._rows
 
     def set_rows(self, rows) -> None:
-        """Show `rows`, (label, value) pairs."""
+        """Show `rows`, (label, value) pairs; a value's tooltip is the whole value."""
         self._rows = tuple((str(label), str(value)) for label, value in rows)
-        self.clear()
+        self._items.setRowCount(0)
         for label, value in self._rows:
-            item = QtWidgets.QTreeWidgetItem([label, value])
-            item.setFlags(QtCore.Qt.ItemFlag.ItemIsEnabled)
-            self.addTopLevelItem(item)
+            cells = [QtGui.QStandardItem(label), QtGui.QStandardItem(value)]
+            for cell in cells:
+                cell.setFlags(QtCore.Qt.ItemFlag.ItemIsEnabled)
+            cells[1].setToolTip(ui_helpers.tooltip_text(value))
+            self._items.appendRow(cells)
         self.rows_changed.emit()
 
     def row_height(self) -> int:
-        return theme.ui_px(self._drawn["row"])
+        """A row's height as the style sizes it; the drawn height before there is a row."""
+        height = self.sizeHintForRow(0) if self._rows else 0
+        return height if height > 0 else theme.ui_px(self._drawn["row"])
 
     def content_height(self) -> int:
         """What all the rows need: the page is that long and scrolls as a whole."""
         return len(self._rows) * self.row_height()
-
-    def row_top(self, index: int) -> int:
-        """Row `index`'s top before any scrolling."""
-        return index * self.row_height()
-
-    def _columns(self) -> tuple:
-        """(label x, label width, value x, value width); each column keeps the drawn gaps."""
-        label_x = theme.ui_px(self._drawn["label_x"])
-        value_x = theme.ui_px(self._drawn["value_x"])
-        divider_x = theme.ui_px(self._drawn["divider_x"])
-        label_w = divider_x - (value_x - divider_x) - label_x    # the divider's gap on its left too
-        value_w = self.viewport().width() - value_x - label_x    # the label's inset on the right edge
-        return label_x, max(0, label_w), value_x, max(0, value_w)
-
-    def text_rects(self, index: int) -> tuple:
-        """(label box, value box) of row `index` before any scrolling: the drawn text height in its row."""
-        label_x, label_w, value_x, value_w = self._columns()
-        text_y = theme.ui_px(self._drawn["text_y"])
-        top = self.row_top(index) + text_y
-        text_h = self.row_height() - 2 * text_y    # centred: as much below as above
-        return (QtCore.QRect(label_x, top, label_w, text_h),
-                QtCore.QRect(value_x, top, value_w, text_h))
-
-    def shown_text(self, index: int) -> tuple:
-        """(label, value) of row `index` as painted: label elided right, value in the middle."""
-        label, value = self._rows[index]
-        _label_x, label_w, _value_x, value_w = self._columns()    # the same widths text_rects gives
-        metrics = self.fontMetrics()
-        return (metrics.elidedText(label, QtCore.Qt.TextElideMode.ElideRight, label_w),
-                metrics.elidedText(value, QtCore.Qt.TextElideMode.ElideMiddle, value_w))
-
-    def row_at(self, pos) -> int:
-        """The row under `pos` in the viewport, or -1."""
-        index = self.indexAt(pos)
-        return index.row() if index.isValid() else -1
-
-    def tooltip_at(self, pos) -> str:
-        """The whole value of the row under `pos` when it is shown elided, else ""."""
-        index = self.row_at(pos)
-        if index < 0:
-            return ""
-        value = self._rows[index][1]
-        return value if self.shown_text(index)[1] != value else ""
-
-    def _show_tooltip(self, event, pos) -> bool:
-        text = self.tooltip_at(pos)
-        if text:
-            QtWidgets.QToolTip.showText(event.globalPos(), ui_helpers.tooltip_text(text), self)
-        else:
-            QtWidgets.QToolTip.hideText()
-            event.ignore()
-        return True
-
-    def event(self, event) -> bool:
-        if event.type() == QtCore.QEvent.Type.ToolTip:
-            return self._show_tooltip(event, self.viewport().mapFrom(self, event.pos()))
-        return super().event(event)
-
-    def viewportEvent(self, event) -> bool:
-        if event.type() == QtCore.QEvent.Type.ToolTip:
-            return self._show_tooltip(event, event.pos())
-        return super().viewportEvent(event)
-
-    def paintEvent(self, event) -> None:
-        super().paintEvent(event)    # the rows, striped by the style to the bottom
-        painter = QtGui.QPainter(self.viewport())
-        try:
-            line = theme.ui_px(amazetheme.INFO_DIVIDER_WIDTH)
-            painter.fillRect(theme.ui_px(self._drawn["divider_x"]) - line // 2, 0, line,
-                             self.viewport().height(), theme.color("row"))
-        finally:
-            painter.end()
 
 
 class Body(QtWidgets.QWidget):

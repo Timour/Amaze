@@ -124,10 +124,9 @@ folders have a menu of [their own](#locations). **Sort by name**, in
 every section, sorts the rows alphabetically, with All at the top. Preferences ▸ Look
 sets the category counts and hides empty categories.
 
-Sidebar rows are reordered by dragging. A press of about half a second
-picks a row up, releasing it sets the new order, and Esc cancels the
-move. **All** stays at the top, and new categories are added at the
-bottom. Category order is stored in the library; folder order is stored
+Sidebar rows are reordered by dragging. A line shows where the row
+will go, and releasing it sets the new order. **All** stays at the top,
+and new categories are added at the bottom. Category order is stored in the library; folder order is stored
 per machine.
 
 The sidebar keeps its width between sessions. So do the Comments pane

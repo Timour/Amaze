@@ -81,7 +81,7 @@ class EveryPartIsBuiltInOnePlace(unittest.TestCase):
                       "a pane's saved width is handled outside the panel and the settings")
 
     def test_only_the_engine_builds_two_column_rows_a_picture_and_a_drag_line(self):
-        for pattern in (r"class \w+\(.*QTreeWidget\)", r"drawImage\(", r"SplitVCursor"):
+        for pattern in (r"class RowsView\(", r"drawImage\(", r"SplitVCursor"):
             with self.subTest(pattern=pattern):
                 found = sorted(path for path, text in _sources() if re.search(pattern, text)
                                and path.startswith("panel" + os.sep))
@@ -95,13 +95,11 @@ class EveryPartIsBuiltInOnePlace(unittest.TestCase):
             direct += [(path, name, base.split(".")[-1].split(",")[-1].strip()) for name, base in re.findall(qt_views, text)]
             tables += [(path, name) for name, _base in re.findall(ours, text)]
         self.assertEqual([
-            ("dialogs/library_dialog.py", "DrawnList", "QTreeWidget"),    # to move onto Table
             ("helpers/ui_helpers.py", "Table", "QTreeView"),    # the one table
             ("panel/dragdrop_widgets.py", "DragDropListView", "QListView"),    # the tile grid, not a table
-            ("panel/side_pane.py", "RowsView", "QTreeWidget"),    # to move onto Table
         ], sorted(direct), "a table was added that is not the one table class")
-        self.assertEqual([("panel/dragdrop_widgets.py", "DragDropRowsView"), ("panel/sidebar.py", "SidebarTreeView")],
-                         sorted(tables))
+        self.assertEqual([("dialogs/library_dialog.py", "DialogTable"), ("panel/dragdrop_widgets.py", "DragDropRowsView"),
+                          ("panel/side_pane.py", "RowsView"), ("panel/sidebar.py", "SidebarTreeView")], sorted(tables))
 
     def test_the_pages_are_descriptions(self):
         for module in (notes_panel, info_panel):

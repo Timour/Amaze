@@ -8,7 +8,7 @@ from amaze import amazetheme
 from amaze import tooltips
 from amaze.core import versions
 from amaze.dialogs.base_dialog import AssetDialog
-from amaze.dialogs.library_dialog import ListRows, Row, drawn_list
+from amaze.dialogs.library_dialog import DialogTable
 from amaze.helpers import theme, ui_helpers
 
 NUMBER_ROLE = QtCore.Qt.ItemDataRole.UserRole + 10    # the version's number in its ledger
@@ -26,11 +26,7 @@ class VersionsDialog(AssetDialog):
         self.chosen = active
         drawn = amazetheme.drawn_list_rows(self.FRAME_KEY)
 
-        self._list = drawn_list(
-            self.FRAME_KEY, QtWidgets.QAbstractItemView.SelectionMode.SingleSelection,
-            ListRows(None, self.FRAME_KEY, amazetheme.D01_SELECTED_BACKGROUND,
-                     lambda index: str(index.data(DATE_ROLE) or ""), whole_second=True,
-                     selected_text=None))
+        self._list = DialogTable(self.FRAME_KEY, QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
         self._list.setToolTip(ui_helpers.tooltip_text(tooltips.PANEL_VERSION_ROW))
         self._select, self._cancel, buttons = self.drawn_pair(amazetheme.BTN_SELECT,
                                                               self._on_accept)
@@ -46,20 +42,20 @@ class VersionsDialog(AssetDialog):
         self.finish(ok_cancel=False, margins=drawn["margins"])
 
         for entry in reversed(listed):    # the ledger lists oldest first
-            item = Row([versions.version_label(entry)])
-            item.setData(NUMBER_ROLE, int(entry.get("n", 0)))
-            item.setData(DATE_ROLE, str(entry.get("date") or "").split(" ")[0])
-            self._list.addItem(item)
+            date = str(entry.get("date") or "").split(" ")[0]
+            cell = self._list.add_row(versions.version_label(entry), date)
+            cell.setData(int(entry.get("n", 0)), NUMBER_ROLE)
+            cell.setData(date, DATE_ROLE)
             if int(entry.get("n", 0)) == active:
-                self._list.setCurrentItem(item)
-        self._list.itemSelectionChanged.connect(self._sync_select)
+                self._list.select(cell)
+        self._list.selectionModel().selectionChanged.connect(self._sync_select)
         self._sync_select()
 
-    def _sync_select(self) -> None:
-        self._select.setEnabled(bool(self._list.selectedItems()))
+    def _sync_select(self, *_selection) -> None:
+        self._select.setEnabled(bool(self._list.selected()))
 
     def _on_accept(self) -> None:
-        picked = self._list.selectedItems()
+        picked = self._list.selected()
         if picked:
             self.chosen = int(picked[0].data(NUMBER_ROLE))
         super()._on_accept()

@@ -28,38 +28,6 @@ def _folder(case, name="Studio"):
     return test_support.posix_path(folder) + "/"
 
 
-def painted_texts(view, row, selected=False):
-    """(x, y, w, h, text, colour) of each text the list's delegate paints for `row`."""
-    painted = []
-
-    class _Recorder(QtGui.QPainter):
-        def drawText(self, rect, align, text):
-            painted.append((rect.x(), rect.y(), rect.width(), rect.height(), text,
-                            self.pen().color().name()))
-            return super().drawText(rect, align, text)
-
-    surface = QtGui.QPixmap(view.viewport().size())
-    painter = _Recorder(surface)
-    option = QtWidgets.QStyleOptionViewItem()
-    option.font = view.font()
-    option.rect = view.visualItemRect(view.item(row))
-    if selected:
-        option.state |= QtWidgets.QStyle.StateFlag.State_Selected
-    try:
-        view.itemDelegate().paint(painter, option, view.model().index(row, 0))
-    finally:
-        painter.end()
-    return painted
-
-
-def colours_down(view, x):
-    """The viewport's colour at each y of column `x`, top to bottom, as the list paints it."""
-    picture = view.viewport().grab().toImage()
-    ratio = picture.devicePixelRatio()
-    return [QtGui.QColor(picture.pixel(int(x * ratio), int(y * ratio))).name()
-            for y in range(view.viewport().height())]
-
-
 def _reloaded(preferences):
     again = prefs_mod.Prefs()
     again.path = preferences.path
@@ -158,11 +126,14 @@ class ManageLibrariesTest(unittest.TestCase):
 
     def _rows(self):
         view = self.dialog._list
-        return [view.item(row) for row in range(view.count())]
+        return [view.cell(row) for row in range(view.count())]
 
     def _select(self, folder):
-        for item in self._rows():
-            item.setSelected(item.data(library_dialog.FOLDER_ROLE) == folder)
+        flag = QtCore.QItemSelectionModel.SelectionFlag
+        for cell in self._rows():
+            chosen = cell.data(library_dialog.FOLDER_ROLE) == folder
+            self.dialog._list.selectionModel().select(
+                cell.index(), (flag.Select if chosen else flag.Deselect) | flag.Rows)
 
     def test_it_lists_the_libraries_most_recent_first(self):
         self.assertEqual(["Studio", "Archive", "Archive-gone"],
@@ -171,7 +142,7 @@ class ManageLibrariesTest(unittest.TestCase):
     def test_the_open_library_cannot_be_selected(self):
         self.dialog._list.selectAll()
         self.assertNotIn(self.a, [item.data(library_dialog.FOLDER_ROLE)
-                                  for item in self.dialog._list.selectedItems()])
+                                  for item in self.dialog._list.selected()])
 
     def test_remove_waits_for_a_selection(self):
         self.assertFalse(self.dialog._remove.isEnabled())
@@ -201,6 +172,17 @@ class ManageLibrariesTest(unittest.TestCase):
     def test_a_folder_that_cannot_be_reached_is_marked(self):
         reached = {item.text(): item.data(library_dialog.REACHED_ROLE) for item in self._rows()}
         self.assertEqual({"Studio": True, "Archive": True, "Archive-gone": False}, reached)
+
+    def test_the_second_column_is_the_folder_and_says_when_it_is_not_connected(self):
+        view = self.dialog._list
+        seconds = {view.cell(row).text(): view.cell(row, 1).text() for row in range(view.count())}
+        self.assertEqual(library_dialog.shown_path(self.a), seconds["Studio"])
+        self.assertEqual("%s, %s" % (library_dialog.shown_path(self.gone), amazetheme.LABEL_NOT_CONNECTED),
+                         seconds["Archive-gone"])
+        dim = QtGui.QColor(amazetheme.D15_DIM_TEXT_COLOR).name()
+        gone = [view.cell(2, column).foreground().color().name() for column in (0, 1)]
+        self.assertEqual([dim, dim], gone, "a library not connected is not dimmed")
+        self.assertNotEqual(dim, view.cell(0).foreground().color().name())
 
 
 class TheManageWindowMatchesItsDesignFrame(unittest.TestCase):
@@ -235,71 +217,12 @@ class TheManageWindowMatchesItsDesignFrame(unittest.TestCase):
             with self.subTest(widget=key):
                 self.assertEqual(tuple(theme.ui_px(n) for n in drawn), self._box(widget))
 
-    def _drawn_frame_figures(self):
-        """The D15 figures the tests below compare against, read straight from the layout."""
-        nodes = amazetheme.DIALOG_LAYOUT["D15"]["nodes"]
-        view, = (n for n in nodes if n[0] == "QListWidget")
-        return view, nodes
-
-    def test_each_row_is_19_px_from_the_list_top(self):
-        view, nodes = self._drawn_frame_figures()
-        names = sorted(n[2] for n in nodes if n[0] == "QListWidget ▸ item")
-        self.assertEqual(19, names[1] - names[0], "premise: the frame draws 19 px rows")
-        for row in range(self.dialog._list.count()):
-            with self.subTest(row=row):
-                rect = self.dialog._list.visualItemRect(self.dialog._list.item(row))
-                self.assertEqual((0, theme.ui_px(19 * row), self.dialog._list.viewport().width(),
-                                  theme.ui_px(19)),
-                                 (rect.x(), rect.y(), rect.width(), rect.height()))
-
-    def test_the_texts_sit_where_the_frame_draws_them(self):
-        view, nodes = self._drawn_frame_figures()
-        drawn = [n for n in nodes if n[0] in ("QListWidget ▸ item", "QListWidget ▸ item ▸ path")]
-        px = theme.ui_px
-        for row in range(3):    # the frame's first three rows, all connected
-            name, path = painted_texts(self.dialog._list, row)
-            with self.subTest(row=row):
-                top = sorted({n[2] for n in drawn})[row] - view[2]
-                self.assertEqual((px(19 - 8), px(top), px(15)), (name[0], name[1], name[3]))
-                self.assertEqual((px(130 - 8), px(top), px(15)), (path[0], path[1], path[3]))
-
-    def test_the_list_is_the_apps_one_kind_of_row_list(self):
+    def test_the_list_is_the_apps_one_table_with_two_columns_and_no_painter(self):
         view = self.dialog._list
-        self.assertIsInstance(view, QtWidgets.QTreeView, "the list paints its own rows")
-        reference = QtWidgets.QTreeView()
-        self.addCleanup(reference.deleteLater)
-        ui_helpers.striped_rows(reference)
-        for read in ("alternatingRowColors", "isHeaderHidden", "rootIsDecorated", "uniformRowHeights", "isAnimated"):
-            with self.subTest(setting=read):
-                self.assertEqual(getattr(reference, read)(), getattr(view, read)())
+        self.assertIsInstance(view, ui_helpers.Table, "the list is not the app's one table")
+        self.assertEqual(2, view.model().columnCount())
+        self.assertIs(QtWidgets.QStyledItemDelegate, type(view.itemDelegate()), "the list paints its own rows")
         self.assertEqual("", view.styleSheet(), "the list sets colours of its own over the style's")
-        self.assertFalse(hasattr(view, "filled_rows"), "the list still fills rows itself")
+        drawn = amazetheme.drawn_list_rows("D15")
+        self.assertEqual(theme.ui_px(drawn["second_x"]), view.header().sectionSize(0))
 
-    def test_the_selected_bar_is_the_whole_row_with_square_corners(self):
-        view = self.dialog._list
-        view.item(1).setSelected(True)
-        QtWidgets.QApplication.processEvents()
-        red = QtGui.QColor(amazetheme.D15_SELECTED_BACKGROUND).name()
-        px, width = theme.ui_px, view.viewport().width()
-        for x in (0, width - 1):
-            with self.subTest(x=x):
-                column = colours_down(view, x)
-                self.assertEqual([red] * px(19), column[px(19):px(38)])
-                self.assertNotEqual(red, column[px(19) - 1])
-                self.assertNotEqual(red, column[px(38)])
-        self.assertEqual("#e0523a", red)
-
-    def test_the_text_on_the_red_bar_is_dark(self):
-        name, path = painted_texts(self.dialog._list, 1, selected=True)
-        self.assertEqual(("#1b1b1b", "#383838"), (name[5], path[5]))
-
-    def test_a_library_not_connected_keeps_its_dimmed_colours(self):
-        last = self.dialog._list.count() - 1
-        self.assertEqual(self.gone, self.dialog._list.item(last).data(library_dialog.FOLDER_ROLE))
-        painted = {text: colour for *_box, text, colour in painted_texts(self.dialog._list, last)}
-        self.assertEqual("#787878", painted.pop(amazetheme.LABEL_NOT_CONNECTED))
-        self.assertEqual(["#646464", "#787878"], sorted(painted.values()))
-
-
-if __name__ == "__main__":
-    unittest.main()
