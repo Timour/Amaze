@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.45.0
+
+- File: **System File Icons** in Preferences ▸ Look. On, a file with no preview shows its system icon. Off, it shows the generic file icon.
+
 ## 1.44.0
 
 - Every list is the same kind of table, painted by Houdini: the sidebar, List mode, the Info pane's rows, Versions and Manage Libraries.
