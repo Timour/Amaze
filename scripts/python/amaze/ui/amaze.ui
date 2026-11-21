@@ -262,9 +262,6 @@
        <property name="contextMenuPolicy">
         <enum>Qt::CustomContextMenu</enum>
        </property>
-       <property name="acceptDrops">
-        <bool>false</bool>
-       </property>
        <property name="frameShadow">
         <enum>QFrame::Sunken</enum>
        </property>
@@ -276,12 +273,6 @@
        </property>
        <property name="showDropIndicator" stdset="0">
         <bool>true</bool>
-       </property>
-       <property name="dragDropOverwriteMode">
-        <bool>true</bool>
-       </property>
-       <property name="dragDropMode">
-        <enum>QAbstractItemView::NoDragDrop</enum>
        </property>
        <property name="alternatingRowColors">
         <bool>true</bool>

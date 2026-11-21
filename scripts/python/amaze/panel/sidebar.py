@@ -34,6 +34,27 @@ class SidebarTreeView(ui_helpers.Table):
     def _forget_reveal(self, _index) -> None:
         self._pending_reveal = None
 
+    def selectionCommand(self, index, event=None):
+        """Qt's own answer, but a Ctrl-click never empties the sidebar: the grid always shows one row."""
+        command = super().selectionCommand(index, event)
+        flag = QtCore.QItemSelectionModel.SelectionFlag
+        if index.isValid() and command & (flag.Deselect | flag.Toggle):
+            return flag.ClearAndSelect | flag.Rows
+        return command
+
+    def mousePressEvent(self, event) -> None:
+        """A left click on the highlighted row shows it again, as a click on any other row shows that one."""
+        index = self.indexAt(event.position().toPoint())
+        current = self.currentIndex()
+        again = (event.button() == QtCore.Qt.MouseButton.LeftButton and index.isValid() and current.isValid()
+                 and index.siblingAtColumn(0) == current.siblingAtColumn(0))
+        opened = again and self.isExpanded(index.siblingAtColumn(0))
+        super().mousePressEvent(event)
+        if again and self.isExpanded(index.siblingAtColumn(0)) != opened:
+            return    # the press was on the row's arrow: it opened or closed the row, and chose nothing
+        if again and not self._quiet:
+            self.row_chosen.emit(index.siblingAtColumn(0))    # no current change, so `currentChanged` sent nothing
+
     def _lay_out_columns(self, model) -> None:
         """The colour cell first at the bar's width, then the name, which carries the arrows."""
         header = self.header()

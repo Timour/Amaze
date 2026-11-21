@@ -31,6 +31,7 @@ class GridGestureMixin:
         self._drag_index = None
         self._drag_panel = None    # cached at press, so the gesture never re-walks the widget tree per move
         self._dragging = False
+        self._ended_early = False    # the left press whose drag Esc, another button or an error ended: its moves go nowhere
         self._preview = None
         super().__init__(parent)
 
@@ -105,6 +106,7 @@ class GridGestureMixin:
         if self._dragging:
             event.accept()    # a stray right/middle press mid-gesture must not clear live drag state
             return
+        self._ended_early = False
         panel = _find_panel(self)
         section = (
             getattr(panel, "current_section", None) if panel is not None else None
@@ -144,6 +146,11 @@ class GridGestureMixin:
     @debug.guarded("DragDropListView.mouseMoveEvent")
     def mouseMoveEvent(self, event: QtGui.QMouseEvent) -> None:
         """Update the drag; a File row over a Parameters pane becomes a QDrag. ▸r/pick-boundary"""
+        if self._ended_early:
+            if event.buttons() & QtCore.Qt.MouseButton.LeftButton:
+                event.accept()    # Qt still holds the press: a move it saw would start its own drag of the tile
+                return
+            self._ended_early = False
         if self._drag_start is not None:
             moved = (event.position().toPoint()
                      - self._drag_start).manhattanLength()
@@ -156,7 +163,7 @@ class GridGestureMixin:
                     self._follow_drag()
                 except Exception:    # logged by the guard, which re-raises: the drag does not stay half on
                     self._end_drag(miss=True)
-                    self._drag_start = None
+                    self._end_press_early()
                     raise
             return
         super().mouseMoveEvent(event)
@@ -242,13 +249,19 @@ class GridGestureMixin:
     def keyPressEvent(self, event: QtGui.QKeyEvent) -> None:
         if self._dragging and event.key() == QtCore.Qt.Key.Key_Escape:
             self._end_drag()
-            self._drag_start = None    # the press is over: the moves that follow start nothing
+            self._end_press_early()
             event.accept()
             return
         super().keyPressEvent(event)
 
+    def _end_press_early(self) -> None:
+        """The drag ended before its release: moves while the button stays down go nowhere."""
+        self._drag_start = None
+        self._ended_early = True
+
     def hideEvent(self, event: QtGui.QHideEvent) -> None:
         self._end_drag()    # a view hidden or closed mid-drag gets no release
+        self._end_press_early()    # nor a hover after it may start one
         super().hideEvent(event)
 
     def _move_preview(self) -> None:
@@ -366,6 +379,8 @@ class GridGestureMixin:
             self._drag_section = None
             self._drag_panel = None
             self._drag_index = None
+            if event.button() == QtCore.Qt.MouseButton.LeftButton:
+                self._ended_early = False    # that press is over
         super().mouseReleaseEvent(event)
 
     def _release(self, event: QtGui.QMouseEvent) -> None:
@@ -373,6 +388,7 @@ class GridGestureMixin:
         from amaze.helpers import helpers
         if self._dragging and event.button() != QtCore.Qt.MouseButton.LeftButton:    # a right or middle release mid-drag cancels the drag and removes the tag
             self._end_drag(miss=True)
+            self._ended_early = True    # the left button is still down
             event.accept()
             return
         if self._dragging:

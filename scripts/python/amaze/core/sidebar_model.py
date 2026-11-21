@@ -56,10 +56,11 @@ class RowMoves:
                     and self.movable(self.index(target[1], 0)))
 
     def dropMimeData(self, data, action, row, column, parent):
-        """Move the row and save the order; False, so Qt removes nothing itself."""
+        """Move the row and save the order; a refused save moves it back. False: Qt removes nothing."""
         target = self._move_target(data, row, parent)
         if target is not None and self.move_row(self.index(target[0], 0), target[1]):
-            self.commit_order()
+            if self.commit_order() is False:
+                self.move_row(self.index(target[1], 0), target[0])    # the library keeps its order: so does the list
         return False
 
 
@@ -102,8 +103,8 @@ class SidebarModel(RowMoves, QtCore.QAbstractItemModel):
     def move_row(self, index, to_row: int) -> bool:
         return False
 
-    def commit_order(self) -> None:
-        pass
+    def commit_order(self):
+        """Save the order a move made; False when the library refused it."""
 
     def color_of(self, key) -> str:
         """The colour of the row keyed `key`, "" for none; no row has one here."""

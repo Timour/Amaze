@@ -423,11 +423,10 @@ class CategoriesSidebarProxy(sidebar_model.RowMoves, QtCore.QSortFilterProxyMode
         to_source = self.mapToSource(self.index(to_row, 0)).row()
         return model.move_category(from_source, to_source)
 
-    def commit_order(self) -> None:
-        """Save the order, once per drag, on release."""
+    def commit_order(self) -> bool:
+        """Save the order, once per drag, on release; False when the library refuses the change."""
         model = self.sourceModel()
-        if model is not None:
-            model.save()
+        return model is not None and model.save()
 
     def color_of(self, key) -> str:
         model = self.sourceModel()

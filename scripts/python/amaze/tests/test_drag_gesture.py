@@ -1138,6 +1138,53 @@ class ADragHasOneEndForEveryWayOut(unittest.TestCase):
         icon.assert_not_called()
         drop.assert_not_called()
 
+    def _qts_own_moves(self):
+        """Every move the view hands to Qt's own list handling, which starts Qt's drag of the tile."""
+        handed = []
+        real = QtWidgets.QListView.mouseMoveEvent
+        patcher = mock.patch.object(QtWidgets.QListView, "mouseMoveEvent",
+                                    autospec=True, side_effect=lambda *args: handed.append(args[-1]))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.assertIsNot(real, QtWidgets.QListView.mouseMoveEvent, "premise: Qt's handling is not watched")
+        return handed
+
+    def test_the_moves_after_escape_go_nowhere_until_the_button_comes_up(self):
+        h = self._armed()
+        handed = self._qts_own_moves()
+        QtWidgets.QApplication.sendEvent(h.view, QtGui.QKeyEvent(
+            QtCore.QEvent.Type.KeyPress, QtCore.Qt.Key.Key_Escape,
+            QtCore.Qt.KeyboardModifier.NoModifier))
+        start = h.item_pos()
+        for step in (90, 120):    # the left button is still down
+            h.move(QtCore.QPoint(start.x() + step, start.y() + step))
+        self.assertEqual([], handed, "a move after Esc reached Qt, which drags the tile itself")
+        self.assertFalse(h.view._dragging, "the drag started again after Esc")
+        h.release()
+        h.move(start)    # a plain move once the button is up is Qt's again: hover
+        self.assertEqual(1, len(handed), "the view kept its moves after the press was over")
+
+    def test_another_button_released_mid_drag_ends_the_moves_too(self):
+        h = self._armed()
+        handed = self._qts_own_moves()
+        h.view.mouseReleaseEvent(_event(QtCore.QEvent.Type.MouseButtonRelease, h.item_pos(),
+                                        QtCore.Qt.MouseButton.RightButton,
+                                        QtCore.Qt.MouseButton.LeftButton))
+        start = h.item_pos()
+        h.move(QtCore.QPoint(start.x() + 90, start.y() + 90))
+        self.assertEqual([], handed, "a move after a right release reached Qt's own drag")
+        self.assertFalse(h.view._dragging)
+
+    def test_a_view_hidden_mid_drag_starts_no_drag_on_a_hover_after(self):
+        h = self._armed()
+        h.view.hide()
+        h.view.show()
+        start = h.item_pos()
+        h.view.mouseMoveEvent(_event(QtCore.QEvent.Type.MouseMove,    # a hover: no button down
+                                     QtCore.QPoint(start.x() + 90, start.y() + 90),
+                                     QtCore.Qt.MouseButton.NoButton, QtCore.Qt.MouseButton.NoButton))
+        self.assertFalse(h.view._dragging, "a hover after a hidden drag started a drag with no button")
+
     def test_a_view_hidden_mid_drag_ends_the_drag(self):
         from amaze.core import dragengine
         h = self._armed()

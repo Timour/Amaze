@@ -146,11 +146,22 @@ class _HighlightCase:
             QtCore.QPointF(viewport.mapToGlobal(to)), LEFT, LEFT, NOMOD))
 
     def drag_select(self, start, end):
-        """A left press on one row, held across to another and released there."""
+        """A left press held from one row to another; a drag Qt starts takes the release itself."""
         to = self.at(end)
+        dragged = []
+        view_type = type(self.view)
+        real = view_type.startDrag
+
+        def start_drag(view, actions):
+            dragged.append(actions)
+            return real(view, actions)
+
         QtTest.QTest.mousePress(self.view.viewport(), LEFT, NOMOD, self.at(start))
-        self._move_with_button_held(to)
-        QtTest.QTest.mouseRelease(self.view.viewport(), LEFT, NOMOD, to)
+        with mock.patch.object(view_type, "startDrag", start_drag):
+            self._move_with_button_held(to)
+        if not dragged:
+            QtTest.QTest.mouseRelease(self.view.viewport(), LEFT, NOMOD, to)
+        return bool(dragged)
 
     def reorder(self, grabbed, over, escape=False, turn=False):
         """Press `grabbed` as a drag does, then drop it on `over` as Qt would; `escape` drops nothing."""
@@ -223,8 +234,10 @@ class _AssetSidebarPaths(_HighlightCase):
 
         def drag_select():
             self.select_row()
-            self.drag_select(self.row("Kept"), self.row("Added"))
-        self.check("a press dragged onto another row", drag_select, grid="Added")
+            self.assertTrue(self.drag_select(self.row("Kept"), self.row("Added")),
+                            "premise: a press dragged from a category does not start the reorder")
+        self.check("a press dragged onto another row starts a reorder; nothing else is chosen",
+                   drag_select, grid="Kept")
 
         def reorder_off_the_row():
             self.select_row()
@@ -313,6 +326,62 @@ class _AssetSidebarPaths(_HighlightCase):
             categories.restore_order(order)    # and a second, in the same turn
             _pump()
         self.assertEqual([1], calls, "two resets in one turn ran reselect_sidebar_row %d times" % len(calls))
+
+
+class SidebarChoiceTest(_HighlightCase, unittest.TestCase):
+    """What a click, a Ctrl-click and the arrow keys on the sidebar choose."""
+
+    KEY = "material"
+
+    def setUp(self):
+        super().setUp()
+        categories = self.panel.active_section().stack().categories
+        for name in ("Kept", "Other", "Third"):
+            categories.check_add_category(name)
+        self.panel.refresh_sidebar_categories()
+        _pump()
+        self.click(self.row("Kept"))
+
+    def _choices(self):
+        """Every category the active section is asked to show from now on."""
+        section = self.panel.active_section()
+        patcher = mock.patch.object(section, "select_category")
+        chosen = patcher.start()
+        self.addCleanup(patcher.stop)
+        return chosen
+
+    def test_a_ctrl_click_on_the_highlighted_row_keeps_it_highlighted(self):
+        def ctrl_click():
+            QtTest.QTest.mouseClick(self.view.viewport(), LEFT,
+                                    QtCore.Qt.KeyboardModifier.ControlModifier, self.at(self.row("Kept")))
+        self.check("a ctrl-click on the highlighted row", ctrl_click, grid="Kept")
+
+    def test_a_click_on_the_highlighted_row_shows_it_again(self):
+        chosen = self._choices()
+        self.click(self.row("Kept"))
+        self.assertEqual(1, chosen.call_count, "a click on the highlighted row did not show it again")
+        self.click(self.row("Other"))
+        self.assertEqual(2, chosen.call_count, "a click on another row was not shown exactly once")
+
+    def test_the_arrow_keys_show_only_the_row_they_stop_on(self):
+        from amaze.panel import panel as panel_mod
+        chosen = self._choices()
+        for _step in range(2):
+            QtTest.QTest.keyClick(self.view, QtCore.Qt.Key.Key_Down)
+        self.assertEqual(0, chosen.call_count, "each arrow step showed its row at once")
+        _pump(panel_mod.SIDEBAR_KEY_PAUSE_MS / 1000.0 + 0.15)
+        self.assertEqual(1, chosen.call_count, "the row the keys stopped on was not shown once")
+        current = ui_helpers.live_current_index(self.view)
+        self.assertEqual(current.row(), chosen.call_args[0][0].row(), "another row than the highlighted one was shown")
+
+    def test_a_click_after_the_arrow_keys_wins_over_their_pause(self):
+        from amaze.panel import panel as panel_mod
+        chosen = self._choices()
+        QtTest.QTest.keyClick(self.view, QtCore.Qt.Key.Key_Down)
+        self.click(self.row("Kept"))
+        _pump(panel_mod.SIDEBAR_KEY_PAUSE_MS / 1000.0 + 0.15)
+        self.assertEqual(1, chosen.call_count, "the key's pause showed its row after the click")
+        self.assertEqual("Kept", _row_key(self.panel, chosen.call_args[0][0]))
 
 
 class MaterialSidebarTest(_AssetSidebarPaths, unittest.TestCase):
@@ -430,8 +499,10 @@ class FileSidebarTest(_HighlightCase, unittest.TestCase):
 
         def drag_select():
             self.select_row()
-            self.drag_select(self.row(loc), self.row(second))
-        self.check("a press dragged onto another row", drag_select, grid=second)
+            self.assertTrue(self.drag_select(self.row(loc), self.row(second)),
+                            "premise: a press dragged from a location does not start the reorder")
+        self.check("a press dragged onto another row starts a reorder; nothing else is chosen",
+                   drag_select, grid=loc)
 
         def reorder_off_the_row():
             self.select_row()

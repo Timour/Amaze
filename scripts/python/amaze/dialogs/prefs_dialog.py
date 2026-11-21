@@ -1898,20 +1898,24 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._prefs.save()
 
     def set_render_rat_files(self, checked: bool) -> None:
-        """Store the switch and list the File tab's folder again, so its .rat tiles change at once."""
-        self._prefs.render_rat_files = checked
-        self._prefs.save()
-        files = getattr(self._panel, "file_files_model", None)
-        if files is not None:
-            files.refresh_current_folder()
+        """Whether .rat tiles get a rendered picture; the File tab changes at once."""
+        self._set_file_tab_switch("render_rat_files", checked)
 
     def set_system_file_icons(self, checked: bool) -> None:
-        """Store the switch and list the File tab's folder again, so its tiles change at once."""
-        self._prefs.system_file_icons = checked
+        """Whether file tiles show the system's icon for their type; the File tab changes at once."""
+        self._set_file_tab_switch("system_file_icons", checked)
+
+    def _set_file_tab_switch(self, name: str, checked: bool) -> None:
+        """Store a File tab switch here and in the shared File model's Prefs, then relist. ▸p/one-model-set"""
+        setattr(self._prefs, name, checked)
         self._prefs.save()
         files = getattr(self._panel, "file_files_model", None)
-        if files is not None:
-            files.refresh_current_folder()
+        if files is None:
+            return
+        shown = getattr(files, "preferences", None)
+        if shown is not None and shown is not self._prefs:
+            setattr(shown, name, checked)
+        files.refresh_current_folder()
 
     def _on_section_toggled(self, _checked: bool) -> None:
         """Rebuild enabled_sections in ALL_SECTIONS order, never zero; unregistered keys are kept."""

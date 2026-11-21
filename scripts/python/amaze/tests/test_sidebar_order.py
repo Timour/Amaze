@@ -397,6 +397,25 @@ class QtRowMoveTest(unittest.TestCase):
         self.assertTrue(view.showDropIndicator())
         self.assertFalse(hasattr(sidebar, "SidebarReorder"), "the press-and-hold gesture is back")
 
+    def test_the_panels_own_sidebar_is_set_to_qts_own_row_move(self):
+        """Built through amaze.ui, as the panel builds it: the .ui must not switch the move off."""
+        from amaze.tests import test_support
+        panel = test_support.fixture_panel(self)
+        view = panel.cat_list
+        self.assertTrue(view.dragEnabled(), "the panel's sidebar cannot start a drag")
+        self.assertEqual(QtWidgets.QAbstractItemView.DragDropMode.InternalMove, view.dragDropMode())
+        self.assertFalse(view.dragDropOverwriteMode(), "every drop lands ON a row: no line between rows")
+        self.assertTrue(view.showDropIndicator())
+
+    def test_a_move_the_library_refuses_to_save_is_put_back(self):
+        model, proxy = self._list()
+        data = proxy.mimeData([proxy.index(3, 0)])    # c, dropped between All and a
+        with mock.patch.object(model, "save", return_value=False) as save:
+            proxy.dropMimeData(data, self.MOVE, 1, 0, self.ROOT)
+            save.assert_called_once_with()
+        self.assertEqual(["_All", "a", "b", "c"], model.order_snapshot(),
+                         "the sidebar shows an order the library never stored")
+
     def test_the_online_list_moves_nothing(self):
         from amaze.core import matx_library, sidebar_model
         self.assertIs(sidebar_model.SidebarModel.movable, matx_library.MatxSidebarModel.movable)

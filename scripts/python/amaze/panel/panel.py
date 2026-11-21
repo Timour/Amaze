@@ -178,6 +178,7 @@ from amaze.panel import delegates            # noqa: E402
 _reload(delegates)
 
 FILTER_DEBOUNCE_MS = 180    #: the search box's pause before it filters ▸p/filter-pass-cost
+SIDEBAR_KEY_PAUSE_MS = 180    #: the arrow keys' pause before the sidebar row they stop on is shown: a File step lists a folder
 
 MIN_PANEL_WIDTH = 500    #: design px through `theme.ui_px` at use; the grid pane has none ▸r/qt-windows-macos
 _FOLDERS_GIVEN_ICONS = globals().get("_FOLDERS_GIVEN_ICONS", set())    # library folders given their icon this session
@@ -1439,6 +1440,11 @@ class AmazePanel(QtWidgets.QWidget):
         )
         self.cat_list.setItemDelegate(self.sidebar_delegate)
         self.cat_list.row_chosen.connect(self._on_category_chosen)    # mouse, keyboard or the view: one way in
+        self._key_choice = None    # the row the arrow keys stopped on, shown once they pause
+        self._key_choice_timer = QtCore.QTimer(self)
+        self._key_choice_timer.setSingleShot(True)
+        self._key_choice_timer.setInterval(SIDEBAR_KEY_PAUSE_MS)
+        self._key_choice_timer.timeout.connect(self._show_key_choice)
         self._cat_drop_filter = dragdrop_widgets.CategoryDropFilter(    # the sidebar as a drop target for recategorising grid assets
             self.cat_list, self
         )
@@ -3131,9 +3137,22 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _on_category_chosen(self, index) -> None:
         """The user made another sidebar row current; a right press only moves the highlight."""
-        if QtWidgets.QApplication.mouseButtons() & QtCore.Qt.MouseButton.RightButton:
+        buttons = QtWidgets.QApplication.mouseButtons()
+        if buttons & QtCore.Qt.MouseButton.RightButton:
             return
+        self._key_choice_timer.stop()
+        if buttons == QtCore.Qt.MouseButton.NoButton:    # the keyboard: each step would list a File folder, so wait for a pause
+            self._key_choice = QtCore.QPersistentModelIndex(index)
+            self._key_choice_timer.start()
+            return
+        self._key_choice = None
         self.update_selected_cat(index)
+
+    def _show_key_choice(self) -> None:
+        """The arrow keys paused: show the row they stopped on, if it is still there."""
+        index, self._key_choice = self._key_choice, None
+        if index is not None and index.isValid() and index.model() is self.cat_list.model():
+            self.update_selected_cat(QtCore.QModelIndex(index))
 
     def update_selected_cat(self, index=None) -> None:
         """The active section shows the category or folder of `index`, else of the selected row."""
