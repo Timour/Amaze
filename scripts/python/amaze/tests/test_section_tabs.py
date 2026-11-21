@@ -1,4 +1,4 @@
-"""The tab strip matches its S01 frame: height, tray and chip spacing. ▸r/tabs-from-frame"""
+"""The tab strip matches frame S01: height, tray, chips and bottom line. ▸r/tabs-from-frame"""
 
 import os
 import sys
@@ -29,6 +29,7 @@ class TheTabStripMatchesItsDesignFrame(unittest.TestCase):
         self.boxes = amazetheme.drawn_by_owner("S01", "text box")
         labels = {key: n[5] for key, n in amazetheme.drawn_by_owner("S01", "label").items()}
         self.tray = amazetheme.drawn_node("S01", "tray")
+        self.line = amazetheme.drawn_node("S01", "Line 3")
         self.keys = [amazetheme.drawn_name(c)[1] for c in self.chips]
         self.bar = ui_helpers.SectionTabBar([(k, labels[k]) for k in self.keys])
         self.bar.resize(self.px(self.frame["frame"][0]), self.bar.HEIGHT)
@@ -50,13 +51,36 @@ class TheTabStripMatchesItsDesignFrame(unittest.TestCase):
         inset = self.chips[0][1] - self.tray[1]
         self.assertEqual(self.tray[1] + self.tray[3], self.chips[-1][1] + self.chips[-1][3] + inset,
                          "the tray does not end one inset past the last tab")
-        self.assertEqual(self.frame["frame"][1], self.tray[2] + self.tray[4],
-                         "the tray does not end at the strip's bottom")
+        self.assertEqual(self.line[2] - 0.5, self.tray[2] + self.tray[4],
+                         "the tray does not end where the bottom line starts")
+        self.assertEqual((0, self.frame["frame"][0], self.frame["frame"][1] - 0.5),
+                         (self.line[1], self.line[3], self.line[2]),
+                         "the line is not the strip's bottom pixel row, the full width")
 
     def test_the_strip_is_its_drawn_height(self):
         height = self.px(self.frame["frame"][1])
         self.assertEqual((height, height),
                          (self.bar.minimumHeight(), self.bar.maximumHeight()))
+
+    def test_the_strip_is_29_high_as_drawn(self):
+        self.assertEqual((840, 29), tuple(self.frame["frame"]))
+        self.assertEqual(self.px(29), self.bar.height())
+
+    def test_the_bottom_pixel_row_is_the_line_across_the_full_width(self):
+        line_px = self.px(1)
+        image = self.bar.grab().toImage()
+        scale = image.width() // self.bar.width()
+        want = QtGui.QColor(amazetheme.TAB_STRIP_LINE).name()
+        self.assertEqual("#1b1b1b", want)
+        for row in range(image.height() - line_px * scale, image.height()):
+            with self.subTest(row=row):
+                self.assertEqual({want}, {image.pixelColor(x, row).name()
+                                          for x in range(image.width())})
+        above = image.height() - line_px * scale - 1
+        self.assertEqual({self.bar.STRIP_COLOR.name()},
+                         {image.pixelColor(x, above).name()
+                          for x in range(image.width() - 10, image.width())},
+                         "the line is thicker than one pixel")
 
     def test_every_tab_is_where_it_is_drawn(self):
         rects = [rect for _segment, rect in self.bar._chip_rects()]

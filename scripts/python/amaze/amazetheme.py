@@ -114,7 +114,8 @@ LABEL_COLOURS = (              # ▸ the sidebar's Label submenu (C09c): its fou
     ("Green", "#a4c18a"),
 )
 
-COMMENT_ICON_COLOR = "#a05dfe"        # ▸ the Comments pane (N01): the header icon's art colour
+COMMENT_ICON_COLOR = "#a05dfe"   # ▸ the Comments pane (N01): its header icon, and its toolbar button while open
+COMMENT_ICON_ART_COLOR = "#5d7abd"    # the colour icon_comments.svg is drawn in; COMMENT_ICON_COLOR replaces it
 COMMENT_DONE_COLOR = "#4af2a1"   # a done to-do
 COMMENT_OPEN_COLOR = "#ff7760"   # an open to-do
 COMMENT_ADD_COLOR = "#a05dfe"    # the + art's colour
@@ -127,6 +128,7 @@ COMMENT_DIM_ICON_OPACITY = 0.25         # the speech bubble,
 COMMENT_DIM_ICON_COLOR = "#ffffff"        # in white
 COMMENT_DIM_ADD_COLOR = "#565656"         # the + art; Houdini's menu triangle keeps its colour
 
+ONLINE_ICON_COLOR = "#3fc28a"    # ▸ the toolbar's Online button while the online world is open
 INFO_ICON_COLOR = "#fdba00"      # ▸ the info pane (N02): its header icon, and its toolbar button while open
 INFO_ICON_ART_COLOR = "#5d7abd"  # the colour icon_info.svg is drawn in; INFO_ICON_COLOR replaces it
 INFO_ROW_BG = FILLED_ROW         # the fill of rows 1, 3, 5...; the rows between show the page
@@ -153,6 +155,7 @@ LIST_SELECTED_TEXT = "#000000"  # every column of a selected row
 SLIDER_LEFT = "#5d7abd"         # ▸ the slider, tabs and icon-menu button; the default accent
 SLIDER_HANDLE = "#777f95"
 SLIDER_TRACK = "#1a1a1a"        # the progress track's OWN colour, never the slider's, so one tweak cannot recolour both
+TAB_STRIP_LINE = "#1b1b1b"      # ▸ S01: the 1 px line along the tab strip's bottom row
 TAB_TEXT_HOVER = "#cccdcd"      # not in the design, which draws no tab hover state - matching the toolbar icons' hover
 MENU_IDLE_BODY = "#5d7abd"
 MENU_HOVER_BODY = "#cccdcd"
@@ -872,38 +875,38 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
         ),
     },
     "B01": {   # the toolbar from the live panel - its height, edges, gaps and control sizes are read
-        "frame": (1510, 30),
+        "frame": (840, 30),
         "nodes": (
-            ("bottom border", 0, 29, 1510, 1, None),
+            ("bottom border", 0, 29, 840, 1, None),
             ("button ▸ btn_categories", 2, 3, 24, 24, None),
             ("button ▸ btn_menu_view", 28, 3, 24, 24, None),
             ("button ▸ btn_menu_filter", 54, 3, 24, 24, None),
             ("button ▸ btn_online", 80, 3, 24, 24, None),
-            ("button ▸ btn_notes", 106, 3, 24, 24, None),
-            ("button ▸ cb_viewmode", 132, 3, 24, 24, None),
-            ("button ▸ cb_favsonly", 158, 3, 24, 24, None),
-            ("slider ▸ click_slider (disabled)", 202, 3, 200, 23, None),
-            ("label ▸ filter_label", 422, 0, 40, 30, None),
-            ("text ▸ filter_label", 424, 7, 35, 15, "Search"),
-            ("field ▸ line_filter", 474, 5, 200, 20, None),
-            ("button ▸ btn_hip_capture", 1432, 3, 24, 24, None),
-            ("button ▸ btn_info", 1458, 3, 24, 24, None),
-            ("button ▸ btn_prefs", 1484, 3, 24, 24, None),
+            ("button ▸ cb_viewmode", 106, 3, 24, 24, None),
+            ("button ▸ cb_favsonly", 132, 3, 24, 24, None),
+            ("button ▸ btn_prefs", 158, 3, 24, 24, None),
+            ("button ▸ btn_hip_capture", 184, 3, 24, 24, None),
+            ("slider ▸ click_slider (disabled)", 249, 3, 200, 23, None),
+            ("label ▸ filter_label", 469, 0, 40, 30, None),
+            ("text ▸ filter_label", 471, 7, 35, 15, "Search"),
+            ("field ▸ line_filter", 521, 5, 200, 20, None),
+            ("button ▸ btn_notes", 788, 3, 24, 24, None),
+            ("button ▸ btn_info", 814, 3, 24, 24, None),
             ("icon ▸ btn_categories ▸ icon_categories.svg", 6, 7, 16, 16, None),
             ("icon ▸ btn_menu_view ▸ icon_renderer.svg", 31, 6, 18, 18, None),
             ("icon ▸ btn_menu_filter ▸ icon_view.svg", 57, 6, 18, 18, None),
             ("icon ▸ btn_online ▸ icon_online.svg", 84, 7, 16, 16, None),
-            ("icon ▸ btn_notes ▸ icon_comments.svg", 110, 7, 16, 16, None),
-            ("icon ▸ cb_viewmode ▸ list.svg", 136, 7, 16, 16, None),
-            ("icon ▸ cb_favsonly ▸ favourite_on.svg", 162, 7, 15, 15, None),
-            ("icon ▸ line_filter ▸ icon_search.svg", 478, 8, 13, 13, None),
-            ("icon ▸ btn_hip_capture ▸ icon_screenshot.svg", 1435, 6, 18, 18, None),
-            ("icon ▸ btn_info ▸ icon_info.svg", 1461, 6, 18, 18, None),
-            ("icon ▸ btn_prefs ▸ icon_library.svg", 1487, 6, 18, 18, None),
+            ("icon ▸ cb_viewmode ▸ list.svg", 110, 7, 16, 16, None),
+            ("icon ▸ cb_favsonly ▸ favourite_on.svg", 136, 7, 15, 15, None),
+            ("icon ▸ btn_prefs ▸ icon_library.svg", 161, 6, 18, 18, None),
+            ("icon ▸ btn_hip_capture ▸ icon_screenshot.svg", 187, 6, 18, 18, None),
+            ("icon ▸ line_filter ▸ icon_search.svg", 525, 8, 13, 13, None),
+            ("icon ▸ btn_notes ▸ icon_comments.svg", 791, 6, 18, 18, None),
+            ("icon ▸ btn_info ▸ icon_info.svg", 817, 6, 18, 18, None),
         ),
     },
     "S01": {   # the section tab strip from the live panel - its height, tray and chip spacing are read
-        "frame": (1510, 28),
+        "frame": (840, 29),
         "nodes": (
             ("tray", 3, 5, 230, 23, None),
             ("chip ▸ material", 6, 8, 56, 17, None),
@@ -921,6 +924,7 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("label ▸ code", 161, 9, 26, 15, "Code"),
             ("text box ▸ file", 204.5, 9, 18, 15, None),
             ("label ▸ file", 204.5, 9, 18, 15, "File"),
+            ("Line 3", 0, 28.5, 840, 0, None),
         ),
     },
     "G01": {   # the sidebar at its design width - its width, colour bar and splitter handle are read
@@ -1369,8 +1373,10 @@ def drawn_toolbar(frame_key: str = "B01") -> dict:
     return {
         "height": layout["frame"][1],
         "edge": first[1],
+        "right_edge": layout["frame"][0] - right(node("button", "btn_info")),
         "gap": second[1] - right(first),
-        "slider_gap": slider[1] - right(node("button", "cb_favsonly")),
+        "slider_gap": slider[1] - right(node("button", "btn_hip_capture")),
+        "search_gap": label[1] - right(slider),
         "label_gap": field[1] - right(label),
         "button": first[3],
         "icons": icons,    # each button's own drawn icon, by its object name
@@ -1388,13 +1394,15 @@ def drawn_toolbar(frame_key: str = "B01") -> dict:
 def drawn_tabs(frame_key: str = "S01") -> dict:
     """The section strip's height, tray and chip spacing, read off its frame. ▸r/tabs-from-frame"""
     layout = DIALOG_LAYOUT[frame_key]
-    tray = drawn_node(frame_key, "tray")
+    tray, line = drawn_node(frame_key, "tray"), drawn_node(frame_key, "Line 3")
     chips = sorted(drawn_nodes(frame_key, "chip"), key=lambda n: n[1])
     box = drawn_node(frame_key, "text box", drawn_name(chips[0])[1])
     return {
         "height": layout["frame"][1],
+        "line_y": line[2],    # the bottom line's centre; the frame's 1 px stroke is the tray's colour
         "tray_left": tray[1],
-        "tray_height": layout["frame"][1] - tray[2],
+        "tray_top": tray[2],
+        "tray_height": tray[4],
         "chip_height": chips[0][4],
         "chip_inset": chips[0][1] - tray[1],
         "chip_gap": chips[1][1] - (chips[0][1] + chips[0][3]),

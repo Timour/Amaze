@@ -113,14 +113,14 @@ class TheCancelChip(unittest.TestCase):
             self.tabs, _press(rect.center()))
         self.assertEqual([], self.fired)
 
-    def test_the_chip_centers_on_the_strip_not_the_tray(self):
-        """The chip is drawn outside the tray, so it centers on the full row height."""
+    def test_the_chip_centers_on_the_strip_above_its_line_not_the_tray(self):
+        """The chip is drawn outside the tray, so it centers on the row above the bottom line."""
         self.tabs.set_cancel_visible(True)
         rect = self.tabs._cancel_rect()
         self.assertIsNotNone(rect)
         self.assertEqual(
-            self.tabs.height() / 2.0, rect.center().y(),
-            "the chip is not centered on the strip's full height")
+            self.tabs.LINE_TOP / 2.0, rect.center().y(),
+            "the chip is not centered on the strip above its bottom line")
 
     def test_a_press_on_a_tab_still_selects_it(self):
         self.tabs.setChecked("material", emit=False)

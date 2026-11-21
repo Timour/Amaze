@@ -887,15 +887,14 @@ class AmazePanel(QtWidgets.QWidget):
             button.blockSignals(was)
 
     def _sync_online_button_pixmaps(self) -> None:
-        """Amber while the online section is open, the toolbar icons' blue when not."""
+        """ONLINE_ICON_COLOR while the online world is open, the toolbar icons' blue when not."""
         button = getattr(self, "btn_online", None)
         if button is None:
             return
         button.set_art(
             self._ui_icon_path("icon_online.svg"),
             lighten_on_hover=False,
-            recolour_on={ui_helpers.IconMenuButton.IDLE_BODY:
-                         theme.color_hex("star")})
+            recolour_on={ui_helpers.IconMenuButton.IDLE_BODY: amazetheme.ONLINE_ICON_COLOR})
 
     def _sync_categories_button_pixmaps(self) -> None:
         """The button's four states, in the toolbar icons' own colours."""
@@ -1068,19 +1067,14 @@ class AmazePanel(QtWidgets.QWidget):
         self.click_slider.setMaximumWidth(theme.ui_px(self._TOOLBAR["slider_w"]))    # ▸r/toolbar-from-frame
         self.click_slider.setFixedHeight(theme.ui_px(self._TOOLBAR["slider_h"]))
         if self.toolbar_layout is not None:
-            idx = getattr(    # the slider goes right after the filter box
-                self, "_after_filter_index", self.toolbar_layout.count()
-            )
-            self.toolbar_layout.insertSpacing(idx, theme.ui_px(self._TOOLBAR["slider_gap"]))
-            self.toolbar_layout.insertWidget(idx + 1, self.click_slider)
-            self.toolbar_layout.insertSpacing(idx + 2, theme.ui_px(self._TOOLBAR["slider_gap"]))
+            self._toolbar_controls.append(self.click_slider)
         self._thumbsize_save_timer = QtCore.QTimer(self)    # debounces saving the per-mode icon size during a drag
         self._thumbsize_save_timer.setSingleShot(True)
         self._thumbsize_save_timer.setInterval(500)
         self._thumbsize_save_timer.timeout.connect(self.prefs.save)
         self.click_slider.valueChanged.connect(self.slide)
 
-        self._mirror_toolbar()    # mirrors the toolbar row: every toolbar_layout addition must be done
+        self._lay_out_toolbar()    # after every builder made its controls
 
         self.thumblist.customContextMenuRequested.connect(self.thumblist_rc_menu)
         self.cat_list.customContextMenuRequested.connect(self.catlist_rc_menu)
@@ -1096,30 +1090,27 @@ class AmazePanel(QtWidgets.QWidget):
         self.menu.addMenu(self.menu_filter)
         if self.toolbar_layout is not None:
             menu_view = self.ui.findChild(QtWidgets.QMenu, "menuView")
-            self.btn_notes = ui_helpers.ChipToggleButton(name="btn_notes")    # built first; the row is mirrored after
+            self.btn_notes = ui_helpers.ChipToggleButton(name="btn_notes")
             self.btn_notes.setToolTip(ui_helpers.tooltip_text(
                 tooltips.PANEL_COMMENTS))
             self._sync_notes_button_pixmaps()
             self.btn_notes.setChecked(bool(self.prefs.show_notes))
             self.btn_notes.toggled.connect(self._on_notes_toggled)    # after the initial state, so restoring it saves nothing
-            self.toolbar_layout.addWidget(self.btn_notes)
-            self.toolbar_layout.addSpacing(theme.ui_px(self._TOOLBAR["gap"]))
-            self.btn_online = ui_helpers.ChipToggleButton(name="btn_online")    # amber shows its state: no hover highlight
+            self._toolbar_controls.append(self.btn_notes)
+            self.btn_online = ui_helpers.ChipToggleButton(name="btn_online")    # colour shows its state: no hover highlight
             self.btn_online.setToolTip(ui_helpers.tooltip_text(
                 tooltips.PANEL_ONLINE))
             self._sync_online_button_pixmaps()
             self.btn_online.setChecked(self._is_online())
             self.btn_online.toggled.connect(self._on_online_button)
-            self.toolbar_layout.addWidget(self.btn_online)
-            self.toolbar_layout.addSpacing(theme.ui_px(self._TOOLBAR["gap"]))
+            self._toolbar_controls.append(self.btn_online)
             self.btn_filter = self._make_menu_button(self.menu_filter)    # on self: disabled online, its tooltip per section
-            self.toolbar_layout.addWidget(self.btn_filter)
+            self._toolbar_controls.append(self.btn_filter)
             if menu_view is not None:
-                self.toolbar_layout.addSpacing(theme.ui_px(self._TOOLBAR["gap"]))
                 btn_view = self._make_menu_button(menu_view)
                 btn_view.setToolTip(ui_helpers.tooltip_text(
                     tooltips.PANEL_VIEW_MENU))
-                self.toolbar_layout.addWidget(btn_view)
+                self._toolbar_controls.append(btn_view)
                 self.online_view_menu = QtWidgets.QMenu(self.ui)    # the online filter menu; _sync_toolbar sets it on btn_filter
                 kind_group = QtGui.QActionGroup(self.online_view_menu)
                 kind_group.setExclusive(True)
@@ -1135,7 +1126,6 @@ class AmazePanel(QtWidgets.QWidget):
                         lambda _c=False, s=section:
                         self.matx_online_model.set_kind_filter(s))
                 self.online_view_menu.actions()[0].setChecked(True)
-            self.toolbar_layout.addSpacing(theme.ui_px(self._TOOLBAR["gap"]))
             btn_prefs = ui_helpers.IconMenuButton(    # held by the layout alone, never on self
                 None,
                 self._ui_icon_path("icon_library.svg"),
@@ -1145,16 +1135,14 @@ class AmazePanel(QtWidgets.QWidget):
             )
             btn_prefs.setToolTip(ui_helpers.tooltip_text(
                 tooltips.PANEL_PREFERENCES))
-            self.toolbar_layout.addWidget(btn_prefs)
-            self.toolbar_layout.addSpacing(theme.ui_px(self._TOOLBAR["gap"]))
+            self._toolbar_controls.append(btn_prefs)
             self.btn_info = ui_helpers.ChipToggleButton(name="btn_info")
             self.btn_info.setToolTip(ui_helpers.tooltip_text(
                 tooltips.PANEL_INFO))
             self._sync_info_button_pixmaps()
             self.btn_info.setChecked(bool(self.prefs.show_info))
             self.btn_info.toggled.connect(self._on_info_toggled)    # after the initial state
-            self.toolbar_layout.addWidget(self.btn_info)
-            self.toolbar_layout.addSpacing(theme.ui_px(self._TOOLBAR["gap"]))
+            self._toolbar_controls.append(self.btn_info)
             self.btn_categories = ui_helpers.ChipToggleButton(name="btn_categories")    # toggles action_catview
             self.btn_categories.setToolTip(ui_helpers.tooltip_text(
                 tooltips.PANEL_CATEGORIES))
@@ -1163,8 +1151,7 @@ class AmazePanel(QtWidgets.QWidget):
                 bool(self.prefs.show_categories))
             self.btn_categories.toggled.connect(
                 self._on_categories_button)
-            self.toolbar_layout.addWidget(self.btn_categories)
-            self.toolbar_layout.addSpacing(theme.ui_px(self._TOOLBAR["gap"]))
+            self._toolbar_controls.append(self.btn_categories)
             self.btn_hip_capture = ui_helpers.IconMenuButton(    # every section: captures onto the selected tile
                 None,
                 self._ui_icon_path("icon_screenshot.svg"),
@@ -1174,7 +1161,7 @@ class AmazePanel(QtWidgets.QWidget):
             )
             self.btn_hip_capture.setToolTip(ui_helpers.tooltip_text(
                 tooltips.PANEL_CAPTURE))
-            self.toolbar_layout.addWidget(self.btn_hip_capture)
+            self._toolbar_controls.append(self.btn_hip_capture)
         self.filter_action_group = None    # build_filter_menu fills the Filter menu on every section change
         self.filter_actions = {}
         self.filter_values = {}
@@ -1276,8 +1263,7 @@ class AmazePanel(QtWidgets.QWidget):
             pass
         self.cb_favsonly.toggled.connect(self.filter_favs)
         if self.toolbar_layout is not None:
-            self.toolbar_layout.addWidget(self.cb_favsonly)
-            self.toolbar_layout.addSpacing(theme.ui_px(self._TOOLBAR["gap"]))    # B01's gap between buttons
+            self._toolbar_controls.append(self.cb_favsonly)
 
         self.ui.cb_ViewMode.setVisible(False)  # type: ignore
         self.cb_viewmode = ui_helpers.ChipToggleButton(name="cb_viewmode")    # its icon is the CURRENT mode
@@ -1394,10 +1380,8 @@ class AmazePanel(QtWidgets.QWidget):
             )
             self.toolbar_row.setFixedHeight(theme.ui_px(self._TOOLBAR["height"]))    # ▸r/toolbar-from-frame
             self.toolbar_layout = QtWidgets.QHBoxLayout(self.toolbar_row)
-            self.toolbar_layout.setContentsMargins(0, 0, theme.ui_px(self._TOOLBAR["edge"]), 0)
             self.toolbar_layout.setSpacing(0)
-
-            self.toolbar_layout.addStretch()    # pushes the controls to one end
+            self._toolbar_controls = []    # every control the builders make; _lay_out_toolbar orders them
 
             if filter_row is not None:
                 self._central_layout.removeItem(filter_row)
@@ -1513,10 +1497,7 @@ class AmazePanel(QtWidgets.QWidget):
             self.filter_label.setStyleSheet(
                 "color: " + theme.color_hex("text_bright") + ";"
             )
-            self.toolbar_layout.addWidget(self.filter_label)
-            self.toolbar_layout.addSpacing(theme.ui_px(self._TOOLBAR["label_gap"]))
-            self.toolbar_layout.addWidget(self.line_filter)
-            self._after_filter_index = self.toolbar_layout.count()    # where the size slider goes in later
+            self._toolbar_controls += [self.filter_label, self.line_filter]
 
         self.current_section = "material"
         self._build_splitter_and_sidebar()    # catview moves into a new wrapper, in its old place
@@ -1526,8 +1507,7 @@ class AmazePanel(QtWidgets.QWidget):
         self._build_view_toggles()
         self.cb_viewmode.toggled.connect(self.on_viewmode_button)
         if self.toolbar_layout is not None:
-            self.toolbar_layout.addWidget(self.cb_viewmode)
-            self.toolbar_layout.addSpacing(theme.ui_px(self._TOOLBAR["gap"]))
+            self._toolbar_controls.append(self.cb_viewmode)
 
         self.ui.details_widget.setParent(None)  # type: ignore  -- out of the splitter, not hidden ▸p/d03-retired
 
@@ -1548,54 +1528,35 @@ class AmazePanel(QtWidgets.QWidget):
         self.click_slider.stepped = self.prefs.step_size
         self._build_slider_and_layout()
 
-    def _mirror_toolbar(self) -> None:
-        """A trial layout: the toolbar row mirrored to flow from the left; deleting it ends the trial."""
+    TOOLBAR_LEFT = ("btn_categories", "btn_menu_view", "btn_menu_filter", "btn_online",
+                    "cb_viewmode", "cb_favsonly", "btn_prefs", "btn_hip_capture")
+    TOOLBAR_RIGHT = ("btn_notes", "btn_info")    # pinned to the right edge by a stretch
+
+    def _lay_out_toolbar(self) -> None:
+        """Lay the row out left to right as frame B01 draws it, every gap read off the frame."""
         if self.toolbar_layout is None:
             return
-        items = []
-        while self.toolbar_layout.count():
-            items.append(self.toolbar_layout.takeAt(0))
-        for item in reversed(items):
-            self.toolbar_layout.addItem(item)
-        i_box = self.toolbar_layout.indexOf(self.line_filter)
-        i_label = self.toolbar_layout.indexOf(self.filter_label)
-        if i_box >= 0 and i_label == i_box + 2:    # the label still comes before its box; strict adjacency only
-            label_item = self.toolbar_layout.takeAt(i_label)
-            gap_item = self.toolbar_layout.takeAt(i_label - 1)
-            self.toolbar_layout.insertItem(i_box, gap_item)
-            self.toolbar_layout.insertItem(i_box, label_item)
-        self._move_to_toolbar_end(getattr(self, "btn_hip_capture", None))    # capture stays the outermost control
-        self._move_to_toolbar_end(getattr(self, "btn_info", None))
-        self._move_to_toolbar_end(self._toolbar_widget("btn_prefs"))    # ends: stretch, Capture, Info, gear
+        drawn, px = self._TOOLBAR, theme.ui_px
+        controls = {widget.objectName(): widget for widget in self._toolbar_controls}
+        layout = self.toolbar_layout
+        layout.setContentsMargins(px(drawn["edge"]), 0, px(drawn["right_edge"]), 0)
 
-        edge = theme.ui_px(self._TOOLBAR["edge"])    # both edges hold a control once the capture button is back at the end
-        self.toolbar_layout.setContentsMargins(edge, 0, edge, 0)
+        def buttons(names):
+            present = [controls[name] for name in names if name in controls]
+            for index, widget in enumerate(present):
+                if index:
+                    layout.addSpacing(px(drawn["gap"]))
+                layout.addWidget(widget)
 
-    def _toolbar_widget(self, name: str):
-        """A toolbar widget by objectName, or None."""
-        for i in range(self.toolbar_layout.count()):
-            item = self.toolbar_layout.itemAt(i)
-            widget = item.widget() if item is not None else None
-            if widget is not None and widget.objectName() == name:
-                return widget
-        return None
-
-    def _move_to_toolbar_end(self, widget) -> None:
-        """Move one control and the gap after it to the end of the mirrored row."""
-        if widget is None:
-            return
-        index = self.toolbar_layout.indexOf(widget)
-        if index < 0:
-            return
-        item = self.toolbar_layout.takeAt(index)
-        gap_item = None
-        if index < self.toolbar_layout.count():    # its gap follows it after the reversal; strict adjacency only
-            probe = self.toolbar_layout.itemAt(index)
-            if probe is not None and probe.widget() is None:
-                gap_item = self.toolbar_layout.takeAt(index)
-        if gap_item is not None:
-            self.toolbar_layout.addItem(gap_item)
-        self.toolbar_layout.addItem(item)
+        buttons(self.TOOLBAR_LEFT)
+        layout.addSpacing(px(drawn["slider_gap"]))
+        layout.addWidget(controls["click_slider"], 1)    # these two fill to their widths first ▸r/toolbar-tabs-840
+        layout.addSpacing(px(drawn["search_gap"]))
+        layout.addWidget(controls["filter_label"])
+        layout.addSpacing(px(drawn["label_gap"]))
+        layout.addWidget(controls["line_filter"], 1)
+        layout.addStretch()
+        buttons(self.TOOLBAR_RIGHT)
 
     @staticmethod
     def category_names_from(model) -> list[str]:
@@ -2916,16 +2877,14 @@ class AmazePanel(QtWidgets.QWidget):
             recolour_on={amazetheme.INFO_ICON_ART_COLOR: amazetheme.INFO_ICON_COLOR})
 
     def _sync_notes_button_pixmaps(self) -> None:
-        """The button's icon: IDLE_BODY blue while the pane is closed, COMMENT_ICON_COLOR when open."""
+        """The button's icon: its art's own colour while closed, COMMENT_ICON_COLOR while open."""
         button = getattr(self, "btn_notes", None)
         if button is None:
             return
         button.set_art(
             self._ui_icon_path("icon_comments.svg"),
-            lighten_on_hover=False,    # the icon is the section's blue as drawn, and it does not lighten when on
-            recolour={notes_panel.COMMENT_ICON_COLOR:    # keyed on a colour the art contains
-                      ui_helpers.IconMenuButton.IDLE_BODY},
-            recolour_on={notes_panel.COMMENT_ICON_COLOR: notes_panel.COMMENT_ICON_COLOR})
+            lighten_on_hover=False,
+            recolour_on={amazetheme.COMMENT_ICON_ART_COLOR: amazetheme.COMMENT_ICON_COLOR})
 
     def _on_note_saved(self, _key: str) -> None:
         """A note was saved: repaint the grid so the tile's note badge appears or disappears."""

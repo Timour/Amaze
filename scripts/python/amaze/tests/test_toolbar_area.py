@@ -216,7 +216,7 @@ class TheToolbarMatchesFrameB01(unittest.TestCase):
         self.assertEqual(self.px(label_x), self._widget("filter_label").x(),
                          "the label does not start where it is drawn")
 
-    def test_the_box_and_the_gear_are_where_they_are_drawn(self):
+    def test_the_box_and_the_right_end_buttons_are_where_they_are_drawn(self):
         """Right of the label positions move with the font, so the box is checked by its gap."""
         label = self._widget("filter_label").geometry()
         field, box = self.node[("field", "line_filter")], self._widget("line_filter").geometry()
@@ -224,9 +224,47 @@ class TheToolbarMatchesFrameB01(unittest.TestCase):
         self.assertEqual(self.px(field[1] - (drawn_label[1] + drawn_label[3])),
                          box.x() - (label.x() + label.width()))
         self.assertEqual((self.px(field[3]), self.px(field[4])), (box.width(), box.height()))
-        gear, drawn_gear = self._widget("btn_prefs").geometry(), self.node[("button", "btn_prefs")]
-        self.assertEqual(tuple(self.px(v) for v in drawn_gear[1:5]),
-                         (gear.x(), gear.y(), gear.width(), gear.height()))
+        for name in ("btn_notes", "btn_info"):
+            widget, drawn = self._widget(name).geometry(), self.node[("button", name)]
+            with self.subTest(control=name):
+                self.assertEqual(tuple(self.px(v) for v in drawn[1:5]),
+                                 (widget.x(), widget.y(), widget.width(), widget.height()))
+
+    def test_the_row_is_in_the_frames_order_with_the_stretch_after_the_box(self):
+        from amaze.tests import test_support
+        field_x = self.node[("field", "line_filter")][1]
+        drawn = sorted((n[1], name) for (kind, name), n in self.node.items()
+                       if kind in ("button", "slider", "label", "field"))
+        expected = [name for x, name in drawn if x <= field_x] + ["stretch"] \
+            + [name for x, name in drawn if x > field_x]
+        self.assertEqual(expected, [entry for entry in test_support.toolbar_row(self.panel)
+                                    if entry != "gap"])
+
+    def test_three_buttons_show_their_own_colour_while_on_and_the_toolbar_blue_at_rest(self):
+        from PySide6 import QtGui
+        from amaze import amazetheme
+        lit = {"btn_online": amazetheme.ONLINE_ICON_COLOR, "btn_notes": amazetheme.COMMENT_ICON_COLOR,
+               "btn_info": amazetheme.INFO_ICON_COLOR}
+        rest = QtGui.QColor(amazetheme.MENU_IDLE_BODY).name()
+        for name, colour in lit.items():
+            button = self._widget(name)
+            with self.subTest(control=name):
+                self.assertEqual({rest}, self._solid_colours(button._pms[(False, False)]))
+                self.assertEqual({QtGui.QColor(colour).name()},
+                                 self._solid_colours(button._pms[(True, False)]))
+
+    def test_the_switched_on_colours_are_the_designs(self):
+        from amaze import amazetheme
+        self.assertEqual(("#3fc28a", "#a05dfe", "#fdba00", "#5d7abd"),
+                         (amazetheme.ONLINE_ICON_COLOR, amazetheme.COMMENT_ICON_COLOR,
+                          amazetheme.INFO_ICON_COLOR, amazetheme.MENU_IDLE_BODY))
+
+    @staticmethod
+    def _solid_colours(pixmap):
+        """The colours of a pixmap's fully opaque pixels."""
+        image = pixmap.toImage()
+        return {image.pixelColor(x, y).name() for x in range(image.width())
+                for y in range(image.height()) if image.pixelColor(x, y).alpha() == 255}
 
     def test_every_icon_is_its_drawn_size_and_place(self):
         for owner, icon in self._drawn("icon").items():

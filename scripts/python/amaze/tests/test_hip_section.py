@@ -1071,9 +1071,9 @@ class CaptureButtonTest(unittest.TestCase):
             % (row,))
         self.assertEqual(
             ["btn_categories", "btn_menu_view", "btn_menu_filter",
-             "btn_online", "btn_notes", "cb_viewmode", "cb_favsonly",
-             "click_slider", "filter_label", "line_filter", "stretch",
-             "btn_hip_capture", "btn_info", "btn_prefs"],
+             "btn_online", "cb_viewmode", "cb_favsonly", "btn_prefs",
+             "btn_hip_capture", "click_slider", "filter_label", "line_filter",
+             "stretch", "btn_notes", "btn_info"],
             row,
             "the toolbar row is not in the designed order")
 

@@ -537,18 +537,18 @@ class OnlineMode(unittest.TestCase):
             "the online SELECTION model - which is what turns a click "
             "into the wrong asset")
 
-    def test_the_online_button_shows_online_mode_in_amber(self):
-        from amaze.helpers import theme
+    def test_the_online_button_shows_online_mode_in_its_own_colour(self):
+        from amaze import amazetheme
         panel = self.panel
-        amber = QtGui.QColor(theme.color_hex("star")).name()
+        lit = QtGui.QColor(amazetheme.ONLINE_ICON_COLOR).name()
         image = panel.btn_online._pms[(True, False)].toImage()
         seen = {image.pixelColor(x, y).name()
                 for x in range(0, image.width(), 2)
                 for y in range(0, image.height(), 2)
                 if image.pixelColor(x, y).alpha() > 120}
         self.assertIn(
-            amber, seen,
-            "the online button is not amber when on - the colour IS "
+            lit, seen,
+            "the online button is not ONLINE_ICON_COLOR when on - the colour IS "
             "the signal that the panel is in online mode")
 
     def test_a_disabled_chip_is_drawn_at_half_opacity(self):

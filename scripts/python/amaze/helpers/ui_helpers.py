@@ -646,8 +646,11 @@ class SectionTabBar(QtWidgets.QWidget):
 
     CANCEL_LABEL = "Cancel"
 
-    _DRAWN = amazetheme.drawn_tabs()    # every size but the two radii comes from frame S01 ▸r/tabs-from-frame
+    _DRAWN = amazetheme.drawn_tabs()    # every size but the radii and line weight is S01's ▸r/tabs-from-frame
     HEIGHT = theme.ui_px(_DRAWN["height"])
+    LINE_W = theme.ui_px(1)    # the frame's line node carries no weight ▸r/toolbar-tabs-840
+    LINE_TOP = theme.ui_px(_DRAWN["line_y"]) - LINE_W / 2.0
+    TRAY_TOP = theme.ui_px(_DRAWN["tray_top"])
     TRAY_HEIGHT = theme.ui_px(_DRAWN["tray_height"])
     TRAY_RADIUS = theme.ui_px(4)
     TRAY_LEFT = theme.ui_px(_DRAWN["tray_left"])
@@ -660,6 +663,7 @@ class SectionTabBar(QtWidgets.QWidget):
 
     STRIP_COLOR = theme.color("surface")   # theme-derived; matches the toolbar row
     TRAY_COLOR = theme.color("surface_low")   # matches the category backdrop, so the tray looks connected to the sidebar below
+    LINE_COLOR = QtGui.QColor(amazetheme.TAB_STRIP_LINE)
     CHIP_FILL = theme.color("tab_chip")    # an ACCENT shade: Houdini's own example panel drives its checked/tab states from accent variants
     CHIP_RING = theme.color("tab_ring")
     TEXT_SELECTED = theme.color("text_bright")
@@ -692,8 +696,7 @@ class SectionTabBar(QtWidgets.QWidget):
     def _chip_rects(self) -> list:
         """[((key, label), QRectF), ...]: each tab's chip rect and hit target, in the current font."""
         metrics = self.fontMetrics()
-        tray_top = self.height() - self.TRAY_HEIGHT
-        chip_y = tray_top + (self.TRAY_HEIGHT - self.CHIP_HEIGHT) / 2.0
+        chip_y = self.TRAY_TOP + (self.TRAY_HEIGHT - self.CHIP_HEIGHT) / 2.0
         x = self.TRAY_LEFT + self.CHIP_INSET
         rects = []
         for key, label in self._segments:
@@ -727,7 +730,7 @@ class SectionTabBar(QtWidgets.QWidget):
         if not self._cancel_visible:
             return None
         metrics = self.fontMetrics()
-        chip_y = (self.height() - self.CHIP_HEIGHT) / 2.0   # centred on the strip's full height, not the tray's
+        chip_y = (self.LINE_TOP - self.CHIP_HEIGHT) / 2.0   # centred on the strip above its line, not the tray
         width = metrics.horizontalAdvance(self.CANCEL_LABEL) \
             + 2 * self.CHIP_PAD_X
         x = self.width() - self.TRAY_LEFT - self.CHIP_INSET - width
@@ -779,14 +782,17 @@ class SectionTabBar(QtWidgets.QWidget):
             self.update()
 
     def _tray_rect(self, rects=None):
-        """The tray behind the tabs, flush with the strip's bottom, or None with no tabs."""
+        """The tray behind the tabs, down to the strip's bottom line, or None with no tabs."""
         if rects is None:
             rects = self._chip_rects()
         if not rects:
             return None
-        top = self.height() - self.TRAY_HEIGHT
         right = rects[-1][1].right() + self.CHIP_INSET
-        return QtCore.QRectF(self.TRAY_LEFT, top, right - self.TRAY_LEFT, self.TRAY_HEIGHT)
+        return QtCore.QRectF(self.TRAY_LEFT, self.TRAY_TOP, right - self.TRAY_LEFT, self.TRAY_HEIGHT)
+
+    def _line_rect(self) -> QtCore.QRectF:
+        """The line along the strip's bottom, the full width."""
+        return QtCore.QRectF(0, self.LINE_TOP, self.width(), self.LINE_W)
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
         painter = QtGui.QPainter(self)
@@ -819,6 +825,8 @@ class SectionTabBar(QtWidgets.QWidget):
             else:
                 painter.setPen(self.TEXT_UNSELECTED)
             painter.drawText(rect, QtCore.Qt.AlignmentFlag.AlignCenter, label)
+
+        painter.fillRect(self._line_rect(), self.LINE_COLOR)
 
         cancel = self._cancel_rect(rects)
         if cancel is not None:   # ring only, no fill: so it looks like a BUTTON, not like the tabs beside it

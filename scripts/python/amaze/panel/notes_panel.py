@@ -537,7 +537,8 @@ class NotesPanel(ui_helpers.SavedWidthPane):
         ui_helpers.set_text_color(self.type_label, "text", text)
         self._icon_label.setPixmap(ui_helpers.faded_pixmap(ui_helpers.device_pixmap(
             amaze.package_file("ui", "icon_comments.svg"), side, dpr,
-            {amazetheme.COMMENT_ICON_COLOR: amazetheme.COMMENT_DIM_ICON_COLOR} if dimmed else None),
+            {amazetheme.COMMENT_ICON_ART_COLOR: amazetheme.COMMENT_DIM_ICON_COLOR if dimmed
+             else amazetheme.COMMENT_ICON_COLOR}),
             amazetheme.COMMENT_DIM_ICON_OPACITY if dimmed else 1.0, dpr))
         self.add_button.setIcon(QtGui.QIcon(ui_helpers.device_pixmap(
             amaze.package_file("ui", "icon_comments_add.svg"), plus_side, dpr,
