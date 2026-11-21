@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.47.1
+
+- Sidebar: a category moved by dragging is the one you picked up, even if the list changes during the drag.
+- Versions: the date is never cut short, even with a large interface font.
+- Info pane: a click on the line under the preview no longer saves anything; dragging it still does.
+- Amaze follows a colour theme switch in Houdini at once: the toolbar, size slider, sidebar, grid and tiles change with it.
+- Manage Libraries: a library that cannot be reached is shown in the theme's dim text colour.
+
 ## 1.47.0
 
 - Section tabs: Houdini's own tab bar, each tab with its section's icon beside its name. Cancel is a standard button.
