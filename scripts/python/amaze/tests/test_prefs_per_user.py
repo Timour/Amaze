@@ -128,6 +128,19 @@ class TheInfoPaneChoiceIsKept(PerUserCase):
         again.load()
         self.assertTrue(again.show_info, "show_info did not load back")
 
+    def test_info_preview_is_on_at_first_and_survives_a_save_and_a_load(self):
+        self.write_settings({"library_user": UID_A, "users": {UID_A: {}}})
+        p = self.prefs()
+        p.load()
+        self.assertTrue(p.info_preview, "the preview is hidden on a first start")
+        p.info_preview = False
+        p.save()
+        self.assertIs(False, self.read_settings()["users"][UID_A].get("info_preview"),
+                      "info_preview was not written to the user's block")
+        again = self.prefs()
+        again.load()
+        self.assertFalse(again.info_preview, "info_preview did not load back")
+
 
 class OneLayoutIsReadAndWritten(PerUserCase):
     """With a user picked, view state comes only from their block; unknown keys stay in the file."""

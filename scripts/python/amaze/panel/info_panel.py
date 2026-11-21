@@ -192,7 +192,7 @@ class InfoPanel(ui_helpers.SavedWidthPane):
         ui_helpers.fill_window(header, HEADER_BG)
         header.setFixedHeight(theme.ui_px(_DRAWN["header"]))
         head = QtWidgets.QHBoxLayout(header)    # one row; every item is centred in the drawn height
-        head.setContentsMargins(theme.ui_px(_DRAWN["pad"]), 0, theme.ui_px(_DRAWN["pad"]), 0)
+        head.setContentsMargins(theme.ui_px(_DRAWN["pad"]), 0, theme.ui_px(_DRAWN["preview_button_pad"]), 0)
         head.setSpacing(theme.ui_px(_DRAWN["gap"]))
         self._icon_label = QtWidgets.QLabel()
         head.addWidget(self._icon_label, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
@@ -204,6 +204,18 @@ class InfoPanel(ui_helpers.SavedWidthPane):
         self.type_label.setTextFormat(QtCore.Qt.TextFormat.PlainText)
         head.addWidget(self.name_label, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
         head.addWidget(self.type_label, 1, QtCore.Qt.AlignmentFlag.AlignVCenter)
+        self.preview_button = QtWidgets.QToolButton()    # Hide Preview / Show Preview, over an image file
+        self.preview_button.setObjectName("preview_button")
+        self.preview_button.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+        self.preview_button.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self.preview_button.setStyleSheet(    # on the button itself: art only, no frame
+            "QToolButton#preview_button { border: none; background: transparent; padding: 0; }")
+        side = theme.ui_px(_DRAWN["preview_button"])
+        self.preview_button.setFixedSize(side, side)
+        self.preview_button.setIconSize(QtCore.QSize(side, side))
+        self.preview_button.clicked.connect(self.toggle_preview)
+        self.preview_button.hide()
+        head.addWidget(self.preview_button, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
         self.header_widget = header
         outer.addWidget(header)
 
@@ -244,6 +256,13 @@ class InfoPanel(ui_helpers.SavedWidthPane):
         ui_helpers.set_text_color(self.name_label, "text_bright", text)
         ui_helpers.set_text_color(self.type_label, "text", text)
         ink = amazetheme.COMMENT_DIM_ICON_COLOR if dimmed else amazetheme.INFO_ICON_COLOR
+        shown = self.preview_shown()
+        self.preview_button.setIcon(QtGui.QIcon(ui_helpers.device_pixmap(
+            amaze.package_file("ui", "icon_preview_hide.svg" if shown else "icon_preview_show.svg"),
+            theme.ui_px(_DRAWN["preview_button"]), dpr,
+            {amazetheme.INFO_ICON_ART_COLOR: amazetheme.INFO_ICON_COLOR})))
+        self.preview_button.setToolTip(ui_helpers.tooltip_text(
+            amazetheme.INFO_HIDE_PREVIEW if shown else amazetheme.INFO_SHOW_PREVIEW))
         self._icon_label.setPixmap(ui_helpers.faded_pixmap(ui_helpers.device_pixmap(
             amaze.package_file("ui", "icon_info.svg"), theme.ui_px(_DRAWN["icon"]), dpr,
             {amazetheme.INFO_ICON_ART_COLOR: ink}),
@@ -292,8 +311,23 @@ class InfoPanel(ui_helpers.SavedWidthPane):
             return ""
         return request.paths[0] if image_preview.can_read(request.paths[0]) else ""
 
+    def preview_shown(self) -> bool:
+        """Whether an image file's picture is shown: the saved setting, on until switched off."""
+        return bool(getattr(self._preferences, "info_preview", True))
+
+    def toggle_preview(self) -> None:
+        """Hide or show the picture, remember it, and read the picture again when it is shown."""
+        self._preferences.info_preview = not self.preview_shown()
+        save = getattr(self._preferences, "save", None)
+        if save is not None:
+            save()
+        self._paint_accents()
+        self.preview.set_image(None)
+        self._ask_picture()
+
     def _show_picture_of(self, subject) -> None:
         path = self.picture_path(subject)
+        self.preview_button.setVisible(bool(path))    # only an image file has a picture to hide
         if path == self._picture_path and path:
             return
         self._picture_path = path
@@ -306,7 +340,7 @@ class InfoPanel(ui_helpers.SavedWidthPane):
 
     def _ask_picture(self) -> None:
         self._wider.stop()
-        if not self._picture_path:
+        if not self._picture_path or not self.preview_shown():    # hidden: the file is not read
             self._pictures.stop()
             return
         self._pictures.ask(self._picture_path, self._picture_width())
@@ -337,6 +371,7 @@ class InfoPanel(ui_helpers.SavedWidthPane):
         self._pictures.stop()
         self._picture_path = ""
         self.preview.set_image(None)
+        self.preview_button.hide()
 
     def _show_no_selection(self) -> None:
         self._dimmed = True

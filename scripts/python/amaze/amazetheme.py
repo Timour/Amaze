@@ -131,6 +131,8 @@ INFO_ROW_BG = "#383838"          # the fill of rows 1, 3, 5...; the rows between
 INFO_TEXT = "#cdc8bc"            # labels and values
 INFO_DIVIDER = "#2d2d2d"         # the line between the two columns, the page's own colour
 INFO_DIVIDER_WIDTH = 2           # that line's weight in px, centred on the drawn divider's x
+INFO_HIDE_PREVIEW = "Hide Preview"    # the header button's tooltip while the picture is shown
+INFO_SHOW_PREVIEW = "Show Preview"    # and while it is hidden
 
 LIST_HEADER_BG = "#2a2a2a"       # ▸ list mode's header strip: a QHeaderView picks up none of these, so the strip sets them
 LIST_HEADER_DIVIDER = "#454545"
@@ -977,6 +979,7 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
         "frame": (450, 621),
         "nodes": (
             ("header", 0, 0, 450, 30, None),
+            ("icon ▸ preview ▸ icon_preview_hide.svg", 424, 6, 18, 18, None),
             ("body", 0, 330, 450, 291, None),
             ("row ▸ 1", 0, 330, 450, 19, None),
             ("row ▸ 2", 0, 349, 450, 19, None),
@@ -988,8 +991,8 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("row ▸ 11", 0, 520, 450, 19, None),
             ("row ▸ 13", 0, 558, 450, 19, None),
             ("row ▸ 15", 0, 596, 450, 19, None),
-            ("text ▸ name", 36, 7, 76, 15, "brushed_steel"),
-            ("text ▸ type", 118, 7, 71, 15, "USD MaterialX"),
+            ("text ▸ name", 36, 7, 37, 15, "Flower"),
+            ("text ▸ type", 79, 7, 20, 15, "JPG"),
             ("label ▸ 1", 12, 332, 30, 15, "Name"),
             ("value ▸ 1", 109, 332, 112, 15, "Name of selected item"),
             ("label ▸ 2", 12, 351, 40, 15, "Created"),
@@ -1416,10 +1419,13 @@ def drawn_info(frame_key: str = "N02") -> dict:
 
     header, icon, name = node("header"), node("icon", "header"), node("text", "name")
     row, label, value = node("row", "1"), node("label", "1"), node("value", "1")
+    button = node("icon", "preview")
     return {
         "width": width,
         "header": header[4],
         "pad": icon[1] - header[1],
+        "preview_button": button[3],
+        "preview_button_pad": width - (button[1] + button[3]),    # its inset from the header's right
         "gap": name[1] - (icon[1] + icon[3]),
         "icon": icon[3],
         "row": row[4],

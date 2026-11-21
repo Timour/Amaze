@@ -115,7 +115,8 @@ class TheInfoPaneMatchesItsDesignFrame(_PaneCase):
     def test_drawn_info_reads_the_frame(self):
         self.assertEqual(
             {"width": 450, "header": 30, "pad": 10, "gap": 6, "icon": 20, "row": 19,
-             "first_row": 0, "label_x": 12, "value_x": 109, "text_y": 2, "divider_x": 100},
+             "first_row": 0, "label_x": 12, "value_x": 109, "text_y": 2, "divider_x": 100,
+             "preview_button": 18, "preview_button_pad": 8},
             amazetheme.drawn_info())
 
     def test_the_pane_asks_for_the_drawn_width_under_the_comments_key(self):
@@ -129,6 +130,13 @@ class TheInfoPaneMatchesItsDesignFrame(_PaneCase):
         self.assertEqual(self.px(icon[3]), self.pane._icon_label.pixmap().deviceIndependentSize().width())
         self.assertEqual(self.px(icon[1]), self._at(self.pane._icon_label).x())
         self.assertEqual(self.px(name[1]), self._at(self.pane.name_label).x())
+
+    def test_the_preview_button_is_where_it_is_drawn(self):
+        drawn, button = self.node("icon", "preview"), self.pane.preview_button
+        self.assertTrue(button.isVisible())
+        self.assertEqual(tuple(self.px(v) for v in drawn[1:5]),
+                         (self._at(button).x(), self._at(button).y(), button.width(), button.height()))
+        self.assertEqual(self.px(drawn[3]), button.iconSize().width())
 
     def test_the_preview_is_where_it_is_drawn(self):
         drawn, preview = self.node("preview"), self.pane.preview
@@ -257,6 +265,63 @@ class APictureForAnImageFile(_PaneCase):
     def test_a_file_without_a_preview_asks_for_no_picture(self):
         self.pane.set_subject(self._file("/lib/c.rat"))
         self.assertEqual([], self.pictures.asked)
+        self.assertFalse(self.pane.preview_button.isVisible(), "a button with no picture to hide")
+
+    def test_the_button_shows_only_over_an_image_file_and_goes_with_the_selection(self):
+        self.assertFalse(self.pane.preview_button.isVisible())
+        self.pane.set_subject(self._file("/lib/a.exr", "a"))
+        self.assertTrue(self.pane.preview_button.isVisible())
+        self.pane.set_subject(self._file("/lib/c.bgeo.sc", "c"))
+        self.assertFalse(self.pane.preview_button.isVisible())
+        self.pane.set_subject(self._file("/lib/a.exr", "a"))
+        self.pane.clear_subject()
+        self.assertFalse(self.pane.preview_button.isVisible())
+
+    def _art(self):
+        return self.pane.preview_button.icon().pixmap(64, 64).toImage()
+
+    def test_hide_preview_drops_the_picture_stops_reading_and_is_remembered(self):
+        saves = []
+        self.pane._preferences.save = lambda: saves.append(self.pane._preferences.info_preview)
+        self.pictures.image = _picture()
+        self.pane.set_subject(self._file("/lib/a.exr", "a"))
+        shown_art = self._art()
+        self.assertIn(amazetheme.INFO_HIDE_PREVIEW, self.pane.preview_button.toolTip())
+        self.pictures.asked.clear()
+        self.pane.preview_button.click()
+        QtWidgets.QApplication.processEvents()
+        self.assertEqual([False], saves, "the choice was not saved")
+        self.assertIsNone(self.pane.preview.image())
+        self.assertFalse(self.pane.preview.isVisible())
+        self.assertEqual([], self.pictures.asked, "a hidden preview still read the file")
+        self.assertEqual(self.pane.header_widget.height(),
+                         self.pane.table.mapTo(self.pane, QtCore.QPoint(0, 0)).y())
+        self.assertTrue(self.pane.preview_button.isVisible(), "no button to show it again")
+        self.assertIn(amazetheme.INFO_SHOW_PREVIEW, self.pane.preview_button.toolTip())
+        self.assertNotEqual(shown_art, self._art(), "both states draw the same arrow")
+        self.pane.set_subject(self._file("/lib/b.exr", "b"))
+        self.assertEqual([], self.pictures.asked, "the next image was read while hidden")
+
+    def test_show_preview_reads_the_picture_again_and_is_remembered(self):
+        saves = []
+        self.pane._preferences.info_preview = False
+        self.pane._preferences.save = lambda: saves.append(self.pane._preferences.info_preview)
+        self.pictures.image = _picture()
+        self.pane.set_subject(self._file("/lib/a.exr", "a"))
+        self.assertIsNone(self.pane.preview.image())
+        self.pane.preview_button.click()
+        QtWidgets.QApplication.processEvents()
+        self.assertEqual([True], saves)
+        self.assertEqual(["/lib/a.exr"], [path for path, _width in self.pictures.asked])
+        self.assertIsNotNone(self.pane.preview.image())
+        self.assertTrue(self.pane.preview.isVisible())
+
+    def test_the_button_art_is_the_info_colour(self):
+        self.pane.set_subject(self._file("/lib/a.exr", "a"))
+        image, wanted = self._art(), QtGui.QColor(amazetheme.INFO_ICON_COLOR)
+        found = {image.pixelColor(x, y).name() for x in range(image.width()) for y in range(image.height())
+                 if image.pixelColor(x, y).alpha() == 255}
+        self.assertEqual({wanted.name()}, found)
 
     def test_clearing_and_hiding_stop_the_picture_read_and_drop_the_picture(self):
         self.pictures.image = _picture()
@@ -306,7 +371,7 @@ class NothingSelected(_PaneCase):
                                wraps=info_panel.ui_helpers.device_pixmap) as made:
             self.pane.clear_subject()
             self.pane.set_subject(_subject())
-        swaps = [call.args[3] for call in made.call_args_list]
+        swaps = [call.args[3] for call in made.call_args_list if call.args[0].endswith("icon_info.svg")]
         self.assertEqual([{amazetheme.INFO_ICON_ART_COLOR: amazetheme.COMMENT_DIM_ICON_COLOR},
                           {amazetheme.INFO_ICON_ART_COLOR: amazetheme.INFO_ICON_COLOR}], swaps)
 

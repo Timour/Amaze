@@ -132,6 +132,7 @@ USER_KEYS = {  # per-user view state under `users.<uid>`: stored key -> (propert
         ("notes_panel_width", "_notes_panel_width", 0),
     "show_notes": ("show_notes", "_show_notes", False),
     "show_info": ("show_info", "_show_info", False),
+    "info_preview": ("info_preview", "_info_preview", True),
     "show_categories": ("show_categories", "_show_categories", True),
     "sidebar_counts": ("sidebar_counts", "_sidebar_counts", True),
     "render_rat_files": ("render_rat_files", "_render_rat_files", False),

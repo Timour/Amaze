@@ -89,6 +89,7 @@ class Prefs(_Persistence):
         self._file_location_records: dict = {}  # last-known copy of the library's location records, path -> record
         self._show_notes = False
         self._show_info = False
+        self._info_preview = True
         self._notes_panel_width = 0  # 0 = never dragged, so the 450px launch width applies
         self._sidebar_width = 0  # same rule, 220px design width
         self._icon_line_weight = "template"  # "template" (thin 10px stroke) or "feather" (the icon set's default)
@@ -370,6 +371,15 @@ class Prefs(_Persistence):
     @show_info.setter
     def show_info(self, val: bool) -> None:
         self._show_info = bool(val)
+
+    @property
+    def info_preview(self) -> bool:
+        """Whether the Info pane shows an image file's picture."""
+        return self._info_preview
+
+    @info_preview.setter
+    def info_preview(self, val: bool) -> None:
+        self._info_preview = bool(val)
 
     @property
     def notes_panel_width(self) -> int:
