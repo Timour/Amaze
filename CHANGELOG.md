@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.47.0
+
+- Section tabs: Houdini's own tab bar, each tab with its section's icon beside its name. Cancel is a standard button.
+
 ## 1.46.1
 
 - Sidebar: dragging a row to reorder it works again.
