@@ -423,16 +423,6 @@ class CategoriesSidebarProxy(sidebar_model.RowMoves, QtCore.QSortFilterProxyMode
         to_source = self.mapToSource(self.index(to_row, 0)).row()
         return model.move_category(from_source, to_source)
 
-    def order_snapshot(self):
-        """The stored order now, every hidden row included."""
-        model = self.sourceModel()
-        return None if model is None else model.order_snapshot()
-
-    def restore_order(self, snapshot) -> None:
-        model = self.sourceModel()
-        if model is not None:
-            model.restore_order(snapshot)
-
     def commit_order(self) -> None:
         """Save the order, once per drag, on release."""
         model = self.sourceModel()

@@ -1130,11 +1130,11 @@ class EverySectionsSidebarIsTheOneView(unittest.TestCase):
 class EverySidebarListAnswersTheReorder(unittest.TestCase):
     """Each sidebar list moves its own rows in view rows; Section holds the reorder methods once."""
 
-    CALLS = ("movable", "move_row", "order_snapshot", "restore_order", "commit_order")
+    CALLS = ("movable", "move_row", "commit_order")
     SECTION_CALLS = ("sidebar_movable", "move_sidebar_row", "sidebar_order_snapshot",    # none may come back
                      "restore_sidebar_order", "commit_sidebar_order")
 
-    def test_the_list_in_the_view_answers_the_five_calls(self):
+    def test_the_list_in_the_view_answers_the_three_calls(self):
         panel = test_support.fixture_panel(self)
         steps = [(key, lambda key=key: panel.section_tabs.setChecked(key))
                  for key in test_support.ALL_SECTION_KEYS]
@@ -1179,14 +1179,14 @@ class EverySidebarListAnswersTheReorder(unittest.TestCase):
                              "premise: the empty category is not hidden between two shown ones")
             self.assertFalse(proxy.movable(proxy.index(0, 0)), "All can be dragged")
             self.assertTrue(all(proxy.movable(proxy.index(row, 0)) for row in (1, 2, 3)))
-            before = proxy.order_snapshot()
+            before = model.order_snapshot()
             self.assertTrue(proxy.move_row(proxy.index(3, 0), 0), "c did not move")
             self.assertEqual(["_All", "c", "a", "hidden", "b"], model.order_snapshot(),
                              "the move did not map view rows to stored rows, or went above All")
             with mock.patch.object(model, "save") as save:
                 proxy.commit_order()
             save.assert_called_once_with()
-            proxy.restore_order(before)
+            model.restore_order(before)
             self.assertEqual(["_All", "a", "hidden", "b", "c"], model.order_snapshot())
 
     def test_in_file_a_location_moves_and_a_subfolder_the_scene_row_and_All_do_not(self):

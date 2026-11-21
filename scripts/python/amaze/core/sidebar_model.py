@@ -102,13 +102,6 @@ class SidebarModel(RowMoves, QtCore.QAbstractItemModel):
     def move_row(self, index, to_row: int) -> bool:
         return False
 
-    def order_snapshot(self):
-        """The order now, copied; `restore_order` puts one back."""
-        return None
-
-    def restore_order(self, snapshot) -> None:
-        pass
-
     def commit_order(self) -> None:
         pass
 
