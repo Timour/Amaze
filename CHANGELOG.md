@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.42.0
+
+- Info pane: drag the line under the picture to set the height of the preview.
+- Comments and Info share one pane: switching keeps the width and nothing moves.
+- Fixed a crash at some pane heights with an image file selected.
+- List mode: rows, headline and the space under the rows are painted by Houdini, like every other list.
+- Info pane: a photo stored turned is sharp in the preview. EXR and TIFF previews appear sooner.
+- The line under the section tabs has the tabs' background colour.
+- Redrawn icons: add comment, show preview, hide preview.
+
 ## 1.41.1
 
 - Toolbar: the Search box keeps 6 px from the Comments button in a narrow panel.
