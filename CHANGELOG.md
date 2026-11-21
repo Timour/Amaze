@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.43.0
+
+- Section tabs: each tab shows its section's icon before its name.
+- Info pane: the picture and the table scroll together as one page.
+
 ## 1.42.0
 
 - Info pane: drag the line under the picture to set the height of the preview.
