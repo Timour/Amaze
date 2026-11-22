@@ -794,7 +794,7 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("icon ▸ btn_menu_filter ▸ icon_view.svg", 57, 6, 18, 18, None),
             ("icon ▸ btn_online ▸ icon_online.svg", 84, 7, 16, 16, None),
             ("icon ▸ cb_viewmode ▸ list.svg", 110, 7, 16, 16, None),
-            ("icon ▸ cb_favsonly ▸ favourite_on.svg", 136, 7, 15, 15, None),
+            ("icon ▸ cb_favsonly ▸ favourite_on.svg", 136.5, 7, 15, 15, None),
             ("icon ▸ btn_prefs ▸ icon_library.svg", 161, 6, 18, 18, None),
             ("icon ▸ btn_hip_capture ▸ icon_screenshot.svg", 187, 6, 18, 18, None),
             ("icon ▸ line_filter ▸ icon_search.svg", 525, 8, 13, 13, None),

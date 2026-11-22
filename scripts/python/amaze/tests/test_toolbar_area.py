@@ -303,8 +303,10 @@ class TheToolbarMatchesFrameB01(unittest.TestCase):
             button, widget = self.node[("button", owner)], self._widget(owner)
             with self.subTest(control=owner):
                 self.assertEqual(self.px(icon[3]), widget._icon_size)
-                self.assertEqual(icon[1] - button[1], (button[3] - icon[3]) // 2,
-                                 "the drawn icon is not where the button paints it")
+                from amaze.helpers import ui_helpers
+                painted = ui_helpers.icon_rect(widget, widget._icon_size)
+                self.assertEqual((self.px(float(icon[1] - button[1])), self.px(float(icon[2] - button[2]))),
+                                 (painted.x(), painted.y()), "the drawn icon is not where the button paints it")
 
     def test_the_magnifier_is_where_it_is_drawn(self):
         icon, field = self.node[("icon", "line_filter")], self.node[("field", "line_filter")]

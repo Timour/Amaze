@@ -959,10 +959,12 @@ class ToggleSwitch(QtWidgets.QCheckBox):
             )
 
 
-def icon_rect(button, side: int) -> QtCore.QRect:
-    """Where a self-painted toolbar button draws its `side` icon: centred, one offset both ways."""
-    offset = (button.width() - side) // 2
-    return QtCore.QRect(offset, offset, side, side)
+def icon_rect(button, side: int) -> QtCore.QRectF:
+    """Where a self-painted toolbar button draws its `side` icon: where B01 draws it, else centred."""
+    at = amazetheme.drawn_toolbar()["icon_at"].get(button.objectName())
+    if at is None:
+        return QtCore.QRectF((button.width() - side) // 2, (button.height() - side) // 2, side, side)
+    return QtCore.QRectF(theme.ui_px(float(at["x"])), theme.ui_px(float(at["y"])), side, side)
 
 
 class IconMenuButton(QtWidgets.QWidget):
@@ -1107,7 +1109,7 @@ class IconMenuButton(QtWidgets.QWidget):
                 pm = self._hover_pm
             else:
                 pm = self._idle_pm
-            painter.drawPixmap(icon_rect(self, self._icon_size), pm)
+            painter.drawPixmap(icon_rect(self, self._icon_size), pm, QtCore.QRectF(pm.rect()))
         painter.end()
 
 
@@ -1189,7 +1191,7 @@ class ChipToggleButton(QtWidgets.QToolButton):
         apply_disabled_opacity(painter, self)   # a disabled chip paints dimmed
         pm = self._pms.get((self.isChecked(), self._hovered))
         if pm is not None:
-            painter.drawPixmap(icon_rect(self, self._icon_size), pm)
+            painter.drawPixmap(icon_rect(self, self._icon_size), pm, QtCore.QRectF(pm.rect()))
         painter.end()
 
 
