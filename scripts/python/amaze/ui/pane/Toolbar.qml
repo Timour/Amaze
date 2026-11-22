@@ -29,19 +29,30 @@ Item {
         ToolTip.text: button.tip
         ToolTip.visible: button.hovered && button.tip !== ""
         ToolTip.delay: Config.toolTipDelay
-        background: Rectangle {    // B01c's chip: its grey middle, Houdini's checked border and ring
-            visible: button.on || button.down
-            radius: 4
-            color: root.drawn.on.fill
-            border.color: root.drawn.on.border
-            border.width: 1
-            Rectangle {
+        background: Item {
+            Rectangle {    // B01c's chip: its grey middle, Houdini's checked border and ring
                 anchors.fill: parent
-                anchors.margins: 1
-                radius: 3
-                color: "transparent"
-                border.color: root.drawn.on.ring
-                border.width: 1.5
+                visible: button.on || button.down
+                radius: 4
+                color: root.drawn.on.fill
+                border.color: root.drawn.on.border
+                border.width: 1
+                Rectangle {
+                    anchors.fill: parent
+                    anchors.margins: 1
+                    radius: 3
+                    color: "transparent"
+                    border.color: root.drawn.on.ring
+                    border.width: 1.5
+                }
+            }
+            Rectangle {    // Houdini's tool-button hover (pluto parts.drawButtonPanel): white at 10%
+                anchors.fill: parent
+                visible: button.hovered && button.enabled && !button.on && !button.down
+                radius: 4
+                color: Qt.rgba(1, 1, 1, 0.1)
+                border.color: Qt.rgba(1, 1, 1, 0.145)    // its pen over its fill, measured #4c4c4c at 1x
+                border.width: 1
             }
         }
         contentItem: Item {
