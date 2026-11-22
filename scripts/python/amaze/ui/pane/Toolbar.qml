@@ -19,6 +19,7 @@ Item {
         property string node: ""    // its name in B01, which gives the art's size
         property color artColor: "transparent"
         property string tip: ""
+        property bool on: checked    // B01c's on state: a toggle while on, a window while open
         flat: true
         padding: 0    // the art sits where B01 draws it inside the button, not inside Houdini's padding
         implicitWidth: root.drawn.button
@@ -28,6 +29,21 @@ Item {
         ToolTip.text: button.tip
         ToolTip.visible: button.hovered && button.tip !== ""
         ToolTip.delay: Config.toolTipDelay
+        background: Rectangle {    // B01c's chip: its grey middle, Houdini's checked border and ring
+            visible: button.on || button.down
+            radius: 4
+            color: root.drawn.on.fill
+            border.color: root.drawn.on.border
+            border.width: 1
+            Rectangle {
+                anchors.fill: parent
+                anchors.margins: 1
+                radius: 3
+                color: "transparent"
+                border.color: root.drawn.on.ring
+                border.width: 1.5
+            }
+        }
         contentItem: Item {
             AmazeIcon {
                 readonly property var at: root.drawn.icon_at[button.node]
@@ -85,6 +101,7 @@ Item {
             node: "btn_prefs"
             art: "icon_library.svg"
             tip: SharedState.tips.prefs
+            on: SharedState.prefsOpen
             onClicked: SharedState.showPrefs()
         }
         IconButton {

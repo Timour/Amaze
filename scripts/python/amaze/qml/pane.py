@@ -47,6 +47,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
     sidebarSelection: QtCore.QObject = None    # this pane's selection of them, which the engine moves
     sidebarCounts: bool = True
     sidebarShown: bool = True
+    prefsOpen: bool = False    # the Preferences button shows its on state while the window is open
     sidebarWidth: float = 0.0    # in the pane's design px
 
     searchCleared = QtCore.Signal()    # the empty state's Clear Search: the QML empties its field
@@ -73,7 +74,8 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         self._reveal = ""    # a File folder highlighted once the walks have given it a row
         self._rows_followed = None
         tabs = amazetheme.drawn_tabs()
-        self.toolbar = dict(amazetheme.drawn_toolbar(), end_gap=amazetheme.TOOLBAR_SEARCH_END_GAP)
+        self.toolbar = dict(amazetheme.drawn_toolbar(), end_gap=amazetheme.TOOLBAR_SEARCH_END_GAP,
+                            on=amazetheme.TOOLBAR_ON)
         self.strip = {"height": tabs["height"], "left": tabs["left"]}
         self.tips = {"online": tooltips.PANEL_ONLINE, "favourites": tooltips.PANEL_FAVORITES,
                      "viewMode": tooltips.PANEL_VIEW_MODE,
@@ -321,12 +323,18 @@ class PaneState(qmlviews.SharedState, asks.Asks):
             window = self._prefs_window = prefs_window.AmazePrefsWindow(self.pane.prefs, pane=self.pane)
             window.sharedState().applied.connect(self._apply_preferences)    # Apply, and Accept
             window.closed.connect(self._apply_preferences)    # any close: a library chosen behind it opens
+            window.closed.connect(self._prefs_closed)
             self.destroyed.connect(window.close)    # the window must not outlive the pane it applies to
         window.show()
+        self.prefsOpen = True
         window.raise_()
         window.requestActivate()
         if page:
             window.setPageName(page)
+
+    def _prefs_closed(self) -> None:
+        if shiboken6.isValid(self):    # the pane closed first
+            self.prefsOpen = False
 
     def _apply_preferences(self) -> None:
         if not shiboken6.isValid(self):    # the pane closed first
