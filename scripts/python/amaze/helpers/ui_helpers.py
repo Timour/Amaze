@@ -429,7 +429,7 @@ class ClickSlider(QtWidgets.QSlider):
     HANDLE_BORDER_COLOR = theme.live("surface")   # was #2d2d2d, the toolbar row's own grey, so the handle border looks cut out of the bar
     HANDLE_BORDER_WIDTH = theme.ui_px(1)
     DEFAULT_VALUE = 128        # a size, unscaled, and one of the SNAP_MARKS so a drag can stop on it
-    SNAP_MARKS = (64, 128, 192, 256, 320, 384, 448, 512)
+    SNAP_MARKS = amazetheme.TILE_SIZES
     SNAP_RADIUS = 5
     TICK_COLOR = theme.live("text_dim")   # was #696969, byte-identical to this role
     TICK_PIXEL_SIZE = theme.ui_px(1)   # the snap-mark tick is pixel art: 5 squares of this size, centre and four neighbours
@@ -721,31 +721,28 @@ class LogoImages(QtQuick.QQuickImageProvider):
         return image
 
 
-class _TabIcons(QtQuick.QQuickImageProvider):
-    """`image://sectiontab/<key>`: a section's art at its drawn size with room for its outline."""
+TAB_ART = amazetheme.drawn_tabs()["icons"]    # a section's art and its drawn box; a tab with no entry has no icon
 
-    def __init__(self, icons: dict, bleed: int) -> None:
-        super().__init__(QtQml.QQmlImageProviderBase.ImageType.Pixmap)
-        self._icons, self._bleed = icons, bleed
 
-    def requestPixmap(self, key: str, size: QtCore.QSize, requested: QtCore.QSize) -> QtGui.QPixmap:
-        art, _width, height = self._icons[key]
-        drawn = theme.ui_px(height)
-        tall = drawn + 2 * self._bleed
-        ratio = requested.height() / tall if requested.height() > 0 else theme.screen_ratio()
-        pixmap = bled_pixmap(amaze.package_file("ui", art), drawn, ratio, self._bleed)
-        size.setWidth(pixmap.width())
-        size.setHeight(pixmap.height())
-        return pixmap
+def section_tab_rows(segments) -> list:
+    """The tab strip's rows: each name, its art's file, the drawn box and the file's own box."""
+    rows = []
+    for key, label in segments:
+        row = {"label": label, "icon": "", "width": 0, "height": 0,
+               "artX": 0, "artY": 0, "artWidth": 0, "artHeight": 0}
+        if key in TAB_ART:
+            art, width, height = TAB_ART[key]
+            box = QtSvg.QSvgRenderer(amaze.package_file("ui", art)).viewBoxF()    # past the layer's box by its outline
+            row.update(icon=art, width=width, height=height, artX=box.x(), artY=box.y(),
+                       artWidth=box.width(), artHeight=box.height())
+        rows.append(row)
+    return rows
 
 
 class _SectionTabsView(qmlviews.BaseQmlWidget):
     """The section tabs' QML, made as Houdini makes its own QML panels. ▸r/houdini-qml-tabs"""
 
-    SOURCE_URL = QtCore.QUrl.fromLocalFile(amaze.package_file("ui", "section_tabs.qml")).toString()
-
-    def setupEngine(self) -> None:
-        self.engine().addImageProvider("sectiontab", _TabIcons(SectionTabBar.ICONS, SectionTabBar.ICON_BLEED))
+    SOURCE_URL = QtCore.QUrl.fromLocalFile(amaze.package_file("ui", "pane", "SectionTabs.qml")).toString()
 
 
 class SectionTabBar(QtWidgets.QWidget):
@@ -756,12 +753,10 @@ class SectionTabBar(QtWidgets.QWidget):
 
     CANCEL_LABEL = "Cancel"
 
-    _DRAWN = amazetheme.drawn_tabs()    # S01's height, left edge and icons ▸r/tabs-from-frame
+    _DRAWN = amazetheme.drawn_tabs()    # S01's height and left edge ▸r/tabs-from-frame
     HEIGHT = theme.ui_px(_DRAWN["height"])
     LEFT = theme.ui_px(_DRAWN["left"])    # where the tab bar starts, as the frame's tray does
     LINE_W = theme.ui_px(1)    # the frame's line node carries no weight ▸r/toolbar-tabs-840
-    ICONS = _DRAWN["icons"]    # a section's art and its drawn size; a tab with no entry has no icon
-    ICON_BLEED = theme.ui_px(amazetheme.TAB_ICON_BLEED)    # room around an icon's box for its outline
 
     STRIP_COLOR = theme.color("surface")   # theme-derived; matches the toolbar row
 
@@ -793,18 +788,9 @@ class SectionTabBar(QtWidgets.QWidget):
         if root is None:
             raise RuntimeError("the section tabs did not load: %s"
                                % "; ".join(e.toString() for e in tabs.errors()))
-        root.setProperty("tabs", [self._tab_row(key, label) for key, label in self._segments])
+        root.setProperty("tabs", section_tab_rows(self._segments))
         root.tabChosen.connect(self._on_tab)
         return tabs
-
-    def _tab_row(self, key: str, label: str) -> dict:
-        """One tab for the QML: its name, and its art at the drawn size plus the outline's room."""
-        if key not in self.ICONS:
-            return {"label": label, "icon": "", "iconWidth": 0, "iconHeight": 0, "bleed": 0}
-        _art, width, height = self.ICONS[key]
-        return {"label": label, "icon": "image://sectiontab/" + key, "bleed": self.ICON_BLEED,
-                "iconWidth": theme.ui_px(width) + 2 * self.ICON_BLEED,
-                "iconHeight": theme.ui_px(height) + 2 * self.ICON_BLEED}
 
     def tab_rect(self, index: int) -> QtCore.QRect:
         """Where tab `index` is drawn, in the strip's coordinates."""

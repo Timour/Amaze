@@ -5,7 +5,7 @@ import re
 import unittest
 
 from amaze import amazetheme
-from amaze.panel import empty_state
+from amaze.pane import empty_state
 from amaze.tests import test_support  # noqa: F401
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

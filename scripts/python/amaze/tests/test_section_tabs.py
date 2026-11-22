@@ -9,7 +9,7 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtGui, QtSvg, QtWidgets
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
@@ -59,26 +59,18 @@ class TheTabStripMatchesItsDesignFrame(unittest.TestCase):
         self.assertIs(line, self.bar.children()[-1], "the line is not above the tab bar")
         self.assertTrue(line.testAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents))
 
-    def test_each_section_tab_has_its_art_at_its_drawn_size_and_room_for_its_outline(self):
-        room = self.px(amazetheme.TAB_ICON_BLEED)
-        self.assertGreater(room, 0)
+    def test_each_section_tab_has_its_drawn_box_and_its_art_where_its_file_places_it(self):
         rows = self.bar._tabs.rootObject().property("tabs")
         for (key, _label), row in zip(self.bar._segments, rows):
             with self.subTest(tab=key):
                 _kind, _x, _y, width, height, _text = self.icons[key]
-                self.assertEqual((self.px(width) + 2 * room, self.px(height) + 2 * room, room),
-                                 (row["iconWidth"], row["iconHeight"], row["bleed"]))
-                self.assertEqual("image://sectiontab/" + key, row["icon"])
-                self.assertTrue(os.path.exists(amaze.package_file("ui", amazetheme.drawn_name(self.icons[key])[2])))
-
-    def test_the_icon_is_its_art_at_the_asked_device_size(self):
-        provider = ui_helpers._TabIcons(ui_helpers.SectionTabBar.ICONS, self.px(amazetheme.TAB_ICON_BLEED))
-        _kind, _x, _y, width, height, _text = self.icons["material"]
-        room = self.px(amazetheme.TAB_ICON_BLEED)
-        want = QtCore.QSize(2 * (self.px(width) + 2 * room), 2 * (self.px(height) + 2 * room))
-        size = QtCore.QSize()
-        pixmap = provider.requestPixmap("material", size, want)
-        self.assertEqual((want, want), (pixmap.size(), size))
+                art = amazetheme.drawn_name(self.icons[key])[2]
+                box = QtSvg.QSvgRenderer(amaze.package_file("ui", art)).viewBoxF()
+                self.assertEqual((art, width, height), (row["icon"], row["width"], row["height"]))
+                self.assertEqual((box.x(), box.y(), box.width(), box.height()),
+                                 (row["artX"], row["artY"], row["artWidth"], row["artHeight"]))
+                self.assertTrue(box.x() <= 0 and box.y() <= 0 and box.right() >= width
+                                and box.bottom() >= height, "the file's box cuts the drawn box")
 
     def test_a_tab_with_no_art_has_no_icon(self):
         bar = ui_helpers.SectionTabBar([("GPUOpen", "GPUOpen"), ("RGL", "RGL")])

@@ -1,4 +1,4 @@
-"""`empty_state.py`: which empty-state page shows, its texts, and a button that can be clicked."""
+"""The empty state: the pane's rule for which page shows and its texts, and a button that clicks."""
 import os
 import shutil
 import unittest
@@ -8,6 +8,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")   # the first QApplication
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from amaze import amazetheme
+from amaze.pane import empty_state as rule
 from amaze.panel import dragdrop_widgets, empty_state, grid
 from amaze.tests import test_support
 
@@ -59,7 +60,7 @@ class TheDeclarationsAreWellFormed(unittest.TestCase):
     def test_every_declared_handler_is_a_method_on_the_panel(self):
         """A handler that names no method from the panel hides its button without an error."""
         panel = test_support.fixture_panel(self)
-        for table in (empty_state.SHARED,):
+        for table in (rule.SHARED,):
             for blank, words in table.items():
                 self.assertLessEqual(words[0].count("%s"), 1, blank)
                 self.assertLessEqual(words[1].count("%s"), 1, blank)
@@ -81,10 +82,10 @@ class TheDeclarationsAreWellFormed(unittest.TestCase):
 class TheQuotedSearchIsElided(unittest.TestCase):
 
     def test_a_long_search_is_elided(self):
-        out = empty_state._elide("x" * 200)
-        self.assertLessEqual(len(out), empty_state.MAX_QUOTED)
+        out = rule._elide("x" * 200)
+        self.assertLessEqual(len(out), rule.MAX_QUOTED)
         self.assertTrue(out.endswith("…"))
-        self.assertEqual("metal", empty_state._elide("  metal  "))
+        self.assertEqual("metal", rule._elide("  metal  "))
 
 
 class TheEngineChoosesWhichBlank(unittest.TestCase):
@@ -97,7 +98,7 @@ class TheEngineChoosesWhichBlank(unittest.TestCase):
         view = grid.visible_view(self.panel)
         if view.model() is None or not view.model().rowCount():
             self.skipTest("the fixture library has no rows to filter")
-        self.assertEqual((None, ""), empty_state.verdict(self.panel),
+        self.assertEqual((None, ""), self.panel.pane.empty_state.verdict(),
                          "a library with rows in it returned an empty state")
         before = view.model().rowCount()
         self.panel.line_filter.setText("zzzz-no-such-asset")
@@ -105,8 +106,8 @@ class TheEngineChoosesWhichBlank(unittest.TestCase):
         self.assertEqual(0, view.model().rowCount(),
                          "premise: the filter emptied the grid")
 
-        blank, detail = empty_state.verdict(self.panel)
-        self.assertEqual(empty_state.NO_MATCH, blank,
+        blank, detail = self.panel.pane.empty_state.verdict()
+        self.assertEqual(rule.NO_MATCH, blank,
                          "a filtered-to-nothing grid was taken for an empty "
                          "library, which tells the user their work is "
                          "gone")
@@ -152,9 +153,9 @@ class TheFavouritesBlankIsItsOwnBlank(unittest.TestCase):
         self.assertEqual(0, self.proxy.rowCount(),
                          "premise: the star emptied the grid")
 
-        blank, _detail = empty_state.verdict(self.panel)
+        blank, _detail = self.panel.pane.empty_state.verdict()
         self.assertEqual(
-            empty_state.NO_FAVOURITES, blank,
+            rule.NO_FAVOURITES, blank,
             "an unstarred library under the favourites filter was taken "
             "for an empty category, quoting an empty name")
 
@@ -173,20 +174,20 @@ class TheFavouritesBlankIsItsOwnBlank(unittest.TestCase):
         self.panel.pane.search(self.panel.line_filter.text())
         self.addCleanup(self.panel.clear_filter_box)
 
-        blank, _detail = empty_state.verdict(self.panel)
+        blank, _detail = self.panel.pane.empty_state.verdict()
         self.assertEqual(
-            empty_state.NO_MATCH, blank,
+            rule.NO_MATCH, blank,
             "with a search active the search explains the empty grid, and "
             "clearing it must come first")
 
     def test_one_star_anywhere_makes_any_favourite_true(self):
         """A star just set must show in `_any_favourite` at once - no cache may be in between."""
         self._unstar_everything()
-        self.assertFalse(empty_state._any_favourite(self.source))
+        self.assertFalse(rule._any_favourite(self.source))
         self.panel.pane.assets.toggle_favourite([self.proxy.index(0, 0)])
         QtWidgets.QApplication.processEvents()
         self.assertTrue(
-            empty_state._any_favourite(self.source),
+            rule._any_favourite(self.source),
             "_any_favourite does not see the star just set, so the "
             "favourites empty state would say no favourites exist")
 
@@ -228,7 +229,7 @@ class TheButtonCanBeClicked(unittest.TestCase):
                 "%s ignores mouse events, so nothing inside it can be "
                 "clicked" % (widget.objectName() or type(widget).__name__))
 
-        self.page.say(self.panel, empty_state.NO_MATCH, "brick")
+        self.page.say(self.panel, rule.NO_MATCH, "brick")
         self.page.resize(500, 400)
         self.page.layout().activate()
         button = self.page.button()
@@ -268,7 +269,7 @@ class TheTextWraps(unittest.TestCase):
             with self.subTest(width=width):
                 page = empty_state.EmptyPage()
                 self.addCleanup(page.deleteLater)
-                page.say(self.panel, empty_state.NO_MATCH, "brick")
+                page.say(self.panel, rule.NO_MATCH, "brick")
                 page.resize(width, 400)
                 page.layout().activate()
                 label = page._text
@@ -342,7 +343,7 @@ class AnEmptyCategoryIsThePlainGrid(unittest.TestCase):
                 self.assertTrue(proxy.sourceModel().rowCount(),
                                 "premise: the section holds rows elsewhere")
                 self.assertEqual((None, ""),
-                                 empty_state.verdict(self.panel),
+                                 self.panel.pane.empty_state.verdict(),
                                  "an empty category still returns an empty state")
                 self.assertNotIn("blank", faces(self.panel),
                                  "a text covers the grid of an empty category")
@@ -389,15 +390,15 @@ class AnEmptyCategoryIsThePlainGrid(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
         proxy = grid.visible_view(panel).model()
         source = proxy.sourceModel()
-        if not empty_state._any_favourite(source):
+        if not rule._any_favourite(source):
             panel.pane.assets.toggle_favourite([proxy.index(0, 0)])
             QtWidgets.QApplication.processEvents()
-        self.assertTrue(empty_state._any_favourite(source), "premise: one star")
+        self.assertTrue(rule._any_favourite(source), "premise: one star")
         self._select_a_new_category("material")
         panel.cb_favsonly.setChecked(True)
         self.addCleanup(panel.cb_favsonly.setChecked, False)
         QtWidgets.QApplication.processEvents()
-        self.assertEqual((None, ""), empty_state.verdict(panel))
+        self.assertEqual((None, ""), panel.pane.empty_state.verdict())
         self.assertNotIn("blank", faces(panel))
 
     def test_a_search_in_it_still_shows_the_no_match_blank(self):
@@ -406,8 +407,8 @@ class AnEmptyCategoryIsThePlainGrid(unittest.TestCase):
         self.panel.pane.search(self.panel.line_filter.text())
         self.addCleanup(self.panel.clear_filter_box)
         QtWidgets.QApplication.processEvents()
-        self.assertEqual(empty_state.NO_MATCH,
-                         empty_state.verdict(self.panel)[0])
+        self.assertEqual(rule.NO_MATCH,
+                         self.panel.pane.empty_state.verdict()[0])
         self.assertEqual(["blank"], faces(self.panel),
                          "a search with no hits left the grid up, unexplained")
 
@@ -425,8 +426,8 @@ class AnEmptyCategoryIsThePlainGrid(unittest.TestCase):
             panel.pane.sidebar.select_key(gone),
             "premise: the location is a sidebar row")
         QtWidgets.QApplication.processEvents()
-        self.assertEqual((empty_state.UNREACHABLE, gone),
-                         empty_state.verdict(panel))
+        self.assertEqual((rule.UNREACHABLE, gone),
+                         panel.pane.empty_state.verdict())
         self.assertEqual(["blank"], faces(panel))
 
 
@@ -464,7 +465,7 @@ class AnEmptyLocationIsThePlainGrid(unittest.TestCase):
         self.assertEqual(0, self.files.rowCount(), "premise: the grid lists no file")
 
     def _assert_plain_grid(self):
-        self.assertEqual((None, ""), empty_state.verdict(self.panel),
+        self.assertEqual((None, ""), self.panel.pane.empty_state.verdict(),
                          "an empty location still returns an empty state")
         self.assertNotIn("blank", faces(self.panel),
                          "a text covers the grid of an empty location")
@@ -511,7 +512,7 @@ class TheUnreachableBlankNamesARegisteredFolder(unittest.TestCase):
         self.model._unreadable_folders.add("/no/such/folder/")
         self.addCleanup(self.model._unreadable_folders.discard,
                         "/no/such/folder/")
-        self.assertEqual("", empty_state.unreadable_folder(self.panel),
+        self.assertEqual("", self.panel.pane.empty_state.unreadable_folder(),
                          "a folder that is not in the sidebar at all "
                          "was still named as the cause of the empty grid")
         folders = self.panel.pane.file_folders_model
@@ -522,7 +523,7 @@ class TheUnreachableBlankNamesARegisteredFolder(unittest.TestCase):
         self.addCleanup(self.model._unreadable_folders.discard,
                         registered[0])
         self.assertEqual(registered[0],
-                         empty_state.unreadable_folder(self.panel),
+                         self.panel.pane.empty_state.unreadable_folder(),
                          "the empty state cannot name the folder it is about")
 
     def test_an_unreadable_folder_does_not_change_another_folders_blank(self):
@@ -539,7 +540,7 @@ class TheUnreachableBlankNamesARegisteredFolder(unittest.TestCase):
                         registered[0])
         self.model.set_folder(healthy)
         self.assertEqual(
-            "", empty_state.unreadable_folder(self.panel),
+            "", self.panel.pane.empty_state.unreadable_folder(),
             "an empty result in a readable folder was blamed on an "
             "unreadable folder the user has not selected")
 
@@ -577,7 +578,7 @@ class TheUnreachableBlankNamesARegisteredFolder(unittest.TestCase):
 
 
 class EveryBoundProxyHasARefilteredSignal(unittest.TestCase):
-    """`track` watches `refiltered` on whatever the grid holds; every bound proxy must have it."""
+    """`EmptyState.watch` follows `refiltered` on the grid's proxy; every bound proxy must have it."""
 
     @classmethod
     def setUpClass(cls):
@@ -600,7 +601,7 @@ class EveryBoundProxyHasARefilteredSignal(unittest.TestCase):
             self.assertTrue(
                 hasattr(proxy, "refiltered"),
                 "%s binds a %s to the grid, which has no refiltered signal, so "
-                "track raises on it" % (key, type(proxy).__name__))
+                "the empty state misses a search" % (key, type(proxy).__name__))
         self.assertEqual(len(bound), len({id(proxy) for proxy in bound.values()}),
                          "two contexts bind one proxy, so an activation never reached the grid")
 

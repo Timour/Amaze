@@ -24,7 +24,7 @@ ALLOWED = {    # layers each may use: all below it, except models and houdini, w
 
 PACKAGE_LAYER = {    # every module under these packages
     "panel": "interface", "dialogs": "interface", "utils": "interface", "pane": "interface",
-    "sections": "interface",
+    "sections": "interface", "qml": "interface",
     "render": "houdini", "preview": "houdini", "prefs": "library", "actions": "actions",
 }
 

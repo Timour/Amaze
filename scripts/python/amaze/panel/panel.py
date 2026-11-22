@@ -56,9 +56,10 @@ from amaze.core import renderers, tile_icons, users
 from amaze.render import cop_nodes, husk_job, nodes
 from amaze.pane import asks
 from amaze.pane import files as pane_files
-from amaze.pane import (assets as pane_assets, drop_placement, library as pane_library,
-                        loading as pane_loading, online_import, package_import, pane as pane_mod,
-                        saving as pane_saving, sidebar as pane_sidebar, tile_capture)
+from amaze.pane import (assets as pane_assets, drop_placement, empty_state as pane_empty_state,
+                        library as pane_library, loading as pane_loading, online_import,
+                        package_import, pane as pane_mod, saving as pane_saving,
+                        sidebar as pane_sidebar, tile_capture)
 
 _DEV_RELOAD = bool(os.environ.get("AMAZE_DEV_RELOAD"))    # the reload chain below is off by default ▸r/module-reload
 
@@ -158,7 +159,7 @@ _reload(color_section)
 _reload(file_section)
 _reload(online_section)
 _reload(sections)    # the registry, after the sections it lists
-_reload(empty_state)    # after grid AND sections: it imports the first and reads the second's EMPTY declarations
+_reload(empty_state)    # after grid: it shows its page in the grid pane
 _reload(side_pane)
 _reload(notes_panel)
 _reload(info_panel)
@@ -180,6 +181,7 @@ _reload(pane_sidebar)
 _reload(pane_assets)
 _reload(pane_loading)    # after sections, whose drop rules it reads
 _reload(pane_saving)
+_reload(pane_empty_state)
 _reload(pane_mod)    # last of the engine: it holds every part above
 
 
@@ -266,6 +268,7 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
         pane.grid_to_top.connect(self._on_grid_to_top)
         pane.progress_shown.connect(self.set_conversion_bar_visible)
         pane.progress.connect(self.texture_progress.set_progress)
+        pane.empty_changed.connect(self._on_empty_changed)
 
     def _on_models_built(self) -> None:
         """A library's models exist: the tile delegates, and the side panes follow the selections."""
@@ -351,7 +354,7 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
 
     def _on_library_shown(self) -> None:
         """A newly opened library's first section shows: the tile size, view mode and colours."""
-        self.click_slider.setValue(grid.active_thumbsize(self))
+        self.click_slider.setValue(self.pane.tile_size())
         self.slide()
         self.apply_view_state()
         self._apply_theme_colours()
@@ -366,7 +369,7 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
             info.clear_subject()
 
     def _on_library_switched(self) -> None:
-        self.click_slider.setValue(grid.active_thumbsize(self))
+        self.click_slider.setValue(self.pane.tile_size())
 
     def _on_context_leaving(self) -> None:
         """Remember the grid's scroll for the section being left; the pane keeps its sidebar row."""
@@ -398,7 +401,6 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
                 0, lambda: grid.visible_view(self).verticalScrollBar().setValue(scroll))
         self._refresh_notes_subject()
         self._refresh_info_subject()
-        empty_state.track(self)    # the empty-state overlay follows the new model
 
     def _on_online_changed(self) -> None:
         """The Online chip follows the pane; out of online, Material Library is the checked source."""
@@ -410,6 +412,9 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
     def _on_sidebar_changed(self) -> None:
         if self.cat_list is not None:
             self.cat_list.viewport().update()
+
+    def _on_empty_changed(self) -> None:
+        empty_state.refresh(self)
 
     def _on_grid_to_top(self) -> None:
         grid.visible_view(self).scrollToTop()
@@ -645,7 +650,7 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
 
     def apply_view_mode(self) -> None:
         grid.apply_view_mode(self)
-        empty_state.track(self)    # the empty-state overlay moves to the view now shown
+        empty_state.refresh(self)    # the empty page stays up over the view now shown
 
     def showEvent(self, event):
         """On the FIRST show only: `panel visible` is written once the grid's first paint returned."""
@@ -726,8 +731,6 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
 
 
 
-    LIST_THUMB_SIZE = 16    # list mode's one size; `thumbsize_list` is still written, never read
-
     def _sync_slider_for_mode(self) -> None:
         """The slider sizes grid tiles only; in list it is disabled and set to its minimum."""
         grid = self.pane.prefs.view_mode != "list"
@@ -742,9 +745,8 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
 
     def _set_view_mode(self, mode: str) -> None:
         """Central entry: persist and apply a view mode ('grid' or 'list')."""
-        self.pane.prefs.view_mode = mode
-        self.pane.prefs.save()
-        self.click_slider.setValue(grid.active_thumbsize(self))    # the new mode's remembered size; fires slide() only on a change
+        self.pane.set_view_mode(mode)
+        self.click_slider.setValue(self.pane.tile_size())    # the new mode's remembered size; fires slide() only on a change
         self.apply_view_mode()
 
     def on_viewmode_button(self, checked: bool) -> None:
@@ -1239,7 +1241,7 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
 
     def locate_unreadable_folder(self) -> None:
         """Locate in the unreachable-folder empty state: the folder it names is re-pointed."""
-        self.pane.files.locate_unreadable(empty_state.unreadable_folder(self))
+        self.pane.files.locate_unreadable(self.pane.empty_state.unreadable_folder())
 
     def _badge_click_handler(self, handler):
         """A badge click runs the section's `handler` method: on the selection if the tile is in it."""
@@ -1285,19 +1287,17 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
             return
 
         self.apply_view_mode()    # mode-aware: respects grid vs list
-        self.pane.refresh_filter()    # a renderer may have been enabled or disabled
-        switched = self.pane.library.reread_settings()
+        self.pane.apply_preferences()
         accent = theme.accent(self.pane.prefs.accent_color)
         self.click_slider.set_accent_color(accent)
         self.click_slider.stepped = self.pane.prefs.step_size
         if self.pane.prefs.view_mode != "list":
-            self.click_slider.setValue(grid.active_thumbsize(self))    # with Step Size on, snapped to the nearest step
+            self.click_slider.setValue(self.pane.tile_size())    # with Step Size on, snapped to the nearest step
         self.texture_progress.set_accent_color(accent)
         self._sync_notes_button_pixmaps()
         self._sync_info_button_pixmaps()
         self.sidebar_delegate.set_drag_color(accent)
         self.sidebar_delegate.show_counts = self.pane.prefs.sidebar_counts
-        self.pane.settings_applied(switched)
         grid.visible_view(self).viewport().update()
 
     def _build_section_tabs(self) -> None:

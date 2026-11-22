@@ -10,11 +10,12 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 import hou  # noqa: E402
 
+from amaze import amazetheme  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 from amaze.core import gradient_library  # noqa: E402
 from amaze.helpers import theme, ui_helpers  # noqa: E402
 from amaze.core import grid_columns
-from amaze.panel import delegates, grid  # noqa: E402
+from amaze.panel import delegates  # noqa: E402
 
 
 FAV_ROLE = QtCore.Qt.ItemDataRole.UserRole + 60
@@ -186,7 +187,7 @@ class TheRealPanelInListMode(unittest.TestCase):
         self._mode("list")
         self.addCleanup(self._mode, "grid")
         self.assertEqual(
-            self.panel.LIST_THUMB_SIZE, grid.active_thumbsize(self.panel),
+            amazetheme.LIST_TILE_SIZE, self.panel.pane.tile_size(),
             "list mode followed the grid slider instead of staying at "
             "its own smallest size")
 
@@ -279,11 +280,11 @@ class TheRealPanelInListMode(unittest.TestCase):
         height = self.panel.thumbrows.sizeHintForRow(0)
         fm = QtGui.QFontMetrics(self.panel.thumbrows.font())
         self.assertLessEqual(
-            height, max(fm.height(), self.panel.LIST_THUMB_SIZE)
+            height, max(fm.height(), amazetheme.LIST_TILE_SIZE)
             + theme.ui_px(8),
             "a list row is taller than the things inside it need - "
             "it got %spx for a %spx thumbnail and a %spx text line"
-            % (height, self.panel.LIST_THUMB_SIZE, fm.height()))
+            % (height, amazetheme.LIST_TILE_SIZE, fm.height()))
         self.assertGreaterEqual(
             height, fm.height(),
             "the row is shorter than the text line it paints")

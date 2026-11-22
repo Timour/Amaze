@@ -40,4 +40,33 @@ def onActivateInterface():
     <includeInToolbarMenu menu_position="415" create_separator="false" />
     <help><![CDATA[]]></help>
   </interface>
+  <!-- The pane being rebuilt in QML, step by step, beside the Amaze pane above; built as
+       Houdini's own Node Info pane is. -->
+  <interface name="amaze_qml" label="Amaze (QML)" icon="$AMAZE/scripts/python/amaze/ui/logo_mark.svg" showNetworkNavigationBar="false"
+    help_url="">
+    <script><![CDATA[from amaze.qml import pane
+
+thePanel = None
+
+
+def onCreateInterface():
+    global thePanel
+    thePanel = pane.QmlPanel()
+    return thePanel
+
+
+# As the Amaze pane: coming back to it rereads what other sessions saved.
+def onActivateInterface():
+    from amaze.core import model_registry
+
+    model_registry.refresh_all()
+    thePanel.panelActivated()
+
+
+def onDeactivateInterface():
+    thePanel.panelDeactivated()]]></script>
+    <includeInPaneTabMenu menu_position="100" create_separator="false" />
+    <includeInToolbarMenu menu_position="416" create_separator="false" />
+    <help><![CDATA[]]></help>
+  </interface>
 </pythonPanelDocument>

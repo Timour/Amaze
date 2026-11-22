@@ -4,10 +4,11 @@ import contextlib
 
 from PySide6 import QtCore
 
+from amaze import amazetheme
 from amaze.core import debug, matx_sources, section_list
 from amaze.helpers import hostos
-from amaze.pane import (assets, drop_placement, files, library, loading, online_import,
-                        package_import, saving, sidebar, tile_capture)
+from amaze.pane import (assets, drop_placement, empty_state, files, library, loading,
+                        online_import, package_import, saving, sidebar, tile_capture)
 from amaze.prefs import prefs
 from amaze.render import husk_job
 
@@ -35,6 +36,7 @@ class Pane(QtCore.QObject):
     grid_to_top = QtCore.Signal()    # the grid shows its first row
     progress_shown = QtCore.Signal(bool)    # background work's bar shown or hidden
     progress = QtCore.Signal(int, int)    # background work done, of total
+    empty_changed = QtCore.Signal()    # the shown grid's rows changed: `empty_state.verdict()` may differ
 
     ALL_SECTIONS = section_list.SECTIONS    # (key, label) in order; keys are stored, never rename one
 
@@ -68,6 +70,7 @@ class Pane(QtCore.QObject):
         self.package_import = package_import.PackageImport(self)
         self.drop_placement = drop_placement.DropPlacement(self)
         self.tile_capture = tile_capture.TileCapture(self)
+        self.empty_state = empty_state.EmptyState(self)
         husk_job.jobs.progressed.connect(self._on_render_progress)    # bound: jobs outlive the pane
         husk_job.jobs.activeChanged.connect(self._on_render_active)
 
@@ -136,6 +139,7 @@ class Pane(QtCore.QObject):
             self._apply_filter_choice()    # each section keeps its own menu choice
             self._restore_sidebar_choice(context.key)
         self.context_shown.emit(context)
+        self.empty_state.watch()
 
     def bind(self, section) -> None:
         """Show `section`'s models on the host's sidebar and grid; the bar may be another section's."""
@@ -219,6 +223,19 @@ class Pane(QtCore.QObject):
             else:
                 self.choose_tab(keys[0])
 
+    def set_view_mode(self, mode: str) -> None:
+        """Grid or list, saved at once; the host shows it."""
+        self.prefs.view_mode = mode
+        self.prefs.save()
+
+    def tile_size(self) -> int:
+        """The tile size in use: list's one size, else the saved one, on a step under Step Size."""
+        if self.prefs.view_mode == "list":
+            return amazetheme.LIST_TILE_SIZE
+        if self.prefs.step_size:
+            return min(amazetheme.TILE_SIZES, key=lambda size: abs(size - self.prefs.thumbsize))
+        return self.prefs.thumbsize
+
     def scroll_grid_to_top(self) -> None:
         self.grid_to_top.emit()
 
@@ -283,6 +300,13 @@ class Pane(QtCore.QObject):
             section=self.current_section, entry=entry_id, value=str(value),
             visible=proxy.rowCount() if proxy is not None else -1,
         )
+
+    def apply_preferences(self) -> None:
+        """Preferences applied or closed: the filter, the settings read again, and all that follows."""
+        if not self.material_model or not self.category_model:    # still no library: nothing applies
+            return
+        self.refresh_filter()    # a renderer may have been enabled or disabled
+        self.settings_applied(self.library.reread_settings())
 
     def settings_applied(self, switched: bool) -> None:
         """Preferences applied: the sidebars, the shown section and the tabs follow the settings."""

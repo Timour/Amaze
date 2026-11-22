@@ -1,15 +1,16 @@
-// The section tabs: Houdini's own TabBar and TabButton, each section's art at its drawn size.
+// The section tabs: Houdini's own TabBar and TabButton, each section's art where its frame draws it.
 import QtQuick
 import houdini.pluto
 import houdini.ui
+import "../shared"
 
 Item {
     id: root
 
-    // [{label, icon, iconWidth, iconHeight, bleed}], set by SectionTabBar; bleed is the room
-    // around the art for its outline, so the art itself starts at the padding, 2 px from the name
+    // [{label, icon, width, height, artX, artY, artWidth, artHeight}] from `section_tab_rows`: the
+    // art's drawn box, 2 px from the name, and its file's own box, which reaches past it by its outline
     property var tabs: []
-    property alias currentIndex: bar.currentIndex
+    property int currentIndex: 0    // the tab shown checked, also when the tabs are made again
     signal tabChosen(int index)
 
     implicitWidth: bar.implicitWidth
@@ -35,26 +36,25 @@ Item {
                 required property var modelData
                 text: modelData.label
                 width: implicitWidth    // as Houdini's parameter pane sizes its tabs
+                checked: index === root.currentIndex    // the TabBar's own index follows its checked tab
                 onClicked: root.tabChosen(index)
                 // Houdini's tab, with its own chip, padding and text colours; the art is drawn as
                 // drawn (Houdini's icon renderer makes square, re-tinted icons), 2 px from the name
                 contentItem: Item {
-                    readonly property real art: tab.modelData.icon ? tab.modelData.iconWidth - 2 * tab.modelData.bleed : 0
-                    implicitWidth: (art ? art + 2 : 0) + label.implicitWidth
+                    readonly property var row: tab.modelData
+                    implicitWidth: (row.icon ? row.width + 2 : 0) + label.implicitWidth
                     implicitHeight: label.implicitHeight    // the outline's room adds no height
-                    Image {
-                        visible: tab.modelData.icon !== ""
-                        source: tab.modelData.icon
-                        x: -tab.modelData.bleed    // the art itself starts at the padding
-                        y: Math.round((parent.height - height) / 2)
-                        width: tab.modelData.iconWidth
-                        height: tab.modelData.iconHeight
-                        sourceSize: Qt.size(width * Screen.devicePixelRatio, height * Screen.devicePixelRatio)
-                        smooth: false
+                    AmazeIcon {
+                        visible: parent.row.icon !== ""
+                        file: parent.row.icon
+                        x: parent.row.artX
+                        y: Math.round((parent.height - parent.row.height) / 2) + parent.row.artY
+                        width: parent.row.artWidth
+                        height: parent.row.artHeight
                     }
                     Text {
                         id: label
-                        x: parent.art ? parent.art + 2 : 0
+                        x: parent.row.icon ? parent.row.width + 2 : 0
                         anchors.verticalCenter: parent.verticalCenter
                         text: tab.text
                         font: tab.font

@@ -102,7 +102,8 @@ TILE_GROUND = "#1b1b1b"             # under every generic tile icon; the art is 
 BADGE_REST_OPACITY = 0.75       # every button badge's icon at rest; the backdrop stays as drawn
 BADGE_HOVER_OPACITY = 1.0       # and the icon under the pointer
 RENDERER_ICON_BLEED = 4         # px painted around a renderer icon's own box, for its shadow
-TAB_ICON_BLEED = 1              # px painted around a tab icon's own box, for its outline (S01: at most 1)
+TILE_SIZES = (64, 128, 192, 256, 320, 384, 448, 512)    # the slider's steps; a tile below 64 is smaller than its badges
+LIST_TILE_SIZE = 16             # list mode's one size; `thumbsize_list` is still written, never read
 MENU_ICON = 16                  # ▸ C13: a menu entry's icon box, the size Houdini draws it ▸r/menu-checked-look
 LIST_TEXT_COLOR = "#d8d6d4"            # a table is read down its columns, so every column is drawn in this except Category
 LIST_SELECTED_TEXT = "#000000"  # every column of a selected row
@@ -160,7 +161,7 @@ TITLE_MANAGE_LIBRARIES = "Manage Libraries"
 BAND_UNTITLED = "Untitled"       # what D11's band shows for a snippet that has no name yet
 MENU_NEW_VERSION = "New Version"    # D11's + menu, above the snippet's versions
 
-EMPTY_SHARED = {    # ▸ E06 E08 E09, the empty states every section shares, read by `empty_state.words_for`
+EMPTY_SHARED = {    # ▸ E06 E08 E09, the empty states every section shares, read by `EmptyState.words`
     "nothing-matches": (
         'Nothing matches "%s"',
         "No saved %s has that in its name, tags or category.",

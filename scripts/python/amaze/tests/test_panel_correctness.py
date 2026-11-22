@@ -488,12 +488,12 @@ class StepSizeKeepsTheSliderOnItsMarks(unittest.TestCase):
         self.assertEqual(200, slider.value(), "a click between marks was moved")
 
     def test_a_size_between_marks_opens_on_the_nearest(self):
-        from amaze.panel import grid
+        from amaze.pane import pane as pane_mod
         prefs = types.SimpleNamespace(view_mode="grid", thumbsize=200, step_size=True)
-        panel = types.SimpleNamespace(pane=types.SimpleNamespace(prefs=prefs), LIST_THUMB_SIZE=16)
-        self.assertEqual(192, grid.active_thumbsize(panel))
+        pane = types.SimpleNamespace(prefs=prefs)
+        self.assertEqual(192, pane_mod.Pane.tile_size(pane))
         prefs.step_size = False
-        self.assertEqual(200, grid.active_thumbsize(panel))
+        self.assertEqual(200, pane_mod.Pane.tile_size(pane))
 
 
 class ASelfPaintedWidgetDimsWhenDisabled(unittest.TestCase):

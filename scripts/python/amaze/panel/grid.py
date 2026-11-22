@@ -425,7 +425,7 @@ def apply_view_mode(panel) -> None:
     if not panel.pane.material_model:
         return
     panel._sync_slider_for_mode()
-    ts = active_thumbsize(panel)
+    ts = panel.pane.tile_size()
     try:
         if panel.pane.prefs.view_mode == "list":
             restore_drag_mode(panel)    # list mode is the row list; the QListView stays in IconMode
@@ -476,12 +476,3 @@ def sync_view_mode_controls(panel) -> None:
                 list_act.setChecked(is_list)
     finally:
         panel._suppress_view_signals = False
-
-
-def active_thumbsize(panel) -> int:
-    """The thumbnail size in use: list's fixed one, else the saved one, snapped under Step Size."""
-    if panel.pane.prefs.view_mode == "list":
-        return panel.LIST_THUMB_SIZE
-    if panel.pane.prefs.step_size:
-        return ui_helpers.ClickSlider.nearest_mark(panel.pane.prefs.thumbsize)
-    return panel.pane.prefs.thumbsize
