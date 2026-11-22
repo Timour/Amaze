@@ -1,6 +1,5 @@
-"""The 2.0 conversion and Check Library, run on a private copy of the real library."""
+"""Check Library, run on a private copy of the real library."""
 
-import json
 import os
 import shutil
 import sys
@@ -17,246 +16,11 @@ from PySide6 import QtWidgets
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
-from amaze.core import guard, library_conversion, library_files, material, repair  # noqa: E402
+from amaze.core import library_files, material, repair  # noqa: E402
 from amaze.tests import test_support                      # noqa: E402
 
 
-def _sizes(directory: str) -> dict:
-    """{relative path: size} of every file under `directory`, the library's trash left out."""
-    found = {}
-    for here, dirs, names in os.walk(directory):
-        if os.path.relpath(here, directory) == ".":
-            dirs[:] = [one for one in dirs if one != library_files.TRASH_FOLDER]
-        for name in names:
-            path = os.path.join(here, name)
-            found[os.path.relpath(path, directory).replace(os.sep, "/")] = os.path.getsize(path)
-    return found
-
-
-def _old(directory: str, name: str) -> dict:
-    """An old root file as it was written; {} when it is missing or cannot be read."""
-    try:
-        with open(os.path.join(directory, name), encoding="utf-8-sig") as handle:
-            found = json.load(handle)
-    except (OSError, ValueError):
-        return {}
-    return found if isinstance(found, dict) else {}
-
-
-def _new(directory: str, name: str) -> dict:
-    """A 2.0 database as the guard reads it; {} when it is not there."""
-    reading = guard.Guard(directory).read(name)
-    return dict(reading.document or {})
-
-
-def _owner(key: str) -> tuple:
-    owner, sep, rest = str(key).partition("|")
-    return (owner, rest) if sep and len(owner) == 32 else ("", str(key))
-
-
-def _words(items) -> list:
-    """A comment's content, item by item, without its ids and authors."""
-    return [(item.get("t"), str(item.get("text", "")).strip(), item.get("label"),
-             item.get("src")) for item in items or [] if isinstance(item, dict)]
-
-
-class _LibraryInventory:
-    """What a library holds, read in its own format: rows, comments, stars, icons, users."""
-
-    def __init__(self, directory: str, old: bool) -> None:
-        self.rows, self.comments, self.stars, self.icons = {}, {}, set(), {}
-        self.locations, self.users, self.settings = {}, {}, {}
-        (self._old if old else self._new)(directory)
-
-    def _old(self, directory: str) -> None:
-        for old_name, (name, prefix) in library_conversion.OLD_SECTIONS.items():
-            document = _old(directory, old_name)
-            rows = {library_conversion._row_id(row, index): row
-                    for index, row in enumerate(document.get("assets") or [])
-                    if isinstance(row, dict)}
-            self.rows[name] = set(rows)
-            for asset_id, row in rows.items():
-                for field in library_conversion.RETIRED_TEXT_FIELDS:
-                    text = row.get(field)
-                    if isinstance(text, str) and text.strip():
-                        self.comments.setdefault((name, asset_id), []).append(
-                            ("text", text.strip(), None, None))
-        for key, page in (_old(directory, "notes.json").get("notes") or {}).items():
-            prefix, _sep, ident = str(key).partition(":")
-            if prefix == "file":
-                continue    # a file's key moves to its location record: counted, not compared
-            items = library_conversion._first_shape(page)
-            name = {"material": library_files.MATERIALS, "cop": library_files.NODES,
-                    "code": library_files.CODE, "gradient": library_files.COLORS}.get(prefix)
-            if name and items:
-                said = self.comments.setdefault((name, ident), [])
-                said.extend(word for word in _words(items) if word not in said)
-        owner_of = {asset_id: name for name, ids in self.rows.items() for asset_id in ids}
-        for key, value in (_old(directory, "favourites.json").get("favourites") or {}).items():
-            owner, bare = _owner(key)
-            if value and owner and bare in owner_of:
-                self.stars.add((owner_of[bare], owner, bare))
-        for key, spec in (_old(directory, "icons.json").get("icons") or {}).items():
-            if isinstance(spec, dict) and spec and spec.get("face") not in ("preview", "capture") \
-                    and key in owner_of:
-                self.icons[(owner_of[key], key)] = spec
-        for key, record in (_old(directory, "locations.json").get("locations") or {}).items():
-            owner, _bare = _owner(key)
-            if owner and isinstance(record, dict) and record:
-                self.locations[owner] = self.locations.get(owner, 0) + 1
-        self.users = {uid: record.get("name") for uid, record in
-                      (_old(directory, "users.json").get("users") or {}).items()
-                      if isinstance(record, dict) and str(record.get("name") or "").strip()}
-        self.settings = {key: record.get("value") for key, record in
-                         (_old(directory, "prefs.json").get("prefs") or {}).items()
-                         if isinstance(record, dict) and "value" in record}
-
-    def _new(self, directory: str) -> None:
-        for name in library_files.LISTS:
-            document = _new(directory, name)
-            self.rows[name] = set(document.get("assets") or {})
-            for ident, page in (document.get("comments") or {}).items():
-                self.comments[(name, ident)] = _words((page or {}).get("items"))
-            for owner, own in (document.get("favorites") or {}).items():
-                self.stars.update((name, owner, key) for key in own or {})
-            for key, spec in (document.get("icons") or {}).items():
-                self.icons[(name, key)] = spec
-        files = _new(directory, library_files.FILES)
-        self.locations = {owner: len(own or {})
-                          for owner, own in (files.get("locations") or {}).items()}
-        master = _new(directory, library_files.MASTER)
-        self.users = {uid: record.get("name") for uid, record in
-                      (master.get("users") or {}).items()}
-        self.settings = {key: record.get("value") for key, record in
-                         (master.get("settings") or {}).items()}
-
-
-class _ConversionOnACopy:
-    """The 2.0 conversion run on a private copy of the real library, then checked."""
-
-    def convert_and_check(self, directory: str, label: str):
-        """Convert `directory`, check every row and setting is kept, print a summary."""
-        if not library_conversion.needs_conversion(directory):
-            self.skipTest("the real library is already 2.0: nothing to rehearse a conversion on")
-        before = _LibraryInventory(directory, old=True)
-        started = time.perf_counter()
-        outcome = library_conversion.convert(directory, confirm=lambda: True)
-        took = time.perf_counter() - started
-        self.assertEqual(library_conversion.DONE, outcome.status,
-                         "the conversion did not run: %s" % outcome.why)
-        after = _LibraryInventory(directory, old=False)
-        aside = {}
-        for one in outcome.set_aside:
-            if one.row is not None:
-                aside.setdefault(one.section, set()).add(one.asset_id)
-        for name in library_files.LISTS:
-            with self.subTest(section=name):
-                self.assertEqual(before.rows.get(name, set()) - aside.get(name, set()),
-                                 after.rows.get(name, set()), "rows changed beyond those set aside")
-        missing = [key for key, words in before.comments.items()
-                   if key[1] not in aside.get(key[0], set())
-                   and any(word not in after.comments.get(key, []) for word in words)]
-        self.assertEqual([], missing[:20], "comments lost or changed in the conversion")
-        self.assertEqual({star for star in before.stars if star[2] not in aside.get(star[0], ())},
-                         {star for star in after.stars if star[2] in after.rows.get(star[0], ())},
-                         "stars changed")
-        self.assertEqual({key: spec for key, spec in before.icons.items()
-                          if key[1] not in aside.get(key[0], set())},
-                         {key: spec for key, spec in after.icons.items()
-                          if key[1] in after.rows.get(key[0], ())}, "tile icons changed")
-        self.assertEqual(before.locations, after.locations, "locations changed")
-        self.assertEqual(before.users, after.users, "users changed")
-        self.assertEqual(before.settings, after.settings, "shared settings changed")
-        sizes = _sizes(directory)
-        old_left = [path for path in sizes if "/" not in path and (
-            path in library_conversion.OLD_ROOT_FILES + tuple(library_conversion.OLD_MARKS)
-            or any(tail in path for tail in library_conversion.OLD_COPY_TAILS))
-            and path not in library_files.DATABASES]
-        self.assertEqual([], old_left, "old root files or their copies were left")
-        kept_aside = {os.path.normpath(path) for one in outcome.set_aside for path in one.files}
-        shaped = [path for path in sizes if library_conversion.old_shape(path)
-                  and os.path.normpath(os.path.join(directory, path)) not in kept_aside]
-        self.assertEqual([], shaped[:20], "format 3 files left that the conversion did not set aside")
-        for name in library_files.DATABASES:
-            reading = guard.Guard(directory).read(name)
-            self.assertIn(reading.verdict, (guard.FINE, guard.FRESH),
-                          "%s reads %s after the conversion" % (name, reading.verdict))
-        self.assertFalse(library_conversion.needs_conversion(directory))
-        again = library_conversion.convert(directory, confirm=lambda: True)
-        self.assertEqual(library_conversion.NOTHING, again.status)
-        self.assertEqual(sizes, _sizes(directory), "a second conversion changed a file")
-        sections = ", ".join("%s %d" % (library_files.section_label(name), len(rows))
-                             for name, rows in after.rows.items() if rows)
-        sys.stderr.write(
-            "\n  Conversion rehearsal (%s): %s in %.1f s\n"
-            "    rows per section after: %s\n"
-            "    comments %d, stars %d, tile icons %d, users %d, shared settings %d, "
-            "locations %d\n"
-            "    set aside %d (%s); old files removed %d; second conversion: %s\n"
-            % (label, outcome.status, took, sections, len(after.comments), len(after.stars),
-               len(after.icons), len(after.users), len(after.settings),
-               sum(after.locations.values()), len(outcome.set_aside),
-               "; ".join(one.name for one in outcome.set_aside) or "none",
-               outcome.counts.get("deleted", 0), again.status))
-        return outcome
-
-
-class TheRealLibraryConvertedOnACopyTest(_ConversionOnACopy, unittest.TestCase):
-    """The databases and old root files copied in full; each folder's top level as placeholders."""
-
-    def setUp(self):
-        live = test_support.live_library_to_rehearse_on(self)
-        self.live = live
-        self.dir = tempfile.mkdtemp(prefix="amaze_repair_real_") + os.sep
-        self.addCleanup(shutil.rmtree, self.dir, True)
-        for name in sorted(os.listdir(live.dir)):
-            source = os.path.join(live.dir, name)
-            if os.path.isfile(source) and (
-                    name in library_conversion.OLD_ROOT_FILES + library_files.DATABASES
-                    + tuple(library_conversion.OLD_MARKS) or any(
-                        name.startswith(one + ".") for one in library_conversion.OLD_ROOT_FILES)):
-                shutil.copy2(source, os.path.join(self.dir, name))
-        folders = [library_files.SECTION_FOLDERS[section] for section in library_files.LISTS] + [
-            library_conversion.OLD_PICTURES, library_conversion.OLD_CAPTURES,
-            library_files.FILES_FOLDER, library_conversion.OLD_FOLDER]
-        for folder in folders:
-            if not os.path.isdir(os.path.join(live.dir, folder)):
-                continue    # a section that has saved nothing yet
-            os.makedirs(os.path.join(self.dir, folder), exist_ok=True)
-            for entry in os.listdir(os.path.join(live.dir, folder)):
-                source = os.path.join(live.dir, folder, entry)
-                if os.path.isdir(source):
-                    continue
-                target = os.path.join(self.dir, folder, entry)
-                if entry.endswith(material.RECORD_SUFFIX) or entry.endswith(".builder.json") \
-                        or entry.endswith(".stamp.json"):
-                    shutil.copy2(source, target)    # metadata copied in full: the conversion reads it
-                else:
-                    with open(target, "wb") as handle:
-                        handle.write(b"x")    # a 1-byte placeholder: an empty file counts as no file
-        test_support.reset_database_singletons()
-        self.addCleanup(test_support.reset_database_singletons)
-
-    def test_the_conversion_on_the_copy_keeps_everything(self):
-        """Every row, comment, star, icon, location, user and shared setting comes through."""
-        self.convert_and_check(self.dir, "databases whole, files as stand-ins")
-
-    def test_the_converted_copy_is_coherent_and_nothing_moves(self):
-        """The passing case: Check Library finds no unlisted file and moves nothing."""
-        outcome = library_conversion.convert(self.dir, confirm=lambda: True)
-        if outcome.status == library_conversion.NOTHING:
-            self.skipTest("the real library is already 2.0")
-        self.assertEqual(library_conversion.DONE, outcome.status, outcome.why)
-        findings = repair.survey(self.dir, "img/")
-        self.assertTrue(findings["complete"])
-        self.assertEqual(0, repair.unaccounted_total(findings),
-                         "files no section lists: %r" % {
-                             folder: names[:5]
-                             for folder, names in findings["unaccounted"].items()})
-        self.assertEqual([], repair.move_aside(findings, "unlisted", guard_session=False)["moved"])
-
-
-class TheRealLibrarysEveryFolderTest(_ConversionOnACopy, unittest.TestCase):
+class TheRealLibrarysEveryFolderTest(unittest.TestCase):
     """Every folder of the real library: databases and records in full, the rest placeholders."""
 
     def setUp(self):
@@ -276,7 +40,7 @@ class TheRealLibrarysEveryFolderTest(_ConversionOnACopy, unittest.TestCase):
                 source = os.path.join(folder, name)
                 target = os.path.join(here, name)
                 if relative == "." or name.endswith((material.RECORD_SUFFIX, ".interface")):
-                    shutil.copy2(source, target)    # what the conversion and the survey read
+                    shutil.copy2(source, target)    # copied whole, as they are read
                 else:
                     with open(target, "wb") as handle:
                         handle.write(b"x")
@@ -286,15 +50,7 @@ class TheRealLibrarysEveryFolderTest(_ConversionOnACopy, unittest.TestCase):
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
 
-    def test_the_conversion_on_every_folder_keeps_everything(self):
-        """Every folder and version folder, the databases and root files in full."""
-        self.convert_and_check(self.dir, "whole shape")
-
     def test_unlisted_files_leftovers_and_unknowns_are_told_apart(self):
-        outcome = library_conversion.convert(self.dir, confirm=lambda: True)
-        self.assertIn(outcome.status, (library_conversion.DONE, library_conversion.NOTHING),
-                      outcome.why)
-        library_conversion.trash_set_aside(self.dir, outcome.set_aside)    # as the conversion's final Move to Trash
         test_support.reset_database_singletons()
         started = time.perf_counter()
         findings = repair.survey(self.dir, "img/")

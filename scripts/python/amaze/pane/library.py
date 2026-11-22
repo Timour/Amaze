@@ -1,11 +1,9 @@
-"""Opening the pane's library: the checks, the models built or switched, updates and old libraries."""
+"""Opening the pane's library: the checks, the models built or switched, and updates."""
 
-import contextlib
 import functools
 import os
 import threading
 import types
-import uuid
 
 from PySide6 import QtCore
 import hou
@@ -18,7 +16,7 @@ from amaze.actions import materials as material_actions
 from amaze.core import (category, debug, documents, gradient_library, grid_engine, library_db,
                         library_files, locations, matx_library, model_registry,
                         multifilterproxy_model, texstore, texture_library, thumbnails, users)
-from amaze.helpers import hostos, wording
+from amaze.helpers import hostos
 from amaze import sections
 from amaze.sections import online as online_section
 _FOLDERS_GIVEN_ICONS = globals().get("_FOLDERS_GIVEN_ICONS", set())    # library folders given their icon this session
@@ -35,18 +33,6 @@ def _flush_saves_on_close(schedule, *_destroyed) -> None:
     """On pane close: drop its save timer and save every pending change now."""
     library_db.drop_scheduler(schedule)
     library_db.flush()
-
-
-class _LibraryAt:
-    """The preferences, read as if `folder` were the library and `user` its user."""
-
-    def __init__(self, preferences, folder: str, user: str) -> None:
-        self._preferences = preferences
-        self.dir = folder if folder.endswith(("/", os.sep)) else folder + "/"
-        self.library_user = user
-
-    def __getattr__(self, name):
-        return getattr(self._preferences, name)
 
 
 class Library:
@@ -198,127 +184,6 @@ class Library:
         if switched:    # only a library the models do not hold yet gets a full re-read
             self.open_library()
         return switched
-
-    def convert_old_library(self) -> bool:
-        """Preferences ▸ About: pick a folder holding an older library and convert it to 2.0."""
-        from amaze.core import library_conversion
-        prefs = self.pane.prefs
-        ui = getattr(hou, "ui", None)
-        if ui is None:
-            return False
-        picked = ui.selectFile(title=messages.CONVERT_OLD_LIBRARY_PICK,
-                               file_type=hou.fileType.Directory,
-                               chooser_mode=hou.fileChooserMode.Read)
-        folder = hou.text.expandString(picked or "").strip()
-        if not folder:
-            return False
-        if not library_conversion.needs_conversion(folder):
-            ui.displayMessage(messages.CONVERT_OLD_LIBRARY_NONE,
-                              severity=hou.severityType.Message, title=messages.TITLE_AMAZE)
-            return False
-        known = library_conversion.old_users(folder)
-        user = prefs.library_user if prefs.library_user in known else ""
-        if not user and len(known) == 1:
-            user = next(iter(known))
-        elif not user and known:    # the user who gets the favourites and locations saved before users
-            ids = sorted(known, key=lambda uid: known[uid].lower())
-            chosen = ui.selectFromList([known[uid] for uid in ids], exclusive=True,
-                                       title=messages.CONVERT_OLD_LIBRARY_AS,
-                                       column_header=messages.CONVERT_OLD_LIBRARY_AS)
-            if not chosen:
-                return False
-            user = ids[chosen[0]]
-        name = ""
-        if not known:    # a library from before users: its favourites and locations need one
-            picked, name = ui.readInput(messages.CONVERT_OLD_LIBRARY_NAME,
-                                        buttons=messages.BUTTONS_CONVERT_OLD_LIBRARY_NAME,
-                                        default_choice=0, close_choice=1,
-                                        title=messages.TITLE_AMAZE)
-            name = str(name or "").strip()
-            if picked != 0 or not name:
-                return False
-            user = uuid.uuid4().hex
-        return self._convert(folder, user, name)
-
-    def _convert(self, folder: str, user: str, user_name: str = "") -> bool:
-        """Convert an older library whole, after a confirmation, with progress; True if done."""
-        from amaze.core import library_conversion, library_policy
-        prefs = self.pane.prefs
-        ui = hou.ui
-        at = _LibraryAt(prefs, folder, user)
-
-        def confirm():
-            return ui.displayMessage(
-                messages.CONFIRM_CONVERT_LIBRARY % library_policy.LIBRARY_VERSION_SINCE,
-                buttons=messages.BUTTONS_CONVERT_LIBRARY, default_choice=0, close_choice=1,
-                severity=hou.severityType.Message, title=messages.TITLE_AMAZE) == 0    # closing: Cancel
-
-        def trash_classic(count, renderer):
-            return ui.displayMessage(
-                messages.CONVERT_CLASSIC_NEEDS_RENDERER % (
-                    "%d %s" % (count, library_files.section_noun(library_files.MATERIALS, count)),
-                    renderer.label, renderer.label),
-                buttons=messages.BUTTONS_CLASSIC_NEEDS_RENDERER, default_choice=1, close_choice=1,
-                severity=hou.severityType.Warning, title=messages.TITLE_AMAZE) == 0
-
-        from amaze.render import classic_rebuild
-        with contextlib.ExitStack() as shown:    # the progress dialog opens after the confirmation, at the first asset
-            operation = []
-
-            def progress(done, total):
-                if not operation:
-                    operation.append(shown.enter_context(hou.InterruptableOperation(
-                        messages.CONVERT_LIBRARY_PROGRESS, open_interrupt_dialog=True)))
-                try:
-                    operation[0].updateProgress(float(done) / max(total, 1))
-                except hou.OperationInterrupted:    # the button is Houdini's own: a press is ignored
-                    pass
-            outcome = library_conversion.convert(
-                folder, confirm, progress, user=user,
-                machine_stars=library_conversion.machine_stars(prefs),
-                classic=classic_rebuild.Rebuilder(at, trash_classic), user_name=user_name)
-        library_db.release(at)    # the data read during the conversion no longer matches the disk
-        if outcome.status == library_conversion.STOPPED:
-            ui.displayMessage(messages.CONVERT_LIBRARY_STOPPED % outcome.why,
-                              severity=hou.severityType.Warning, title=messages.TITLE_AMAZE)
-            return False
-        if outcome.status == library_conversion.BLOCKED:
-            ui.displayMessage(messages.CONVERT_LIBRARY_BLOCKED % outcome.why,
-                              severity=hou.severityType.Warning, title=messages.TITLE_AMAZE)
-            return False
-        if outcome.status != library_conversion.DONE:
-            return False    # cancelled: nothing touched
-        left = outcome.set_aside
-        if not left:
-            ui.displayMessage(messages.CONVERT_LIBRARY_DONE, severity=hou.severityType.Message,
-                              title=messages.TITLE_AMAZE)
-        else:
-            counted = wording.and_list([
-                "%d %s" % (count, library_files.section_noun(section, count))
-                for section, count in ((section, sum(1 for one in left if one.section == section))
-                                       for section in library_files.ASSET_SECTIONS) if count])
-            choice = ui.displayMessage(
-                messages.CONVERT_LIBRARY_DONE_SOME_LEFT % counted,
-                details="\n".join(one.name for one in left),    # every name, one a line
-                buttons=messages.BUTTONS_UNCONVERTED, default_choice=0, close_choice=0,
-                severity=hou.severityType.Warning, title=messages.TITLE_AMAZE)
-            if choice == 1:    # Move to Trash: the user's own choice, so through the trash
-                library_conversion.trash_set_aside(folder, left)
-        self._offer_old_trash(ui, outcome.old_trash)
-        return True
-
-    def _offer_old_trash(self, ui, old_trash: str) -> None:
-        """Offer once to delete this computer's old trash for the library; the user decides."""
-        from amaze.core import library_conversion
-        if not old_trash:
-            return
-        files, size = library_conversion.old_trash_size(old_trash)
-        choice = ui.displayMessage(
-            messages.OLD_TRASH_QUESTION % (files, library_conversion.size_text(size)),
-            buttons=messages.BUTTONS_OLD_TRASH, default_choice=1, close_choice=1,
-            severity=hou.severityType.Message, title=messages.TITLE_AMAZE)
-        if choice == 0:
-            library_conversion.delete_old_trash(old_trash)
 
     def _open_models(self) -> str:
         """The models' step of `open_library`: "" once they use `prefs.dir`, else the reason."""

@@ -417,8 +417,9 @@ change of several files is being applied.
   merges two users' changes per entry and per field.
 - **`core/library_db.py`** keeps one `Library` per open library and
   keeps a pending save until the panel's timer writes it.
-- **`core/library_conversion.py`** is the only code that reads an older
-  library; it leaves `policy.json` so an older Amaze does not open it.
+- **`core/library_conversion.py`** is the only code that knows format 3's
+  files: Check Library uses it to recognise their leftovers, and Package
+  Import to read an old package's builder.
 
 - **A location is an id, its path one property**: `files.json` ▸
   `paths` holds id → path, and every per-file key is
@@ -458,9 +459,6 @@ the container, the wiring, activation and verification; each input is an
     as Redshift through `matx_import`'s `renderer` switch.
   - **Values Adapter** (`matx_import._values_to_standard_surface`) —
     PhysicallyBased measured values → a preset shader.
-  - **Classic Rebuild** (`render/classic_rebuild.py`) — the library
-    conversion's node work: a Material saved in a classic container is
-    loaded, rebuilt as its renderer's USD builder and saved back.
 - **The Builder** — the container the engine makes:
   `make_karma_builder()` → a MaterialX Material Builder subnet matching
   **KARMA_REF** (see §8). Wired via `wire_builder_output()`; verified by
@@ -722,8 +720,8 @@ model (§5, the one model set). It is in `core/grid_engine.py`.
 
 `DataBase.json` ▸ `policy` ▸ `library` ▸ `version` (`library_policy`)
 decides what this build may do: a library with a newer version opens read-only
-and directs the user to the updater. There is no schema chain; an older library
-is converted once by `core/library_conversion.py`, and
+and directs the user to the updater. There is no schema chain: a library from
+before 2.0 has no `DataBase.json` and is not opened, and
 `prefs.create_library` writes the current version into a new library.
 
 ---
@@ -807,14 +805,11 @@ outside Houdini (not `.mtlx`/`.usda`).
 
 **Format 3 wrote two more**, `.interface` (Python from `asCode()`) and
 `.builder.json`, and kept the metadata in `.stamp.json`. Only
-`core/library_conversion.py` reads them: opening a format 3 library shows
-the user a message once, then converts all of it before any model reads it - each
-asset written new, read back and compared, and only then its old files
-removed; an asset that fails to convert is set aside, its row removed
-and its old files left untouched, and the user chooses whether they go to
-the trash. The `.interface` is READ for its first `createNode("<type>"`
-there, never executed. Nothing else reads an old format, and a test searches
-the code to keep it so.
+`core/library_conversion.py` reads them, from a package in an older
+format; such files left beside a 2.0 asset are leftovers to Check Library.
+The `.interface` is READ for its first `createNode("<type>"` there, never
+executed. Nothing else reads an old format, and a test searches the code to
+keep it so.
 
 Executing `.interface` is what the builder data replaced. `asCode()` output is
 Python whose only documented contract is that it RUNS, so importing a
@@ -938,14 +933,14 @@ reports them too (`--strict` exits non-zero, so a script can fail on it).
 | `materials/<id>.mat` | the asset's nodes |
 | `materials/<id>.json` | everything else about the asset, through `core/asset_record.py` alone: `metadata` (the row as its database holds it - what a lost database is rebuilt from, an unlisted asset added back by, and the rows a put-back brings up to date) and `builder` (the container's type, its interface as a dialog script, and its changed values - read, never executed). Two writers share it, the save and the background metadata writer, so each replaces only its own section, under one lock |
 | `materials/<id>_cop.mat` | a material's companion COP network |
-| `materials/versions/<id>/<n>.*` + `versions.json` | the version store: each version's `.mat`, its `.json` holding the builder ALONE (so a metadata edit never makes two versions differ), its `.png`, and the version list. The conversion rewrote every archive made before format 4 the same way. The BASE files are always the active version's - losing this folder loses the history, never the material. Deleting the asset deletes the folder too: `asset_directories()` names it and `remove_asset` removes it |
+| `materials/versions/<id>/<n>.*` + `versions.json` | the version store: each version's `.mat`, its `.json` holding the builder ALONE (so a metadata edit never makes two versions differ), its `.png`, and the version list. The BASE files are always the active version's - losing this folder loses the history, never the material. Deleting the asset deletes the folder too: `asset_directories()` names it and `remove_asset` removes it |
 | `nodes/…` | the same, for the Nodes section |
-| `mat/` | **format 3's shared asset folder**, every section's files together, with `<id>.interface`, `<id>.builder.json` and `<id>.stamp.json` beside each `.mat`. The conversion (`library_conversion.convert`, from the panel's `open_library`, never by a headless open) moves each id's files and version folder to the folder of the database that names it, a file no database names to `materials/`; an id two databases name stays and is logged. It runs only while every database can be read. An empty `mat/` is removed; one with anything unknown left in it stays, and Check Library reports it as a leftover. The library stays below library version 3 until the conversion finishes, so after a crash the conversion runs again |
+| `mat/` | **format 3's shared asset folder**, every section's files together, with `<id>.interface`, `<id>.builder.json` and `<id>.stamp.json` beside each `.mat`. Nothing reads it; Check Library reports what is left in it |
 | `code/versions/<id>/<n>.txt` + `versions.json` | a snippet's versions: each one's text, and the same version list. The snippet's text in `code.json` is always the active version's; deleting the snippet deletes the folder too |
 | `materials/<id>.png` (and `nodes/`, `code/`, `colors/`) | **the asset's only picture**, beside its files: a render or a capture, each replacing the other in place (`tile_icons.thumbnail_path`). The Icon menu's Image face shows it; Generic and Custom are composed for display and write no file. Code and Colors rows paint their own preview and have a picture file only once one is captured |
 | `<section folder>/comments/` | the pictures pasted into that section's comments (`materials/`, `nodes/`, `code/`, `colors/`, `files/`) |
 | `files/<40 hex>.png` | a File row's scene capture, by the SHA-1 of its key |
-| `img/<id>.png` `img/<id>_icon.png` `captures/<id>.png` | format 3's pictures. The conversion keeps the one each tile showed as `<section>/<id>.png` and removes the rest |
+| `img/<id>.png` `img/<id>_icon.png` `captures/<id>.png` | format 3's pictures. None is a tile's picture; Check Library reports them as leftovers |
 | `matX/<package>/…` | MaterialX packages and their textures; Check Library does not enter it, the audit tool reports scratch there only |
 
 **`backup/` is not clutter.** It is how a damaged database is restored;
@@ -1024,7 +1019,7 @@ pane/asks.py              what the engine asks of its host window (`pane.ui`):
                           names, colours, the drop menu, Versions, Save, Code,
                           Customize, Preferences; answers come by callback
 pane/library.py           every way onto a library (`pane.library`): open,
-                          switch, reload, update, users, older libraries
+                          switch, reload, update, users
 pane/sidebar.py           the sidebar's rows and selection (`pane.sidebar`)
 pane/assets.py            favourite, delete, render, convert, Versions,
                           Customize, export (`pane.assets`)
@@ -1069,7 +1064,7 @@ core/conversion.py        CONVERSION ENGINE (file -> QImage, verified)
 core/guard.py             DATABASE ENGINE: the only module that reads and writes a library's files
 core/documents.py         each database as keyed sections, the merge
 core/library_db.py        one Library per open library, the save timer
-core/library_conversion.py  the only code that reads an older library
+core/library_conversion.py  the only code that knows format 3's files
 render/nodes.py           MATERIAL ENGINE (build_karma_material) + save/import
 render/cop_nodes.py       the Node section's contexts and containers: which context
                           a network holds, which container to create, and
@@ -1210,12 +1205,11 @@ core/asset_files.py       the files one asset owns, by kind - the one
                           model and the version store
 core/asset_record.py      the only module that reads and writes `<id>.json`: its
                           `metadata` and `builder`, a section at a time
-core/library_conversion.py  library format 3 to 4, the ONLY module that
-                          reads the old formats (`mat/`, `.interface`,
-                          `.builder.json`, `.stamp.json`, `img/<id>.png`,
-                          captures, old faces, old version archives);
-                          converts a whole library before the models read
-                          it, removes what it converted
+core/library_conversion.py  the ONLY module that knows format 3's files
+                          (`mat/`, `.interface`, `.builder.json`,
+                          `.stamp.json`, `img/<id>.png`, captures): their
+                          shapes for Check Library, and an old package's
+                          builder for Package Import
 core/versions.py          the version store of materials and code - the
                           base is always the ACTIVE version's, each
                           version also has an archived copy, and

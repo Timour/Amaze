@@ -122,7 +122,7 @@ def set_value(preferences, key: str, value) -> bool:
 def takes_writes(preferences) -> bool:
     """Can a shared setting be saved now? When False, keep the local copy and retry later."""
     if _master(preferences).verdict != guard.FINE:
-        return False    # no `DataBase.json` yet: creating or converting a library writes the first one
+        return False    # no `DataBase.json` yet: creating a library writes the first one
     return library_db.accepts(preferences, library_files.MASTER)
 
 

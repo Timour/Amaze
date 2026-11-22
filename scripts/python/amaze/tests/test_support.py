@@ -473,9 +473,7 @@ def live_library_to_rehearse_on(testcase):
     directory = live.dir
     if not directory or not os.path.isdir(directory):
         testcase.skipTest("no library configured on this machine")
-    from amaze.core import guard, library_conversion
-    if library_conversion.needs_conversion(directory):
-        return live    # an older library: the rehearsal converts a copy of it
+    from amaze.core import guard
     reading = guard.Guard(directory).read("materials.json")
     if reading.verdict != guard.FINE or not (reading.document or {}).get("assets"):
         testcase.skipTest("the configured library is empty or could not be read")

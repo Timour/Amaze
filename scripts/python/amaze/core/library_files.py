@@ -27,7 +27,6 @@ LABELS = {MASTER: "Library", MATERIALS: "Materials", NODES: "Nodes", CODE: "Code
 NOUNS = {MASTER: "user", MATERIALS: "material", NODES: "node", CODE: "snippet",
          COLORS: "color", FILES: "location"}    # what one counted entry is called
 ASSET_SECTIONS = (MATERIALS, NODES)    # whose rows have asset files
-ORPHAN_SECTION = MATERIALS    # the section a file that no database lists is moved to and reported under
 
 VERSIONS = "versions"    # a section folder's sub-folder of archives; its top holds the asset files
 FILES_FOLDER = "files"    # the Files section's: `files/<sha1 of the file's key>.png`, a file's capture

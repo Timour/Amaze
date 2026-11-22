@@ -453,7 +453,7 @@ class Change:
         self.guard = guard
         self.user = str(user or "")
         self._documents = {}    # name -> (ticket, bytes)
-        self._forced = {}    # name -> bytes, written whatever is there: a restore, the conversion
+        self._forced = {}    # name -> bytes, written whatever is there: a restore, a rebuild
         self._replacing = set()    # forced names whose old bytes are a plain backup, not an undo copy
         self._files = {}    # relative path -> bytes
         self._taken = {}    # relative path -> a file already written whole, moved into place
@@ -468,7 +468,7 @@ class Change:
         self._documents[ticket.name] = (ticket, encode(document))
 
     def replace(self, name: str, document: dict) -> None:
-        """The library conversion's write: a database whatever is there, its old bytes backed up."""
+        """Check Library's write: a database whatever is there, its old bytes backed up."""
         if name not in DATABASES:
             raise Refused("%s is no database of a library" % name)
         self._forced[name] = encode(document)
