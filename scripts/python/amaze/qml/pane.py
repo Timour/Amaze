@@ -44,7 +44,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
     emptyButton: str = ""
     sidebar: dict = {}    # frame G01's figures: the sidebar's width and its colour bar
     sidebarModel: QtCore.QAbstractItemModel = None    # the shown section's sidebar rows
-    sidebarSelection: QtCore.QObject = None    # this pane's selection of them, which the engine moves
+    sidebarSelection: QtCore.QObject = None    # this pane's one selection of them, which the engine moves
     sidebarCounts: bool = True
     sidebarShown: bool = True
     prefsOpen: bool = False    # the Preferences button shows its on state while the window is open
@@ -60,7 +60,9 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         super().__init__(**kwargs)
         self._tab_keys = []
         self._empty_handler = ""
-        self._sidebar_selection = None
+        self._sidebar_selection = QtCore.QItemSelectionModel(None, self)    # Qt's tree points it at each list
+        self._sidebar_selection.currentChanged.connect(self._sidebar_row_moved)
+        self.sidebarSelection = self._sidebar_selection
         self._prefs_window = None
         self._size_save = QtCore.QTimer(self)
         self._size_save.setSingleShot(True)
@@ -112,18 +114,14 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         self.currentTab = self._tab_keys.index(self.pane.current_tab())
 
     def _use_sidebar_rows(self, section) -> None:
-        """This pane's selection of the section's sidebar rows, which the engine reads and moves."""
+        """The section's sidebar rows on the tree, and the one selection of them to the engine."""
         listed = getattr(self.pane, section.sidebar_attr, None) if section.sidebar_attr else None
         if listed is None:
             return
         self._key_pause.stop()    # the keys' row was the other section's
-        old, self._sidebar_selection = self._sidebar_selection, QtCore.QItemSelectionModel(listed, self)
+        self._sidebar_selection.clear()    # the old rows unmarked while the tree still shows them
+        self.sidebarModel = listed    # Qt's tree points the selection at these rows as it takes them
         self.pane.sidebar.use_selection(self._sidebar_selection)
-        self._show_rows("sidebar", listed, None)    # the selection follows once a row in it is current
-        self._sidebar_selection.currentChanged.connect(self._give_sidebar_selection)
-        self._sidebar_selection.currentChanged.connect(self._sidebar_row_moved)
-        if old is not None:
-            old.deleteLater()
         self._reveal = ""
         if self._rows_followed is not listed:    # a reveal waits for rows the walks insert
             try:
@@ -132,11 +130,6 @@ class PaneState(qmlviews.SharedState, asks.Asks):
                 pass
             self._rows_followed = listed
             listed.rowsInserted.connect(self._reveal_step)
-
-    def _give_sidebar_selection(self, *_current) -> None:
-        """The tree gets the selection with a current row; given none, Qt marks old rows current."""
-        if self.sidebarSelection is not self._sidebar_selection:
-            self.sidebarSelection = self._sidebar_selection
 
     def _show_rows(self, view: str, rows, selection) -> None:
         """A view's rows, then its selection: Qt's view points any selection it holds at its rows."""
