@@ -1,4 +1,4 @@
-// One tile as T01 and T20 draw it: picture, name, subtitle, category strip, renderer icon, badges.
+// A tile as T01 and T20 draw it, no tooltip: picture, name, subtitle, strip, renderer icon, badges.
 import QtQuick
 import houdini.pluto
 import houdini.ui
@@ -22,7 +22,6 @@ Item {
     readonly property string subtitle: root.model.tileSubtitle || ""
     readonly property var mark: root.drawn.renderers[root.model.rendererIcon || ""]    // Material's alone
     readonly property real markX: root.drawn.pad + root.side - (root.mark ? root.mark.inset + root.mark.width : 0)
-    property string tip: ""    // the tip of the badge under the pointer
 
     function badgeShown(badge) {    // "on", "off" or "", as the widget tile works it out
         if (!badge.role)
@@ -40,10 +39,6 @@ Item {
             return badge.press
         return badge.hover && over ? badge.hover : badge.art
     }
-
-    ToolTip.text: root.tip || root.model.toolTip || ""
-    ToolTip.visible: hover.hovered && ToolTip.text !== ""
-    ToolTip.delay: Config.toolTipDelay
 
     HoverHandler {
         id: hover
@@ -129,8 +124,6 @@ Item {
             width: edge
             height: edge
             file: root.badgeArt(modelData, shown, over, press.pressed) + ".svg"
-            onOverChanged: root.tip = !over ? "" : shown === "off" && modelData.offTip ? modelData.offTip
-                                                                                       : modelData.tip
 
             HoverHandler {
                 id: overBadge

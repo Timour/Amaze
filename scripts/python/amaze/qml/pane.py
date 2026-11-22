@@ -61,7 +61,7 @@ def badge_rows(section) -> list:
             "art": badge.svg, "hover": badge.hover_svg, "press": badge.press_svg,
             "off": badge.off_svg if button else "", "offHover": badge.off_hover_svg,    # a button at rest
             "button": button, "wired": button and badge.name in WIRED_BADGES,
-            "pinned": badge.name in PINNED_BADGES, "tip": badge.tip, "offTip": badge.off_tip,
+            "pinned": badge.name in PINNED_BADGES,
             "endX": edge_x == "end", "insetX": inset_x, "endY": edge_y == "end", "insetY": inset_y,
             "side": side})
     return rows
