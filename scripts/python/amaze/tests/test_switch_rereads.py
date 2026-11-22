@@ -322,16 +322,17 @@ class OneLibraryChangeIsOneSwitch(unittest.TestCase):
         with mock.patch.object(model, "switch_model_data",
                                wraps=model.switch_model_data) as switch:
             self.panel.show_prefs()
-            action(self.panel._prefs_dialog)
-            self.panel._prefs_dialog.close()
+            window = self.panel._prefs_window
+            action(window.sharedState())
+            test_support.close_window(window)
             QtWidgets.QApplication.processEvents()
         return switch.call_count
 
     def test_preferences_apply(self):
         other = test_support.seeded_library(self)
 
-        def apply(dialog):
-            self.assertTrue(test_support.apply_library(self, self.panel, other, dialog=dialog))
+        def apply(state):
+            self.assertTrue(test_support.apply_library(self, self.panel, other, state=state))
 
         self.assertEqual(1, self._switches_while_open(apply),
                          "closing Preferences re-read every model a second time")
@@ -340,11 +341,11 @@ class OneLibraryChangeIsOneSwitch(unittest.TestCase):
         other = test_support.seeded_library(self)
         self.assertEqual(
             1, self._switches_while_open(
-                lambda dialog: _write_settings(self.panel, directory=other)),
+                lambda state: _write_settings(self.panel, directory=other)),
             "closing Preferences left the models on the previous library")
 
     def test_closing_with_nothing_changed_switches_nothing(self):
-        self.assertEqual(0, self._switches_while_open(lambda dialog: None),
+        self.assertEqual(0, self._switches_while_open(lambda state: None),
                          "closing Preferences switched with no library change")
 
     def test_a_switch_is_written_to_the_debug_log(self):
@@ -404,7 +405,7 @@ class EveryWayOntoALibraryRunsTheStepsInOneOrder(unittest.TestCase):
         self.panel.show_prefs()
         _write_settings(self.panel, directory=test_support.seeded_library(self))
         del self.order[:]
-        self.panel._prefs_dialog.close()
+        test_support.close_window(self.panel._prefs_window)
         QtWidgets.QApplication.processEvents()
         self._assert_order("closing Preferences")
 
@@ -436,17 +437,15 @@ class AnUnreadableListIsAskedAboutBeforeTheSwitch(unittest.TestCase):
         return asked
 
     def _preferences(self):
-        from amaze.dialogs import prefs_dialog
-        dialog = prefs_dialog.PrefsDialog(self.panel.prefs, panel=self.panel)
-        self.addCleanup(dialog.deleteLater)
-        return dialog
+        from amaze.dialogs import prefs_window
+        return prefs_window.AmazePrefsState(self.panel.prefs, panel=self.panel)
 
     def _add_and_apply(self):
         """Add the folder the file chooser returns, create a user for it, then Apply."""
-        dialog = self._preferences()
-        dialog.add_library()
-        dialog.create_library_user("Tester")
-        dialog.apply_library()
+        state = self._preferences()
+        state.addLibrary()
+        state.create_user("Tester")
+        state.apply()
 
     def test_cancel_keeps_the_open_library_and_writes_nothing(self):
         from amaze.prefs import persistence
@@ -467,7 +466,7 @@ class AnUnreadableListIsAskedAboutBeforeTheSwitch(unittest.TestCase):
         saves = []
         self.panel.prefs.save = lambda *a, **k: saves.append(True)
         before = self.panel.prefs.dir
-        asked = self._answering(0, lambda: self._preferences().add_library(), picked=held)
+        asked = self._answering(0, lambda: self._preferences().addLibrary(), picked=held)
         self.assertEqual([(messages.LIBRARY_FOLDER_NOT_EMPTY, ())], asked)
         self.assertEqual([], saves, "the settings were saved, which writes into the picked folder")
         self.assertEqual(before, self.panel.prefs.dir, "the library moved")

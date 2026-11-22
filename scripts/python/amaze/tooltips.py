@@ -9,10 +9,6 @@ PREFS_ADD_LIBRARY = 'Add a library folder to the list, or an empty folder for a 
 
 PREFS_MANAGE_LIBRARIES = 'Remove libraries from the list.'
 
-PREFS_APPLY_LIBRARY = 'Switch to the library and user shown.'
-
-PREFS_ACCEPT_LIBRARY = 'Apply, then close Preferences.'
-
 PREFS_CHECK_LIBRARY = "Look over the library's databases and folders and fix what you choose. Files moved to Amaze's trash are deleted after 30 days."
 
 PREFS_RELOAD_LIBRARY = 'Reload the library from disk.'
@@ -59,11 +55,11 @@ PREFS_DOWNLOAD_RESOLUTION = 'The texture size to download. If that size is not a
 PREFS_PARALLEL_DOWNLOADS = 'How many previews download at the same time. More is faster because these wait on network delay, not your bandwidth.'
 
 
-PREFS_RENDERER_SWITCH = 'Which renderers Amaze offers. Hide the ones you do not use.'   # ▸ Preferences - Show/Hide ▸ Renderer (P03a)
+PREFS_RENDERER_SWITCH = 'Which renderers Amaze offers. Hide the ones you do not use.'   # ▸ Preferences - UI ▸ Renderer (P03a)
 
-PREFS_SECTION_SWITCH = 'Which sections the panel shows. Hiding a section keeps everything in it; its tab is just hidden.'   # ▸ Show/Hide ▸ Sections (P03b)
+PREFS_SECTION_SWITCH = 'Which sections the panel shows. Hiding a section keeps everything in it; its tab is just hidden.'   # ▸ UI ▸ Sections (P03b)
 
-PREFS_SIDEBAR_COUNTS = 'Show how many items each category has.'   # ▸ Preferences - Look tab (P04)
+PREFS_SIDEBAR_COUNTS = 'Show how many items each category has.'   # ▸ Preferences - UI tab (P04)
 
 PREFS_HIDE_EMPTY_CATEGORIES = 'Hide categories that have no items. They come back when you add items.'
 

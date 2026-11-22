@@ -1661,11 +1661,11 @@ class LibraryUpdateTest(unittest.TestCase):
     def test_an_open_preferences_window_shows_the_new_version(self):
         """Reload Library runs the update under an open Preferences, which kept the old number."""
         self.panel.show_prefs()
-        dialog = self.panel._prefs_dialog
-        self.addCleanup(dialog.close)
-        self.assertEqual("Format: v3", dialog._lbl_library_format.text())
+        window = self.panel._prefs_window
+        self.addCleanup(test_support.close_window, window)
+        self.assertEqual("Format: v3", window.sharedState().libraryFormat)
         self.panel._update_library()
-        self.assertEqual("Format: v2.0", dialog._lbl_library_format.text())
+        self.assertEqual("Format: v2.0", window.sharedState().libraryFormat)
 
 
 class NewerLibraryTest(unittest.TestCase):

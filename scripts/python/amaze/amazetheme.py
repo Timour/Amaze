@@ -56,45 +56,10 @@ CODE_SYNTAX = {    # ▸ token kind: Houdini's own colour name, and its value in
     "function": ("ParmSyntaxFuncColor", "#8888c1"),    # point, addpoint
 }
 
-PREFS_FORM_WIDTH = 490   # ▸ P01-P06 Preferences: the drawn frame less Qt's 8 for a tab widget ▸r/tabwidget-adds-eight
-PREFS_INSET = 20         # content to the frame edge, both sides: rows span 20..470
-PREFS_DIALOG_MARGIN = 12  # the tabbed window's own margin, outside the tab strip
-PREFS_PAGE_MARGIN = 8    # each tab page's margin, inside it: 12 + 8 is the drawn 20
-PREFS_CONTENT_WIDTH = 450  # the drawn content column, 20..470; pin it ▸r/tabwidget-adds-eight
-PREFS_TAB_BAR = (12, 12, 466, 22)   # x, y, w, h - the strip above every page
-PREFS_SUBTAB_BAR = (12, 44, 129, 22)   # x, y, w, h - Show/Hide's Renderer and Sections strip
-PREFS_LABEL_RIGHT = 140  # a form label is RIGHT-aligned and ends here
-PREFS_LABEL_COL = 120    # the label column itself, from the inset to LABEL_RIGHT
-PREFS_LABEL_GAP = 8      # a label to its field: FIELD_X less LABEL_RIGHT
-PREFS_FIELD_X = 148      # every field, button and toggle column starts here
-PREFS_FIELD_H = 22       # a line edit, combo or button
-PREFS_SPIN_H = 24        # a spin box is 2 taller, its inner line edit inset 1
-PREFS_ROW_GAP = 6        # between rows inside one group
-PREFS_BUTTON_GAP = 8     # between two controls sharing one row, and a spin box to its slider
-PREFS_BROWSE_W = 28      # the `...` button that opens a file dialog
-PREFS_DIVIDER_COLOR = "#434343"   # the 1px group divider; groups carry no title, like Houdini's own parameter panes
-PREFS_PAGE_LINE_COLOR = "#272727"    # ▸ P03a and P03b: the lines along the sub-tab page's top and right
-PREFS_DIVIDER_H = 1
-UPDATE_WARNING_FILL = "#e0523a"    # ▸ P06: Install Update when the update also updates the library
-P05_ROW_PITCH = 101    # ▸ P05: a following row's divider to the next one's, as drawn (139, 240, 341)
-P05_LIST_TO_BUTTON = 10    # ▸ P05: the list's bottom to the button's top, as drawn (738 to 748)
-P05_DIM_TEXT_COLOR = "#7d7d7d"    # ▸ P05: the version and author lines under each picture
-P05_TEXT_COLOR = "#a6a6a6"   # ▸ P05: each row's short description
-P01_WARNING_TEXT_COLOR = UPDATE_WARNING_FILL    # ▸ P01: the Format line and the line beside Apply, as a warning
-P01_FORMAT_TEXT_COLOR = "#80dddddd"    # the Format line otherwise: text at half opacity, as #AARRGGBB
-P01_DIM_TEXT_COLOR = "#6f6f6f"         # ▸ P01's Databases row: its headings, counts and info line
-P01_LIGHT_IDLE = "#787878"      # a light before a check: filled, no stroke in any state
+P01_LIGHT_IDLE = "#787878"      # ▸ P01's Databases row: a light before a check, filled, no stroke
 P01_LIGHT_CLEAN = "#3fc28a"     # a part the check found nothing in
 P01_LIGHT_FOUND = "#ff3600"     # a part with findings
 P01_LIGHT_UNCHECKED = "#ffae00"  # a part that could not be checked now
-P01_REPAIR_FILL = "#f15b42"     # the Repair button's background
-P01_REPAIR_HOVER = "#f36f59"    # the Repair button under the pointer
-P01_REPAIR_PRESSED = "#d4503a"  # the Repair button while held down
-P01_REPAIR_TEXT_COLOR = "#f9f9f9"      # the Repair button's text
-P01_REPAIR_RADIUS = 4           # the corners Houdini draws on a standard button ▸r/plain-button-style
-P01_LIGHT_COUNT_GAP = 6         # a light to its count, as drawn for two of the three
-PREFS_DIVIDER_ABOVE = 8  # inside the divider's own row box
-PREFS_DIVIDER_BELOW = 6  # so a divider costs ROW_GAP + ABOVE + H + BELOW + ROW_GAP = 27
 
 MENU_CHIP = (4, 3, 16, 16)     # ▸ the chip submenus (C02b, C09c): x, y, w, h of a chip in its row
 
@@ -184,23 +149,18 @@ LABEL_NAME = "Name"
 PLACEHOLDER_SEARCH_ICONS = "Search"     # D02 drew the count in it; it does not any more
 LABEL_NOT_CONNECTED = "not connected"    # D15: a listed library whose folder cannot be reached
 LABEL_LIBRARY_FORMAT = "Format: v%s"    # ▸ P01, under the library's buttons
-LABEL_CONVERT_OLD_LIBRARY = "Convert pre-1.40"    # About: an older library, picked and converted
 LABEL_UPGRADES_LIBRARY ="Apply/Accept will upgrade your library to v%s"   # beside Apply
 LABEL_LIBRARY_TOO_NEW = "You need to update Amaze to use this library"
 LABEL_LIBRARY_UNREACHABLE = "Amaze cannot reach this library"
-LABEL_PICK_USER = "Pick or create a user"    # the User list with no user chosen
-LABEL_DATABASES = "Databases"       # ▸ P01's check row, and the three lights' headings
 LABEL_CHECK_PARTS = ("Errors", "Files", "Ref")
 LABEL_UNCHECKED = "-"                # a light's count when its part could not be checked
 BTN_CHECK = "Check"                 # the row's button, until a check finds what can be fixed
 BTN_REPAIR = "Repair"
-BTN_DELETE_CACHE = "Delete"         # beside the Cache Path's Default
 
 TITLE_TILE_ICON = "Tile Icon"    # what D02 shows when the selection has no ONE name to show
 TITLE_MANAGE_LIBRARIES = "Manage Libraries"
 BAND_UNTITLED = "Untitled"       # what D11's band shows for a snippet that has no name yet
 MENU_NEW_VERSION = "New Version"    # D11's + menu, above the snippet's versions
-LABEL_VERSIONS = "Versions"         # P01's switch: versions of materials and of code
 
 EMPTY_SHARED = {    # ▸ E06 E08 E09, the empty states every section shares, read by `empty_state.words_for`
     "nothing-matches": (
@@ -541,7 +501,7 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("QLineEdit ▸ text", 154, 228, 12, 15, "75"),
         ),
     },
-    "P05": {   # Preferences - Add-On: drawn 885 tall in FIGMA ONLY; the app opens at PREFS_FRAME
+    "P05": {   # Preferences - Add-On: drawn 885 tall in FIGMA ONLY
         "frame": (498, 885),
         "nodes": (
             ("QTabBar", 12, 12, 466, 22, None),
@@ -1039,7 +999,6 @@ SAVE_FIELD_WIDTH = next(n[3] for n in DIALOG_LAYOUT["D09"]["nodes"] if n[0] == "
 NAME_FIELD_WIDTH = next(n[3] for n in DIALOG_LAYOUT["D13"]["nodes"] if n[0] == "QLineEdit")
 D15_WIDTH = DIALOG_LAYOUT["D15"]["frame"][0]
 D11_FORM_WIDTH = DIALOG_LAYOUT["D11"]["frame"][0]    # a FLOOR: D11 resizes around its editor
-PREFS_FRAME = DIALOG_LAYOUT["P01"]["frame"]    # every Preferences tab, P01-P06
 
 _NODE_MARK = " ▸ "       # what separates a node's kind from the note after it
 _TEXT_SUFFIX = _NODE_MARK + "text"

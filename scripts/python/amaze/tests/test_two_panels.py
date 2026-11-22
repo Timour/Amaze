@@ -233,18 +233,17 @@ class AFileTabSwitchReachesBothPanelsTest(unittest.TestCase):
         self.b = _second_panel(self)    # opened last: the shared model now reads B's Prefs
 
     def test_a_switch_flipped_in_the_first_panel_changes_the_shared_file_tab(self):
-        from amaze.dialogs import prefs_dialog
+        from amaze.dialogs import prefs_window
         files = self.a.file_files_model
         self.assertIs(files, self.b.file_files_model, "premise: the panels do not share the File model")
         self.assertIsNot(self.a.prefs, files.preferences, "premise: the model reads the first panel's Prefs")
-        dialog = prefs_dialog.PrefsDialog(self.a.prefs, panel=self.a)
-        self.addCleanup(dialog.deleteLater)
-        for name, setter in (("system_file_icons", dialog.set_system_file_icons),
-                             ("render_rat_files", dialog.set_render_rat_files)):
+        state = prefs_window.AmazePrefsState(self.a.prefs, panel=self.a)
+        for name in ("system_file_icons", "render_rat_files"):
             for value in (not getattr(files.preferences, name), getattr(files.preferences, name)):
                 with self.subTest(switch=name, value=value), \
                         mock.patch.object(files, "refresh_current_folder") as refresh:
-                    setter(value)
+                    state.setPref(name, "1" if value else "0")    # what the row's switch sends
+                    state.apply()
                     self.assertIs(value, getattr(self.a.prefs, name))
                     self.assertIs(value, getattr(files.preferences, name),
                                   "the File tab still reads the other panel's value")

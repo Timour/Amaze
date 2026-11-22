@@ -12,8 +12,7 @@ PrefRoot {
     pageModel: [
         {text: "Library", icon: "BUTTONS_library", url: Qt.resolvedUrl("LibraryPage.qml")},
         {text: "Render", icon: "BUTTONS_render", url: Qt.resolvedUrl("RenderPage.qml")},
-        {text: "Show/Hide", icon: "BUTTONS_visible", url: Qt.resolvedUrl("ShowHidePage.qml")},
-        {text: "Look", icon: "BUTTONS_palette", url: Qt.resolvedUrl("LookPage.qml")},
+        {text: "UI", icon: "BUTTONS_ui", url: Qt.resolvedUrl("UiPage.qml")},
         {text: "Add-On", icon: "BUTTONS_plugin", url: Qt.resolvedUrl("AddOnPage.qml")},
         {text: "About", icon: "BUTTONS_info", url: Qt.resolvedUrl("AboutPage.qml")},
     ]

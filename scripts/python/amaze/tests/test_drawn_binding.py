@@ -32,34 +32,11 @@ def _houdini_ui_font():
     font.setPixelSize(theme.ui_px(12))
     return font
 
-PREFS_FRAMES = ("P01", "P02", "P03a", "P03b", "P04", "P05", "P06")
-
-PINNED_BUTTONS = {    # every text button Preferences sizes from the document; a missing pin fails here
-    "P01": ("Add", "Check", "Reload", "Show Folder", "Manage", "Rename",
-            "Default", "Apply", "Accept"),    # `Delete` is drawn twice and has its own test
-    "P05": ("Check for Updates",),
-    "P06": ("Check for Updates", "Report a Bug...", "Open Log",
-            "Save Log...", "Clear Log"),
-}
-
-PREFS_COMBOS = {    # (frame, attribute, drawn width) - the combos each tab builds, in creation order
-    "P01": (("cbb_library", 199), ("cbb_library_user", 196)),
-    "P02": (("_combo_geo_shading", 165), ("_combo_geo_bg", 165),
-            ("cbb_matx_res", 72)),
-    "P04": (("_combo_path_style", 105), ("_combo_icon_weight", 145)),
-}
-
 UNPAIRED = {}    # a drawn `▸ text` node with no rect of its own kind around it; every one is named
 
 LABEL_RIGHT = {    # where a form label's drawn box ends, per frame; a QLabel ending elsewhere must be pinned
     "D02": (63,),               # the drawn field column less `D02_LABEL_GAP`
     "D11": (63, 378),           # each column's field, less the drawn label gap
-    "P01": (amazetheme.PREFS_LABEL_RIGHT,),
-    "P02": (amazetheme.PREFS_LABEL_RIGHT,),
-    "P03a": (amazetheme.PREFS_LABEL_RIGHT,),
-    "P03b": (amazetheme.PREFS_LABEL_RIGHT,),
-    "P04": (amazetheme.PREFS_LABEL_RIGHT,),
-    "P06": (amazetheme.PREFS_LABEL_RIGHT,),
     "D09": (amazetheme.SAVE_LABEL_RIGHT,),
     "D13": (50,),               # the drawn field less its label gap
 }
@@ -72,9 +49,6 @@ STRETCHED_FIELDS = {    # frame and kind whose fields fill the column instead of
 LOOSE_LABELS = {    # (frame, kind, x, y) of a label drawn BESIDE or ABOVE its control rather than in a column
     ("D02", "QLabel", 202, 165),
     ("D02", "QLabel", 212, 196),
-    ("P01", "QLabel", 108, 124),    # the three lights' counts, each as wide as its number
-    ("P01", "QLabel", 147, 124),
-    ("P01", "QLabel", 186, 124),
 }
 
 
@@ -102,9 +76,9 @@ DRAWN_EXEMPT = (    # (does this node need no pin, why): every other drawn node 
      "labels, and nothing in the app places a tab"),
     (lambda f, n: n[0] == "QScrollBar",
      "Qt's own, shown and hidden by the view it belongs to"),
-    (lambda f, n: f == "P05" and n[0].startswith("add-on "),
-     "an add-on's row, built per installed add-on from its package: "
-     "test_addon_tab holds each row on the drawn ones"),
+    (lambda f, n: f.startswith("P"),
+     "Preferences is Houdini's own QML window, laid out by Houdini's prefs rows; "
+     "its P frames are to be drawn again to match it"),
     (lambda f, n: n[0] == "header band",
      "a painted strip the frame's full width, `HEADER_BAND_H` tall"),
     (lambda f, n: n[0] == "QLabel" and inside(n, band_box(f)),
@@ -112,8 +86,6 @@ DRAWN_EXEMPT = (    # (does this node need no pin, why): every other drawn node 
     (lambda f, n: n[0].startswith("icon grid"),
      "a drawing device standing in for the `D02_CELL` cells the chooser "
      "builds itself, and the note that says so"),
-    (lambda f, n: n[0] == "QWidget ▸ group divider",
-     "a painted rule spanning the content column, `PREFS_DIVIDER_H` tall"),
     (lambda f, n: n[0] == "ToggleSwitch",
      "the drawn pill is the TRACK the widget paints inside a wider box - "
      "`TheToggleIsTheDrawnPill` holds the two together"),
@@ -162,16 +134,13 @@ DRAWN_EXEMPT = (    # (does this node need no pin, why): every other drawn node 
     (lambda f, n: f in ("D15", "D01") and n[0].startswith("QListWidget ▸ "),
      "a row is drawn by Houdini's style, not pixel-matched: the list reads its column "
      "from drawn_list_rows, held by TheManageWindowMatchesItsDesignFrame and test_versions_dialog"),
-    (lambda f, n: f in ("P03a", "P03b") and n[0].startswith("Line "),
-     "a line PAINTED along the sub-tab page's top or right edge, wherever "
-     "the style puts the page: held by TheShowHidePageHasItsLines"),
 )
 
 
 def build_every_frame(case):
     """One live dialog per drawn frame, so the pinned sizes checked are the real ones."""
     from amaze.dialogs import (base_dialog, code_dialog, icon_dialog,
-                               library_dialog, prefs_dialog, save_dialog, versions_dialog)
+                               library_dialog, save_dialog, versions_dialog)
     built = (
         versions_dialog.VersionsDialog("brushed_steel", [
             {"n": 1, "name": "Version 1", "date": "2026-10-22 10:00"},
@@ -179,8 +148,6 @@ def build_every_frame(case):
         icon_dialog.IconDialog(None, 0.0, None, tile_name="rocks1",
                                tile_tags="", categories=["Metal"],
                                tile_category="Metal"),
-        prefs_dialog.PrefsDialog(test_support.fixture_prefs(case),
-                                 panel=None),
         save_dialog.SaveDialog(["Metal"], "Metal", name="rocks1"),
         code_dialog.CodeDialog(["Metal"]),
         base_dialog.NameDialog(),
@@ -316,29 +283,6 @@ class TheToggleIsTheDrawnPill(unittest.TestCase):
                                 "the document walk found almost no drawn "
                                 "pills, so an empty result proves nothing")
 
-    def test_the_drawn_text_starts_one_track_and_one_gap_along(self):
-        """Preferences frames only: D02 draws its switch labels in a column left of the pill."""
-        gap = (ui_helpers.ToggleSwitch.TRACK_W
-               + ui_helpers.ToggleSwitch.GAP)
-        seen = 0
-        for frame_key in PREFS_FRAMES:
-            frame = amazetheme.DIALOG_LAYOUT[frame_key]
-            pills = [(x, y) for kind, x, y, w, h, text in frame["nodes"]
-                     if kind == "ToggleSwitch"]
-            for kind, x, y, w, h, text in frame["nodes"]:
-                if kind != "ToggleSwitch" + TEXT_SUFFIX:
-                    continue
-                beside = [px for px, py in pills if abs(py - y) <= 3]
-                self.assertTrue(
-                    beside, "%s draws the label %r with no pill beside it"
-                    % (frame_key, text))
-                seen += 1
-                self.assertEqual(
-                    gap, x - beside[0],
-                    "%s draws %r %d along from its pill, not %d"
-                    % (frame_key, text, x - beside[0], gap))
-        self.assertGreaterEqual(seen, 10)
-
     def test_a_textless_switch_hints_exactly_the_track(self):
         """D02 pills are flush right, so a textless switch's size hint ends at the track."""
         switch = ui_helpers.ToggleSwitch()
@@ -367,7 +311,7 @@ class AnUndrawnLabelLeavesTheWidgetUnsizedAndIsLogged(unittest.TestCase):
         self.addCleanup(button.deleteLater)
         before = button.maximumWidth()
         with mock.patch.object(debug, "event") as recorded:
-            ui_helpers.fit_drawn(button, "P01", "QPushButton",
+            ui_helpers.fit_drawn(button, "D15", "QPushButton",
                                  "Not A Drawn Label")
         self.assertEqual(before, button.maximumWidth(),
                          "a label the document does not draw still pinned "
@@ -375,233 +319,6 @@ class AnUndrawnLabelLeavesTheWidgetUnsizedAndIsLogged(unittest.TestCase):
         self.assertTrue(recorded.called,
                         "the missing box was not logged - nothing in the "
                         "log would show why the widget kept its own size")
-
-
-class PreferencesIsBuiltFromTheDocument(unittest.TestCase):
-    """Every button, combo and field on the five tabs takes its size from the frame drawn for that tab."""
-
-    def _dialog(self):
-        from amaze.dialogs import prefs_dialog
-        prefs = test_support.fixture_prefs(self)
-        dialog = prefs_dialog.PrefsDialog(prefs, panel=None)
-        self.addCleanup(dialog.deleteLater)
-        return dialog
-
-    def _pages(self, dialog):
-        return dialog.findChild(QtWidgets.QTabWidget)
-
-    def test_the_declared_numbers_agree_with_each_other(self):
-        """The two sums the Preferences geometry must satisfy; the content column is built from one."""
-        self.assertEqual(
-            amazetheme.PREFS_FORM_WIDTH - 2 * amazetheme.PREFS_INSET,
-            amazetheme.PREFS_CONTENT_WIDTH,
-            "the content column and the inset disagree about where a row "
-            "ends, and the column is what every page is pinned to")
-        self.assertEqual(
-            amazetheme.PREFS_INSET + amazetheme.PREFS_LABEL_COL
-            + amazetheme.PREFS_LABEL_GAP, amazetheme.PREFS_FIELD_X,
-            "the label column plus its gap no longer reaches the field "
-            "column, so one of the three is wrong")
-
-    def test_every_pinned_widget_is_at_its_drawn_x(self):
-        """Every pinned widget is at its drawn x; y is Qt's own, shifted by Houdini's tab bar."""
-        dialog = self._dialog()
-        dialog.setFont(_houdini_ui_font())    # a row's x depends on its label's width, so measure the font the artist sees
-        dialog.show()
-        self.addCleanup(dialog.hide)
-        QtWidgets.QApplication.processEvents()
-        checked, wrong = 0, []
-        for frame_key in PREFS_FRAMES:
-            page = dialog.show_frame(frame_key)
-            QtWidgets.QApplication.processEvents()
-            for widget in page.findChildren(QtWidgets.QWidget):
-                box = getattr(widget, "drawn_box", None)
-                if box is None or not widget.isVisibleTo(page):
-                    continue
-                checked += 1
-                built = widget.mapTo(dialog, widget.rect().topLeft()).x()
-                if built != theme.ui_px(box[0]):
-                    wrong.append(
-                        "%s %s %r at x=%d, drawn at %d"
-                        % (frame_key, type(widget).__name__,
-                           getattr(widget, "text", lambda: "")(), built,
-                           theme.ui_px(box[0])))
-        self.assertGreaterEqual(
-            checked, 20, "almost nothing was pinned, so this proves nothing")
-        self.assertEqual([], wrong, "\n  ".join([""] + wrong))
-
-    def test_every_named_button_is_the_drawn_size(self):
-        dialog = self._dialog()
-        for frame_key in PREFS_FRAMES:
-            page = dialog.frame_page(frame_key)
-            found = {b.text(): b
-                     for b in page.findChildren(QtWidgets.QPushButton)}
-            for label in PINNED_BUTTONS.get(frame_key, ()):
-                with self.subTest(frame=frame_key, button=label):
-                    self.assertIn(label, found,
-                                  "%s has no button reading %r"
-                                  % (frame_key, label))
-                    box = amazetheme.drawn_boxes(frame_key)[
-                        ("QPushButton", label)]
-                    self.assertEqual(
-                        (theme.ui_px(box[2]), theme.ui_px(box[3])),
-                        pinned(self, found[label]),
-                        "%s %r is not the box the document draws"
-                        % (frame_key, label))
-
-    def test_both_deletes_have_their_own_box(self):
-        """P01 draws `Delete` twice: the user's is the first box, the cache's the second."""
-        dialog = self._dialog()
-        user, cache = amazetheme.drawn_repeats("P01", "QPushButton", "Delete")
-        self.assertNotEqual(user[2], cache[2], "premise: the two are drawn alike")
-        self.assertEqual((theme.ui_px(user[2]), theme.ui_px(user[3])),
-                         pinned(self, dialog._btn_delete_user))
-        self.assertEqual((theme.ui_px(cache[2]), theme.ui_px(cache[3])),
-                         pinned(self, dialog._btn_clear_cache))
-
-    def test_the_check_button_is_one_geometry_in_both_readings(self):
-        """`Check` and `Repair` share one drawn box."""
-        dialog = self._dialog()
-        first = pinned(self, dialog._btn_check)
-        dialog._set_check_button(True)
-        self.assertEqual(amazetheme.BTN_REPAIR, dialog._btn_check.text())
-        self.assertEqual(first, pinned(self, dialog._btn_check))
-        box = amazetheme.drawn_boxes("P01")[("QPushButton", amazetheme.BTN_CHECK)]
-        self.assertEqual((theme.ui_px(box[2]), theme.ui_px(box[3])), first)
-
-    def test_the_update_button_is_one_geometry_in_both_readings(self):
-        """`Check for Updates` and `Install Update` share one drawn box, so the geometry never moves."""
-        dialog = self._dialog()
-        first = pinned(self, dialog._btn_update)
-        dialog._set_update_button(True)
-        self.assertEqual("Install Update", dialog._btn_update.text())
-        self.assertEqual(
-            first, pinned(self, dialog._btn_update),
-            "the button resized when its label changed, so `Install "
-            "Update` has a size the document never drew")
-        box = amazetheme.drawn_boxes("P06")[
-            ("QPushButton", "Check for Updates")]
-        self.assertEqual((theme.ui_px(box[2]), theme.ui_px(box[3])), first)
-
-    def test_every_combo_is_the_drawn_width(self):
-        dialog = self._dialog()
-        for frame_key, wanted in PREFS_COMBOS.items():
-            for attribute, width in wanted:
-                with self.subTest(frame=frame_key, combo=attribute):
-                    combo = getattr(dialog, attribute)
-                    self.assertEqual(
-                        theme.ui_px(width), combo.minimumWidth(),
-                        "%s %s is %d wide, not the drawn %d"
-                        % (frame_key, attribute, combo.minimumWidth(),
-                           width))
-                    self.assertEqual(combo.minimumWidth(),
-                                     combo.maximumWidth())
-
-    def test_every_line_edit_is_the_drawn_field_height(self):
-        dialog = self._dialog()
-        want = theme.ui_px(amazetheme.PREFS_FIELD_H)
-        for name in ("line_cache",):
-            with self.subTest(field=name):
-                field = getattr(dialog, name)
-                self.assertEqual(want, field.height(),
-                                 "%s is not the drawn field height" % name)
-        self.assertNotEqual(    # the editor INSIDE a spin box is in a box drawn 2 taller
-            theme.ui_px(amazetheme.PREFS_FIELD_H),
-            theme.ui_px(amazetheme.PREFS_SPIN_H),
-            "the drawn spin height stopped differing, so this proves "
-            "nothing")
-        editor = dialog.line_rendersize.findChild(QtWidgets.QLineEdit)
-        self.assertIsNotNone(editor, "the spin box has no editor to check")
-        self.assertNotEqual(
-            editor.minimumHeight(), editor.maximumHeight(),
-            "the spin box's own editor was pinned, so the box around it "
-            "can no longer draw the 2 the document gives it")
-
-    def test_the_window_is_the_drawn_frame(self):
-        dialog = self._dialog()
-        self.assertEqual(
-            (theme.ui_px(amazetheme.PREFS_FRAME[0]),
-             theme.ui_px(amazetheme.PREFS_FRAME[1])),
-            (dialog.width(), dialog.height()),
-            "Preferences opens at a size the document does not draw")
-
-    def test_every_page_is_one_drawn_frame(self):
-        from amaze.dialogs import prefs_dialog
-        dialog = self._dialog()
-        self.assertEqual(PREFS_FRAMES, prefs_dialog.PREFS_FRAMES)
-        self.assertEqual(
-            len(PREFS_FRAMES), len(dialog._steps_to_pages()),
-            "Preferences builds a different number of pages than it has "
-            "drawn frames, so the pinned sizes go to the wrong pages")
-
-    def test_show_hide_is_the_two_drawn_sub_tabs(self):
-        """P03a and P03b: a Renderer and a Sections sub-tab, each holding its own switches."""
-        dialog = self._dialog()
-        dialog.show()
-        self.addCleanup(dialog.hide)
-        QtWidgets.QApplication.processEvents()
-        tabs = self._pages(dialog)
-        names = [tabs.tabText(index) for index in range(tabs.count())]
-        sub_tabs = tabs.widget(names.index("Show/Hide")).findChild(
-            QtWidgets.QTabWidget)
-        self.assertIsNotNone(sub_tabs, "Show/Hide holds no sub-tabs")
-        bar = amazetheme.PREFS_SUBTAB_BAR
-        for frame_key in ("P03a", "P03b"):
-            nodes = amazetheme.DIALOG_LAYOUT[frame_key]["nodes"]
-            self.assertIn(("QTabBar",) + bar + (None,), nodes,
-                          "%s draws the sub-tab strip somewhere else" % frame_key)
-            drawn = [node[5] for node in sorted(nodes, key=lambda n: n[1])
-                     if node[0].startswith("QTabBar::tab") and node[5]
-                     and inside(node, bar)]
-            self.assertEqual(
-                drawn, [sub_tabs.tabText(i) for i in range(sub_tabs.count())],
-                "the sub-tabs are not the ones %s draws" % frame_key)
-        for frame_key, boxes in (("P03a", dialog._renderer_boxes),
-                                 ("P03b", dialog._section_boxes)):
-            with self.subTest(frame=frame_key):
-                page = dialog.show_frame(frame_key)
-                QtWidgets.QApplication.processEvents()
-                built = sorted(page.findChildren(ui_helpers.ToggleSwitch),
-                               key=lambda b: b.mapTo(page, b.rect().topLeft()).y())
-                drawn = [node[5] for node in sorted(
-                    amazetheme.DIALOG_LAYOUT[frame_key]["nodes"],
-                    key=lambda n: n[2]) if node[0] == "ToggleSwitch" + TEXT_SUFFIX]
-                self.assertEqual(drawn, [box.text() for box in built],
-                                 "%s's switches are not the drawn ones" % frame_key)
-                self.assertEqual(set(boxes.values()), set(built))
-        strip, main = sub_tabs.tabBar(), tabs.tabBar()
-        at = strip.mapTo(dialog, strip.rect().topLeft())
-        main_at = main.mapTo(dialog, main.rect().topLeft())
-        main_x, main_y, _w, main_h = amazetheme.PREFS_TAB_BAR
-        self.assertEqual(theme.ui_px(bar[0] - main_x), at.x() - main_at.x(),
-                         "the sub-tab strip does not start under the main strip")
-        self.assertEqual(theme.ui_px(bar[1] - main_y - main_h),
-                         at.y() - main_at.y() - main.height(),
-                         "the sub-tab strip is not the drawn gap below the main strip")
-
-    def test_every_page_fits_inside_the_drawn_frame(self):
-        """The drawn frame is fixed: a page needing more is reported as clipped, never grown."""
-        dialog = self._dialog()
-        tabs = self._pages(dialog)
-        bar = max(theme.ui_px(amazetheme.PREFS_TAB_BAR[3]),   # the live strip when Houdini's font makes it taller ▸p/headless-host-font
-                  tabs.tabBar().sizeHint().height())
-        chrome = 2 * theme.ui_px(amazetheme.PREFS_DIALOG_MARGIN) + bar
-        budget = theme.ui_px(amazetheme.PREFS_FRAME[1]) - chrome
-        over = []
-        for index in range(tabs.count()):
-            wants = tabs.widget(index).sizeHint().height()
-            if wants > budget:
-                over.append(
-                    "%s wants %d, budget %d (frame %d - margins %d - "
-                    "tab bar %d), over by %d"
-                    % (tabs.tabText(index), wants, budget,
-                       theme.ui_px(amazetheme.PREFS_FRAME[1]),
-                       2 * theme.ui_px(amazetheme.PREFS_DIALOG_MARGIN),
-                       bar, wants - budget))
-        self.assertEqual(
-            [], over,
-            "these Preferences pages do not fit the drawn frame, so the "
-            "rows below the fold are clipped:\n  " + "\n  ".join(over))
 
 
 class EveryDrawnNodeIsBoundOrNamed(unittest.TestCase):
@@ -635,15 +352,15 @@ class EveryDrawnNodeIsBoundOrNamed(unittest.TestCase):
     def test_the_walk_finds_the_pins(self):
         """A build that pinned nothing would pass by exempting everything ▸p/vacuous-register"""
         self.assertGreaterEqual(
-            len(self.pins), 50,
+            len(self.pins), 25,    # 28 since Preferences, the largest, is Houdini's QML window
             "the frames built almost no pins, so the completeness check's "
             "empty result proves nothing")
         self.assertEqual(
-            {"P03a", "P03b", "T01", "T05", "T08", "T20", "T23", "T24", "T25", "T26", "L01", "B01", "S01",
-             "G01", "N01", "N01B", "N02"},
+            {"P01", "P02", "P03a", "P03b", "P04", "P05", "P06", "T01", "T05", "T08", "T20", "T23",
+             "T24", "T25", "T26", "L01", "B01", "S01", "G01", "N01", "N01B", "N02"},
             set(amazetheme.DIALOG_LAYOUT)
             - {frame_key for frame_key, _kind, _x, _y in self.pins},
-            "P03a and P03b draw only switches and tab strips, and the panel's areas "
+            "the P frames draw Preferences, now Houdini's own QML window, and the panel's areas "
             "are read through their own drawn_* - any other frame listed here "
             "built no widget sized from the document")
 
@@ -812,17 +529,17 @@ class MovingADrawnNodeMovesTheWidget(unittest.TestCase):
         return frame
 
     def test_a_wider_drawn_button_builds_a_wider_button(self):
-        from amaze.dialogs import prefs_dialog
-        prefs = test_support.fixture_prefs(self)
-        frame = self._widened("P01", "QPushButton", (148, 70), 5)
-        with mock.patch.dict(amazetheme.DIALOG_LAYOUT, {"P01": frame}):
+        from amaze.dialogs import library_dialog
+        from amaze.prefs import prefs as prefs_mod
+        frame = self._widened("D15", "QPushButton", (237, 193), 5)
+        with mock.patch.dict(amazetheme.DIALOG_LAYOUT, {"D15": frame}):
             amazetheme.forget_drawn_boxes()
-            dialog = prefs_dialog.PrefsDialog(prefs, panel=None)
+            dialog = library_dialog.ManageLibrariesDialog(prefs_mod.Prefs())
             self.addCleanup(dialog.deleteLater)
             button = [b for b in dialog.findChildren(QtWidgets.QPushButton)
-                      if b.text() == "Reload"][0]
+                      if b.text() == "Remove from List"][0]
             self.assertEqual(
-                theme.ui_px(48 + 5), pinned(self, button)[0],
+                theme.ui_px(104 + 5), pinned(self, button)[0],
                 "the drawn rect was widened and the built button did not "
                 "follow, so the dialog is not reading the document")
 
@@ -848,90 +565,6 @@ class MovingADrawnNodeMovesTheWidget(unittest.TestCase):
                 theme.ui_px(6 + 4), cancel.x() - (ok.x() + ok.width()),
                 "the drawn gap was widened and the built pair did not "
                 "follow, so the gap is still a constant")
-
-    def _prefs_dialog(self):
-        from amaze.dialogs import prefs_dialog
-        dialog = prefs_dialog.PrefsDialog(
-            test_support.fixture_prefs(self), panel=None)
-        self.addCleanup(dialog.deleteLater)
-        return dialog
-
-    def test_a_wider_drawn_LABEL_builds_a_wider_label(self):
-        """A label, not a button: a wider drawn label builds a wider label."""
-        frame = self._widened("P06", "QLabel", (148, 274), 5)
-        with mock.patch.dict(amazetheme.DIALOG_LAYOUT, {"P06": frame}):
-            amazetheme.forget_drawn_boxes()
-            dialog = self._prefs_dialog()
-            self.assertEqual(
-                theme.ui_px(322 + 5), dialog._lbl_version.maximumWidth(),
-                "the drawn version line was widened and the built label "
-                "did not follow, so its width is still a coincidence")
-
-        from amaze.dialogs import prefs_dialog    # the pin matches the WORDS, before a sample number
-        frame = dict(amazetheme.DIALOG_LAYOUT["P06"])
-        frame["nodes"] = tuple(
-            node[:5] + (prefs_dialog.VERSION_STEM + "9.9.9",)
-            if node[:3] == ("QLabel", 148, 274) else node
-            for node in frame["nodes"])
-        with mock.patch.dict(amazetheme.DIALOG_LAYOUT, {"P06": frame}):
-            amazetheme.forget_drawn_boxes()
-            dialog = self._prefs_dialog()
-            self.assertEqual(
-                theme.ui_px(322), dialog._lbl_version.maximumWidth(),
-                "the drawn version number changed and the pin no longer found the "
-                "node, so the label depends on a number that changes")
-
-
-class TheShowHidePageHasItsLines(unittest.TestCase):
-    """P03a and P03b draw a line along the sub-tab page's top and down its right edge."""
-
-    def test_the_drawn_lines_frame_the_drawn_page(self):
-        bar = amazetheme.PREFS_SUBTAB_BAR
-        for frame_key in ("P03a", "P03b"):
-            nodes = {n[0]: n for n in amazetheme.DIALOG_LAYOUT[frame_key]["nodes"]}
-            top, side = nodes["Line 1"], nodes["Line 2"]
-            with self.subTest(frame=frame_key):
-                self.assertEqual(bar[0], top[1], "the top line does not start under the strip")
-                self.assertEqual(top[1] + top[3], side[1],
-                                 "the top line does not end where the side line starts")
-                self.assertEqual(bar[1] + bar[3], side[2],
-                                 "the side line does not start under the strip")
-
-    def test_the_lines_run_along_the_page_top_and_right(self):
-        from amaze.dialogs import prefs_dialog
-        dialog = prefs_dialog.PrefsDialog(test_support.fixture_prefs(self), panel=None)
-        self.addCleanup(dialog.deleteLater)
-        dialog.show()
-        self.addCleanup(dialog.hide)
-        dialog.show_frame("P03a")
-        QtWidgets.QApplication.processEvents()
-        lines = dialog._page_lines
-        stack = lines.parentWidget().findChild(QtWidgets.QStackedWidget)
-        self.assertEqual(stack.geometry(), lines.geometry(), "the lines do not lie over the page")
-        picture = lines.grab().toImage()
-        line_color = QtGui.QColor(amazetheme.PREFS_PAGE_LINE_COLOR).rgb()
-        right, bottom = picture.width() - 1, picture.height() - 1
-        for x, y in ((0, 0), (right // 2, 0), (right, 0), (right, bottom // 2), (right, bottom)):
-            self.assertEqual(line_color, picture.pixel(x, y), "no line at %d,%d" % (x, y))
-        self.assertNotEqual(line_color, picture.pixel(right // 2, bottom // 2),
-                            "the page is filled, not lined")
-
-    def test_one_line_runs_under_the_tab_bar_across_the_whole_window(self):
-        from amaze.dialogs import prefs_dialog
-        dialog = prefs_dialog.PrefsDialog(test_support.fixture_prefs(self), panel=None)
-        self.addCleanup(dialog.deleteLater)
-        dialog.show()
-        self.addCleanup(dialog.hide)
-        QtWidgets.QApplication.processEvents()
-        bar = dialog._tabs.tabBar()
-        bottom = bar.mapTo(dialog, QtCore.QPoint(0, bar.height())).y()
-        thick = theme.ui_px(1)
-        self.assertEqual(QtCore.QRect(0, bottom - thick, dialog.width(), thick), dialog._tab_line.geometry(),
-                         "the line is not the tab bar's last row, edge to edge")    # P01's Line 3
-        picture = dialog.grab(dialog._tab_line.geometry()).toImage()
-        self.assertEqual({theme.color("tab_bar").rgb()},
-                         {picture.pixel(x, 0) for x in range(picture.width())}, "the row is not one colour")
-
 
 class TheFormFamilyMatchesItsFrame(unittest.TestCase):
     """D09 and D13 take every margin and gap from their frames. ▸r/form-from-frame"""

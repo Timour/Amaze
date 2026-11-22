@@ -842,11 +842,10 @@ class TheUserIsAUidWithANameTest(unittest.TestCase):
         import hou
         from amaze import messages
         from amaze.core import users
-        from amaze.dialogs import base_dialog, prefs_dialog
+        from amaze.dialogs import base_dialog, prefs_window, user_dialog
         p = self._prefs()
         users.create(p, "Plum")
-        dialog = prefs_dialog.PrefsDialog(p, panel=None)
-        self.addCleanup(dialog.deleteLater)
+        state = prefs_window.AmazePrefsState(p, panel=None)
         shown = []
 
         class Named:
@@ -862,7 +861,7 @@ class TheUserIsAUidWithANameTest(unittest.TestCase):
         ui = types.SimpleNamespace(displayMessage=lambda text, **_k: shown.append(text))
         with mock.patch.object(base_dialog, "NameDialog", Named), \
                 mock.patch.object(hou, "ui", ui, create=True):
-            dialog._ask_create_library_user()
+            state.setPref(prefs_window.USER, user_dialog.CREATE)    # what the create row sends
         self.assertEqual([messages.USER_NAME_TAKEN % "plum"], shown)
         self.assertEqual(1, len(users.all_users(p)), "a second Plum was made")
 
@@ -925,15 +924,11 @@ class TheUserListRowsTest(unittest.TestCase):
     """The User list holds the library's users, then a create row."""
 
     def test_the_rows_are_the_users_then_the_create_row(self):
-        from PySide6 import QtWidgets
         from amaze.dialogs import user_dialog
-        combo = QtWidgets.QComboBox()
-        self.addCleanup(combo.deleteLater)
-        user_dialog.fill_users(combo, {"uid-a": "Cobalt", "uid-b": "Sienna"})
-        self.assertEqual(3, combo.count(), "users plus the create row")
+        rows = user_dialog.user_rows({"uid-a": "Cobalt", "uid-b": "Sienna"})
+        self.assertEqual(3, len(rows), "users plus the create row")
         self.assertEqual(
-            user_dialog.CREATE,
-            combo.itemData(combo.count() - 1),
+            user_dialog.CREATE, rows[-1][1],
             "the create row is not marked with the sentinel, so a "
             "library user named like it could be mistaken for it")
 

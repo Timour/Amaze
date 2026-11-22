@@ -237,18 +237,17 @@ class LoadNeverRaisesAndAlwaysValidates(unittest.TestCase):
                          "falling back to its default")
 
     def test_preferences_opens_over_an_invalid_settings_file(self):
-        """The Render rows pass these straight to spin boxes, which raise on anything but a number."""
-        from amaze.dialogs import prefs_dialog
+        """The Render rows read these as numbers; junk in the file must reach them as the defaults."""
+        from amaze.dialogs import prefs_window
         from amaze.tests import test_support
         p = test_support.fixture_prefs(self)
         self._write_invalid_settings(p.path, directory=p.dir,
                            library_user=test_support.FIXTURE_USER)
         p.load()
-        dlg = prefs_dialog.PrefsDialog(p, panel=None)
-        self.addCleanup(dlg.deleteLater)
-        self.assertEqual(256, dlg.line_rendersize.value())
-        self.assertEqual(256, dlg._samples_spins["Redshift"].value())
-        self.assertTrue(dlg.cbx_render_on_import.isChecked())
+        state = prefs_window.AmazePrefsState(p, panel=None)
+        self.assertEqual("256", state.getPref("rendersize"))
+        self.assertEqual("256", state.getPref(renderers.REDSHIFT.samples))
+        self.assertTrue(state.getBool("render_on_import"))
 
     def test_the_render_setters_cast_and_clamp_to_the_rows_ranges(self):
         p = prefs_mod.Prefs()
@@ -269,22 +268,20 @@ class LoadNeverRaisesAndAlwaysValidates(unittest.TestCase):
 
     def test_every_spin_row_offers_what_its_setter_keeps(self):
         """A value past a row's end is clamped to that end, so the row can always show what is stored."""
-        from amaze.dialogs import prefs_dialog
+        from amaze.dialogs import prefs_window
         from amaze.tests import test_support
         p = test_support.fixture_prefs(self)
-        dlg = prefs_dialog.PrefsDialog(p, panel=None)
-        self.addCleanup(dlg.deleteLater)
-        for row, name, scale in (
-                (dlg.line_rendersize, "rendersize", 1),
-                (dlg._samples_spins["Redshift"], "rendersamples", 1),
-                (dlg._samples_spins["Karma"], "karma_rendersamples", 1),
-                (dlg._samples_spins["Octane"], "octane_rendersamples", 1),
-                (dlg.spin_ram_cache, "ram_cache_mb", 1),
-                (dlg.spin_parallel, "texture_parallel_conversions", 1),
-                (dlg.spin_matx_parallel, "matx_parallel_downloads", 1),
-                (dlg.spin_scroll_speed, "scroll_speed", 100)):
-            for end, past in ((row.minimum(), row.minimum() - 1),
-                              (row.maximum(), row.maximum() + 1)):
+        for name, scale in (
+                ("rendersize", 1),
+                ("rendersamples", 1),
+                ("karma_rendersamples", 1),
+                ("octane_rendersamples", 1),
+                ("ram_cache_mb", 1),
+                ("texture_parallel_conversions", 1),
+                ("matx_parallel_downloads", 1),
+                ("scroll_speed", 100)):
+            low, high = prefs_window.RANGES[name]    # what the slider row offers
+            for end, past in ((low, low - 1), (high, high + 1)):
                 with self.subTest(setting=name, value=past):
                     setattr(p, name, past if scale == 1 else past / scale)
                     self.assertEqual(end, round(getattr(p, name) * scale),
@@ -292,21 +289,19 @@ class LoadNeverRaisesAndAlwaysValidates(unittest.TestCase):
                                      "cannot show")
 
     def test_a_hidden_renderer_has_no_samples_row(self):
-        """Its Show/Hide switch hides the Render tab's row, and brings it back."""
-        from amaze.dialogs import prefs_dialog
+        """Its switch on the UI page hides the Render page's row, and brings it back."""
+        from amaze.dialogs import prefs_window
         from amaze.tests import test_support
         p = test_support.fixture_prefs(self)
         for renderer in renderers.ALL:
             setattr(p, renderer.switch, renderer is not renderers.OCTANE)
-        dlg = prefs_dialog.PrefsDialog(p, panel=None)
-        self.addCleanup(dlg.deleteLater)
-        form, row = dlg._samples_rows[renderers.OCTANE.key]
-        self.assertFalse(form.isRowVisible(row), "a hidden renderer kept its samples row")
-        for renderer in (renderers.KARMA, renderers.REDSHIFT):
-            shown_form, shown_row = dlg._samples_rows[renderer.key]
-            self.assertTrue(shown_form.isRowVisible(shown_row))
-        dlg._renderer_boxes[renderers.OCTANE.switch].setChecked(True)
-        self.assertTrue(form.isRowVisible(row), "switching it on did not bring the row back")
+        state = prefs_window.AmazePrefsState(p, panel=None)
+        offered = lambda: set(state.offeredRenderers)    # noqa: E731 - the rows shown, read again
+        self.assertNotIn(renderers.OCTANE.key, offered(), "a hidden renderer kept its samples row")
+        self.assertLessEqual({renderers.KARMA.key, renderers.REDSHIFT.key}, offered())
+        state.setPref(renderers.OCTANE.switch, "1")    # what its switch sends
+        self.assertIn(renderers.OCTANE.key, offered(), "switching it on did not bring the row back")
+        state.apply()
         self.assertTrue(p.renderer_octane_enabled)
 
 
@@ -1121,16 +1116,16 @@ class AGalleryIsLeftAsItWasFound(unittest.TestCase):
 
 class SettingsAreNotWrittenPerMouseMove(unittest.TestCase):
 
-    def test_close_still_persists(self):
+    def test_apply_still_persists(self):
         self.assertTrue(
-            calls("dialogs/prefs_dialog.py", "closeEvent", "save"),
-            "nothing saves the dialog's values any more")
+            calls("dialogs/prefs_window.py", "_apply", "save"),
+            "nothing saves the window's values any more")
 
-    def test_the_ram_slider_leaves_persistence_to_close(self):
-        """ClickSlider emits on every mouse move, so saving per tick fsyncs settings.json all drag long."""
+    def test_the_ram_slider_leaves_persistence_to_apply(self):
+        """A slider row is set on every mouse move: a save per tick fsyncs settings.json all drag long."""
         self.assertFalse(
-            calls("dialogs/prefs_dialog.py", "set_ram_cache_mb", "save"),
-            "the RAM Cache setter saves on every tick again")
+            calls("dialogs/prefs_window.py", "setPref", "save"),
+            "a row's change saves on every tick again")
 
 
 class TheFileLoaderQueueDoesNotBusySpin(unittest.TestCase):
@@ -1267,104 +1262,88 @@ class TheUserRowCreatesAndDeletes(unittest.TestCase):
 
     def test_the_user_row_offers_create_and_delete(self):
         from amaze.core import users
-        from amaze.dialogs import prefs_dialog, user_dialog
+        from amaze.dialogs import prefs_window, user_dialog
         from amaze.tests import test_support
         p = test_support.fixture_prefs(self)
         p.library_user = users.create(p, "Cobalt")
-        dlg = prefs_dialog.PrefsDialog(p, panel=None)
-        self.addCleanup(dlg.deleteLater)
-        combo = dlg.cbb_library_user
+        state = prefs_window.AmazePrefsState(p, panel=None)
         sentinel = user_dialog.CREATE
-        rows = [combo.itemData(i) for i in range(combo.count())]
+        rows = [row["value"] for row in state.userOptions]
         self.assertIn(sentinel, rows,
                       "the row cannot create a user - the create entry "
                       "is missing here")
         self.assertEqual(sentinel, rows[-1],
                          "the create entry is not the LAST row, so it "
                          "reads as a user called Create")
-        self.assertTrue(dlg._btn_delete_user.isEnabled())
+        self.assertTrue(state.userEditable, "Rename and Delete are off for the open library's user")
 
     def test_the_users_are_listed_a_to_z(self):
         from amaze.core import users
-        from amaze.dialogs import prefs_dialog
+        from amaze.dialogs import prefs_window
         from amaze.tests import test_support
         p = test_support.fixture_prefs(self)
         for name in ("sienna", "Cobalt", "Fern"):
             p.library_user = users.create(p, name)
-        dlg = prefs_dialog.PrefsDialog(p, panel=None)
-        self.addCleanup(dlg.deleteLater)
-        combo = dlg.cbb_library_user
+        state = prefs_window.AmazePrefsState(p, panel=None)
         self.assertEqual(["Cobalt", "Fern", "sienna"],
-                         [combo.itemText(i) for i in range(combo.count() - 1)],
+                         [row["text"] for row in state.userOptions[:-1]],
                          "the users are not listed by name, A to Z")
 
-    def test_a_quiet_set_emits_nothing_and_keeps_an_outer_block(self):
-        from amaze.dialogs import prefs_dialog
-        from amaze.helpers import ui_helpers
-        box = ui_helpers.ToggleSwitch("Probe")
-        self.addCleanup(box.deleteLater)
-        heard = []
-        box.toggled.connect(heard.append)
-        prefs_dialog._show_quietly(box, True)
-        self.assertEqual(([], True, False),
-                         (heard, box.isChecked(), box.signalsBlocked()))
-        box.blockSignals(True)
-        prefs_dialog._show_quietly(box, False)
-        self.assertTrue(box.signalsBlocked(),
-                        "`_show_quietly` unblocked signals the caller had blocked")
+    @staticmethod
+    def _picked_name(state):
+        """The name the User row shows for the user picked."""
+        from amaze.dialogs import prefs_window
+        picked = state.getPref(prefs_window.USER)
+        return next((row["text"] for row in state.userOptions if row["value"] == picked), "")
 
     def test_a_created_user_is_made_and_switched_to_on_apply(self):
         from amaze.core import users
-        from amaze.dialogs import prefs_dialog
+        from amaze.dialogs import prefs_window
         from amaze.tests import test_support
         p = test_support.fixture_prefs(self)
         p.library_user = users.create(p, "Cobalt")
-        dlg = prefs_dialog.PrefsDialog(p, panel=None)
-        self.addCleanup(dlg.deleteLater)
-        dlg.create_library_user("  Fern  ")
+        state = prefs_window.AmazePrefsState(p, panel=None)
+        state.create_user("  Fern  ")
         self.assertEqual({"Cobalt"}, set(users.all_users(p).values()),
                          "the user was made before Apply")
-        self.assertEqual("Fern", dlg.cbb_library_user.currentText())
-        self.assertTrue(dlg.apply_library())
+        self.assertEqual("Fern", self._picked_name(state))
+        state.apply()
+        self.assertEqual(0, state.changeCount, "Apply left the new user pending")
         self.assertEqual({"Cobalt", "Fern"}, set(users.all_users(p).values()))
         self.assertEqual("Fern", users.name_for(p, p.library_user),
                          "Apply did not switch this computer to the new user")
-        self.assertEqual("Fern", dlg.cbb_library_user.currentText())
+        self.assertEqual("Fern", self._picked_name(state))
 
     def test_deleting_the_current_user_selects_nobody(self):
         from amaze.core import users
-        from amaze.dialogs import prefs_dialog
+        from amaze.dialogs import prefs_window
         from amaze.tests import test_support
         p = test_support.fixture_prefs(self)
         first = users.create(p, "Cobalt")
         users.create(p, "Sienna")
         users.create(p, "Fern")
         p.library_user = first
-        dlg = prefs_dialog.PrefsDialog(p, panel=None)
-        self.addCleanup(dlg.deleteLater)
-        dlg.delete_library_user(first)
+        state = prefs_window.AmazePrefsState(p, panel=None)
+        state.delete_user(first)
         self.assertEqual({"Sienna", "Fern"}, set(users.all_users(p).values()))
         self.assertEqual("", str(p.library_user or ""))
-        self.assertEqual(-1, dlg.cbb_library_user.currentIndex(),
+        self.assertEqual("", state.getPref(prefs_window.USER),
                          "a user was picked in a library of several with no match")
-        self.assertFalse(dlg._btn_edit_user.isEnabled())
-        self.assertFalse(dlg._btn_delete_user.isEnabled())
-        self.assertFalse(dlg._btn_apply_library.isEnabled(),
-                         "Apply is enabled with no user picked")
+        self.assertFalse(state.userEditable, "Rename and Delete are on with no user picked")
+        self.assertFalse(state.userPicked, "the User row does not ask to pick or create a user")
 
     def test_the_only_user_left_is_listed_and_not_picked(self):
         from amaze.core import users
-        from amaze.dialogs import prefs_dialog
+        from amaze.dialogs import prefs_window
         from amaze.tests import test_support
         p = test_support.fixture_prefs(self)
         first = users.create(p, "Cobalt")
         users.create(p, "Sienna")
         p.library_user = first
-        dlg = prefs_dialog.PrefsDialog(p, panel=None)
-        self.addCleanup(dlg.deleteLater)
-        dlg.delete_library_user(first)
-        self.assertGreaterEqual(dlg.cbb_library_user.findText("Sienna"), 0)
-        self.assertEqual(-1, dlg.cbb_library_user.currentIndex(),
+        state = prefs_window.AmazePrefsState(p, panel=None)
+        state.delete_user(first)
+        self.assertIn("Sienna", [row["text"] for row in state.userOptions])
+        self.assertEqual("", state.getPref(prefs_window.USER),
                          "the user left was picked because it was the only one")
         self.assertEqual("", str(p.library_user or ""))
 
@@ -1374,20 +1353,19 @@ class TheOverwriteSwitchFollowsTheLibrary(unittest.TestCase):
 
     def test_switching_libraries_rereads_the_overwrite_policy(self):
         from amaze.core import library_settings
-        from amaze.dialogs import prefs_dialog
+        from amaze.dialogs import prefs_window
         from amaze.tests import test_support
         p = test_support.fixture_prefs(self)
         library_settings.set_allow_overwrite(p, False)
-        dlg = prefs_dialog.PrefsDialog(p, panel=None)
-        self.addCleanup(dlg.deleteLater)
-        self.assertFalse(dlg._cbx_allow_overwrite.isChecked(),
+        state = prefs_window.AmazePrefsState(p, panel=None)
+        self.assertFalse(state.getBool(prefs_window.OVERWRITE),
                          "premise: the first library forbids overwrite")
         folder = test_support.scratch_dir("amaze_policy_switch_")
         self.addCleanup(shutil.rmtree, folder, True)
         self.assertTrue(prefs_mod.create_library(folder), "premise: the other library is made")
-        dlg._switch_library(folder, p.library_user)
+        state._switch_library(folder, p.library_user)
         self.assertTrue(
-            dlg._cbx_allow_overwrite.isChecked(),
+            state.getBool(prefs_window.OVERWRITE),
             "the switch still shows the PREVIOUS library's policy - a "
             "library with no policy.json allows overwrite")
 
@@ -1395,7 +1373,7 @@ class TheOverwriteSwitchFollowsTheLibrary(unittest.TestCase):
 class TheCacheWipeCannotBeSuppressed(unittest.TestCase):
     """`displayConfirmation` defaults `suppress` to the global OverwriteFile do-not-ask flag."""
 
-    def _asked_with(self, dlg):
+    def _asked_with(self, state):
         seen = {}
 
         def confirm(text, *_args, **kwargs):
@@ -1407,17 +1385,15 @@ class TheCacheWipeCannotBeSuppressed(unittest.TestCase):
                 hou, "ui",
                 types.SimpleNamespace(displayConfirmation=confirm),
                 create=True):
-            dlg.clear_texture_cache()
+            state.deleteCache()
         return seen
 
     def test_the_wipe_asks_with_the_non_suppressable_type(self):
         from amaze import messages
-        from amaze.dialogs import prefs_dialog
+        from amaze.dialogs import prefs_window
         from amaze.tests import test_support
         p = test_support.fixture_prefs(self)
-        dlg = prefs_dialog.PrefsDialog(p, panel=None)
-        self.addCleanup(dlg.deleteLater)
-        seen = self._asked_with(dlg)
+        seen = self._asked_with(prefs_window.AmazePrefsState(p, panel=None))
         self.assertIn("kwargs", seen, "the wipe never showed a confirmation")
         self.assertEqual(messages.CONFIRM_CLEAR_THUMBNAIL_CACHE,
                          seen.get("text"))
@@ -1432,19 +1408,17 @@ class TheCacheWipeCannotBeSuppressed(unittest.TestCase):
 class PreferencesShowTheDrawnTexts(unittest.TestCase):
     """Three Preferences messages use the designed wording in `messages.py`, not an inline copy."""
 
-    def _dialog(self):
-        from amaze.dialogs import prefs_dialog
+    def _state(self):
+        from amaze.dialogs import prefs_window
         from amaze.tests import test_support
-        p = test_support.fixture_prefs(self)
-        dlg = prefs_dialog.PrefsDialog(p, panel=None)
-        self.addCleanup(dlg.deleteLater)
-        return dlg
+        return prefs_window.AmazePrefsState(test_support.fixture_prefs(self), panel=None)
 
     def test_the_material_versions_help(self):
         from amaze import messages
         from amaze.core import library_settings
-        dlg = self._dialog()
-        library_settings.set_allow_overwrite(dlg._prefs, False)
+        from amaze.dialogs import prefs_window
+        state = self._state()
+        library_settings.set_allow_overwrite(state._prefs, False)
         seen = {}
 
         def display(text, *_args, **kwargs):
@@ -1454,16 +1428,17 @@ class PreferencesShowTheDrawnTexts(unittest.TestCase):
         with mock.patch.object(hou, "ui",
                                types.SimpleNamespace(displayMessage=display),
                                create=True):
-            dlg.set_allow_overwrite(True)
+            state.setPref(prefs_window.OVERWRITE, "1")    # what the Versions switch sends
         self.assertEqual(messages.MATERIAL_VERSIONS_TURN_ON_CONFIRM,
                          seen.get("text"), "premise: the confirm was asked")
         self.assertEqual(messages.HELP_MATERIAL_VERSIONS, seen.get("help"))
+        self.assertFalse(state.getBool(prefs_window.OVERWRITE), "Cancel left the switch on")
 
     def _save_log(self, answer=1, **patches):
         """Save Log via hou.ui, as in all of Preferences: (folder, export, messages, reveal)."""
         from amaze.core import debug
         from amaze.tests import test_support
-        dlg = self._dialog()
+        state = self._state()
         folder = test_support.scratch_dir("amaze_log_save_")
         self.addCleanup(shutil.rmtree, folder, True)
         asked, displayed = [], []
@@ -1481,7 +1456,7 @@ class PreferencesShowTheDrawnTexts(unittest.TestCase):
                                   side_effect=AssertionError("a Qt box")), \
                 mock.patch.object(debug, "export_log", **patches) as export, \
                 mock.patch("amaze.helpers.ui_helpers.reveal") as reveal:
-            dlg.save_debug_log()
+            state.saveLog()
         self.assertEqual([hou.fileType.Directory], [k.get("file_type") for k in asked])
         return folder, export, displayed, reveal
 
@@ -1592,22 +1567,16 @@ class ThePickersStartInAForwardSlashPath(unittest.TestCase):
             method()
         return seen.get("start_directory", "")
 
-    def _dialog(self, prefs_obj):
-        from amaze.dialogs import prefs_dialog
-        dlg = prefs_dialog.PrefsDialog(prefs_obj, panel=None)
-        self.addCleanup(dlg.deleteLater)
-        return dlg
-
     def test_the_cache_picker_starts_in_a_forward_slash_path(self):
+        from amaze.dialogs import prefs_window
         from amaze.tests import test_support
         p = test_support.fixture_prefs(self)
         p.cache_dir = ""   # unset: falls through to the machine's convention, built by `os.path.join`
-        dlg = self._dialog(p)
-        from amaze.dialogs import prefs_dialog
+        state = prefs_window.AmazePrefsState(p, panel=None)
         native = "C:\\scratch\\AppData\\Local\\Amaze\\Cache"
-        with mock.patch.object(prefs_dialog.hostos, "cache_root",   # the dialog's own reference: a fixture panel reloads hostos
+        with mock.patch.object(prefs_window.hostos, "cache_root",   # the window's own reference: a fixture panel reloads hostos
                                lambda: native):
-            start = self._started_in(dlg.change_cache_path)
+            start = self._started_in(state.changeCachePath)
         self.assertEqual(
             "C:/scratch/AppData/Local/Amaze/Cache", start,
             "the cache picker opens on a native Windows path; selectFile "
@@ -1620,27 +1589,27 @@ class APickedRootKeepsItsSlash(unittest.TestCase):
     WINDOWS_OS = types.SimpleNamespace(path=ntpath, sep="\\")    # what os.path and os.sep are there
 
     def _picked(self, method, answer, windows=False):
-        from amaze.dialogs import prefs_dialog
+        from amaze.dialogs import prefs_window
         from amaze.tests import test_support
         p = test_support.fixture_prefs(self)
         p.cache_dir = "/start"    # so the picker does not ask for the machine's cache root
-        dlg = prefs_dialog.PrefsDialog(p, panel=None)
-        self.addCleanup(dlg.deleteLater)
+        state = prefs_window.AmazePrefsState(p, panel=None)
         ui = types.SimpleNamespace(selectFile=lambda *_a, **_k: answer,
                                    displayMessage=lambda *_a, **_k: 0)
         with contextlib.ExitStack() as stack:
             stack.enter_context(mock.patch.object(hou, "ui", ui, create=True))
             stack.enter_context(mock.patch.object(p, "save", lambda: None))
             stack.enter_context(mock.patch.object(
-                prefs_dialog.hostos, "set_cache_override", lambda _path: None))
+                prefs_window.hostos, "set_cache_override", lambda _path: None))
             if windows:
                 stack.enter_context(mock.patch.object(
-                    prefs_dialog.hostos, "os", self.WINDOWS_OS))
-            getattr(dlg, method)()
+                    prefs_window.hostos, "os", self.WINDOWS_OS))
+            getattr(state, method)()
+            state.apply()    # the picked folder is used from Apply
         return p.cache_dir
 
     def test_a_picked_root_is_kept_whole(self):
-        for method in ("change_cache_path",):
+        for method in ("changeCachePath",):
             for answer, windows, kept in (
                     ("/", False, "/"), ("D:/", True, "D:/"),
                     ("/Volumes/cache/", False, "/Volumes/cache"),

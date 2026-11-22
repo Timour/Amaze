@@ -70,7 +70,7 @@ The **Amaze shelf** has five tools:
 
 The **section tabs** at the top switch between Material, Color, Node,
 Code and File. Each tab shows the section's icon before its name. Each
-section keeps its own category, view mode and scroll position. Preferences ▸ Show/Hide ▸ Sections sets which sections are
+section keeps its own category, view mode and scroll position. Preferences ▸ UI ▸ Sections sets which sections are
 shown.
 
 The **toolbar**, from left to right:
@@ -121,7 +121,7 @@ The **sidebar** holds categories (Material, Node, Code), registered
 folders and the folders inside them (File) or palette groups (Color). Its right-click menu adds,
 renames, deletes and [colours](#category-colors) categories; File's
 folders have a menu of [their own](#locations). **Sort by name**, in
-every section, sorts the rows alphabetically, with All at the top. Preferences ▸ Look
+every section, sorts the rows alphabetically, with All at the top. Preferences ▸ UI
 sets the category counts and hides empty categories.
 
 Sidebar rows are reordered by dragging. A line shows where the row
@@ -412,7 +412,7 @@ Browses folders on disk.
   Preferences ▸ Render sets how many convert at once. **Cancel**, at the
   right end of the tab row, stops the conversion and keeps the
   thumbnails already made. A RAT file shows a rat until **Render RAT
-  Files** is switched on in Preferences ▸ Look; then it gets a thumbnail
+  Files** is switched on in Preferences ▸ UI; then it gets a thumbnail
   like any other image.
 - **Geometry** (.bgeo, .obj, .fbx, .abc, .usd, .usdz, .glb and more) gets
   viewport-rendered thumbnails, wireframe over shaded. **Double-click**,
@@ -501,7 +501,7 @@ that is running on another computer shows the removal after a restart.
 
 ### Write Paths As
 
-Preferences ▸ Look ▸ **Write Paths As** sets how Copy Path writes paths,
+Preferences ▸ Library ▸ **Write Paths As** sets how Copy Path writes paths,
 and how a material imported into the scene refers to its textures: **$HOME** (the default), **$JOB**, **$HIP** or
 **Absolute**. A variable is used when the path is under it; other paths
 are written in full.
@@ -603,7 +603,7 @@ saves and closes it.
   `captures` folder, and **Render** brings the render back.
 - Tile icons are stored in the library.
 
-Preferences ▸ Look ▸ **Tile Icon Line** sets the line weight.
+Preferences ▸ UI ▸ **Tile Icon Line** sets the line weight.
 
 ---
 
@@ -807,7 +807,16 @@ Background** and **Render Thumbs on Import**. Below the divider:
 **Conversion Threads** for texture conversion, **Download
 Resolution** and **Parallel Downloads** for the online sources.
 
-### Show/Hide
+### UI
+
+<img src="docs/images/prefs_look.png" width="440">
+
+**Show Counts on Categories**, **Hide Empty Categories**, **Step Size**
+(the size slider moves in steps of 64 px), **Render RAT Files** (off:
+RAT files in the File tab show a rat and are not converted), **System
+File Icons** (off: files with no preview show the generic file icon),
+**Write Paths As**, **Tile Icon Line** (Thin, or Feather's Regular) and **Scroll
+Speed (%)**.
 
 <img src="docs/images/prefs_showhide.png" width="440">
 <img src="docs/images/prefs_showhide_sections.png" width="440">
@@ -820,17 +829,6 @@ Two sub-tabs set which renderers and sections Amaze shows.
   Samples row is removed from the Render tab.
 - **Sections** has a switch for each section. A section that is
   switched off has no tab in the panel.
-
-### Look
-
-<img src="docs/images/prefs_look.png" width="440">
-
-**Show Counts on Categories**, **Hide Empty Categories**, **Step Size**
-(the size slider moves in steps of 64 px), **Render RAT Files** (off:
-RAT files in the File tab show a rat and are not converted), **System
-File Icons** (off: files with no preview show the generic file icon),
-**Write Paths As**, **Tile Icon Line** (Thin, or Feather's Regular) and **Scroll
-Speed (%)**.
 
 ### Add-On
 

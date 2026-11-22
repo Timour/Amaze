@@ -579,13 +579,10 @@ class TheAboutTabCanActuallyRunAnInstall(unittest.TestCase):
         self.dir = tempfile.mkdtemp(prefix="amaze_update_ui_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
 
-    def _dialog(self):
-        from amaze.dialogs import prefs_dialog
+    def _state(self):
+        from amaze.dialogs import prefs_window
 
-        prefs = test_support.fixture_prefs(self)
-        dialog = prefs_dialog.PrefsDialog(prefs, panel=None)
-        self.addCleanup(dialog.deleteLater)
-        return dialog
+        return prefs_window.AmazePrefsState(test_support.fixture_prefs(self), panel=None)
 
     def test_a_successful_install_reports_and_withdraws_the_offer(self):
         import hou
@@ -597,8 +594,8 @@ class TheAboutTabCanActuallyRunAnInstall(unittest.TestCase):
         os.makedirs(install)
         backup = os.path.join(self.dir, "install.backup")
 
-        dialog = self._dialog()
-        dialog._last_update = updater.Update(
+        state = self._state()
+        state._last_update = updater.Update(
             updater.NEWER, version="9.9",
             url="https://example.invalid/r.zip", sentence="newer")
 
@@ -606,14 +603,14 @@ class TheAboutTabCanActuallyRunAnInstall(unittest.TestCase):
                 patch.object(updater, "fetch_and_stage",
                              return_value=os.path.join(self.dir, "staged")), \
                 patch.object(updater, "apply_update", return_value=backup):
-            dialog.install_update()
+            state.pressUpdate()
 
-        text = dialog._lbl_version.text()
+        text = state.versionLine
         self.assertIn("9.9", text, "the sentence does not name the version")
         self.assertIn("Restart", text,
                       "nothing tells the user the new build is not live "
                       "until Houdini restarts")
-        self.assertEqual("Check for Updates", dialog._btn_update.text(),
+        self.assertEqual("Check for Updates", state.updateLabel,
                          "the install is still offered after installing")
 
     def test_a_failed_install_shows_the_updaters_own_sentence(self):
@@ -624,8 +621,8 @@ class TheAboutTabCanActuallyRunAnInstall(unittest.TestCase):
 
         install = os.path.join(self.dir, "install")
         os.makedirs(install, exist_ok=True)
-        dialog = self._dialog()
-        dialog._last_update = updater.Update(
+        state = self._state()
+        state._last_update = updater.Update(
             updater.NEWER, version="9.9",
             url="https://example.invalid/r.zip", sentence="newer")
 
@@ -634,12 +631,12 @@ class TheAboutTabCanActuallyRunAnInstall(unittest.TestCase):
                              side_effect=OSError(
                                  "the downloaded file is not a zip "
                                  "archive. Nothing has been changed.")):
-            dialog.install_update()
+            state.pressUpdate()
 
-        self.assertIn("not a zip archive", dialog._lbl_version.text(),
+        self.assertIn("not a zip archive", state.versionLine,
                       "the updater's own message was replaced or "
                       "dropped")
-        self.assertEqual("Install Update", dialog._btn_update.text(),
+        self.assertEqual("Install Update", state.updateLabel,
                          "a refused install removed the Install Update "
                          "offer, so a retry has to check again first")
 
@@ -649,18 +646,18 @@ class TheAboutTabCanActuallyRunAnInstall(unittest.TestCase):
 
         from amaze.core import updater
 
-        dialog = self._dialog()
-        dialog._last_update = updater.Update(
+        state = self._state()
+        state._last_update = updater.Update(
             updater.NEWER, version="9.9",
             url="https://example.invalid/r.zip", sentence="newer")
 
         with patch.object(hou, "getenv", return_value=""), \
                 patch.object(updater, "fetch_and_stage") as fetch:
-            dialog.install_update()
+            state.pressUpdate()
 
         fetch.assert_not_called()
         self.assertIn("can't tell where it's installed",
-                      dialog._lbl_version.text())
+                      state.versionLine)
 
 
 class TheAboutTabOffersTheUpdateInOnePlace(unittest.TestCase):
@@ -673,31 +670,18 @@ class TheAboutTabOffersTheUpdateInOnePlace(unittest.TestCase):
         self.app = (QtWidgets.QApplication.instance()
                     or QtWidgets.QApplication([]))
 
-    def _dialog(self):
-        from amaze.dialogs import prefs_dialog
+    def _state(self):
+        from amaze.dialogs import prefs_window
 
-        prefs = test_support.fixture_prefs(self)
-        dialog = prefs_dialog.PrefsDialog(prefs, panel=None)
-        self.addCleanup(dialog.deleteLater)
-        return dialog
-
-    def _form(self, dialog):
-        """The About form, found from the version label; the dialog keeps no reference to it."""
-        from PySide6 import QtWidgets
-
-        return dialog._lbl_version.parentWidget().findChild(
-            QtWidgets.QFormLayout)
+        return prefs_window.AmazePrefsState(test_support.fixture_prefs(self), panel=None)
 
     def test_the_version_line_is_shown_before_the_feed_is_checked(self):
-        dialog = self._dialog()
+        state = self._state()
 
         self.assertEqual("Amaze version " + branding.APP_VERSION,
-                         dialog._lbl_version.text(),
+                         state.versionLine,
                          "the About tab does not show which Amaze this is "
                          "until the release feed is checked")
-        self.assertTrue(dialog._lbl_version.wordWrap(),
-                        "an update message is shown in this label, and it "
-                        "would widen the dialog instead of wrapping")
 
     def test_a_found_release_changes_the_button_and_the_next_press_installs(
             self):
@@ -707,18 +691,18 @@ class TheAboutTabOffersTheUpdateInOnePlace(unittest.TestCase):
             updater.NEWER, version="9.9",
             url="https://example.invalid/r.zip",
             sentence="Amaze 9.9 is available. You are running 1.0.")
-        dialog = self._dialog()
+        state = self._state()
 
         with patch.object(updater, "check", return_value=found), \
                 patch.object(updater, "install") as install:
-            dialog._btn_update.click()
+            state.pressUpdate()
             install.assert_not_called()    # the first press CHECKS; nothing on disk changes until a second press
-            self.assertEqual("Install Update", dialog._btn_update.text(),
+            self.assertEqual("Install Update", state.updateLabel,
                              "a release was found and the button still "
                              "only offers to look for one")
-            self.assertIn("9.9", dialog._lbl_version.text(),
+            self.assertIn("9.9", state.versionLine,
                           "the result is not shown in the version line")
-            dialog._btn_update.click()
+            state.pressUpdate()
 
         install.assert_called_once_with(found)
 
@@ -728,15 +712,15 @@ class TheAboutTabOffersTheUpdateInOnePlace(unittest.TestCase):
         answer = updater.Update(
             updater.UP_TO_DATE, version="1.0",
             sentence="You are running 1.0, which is the newest release.")
-        dialog = self._dialog()
+        state = self._state()
 
         with patch.object(updater, "check", return_value=answer):
-            dialog._btn_update.click()
+            state.pressUpdate()
 
-        self.assertEqual(answer.sentence, dialog._lbl_version.text(),
+        self.assertEqual(answer.sentence, state.versionLine,
                          "the result was shown somewhere other than the "
                          "version line")
-        self.assertEqual("Check for Updates", dialog._btn_update.text(),
+        self.assertEqual("Check for Updates", state.updateLabel,
                          "the button offers an install after a check that "
                          "found nothing to install")
 
@@ -762,64 +746,39 @@ class TheAboutTabOffersTheUpdateInOnePlace(unittest.TestCase):
     def test_an_update_that_updates_the_library_turns_red_and_shows_the_warning(self):
         """▸ P06: the drawn warning colour and line."""
         from unittest.mock import patch
-        from amaze import amazetheme
-        dialog = self._dialog()
+        state = self._state()
         with patch.object(updater, "check", return_value=self._found(99)):
-            dialog._btn_update.click()
-        self.assertEqual("Install Update", dialog._btn_update.text())
-        self.assertIn(amazetheme.UPDATE_WARNING_FILL, dialog._btn_update.styleSheet())
+            state.pressUpdate()
+        self.assertEqual("Install Update", state.updateLabel)
+        self.assertTrue(state.updateWarns, "Install Update is not Houdini's danger button")
         self.assertEqual("Amaze v9.9 is available. The library will be updated to v%s."
-                         % library_settings.version_label(99), dialog._lbl_version.text())
+                         % library_settings.version_label(99), state.versionLine)
 
     def test_an_update_that_leaves_the_library_stays_the_usual_colour(self):
         from unittest.mock import patch
-        dialog = self._dialog()
+        state = self._state()
         with patch.object(updater, "check", return_value=self._found(1)):
-            dialog._btn_update.click()
-        self.assertEqual("", dialog._btn_update.styleSheet())
+            state.pressUpdate()
+        self.assertFalse(state.updateWarns)
         self.assertEqual("Amaze 9.9 is available. You are running 1.0.",
-                         dialog._lbl_version.text())
+                         state.versionLine)
 
     def test_the_library_update_is_installed_only_after_continue(self):
         from unittest.mock import patch
-        dialog = self._dialog()
+        state = self._state()
         found = self._found(99)
         for choice, installs in ((1, 0), (0, 1)):
             asked = self._ui_returning(choice)
             with patch.object(updater, "check", return_value=found), \
                     patch.object(updater, "install") as install:
-                dialog._last_update = None
-                dialog._btn_update.click()
-                dialog._btn_update.click()
+                state._last_update = None
+                state.pressUpdate()
+                state.pressUpdate()
             self.assertEqual(installs, install.call_count, "answer %d" % choice)
             text, kwargs = asked[0]
             self.assertEqual("The library will be updated and won't work with "
                              "Amaze versions older than 9.8.0.", text)
             self.assertEqual(("Continue", "Cancel"), tuple(kwargs["buttons"]))
-
-    def test_the_about_form_keeps_ONE_divider_above_the_beta_switch(self):
-        from PySide6 import QtWidgets
-
-        dialog = self._dialog()
-        form = self._form(dialog)
-        dividers = [row for row in range(form.rowCount())
-                    if form.itemAt(
-                        row, QtWidgets.QFormLayout.ItemRole.SpanningRole)]
-
-        self.assertEqual(
-            1, len(dividers),
-            "the About form has %d dividers; the design has one, "
-            "above Add-On beta versions" % len(dividers))
-        rows = [form.getWidgetPosition(widget)[0] for widget in (
-            dialog._lbl_version, dialog._btn_update.parentWidget(),
-            dialog._cbx_debug.parentWidget(), dialog._cbx_addon_betas)]
-        self.assertNotIn(-1, rows, "a row was not found on the form")
-        self.assertEqual(sorted(rows), rows,
-                         "the rows are not in the order version, buttons, debug, "
-                         "Add-On beta versions: %s" % rows)
-        self.assertEqual([rows[2] + 1, rows[3] - 1], [dividers[0]] * 2,
-                         "the divider is not between the debug row "
-                         "and Add-On beta versions")
 
 
 class TheShelfToolAsksTheSameQuestion(unittest.TestCase):

@@ -40,6 +40,13 @@ def reveal(path: str) -> None:
         return
     debug.event("file", "shown in the file browser", path=path)
 
+
+def open_url(url: str) -> None:
+    """Open `url` in the system's browser; a refusal is logged, as a silent failure gives no clue."""
+    if not QtGui.QDesktopServices.openUrl(QtCore.QUrl(url)):
+        debug.event("prefs", "the OS refused to open the link", url=url)
+
+
 def copy_files(paths) -> bool:
     """Put `paths` on the system clipboard as files, and as text one per line; False without one."""
     clipboard = QtWidgets.QApplication.clipboard()
@@ -422,19 +429,6 @@ def fit_drawn(widget, frame_key: str, kind: str, text: str,
     _fit_to_box(widget, frame_key, kind, found[nth], height, grow)
 
 
-def fit_drawn_stem(widget, frame_key: str, kind: str, stem: str,
-                   height: bool = True) -> None:
-    """Size `widget` from the one drawn node whose text starts with `stem`; else no change."""
-    found = [box for (drawn_kind, text), box
-             in amazetheme.drawn_boxes(frame_key).items()
-             if drawn_kind == kind and text and text.startswith(stem)]
-    if len(found) != 1:
-        debug.event("ui", "no ONE drawn box opens with this stem",
-                    frame=frame_key, kind=kind, stem=stem, found=len(found))
-        return
-    _fit_to_box(widget, frame_key, kind, found[0], height)
-
-
 def drawn_kind(widget, frame_key: str) -> str:
     """The kind `frame_key` draws this widget as: its class name, or the nearest drawn base."""
     boxes = amazetheme.drawn_boxes(frame_key)
@@ -748,6 +742,55 @@ class _StripLine(QtWidgets.QWidget):
         painter = QtGui.QPainter(self)    # Houdini's style ends the first and last tab a row short of the others
         painter.fillRect(self.rect(), theme.color("tab_bar"))
         painter.end()
+
+
+LOGO_HEIGHT = 34    # the About wordmark's drawn height, its empty margin trimmed off
+_SVG_SIZE = re.compile(r'viewBox="0 0 ([0-9.]+) ([0-9.]+)"')    # an SVG file's drawn width and height
+_logo_cache = None   # the wordmark rendered for one pixel ratio, reused while the ratio stays
+
+
+def logo_image(ratio: float):
+    """The Amaze wordmark cropped to its pixels, LOGO_HEIGHT tall at pixel ratio `ratio`. ▸r/screen-dpr"""
+    global _logo_cache
+    if isinstance(_logo_cache, dict) and _logo_cache.get("dpr") == ratio:
+        return _logo_cache["image"] or None
+
+    path = amaze.package_file("ui", "logo.svg")
+    image = None
+    try:
+        with open(path, encoding="utf-8") as handle:
+            drawn = _SVG_SIZE.search(handle.read())
+        tall = round(1024 * float(drawn.group(2)) / float(drawn.group(1)))    # paint_svg fills the image
+        full = QtGui.QImage(1024, tall, QtGui.QImage.Format.Format_ARGB32)
+        if paint_svg(full, path):
+            box = QtGui.QRegion(
+                QtGui.QBitmap.fromImage(full.createAlphaMask())
+            ).boundingRect()
+            if not box.isEmpty():
+                image = full.copy(box).scaledToHeight(   # DEVICE pixels tall, drawn back at logical size
+                    max(1, round(theme.ui_px(LOGO_HEIGHT) * ratio)),
+                    QtCore.Qt.TransformationMode.SmoothTransformation,
+                )
+                image.setDevicePixelRatio(ratio)
+    except Exception as exc:                                # noqa: BLE001
+        debug.event("prefs", "About logo not loaded", error=str(exc))   # event, not note: it is cosmetic
+    _logo_cache = {"dpr": ratio, "image": image if image is not None
+                   else False}
+    return image
+
+
+class LogoImages(QtQuick.QQuickImageProvider):
+    """`image://amazelogo/logo`: the trimmed wordmark at the pixel ratio the QML asks for."""
+
+    def __init__(self) -> None:
+        super().__init__(QtQml.QQmlImageProviderBase.ImageType.Image)
+
+    def requestImage(self, _key: str, size: QtCore.QSize, requested: QtCore.QSize) -> QtGui.QImage:
+        ratio = requested.height() / LOGO_HEIGHT if requested.height() > 0 else theme.screen_ratio()
+        image = logo_image(ratio) or QtGui.QImage()
+        size.setWidth(image.width())
+        size.setHeight(image.height())
+        return image
 
 
 class _TabIcons(QtQuick.QQuickImageProvider):

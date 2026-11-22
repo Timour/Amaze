@@ -1,33 +1,21 @@
-// The About page: the old About tab's text and buttons, in Groups of Houdini's own pieces.
+// The About page: the old About tab's text loose on the page, then its buttons in Groups.
 import QtQuick
 import houdini.pluto
 import houdini.ui
 import houdini.prefs
 
 PrefsPage {
-    Group {
-        text: "Amaze"
-
-        // The wordmark as Houdini's start window shows its own: the SVG in an Image
-        Image {
-            source: Qt.resolvedUrl("../logo.svg")
-            height: 34
-            sourceSize.height: height
-            fillMode: Image.PreserveAspectFit
-        }
-        Help {
-            text: "v" + SharedState.appVersion
-        }
-        Help {
-            text: SharedState.aboutText
-        }
+    // Loose on the page, above its groups, as Houdini's pages put a message before theirs
+    Image {
+        source: "image://amazelogo/logo"    // the wordmark trimmed to its pixels, by Amaze's provider
+        width: parent.width
+        height: SharedState.logoHeight
+        sourceSize.height: height * Screen.devicePixelRatio
+        fillMode: Image.PreserveAspectFit
+        horizontalAlignment: Image.AlignLeft
     }
-    Group {
-        text: "Modules and libraries from other projects"
-
-        Help {
-            text: SharedState.creditsText
-        }
+    Help {
+        text: SharedState.aboutText + SharedState.creditsText
     }
     Group {
         text: "Version"
@@ -69,7 +57,7 @@ PrefsPage {
         }
     }
     Group {
-        text: "Debug"
+        text: "Developer"
 
         // Its buttons under the switch, as Houdini's UI Scale row holds its buttons
         TogglePref {
@@ -109,14 +97,6 @@ PrefsPage {
                     }
                 }
             }
-        }
-    }
-    Group {
-        text: "Add-Ons"
-
-        TogglePref {
-            label: "Add-On beta versions"
-            pref: "addon_betas"
         }
     }
 }

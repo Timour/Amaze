@@ -318,11 +318,14 @@ class ThePanelLookupStillReadsTheScreenTest(unittest.TestCase):
 
 
 def _preferences(case):
-    from amaze.dialogs import prefs_dialog
+    from amaze.dialogs import prefs_window
     prefs = test_support.fixture_prefs(case)
-    dialog = prefs_dialog.PrefsDialog(prefs, panel=None)
-    case.addCleanup(dialog.deleteLater)
-    return prefs, dialog
+    return prefs, prefs_window.AmazePrefsState(prefs, panel=None)
+
+
+def _picked(state):
+    from amaze.dialogs import prefs_window
+    return state.getPref(prefs_window.LIBRARY)
 
 
 class AddChangesNothingHeadlessTest(unittest.TestCase):
@@ -331,13 +334,13 @@ class AddChangesNothingHeadlessTest(unittest.TestCase):
     def test_add_without_a_screen_changes_nothing(self):
         self.assertFalse(hasattr(hou, "ui"),
                          "this host HAS a ui, so nothing here is tested")
-        prefs, dialog = _preferences(self)
-        before = dialog._picked_library()
+        prefs, state = _preferences(self)
+        before = _picked(state)
         try:
-            dialog.add_library()
+            state.addLibrary()
         except AttributeError as crash:
             self.fail("Add crashed without a screen: %s" % crash)
-        self.assertEqual(before, dialog._picked_library())
+        self.assertEqual(before, _picked(state))
 
 
 class AddOpensTheChooserTest(unittest.TestCase):
@@ -345,7 +348,7 @@ class AddOpensTheChooserTest(unittest.TestCase):
 
     def test_the_chooser_opens_directly_with_its_title(self):
         displayed, titles = [], []
-        _prefs, dialog = _preferences(self)
+        _prefs, state = _preferences(self)
 
         def select_file(*_args, **kwargs):
             titles.append(kwargs.get("title", ""))
@@ -355,7 +358,7 @@ class AddOpensTheChooserTest(unittest.TestCase):
             displayMessage=lambda text, *a, **k: displayed.append(text),
             selectFile=select_file)
         with mock.patch.object(hou, "ui", fake, create=True):
-            dialog.add_library()
+            state.addLibrary()
         self.assertEqual([], displayed,
                          "a message was shown before the folder chooser")
         self.assertEqual([messages.TITLE_CHOOSE_LIBRARY_FOLDER], titles,
@@ -367,16 +370,16 @@ class TheRootOfADiskIsNoLibraryTest(unittest.TestCase):
 
     def test_the_root_shows_library_path_invalid_and_is_not_added(self):
         displayed = []
-        prefs, dialog = _preferences(self)
-        before = dialog._picked_library()
+        prefs, state = _preferences(self)
+        before = _picked(state)
         fake = types.SimpleNamespace(
             displayMessage=lambda text, *a, **k: displayed.append(text),
             selectFile=lambda *a, **k: os.path.abspath(os.sep))
         with mock.patch.object(hou, "ui", fake, create=True):
-            dialog.add_library()
+            state.addLibrary()
         self.assertEqual([messages.LIBRARY_PATH_INVALID], displayed,
                          "the root was accepted without a message")
-        self.assertEqual(before, dialog._picked_library(),
+        self.assertEqual(before, _picked(state),
                          "the root of the disk is shown as a library")
         self.assertEqual(before, prefs.dir, "a refused pick moved the library")
 
@@ -462,9 +465,9 @@ class EveryDialogKnowsWhichWindowOpenedIt(unittest.TestCase):
 
     DIALOGS = {"NameDialog", "CategoryDialog",
                "SaveDialog", "CodeDialog", "ManageLibrariesDialog",
-               "IconDialog", "PrefsDialog", "VersionsDialog"}
+               "IconDialog", "VersionsDialog"}
 
-    EXEMPT = {("panel/panel.py", "PrefsDialog")}    # parented to the main window AFTER construction and kept NON-modal on purpose ▸r/dialog-parents
+    EXEMPT = set()
 
     def _package_root(self):
         return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -669,9 +672,9 @@ class TheSaveDialogsHaveTheDrawnWidth(unittest.TestCase):
             "a caption is drawn on the editor; the design has none")
 
     def test_only_the_code_dialog_has_a_header_band(self):
-        """D11 has a header band; D01, D02, D15, the save dialogs and Preferences do not."""
+        """D11 has a header band; D01, D02, D15 and the save dialogs do not."""
         from amaze.dialogs import (code_dialog, gradient_dialog, icon_dialog,
-                                   library_dialog, prefs_dialog, save_dialog)
+                                   library_dialog, save_dialog)
         from amaze.prefs import prefs as prefs_mod
         wants = (
             ("D02 Customize", lambda: icon_dialog.IconDialog(
@@ -696,11 +699,6 @@ class TheSaveDialogsHaveTheDrawnWidth(unittest.TestCase):
                     wanted, band is not None,
                     "%s %s a header band" % (
                         label, "has lost" if wanted else "has grown"))
-        self.assertFalse(
-            hasattr(prefs_dialog.PrefsDialog, "HEADER_BAND")
-            and prefs_dialog.PrefsDialog.HEADER_BAND,
-            "Preferences declares a header band, which no P01-P06 "
-            "frame draws")
 
     def test_the_code_dialog_band_shows_the_SNIPPET_name(self):
         """The window title is a verb, so the band shows the name field, or `Untitled` while empty."""

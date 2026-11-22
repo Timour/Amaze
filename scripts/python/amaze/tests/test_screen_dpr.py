@@ -20,7 +20,7 @@ EXEMPT = {
 IN_SCOPE = (
     "panel/notes_panel.py",
     "panel/info_panel.py",
-    "dialogs/prefs_dialog.py",
+    "dialogs/prefs_window.py",
     "dialogs/icon_dialog.py",
     "helpers/theme.py",
     "helpers/ui_helpers.py",

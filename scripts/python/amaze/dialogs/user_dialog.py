@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-CREATE = "\x00create"    # the create row's itemData: never a name and never a UID
+CREATE = "\x00create"    # the create row's value: never a name and never a UID
+CREATE_TEXT = "Create a new user..."
 
 
-def fill_users(combo, known: dict) -> None:
-    """Every user by name, A to Z, each carrying its UID, then the create row last."""
-    for user_id, name in sorted(known.items(),
-                                key=lambda pair: pair[1].lower()):
-        combo.addItem(name, user_id)
-    combo.addItem("Create a new user...", CREATE)
+def user_rows(known: dict) -> list:
+    """(name, UID) for every user by name, A to Z, then the create row last."""
+    rows = sorted(((name, user_id) for user_id, name in known.items()),
+                  key=lambda pair: pair[0].lower())
+    return rows + [(CREATE_TEXT, CREATE)]

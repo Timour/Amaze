@@ -57,7 +57,7 @@ the order of `core/section_list.py`, the only `((key, label), ...)` list,
 which needs neither the panel nor Houdini to read. Adding a section = a
 new class in `sections.py` and its line in the list; a class takes its
 label from the list, and everything that lists the sections reads the
-list - the tab strip, the Show/Hide toggles, and the pref that persists
+list - the tab strip, the UI toggles, and the pref that persists
 them. `panel.ALL_SECTIONS` is the same tuple, not a second list to keep
 in step.
 
@@ -741,11 +741,11 @@ copied per dialog.
 | **Edit Info Dialog** | Materials | `edit_material_info` / `details_dialog` |
 | **Code Dialog** | Code | `dialogs/code_dialog.py` ✓ AssetDialog — typing a snippet (New Snippet, Edit), its versions behind the band's **+**; Apply saves and stays open. Houdini's Fixed face and its syntax colours (`helpers/vex_syntax.py`); a node's code saves through the Save Dialog |
 | **Save Dialog** | every section a scene node saves into | `dialogs/save_dialog.py` ✓ AssetDialog — D09: Section, Name, Category, Language, Tags. The Section row is guessed from the node and changeable; `dialogs/gradient_dialog.py` keeps only `CategoryDialog` |
-| **Preferences** | — (app-wide) | `dialogs/prefs_window.py` — Houdini's own kind of QML Preferences window: Houdini's prefs state on Amaze's Prefs, its `houdini.prefs` rows, Apply / Accept / Cancel; its pages are `ui/prefs/*.qml`, their rows in Houdini's `Group`s; Library and Add-On not built yet. `dialogs/prefs_dialog.py` (AssetDialog, live-apply) is the old one, no longer opened |
+| **Preferences** | — (app-wide) | `dialogs/prefs_window.py` — Houdini's own kind of QML Preferences window: Houdini's prefs state on Amaze's Prefs, its `houdini.prefs` rows, Apply / Accept / Cancel; its pages are `ui/prefs/*.qml` (Library, Render, UI, Add-On, About), their rows in Houdini's `Group`s. A library and its user are picked there and opened on Apply; buttons act at once |
 | **Icon Dialog** | any tile | `dialogs/icon_dialog.py` ✓ AssetDialog (non-modal) |
 | **Manage Libraries** | — (app-wide) | `dialogs/library_dialog.py` ✓ AssetDialog — D15: the Library list, the most recently opened first; Remove from List takes libraries off it and leaves their folders alone |
 | **Versions** | Materials | `dialogs/versions_dialog.py` ✓ AssetDialog — D01: a material's versions, newest first; Select makes the picked one active |
-| **About** | — | a TAB inside `dialogs/prefs_dialog.py`, shared with Debug — there is no separate About dialog |
+| **About** | — | a page of Preferences (`ui/prefs/AboutPage.qml`), with its Developer group — there is no separate About dialog |
 
 *Adoption is complete* (R51, 2026-08-21) — every dialog is built on AssetDialog,
 and `test_headless_dialogs` checks it: a new QDialog subclass in `dialogs/`
@@ -873,7 +873,7 @@ contracts other code and the docs rely on:
 - **One survey, two callers.** `repair.survey` reads the library once
   (`library_files.walk`, one `os.scandir` per folder) and every report,
   button and count reads that one dict. In the panel it is called from Preferences ▸
-  Library's Databases row (`prefs_dialog._survey_open_library`):
+  Library's Databases row (`prefs_window.AmazePrefsState._survey_open_library`):
   its button saves every model first (`check.save_before_check`), surveys, and
   shows `library_check.summary` as three lights; once something can be
   fixed it reads Repair and opens `repair_dialog.repair_found`, whose
@@ -965,7 +965,7 @@ moves only by its own button.
   One predicate: `renderers.is_karma()`.
 - **The renderer table** — `core/renderers.py` holds every renderer once:
   the key libraries store, the name every menu shows, its icon, its
-  converter module, its Preferences ▸ Show/Hide switch (and the key that
+  converter module, its Preferences ▸ UI switch (and the key that
   switch is stored under), its Render tab samples row, and its plugin's
   node types: the classic container, the USD-builder a classic one is
   rebuilt as, and the user-data mark on its own builder, which save, load

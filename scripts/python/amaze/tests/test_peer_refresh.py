@@ -60,7 +60,7 @@ class AUserMadeElsewhereShowsUpWithoutARestart(_Case):
             "a user created on another machine is still not listed")
 
 
-class ThePreferencesDialogListsTheCurrentUsers(unittest.TestCase):
+class ThePreferencesWindowListsTheCurrentUsers(unittest.TestCase):
     """Opening Preferences reads the library again, so the picker is current."""
 
     def setUp(self):
@@ -72,7 +72,7 @@ class ThePreferencesDialogListsTheCurrentUsers(unittest.TestCase):
             return json.load(handle)
 
     def test_a_user_another_machine_made_is_in_the_picker(self):
-        from amaze.dialogs import prefs_dialog
+        from amaze.dialogs import prefs_window
 
         self.assertTrue(users.create(self.panel.prefs, "Me"),
                         "premise: the fixture could not create a user")
@@ -86,11 +86,9 @@ class ThePreferencesDialogListsTheCurrentUsers(unittest.TestCase):
         with open(self.path, "w", encoding="utf-8") as handle:
             json.dump(document, handle)
 
-        dialog = prefs_dialog.PrefsDialog(self.panel.prefs, panel=self.panel)
-        self.addCleanup(dialog.deleteLater)
+        state = prefs_window.AmazePrefsState(self.panel.prefs, panel=self.panel)
 
-        names = [dialog.cbb_library_user.itemText(row)
-                 for row in range(dialog.cbb_library_user.count())]
+        names = [row["text"] for row in state.userOptions]
         self.assertIn(
             "Colleague", names,
             "the picker still lists the people it read when the panel "

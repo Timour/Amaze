@@ -115,7 +115,7 @@ class EveryAssetSidebarFollowsItsFilter(unittest.TestCase):
             "so the sidebar can disagree with the grid again")
         self.assertTrue(
             self._calls("panel/panel.py", "AmazePanel",
-                        "_prefs_dialog_closed", "sidebar_proxies"),
+                        "_apply_preferences", "sidebar_proxies"),
             "the Preferences update lists the proxies by hand "
             "again - a hand-written list that was short is exactly how "
             "Code was missed")
@@ -1095,7 +1095,7 @@ class LeavingOnlineSelectsAShownSection(unittest.TestCase):
         block["enabled_sections"] = [k for k in block["enabled_sections"] if k != key]
         with open(settings, "w", encoding="utf-8") as handle:
             json.dump(data, handle)
-        self.panel._prefs_dialog_closed()
+        self.panel._apply_preferences()
         QtWidgets.QApplication.processEvents()
 
     def test_the_grid_shows_the_section_of_the_selected_tab(self):
@@ -1149,7 +1149,7 @@ class ClosingPreferencesRescansTheFileFolderOnce(unittest.TestCase):
                                                             last_file_folder=theirs)
         with open(settings, "w", encoding="utf-8") as handle:
             json.dump(data, handle)
-        scans = self._scans_while(self.panel._prefs_dialog_closed)
+        scans = self._scans_while(self.panel._apply_preferences)
         self.assertEqual(theirs, self.files._folder, "premise: File shows the new location")
         self.assertEqual(1, scans, "the new library's location was scanned %d times" % scans)
 

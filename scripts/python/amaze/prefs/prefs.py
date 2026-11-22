@@ -53,7 +53,7 @@ def create_library(lib_dir: str) -> bool:
 
 
 def _renderer_settings(cls):
-    """Each renderer's Show/Hide switch and sample count, as properties, from renderers.ALL."""
+    """Each renderer's UI switch and sample count, as properties, from renderers.ALL."""
     for renderer in renderers.ALL:
         switch, samples = "_" + renderer.switch, "_" + renderer.samples
         setattr(cls, renderer.switch, property(

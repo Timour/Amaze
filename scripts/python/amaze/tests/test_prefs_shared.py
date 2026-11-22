@@ -17,7 +17,8 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import library_db, model_registry, renderers  # noqa: E402
+from amaze.core import library_db, model_registry, section_list  # noqa: E402
+from amaze.dialogs import prefs_window  # noqa: E402
 
 STORE = "DataBase.json"    # the library's own database: its `settings` section is the store
 from amaze.prefs import prefs as prefs_mod   # noqa: E402
@@ -206,25 +207,14 @@ class AnUnchangedSaveDoesNotTouchTheStore(SharedPrefsCase):
 class EverySharedRowIsReread(SharedPrefsCase):
     """Preferences re-reads every shared setting's row when the library changes."""
 
-    def setUp(self):
-        super().setUp()
-        self.prefs = self.machine(self.home_a)
-        from amaze.dialogs import prefs_dialog
-        self.dialog = prefs_dialog.PrefsDialog(self.prefs, panel=None)
-        self.addCleanup(self.dialog.deleteLater)
-
     def test_every_shared_setting_preferences_shows_is_reread(self):
         from amaze.prefs import persistence
-        reread = {prop for _row, prop in self.dialog._SHARED_ROWS}
-        reread |= set(self.dialog._renderer_boxes)
-        reread |= {renderer.samples for renderer in renderers.ALL
-                   if renderer.key in self.dialog._samples_spins}
         shared = {prop for prop, _attr, _default
                   in persistence.SHARED_KEYS.values() if prop}
         self.assertEqual(
-            shared, reread,
-            "a shared setting's row is not re-read when the library "
-            "changes, so it goes on showing the previous library's value")
+            set(), shared - set(prefs_window.SETTINGS),
+            "a shared setting has no row that reads it from Prefs, so it goes on "
+            "showing the previous library's value when the library changes")
 
 
 class EveryRowFollowsAUserOrLibraryChange(SharedPrefsCase):
@@ -242,7 +232,6 @@ class EveryRowFollowsAUserOrLibraryChange(SharedPrefsCase):
     def setUp(self):
         super().setUp()
         from amaze.core import users
-        from amaze.dialogs import prefs_dialog
         self.prefs = self.machine(self.home_a)
         self.first = users.create(self.prefs, "Cobalt")
         self.second = users.create(self.prefs, "Sienna")
@@ -254,25 +243,28 @@ class EveryRowFollowsAUserOrLibraryChange(SharedPrefsCase):
         self.assertNotEqual(self.SECOND["enabled_sections"],
                             self.prefs.enabled_sections,
                             "premise: the first user's state is not the second's")
-        self.dialog = prefs_dialog.PrefsDialog(self.prefs, panel=None)
-        self.addCleanup(self.dialog.deleteLater)
+        self.state = prefs_window.AmazePrefsState(self.prefs, panel=None)
+        self.reread = []
+        self.state.prefsUpdated.connect(lambda: self.reread.append(True))
 
     def shown(self):
-        d = self.dialog
+        s = self.state
         return {
-            "enabled_sections": [key for key, box in d._section_boxes.items()
-                                 if box.isChecked()],
-            "sidebar_counts": d._cbx_sidebar_counts.isChecked(),
-            "hide_empty_categories": d._cbx_hide_empty.isChecked(),
-            "icon_line_weight": d._combo_icon_weight.currentData(),
-            "scroll_speed": d.spin_scroll_speed.value() / 100.0,
-            "debug_mode": d._cbx_debug.isChecked(),
+            "enabled_sections": [key for key, _label in section_list.SECTIONS
+                                 if s.getBool(prefs_window.SECTION + key)],
+            "sidebar_counts": s.getBool("sidebar_counts"),
+            "hide_empty_categories": s.getBool("hide_empty_categories"),
+            "icon_line_weight": s.getPref("icon_line_weight"),
+            "scroll_speed": float(s.getPref("scroll_speed")) / 100.0,
+            "debug_mode": s.getBool("debug_mode"),
         }
 
     def pick_second(self):
-        combo = self.dialog.cbb_library_user
-        combo.setCurrentIndex(combo.findData(self.second))
-        self.assertTrue(self.dialog.apply_library())
+        self.state.setPref(prefs_window.USER, self.second)    # what the User row's menu sends
+        del self.reread[:]
+        self.state.apply()
+        self.assertEqual(0, self.state.changeCount, "Apply left the pick pending")
+        self.assertTrue(self.reread, "the rows were not told to read their values again")
         self.assertEqual(self.second, self.prefs.library_user,
                          "premise: Apply switched the user")
 
@@ -297,19 +289,20 @@ class EveryRowFollowsAUserOrLibraryChange(SharedPrefsCase):
             def tile_icon_models(self):
                 return (_Model(),)
 
-        self.dialog._panel = _Panel()
+        self.state._panel = _Panel()
         self.pick_second()
         self.assertEqual(
             [tile_icons.FEATHER_STROKE_UNITS], drawn,
             "Tile Icon Line shows the picked user's weight while the "
             "tiles keep the previous user's")
-        self.dialog._sync_rows()
+        self.state.apply()
         self.assertEqual(1, len(drawn),
                          "the tiles were redrawn with no weight change")
 
     def test_a_switch_toggled_after_a_pick_edits_the_picked_users_list(self):
         self.pick_second()
-        self.dialog._section_boxes["code"].setChecked(False)
+        self.state.setPref(prefs_window.SECTION + "code", "0")    # what the Code switch sends
+        self.state.apply()
         self.assertEqual(["material"], self.prefs.enabled_sections,
                          "the toggle saved the previous user's list as "
                          "the picked user's")
@@ -340,12 +333,10 @@ class EveryRowFollowsAUserOrLibraryChange(SharedPrefsCase):
             def tile_icon_models(self):
                 return ()
 
-        self.dialog._panel = _Panel()
-        self.dialog.pick_library(other + "/")
-        combo = self.dialog.cbb_library_user
-        combo.setCurrentIndex(combo.findData(self.second))
-        self.assertTrue(self.dialog.apply_library())
-        self.assertEqual(512, self.dialog.line_rendersize.value(),
+        self.state._panel = _Panel()
+        self.state.pick_library(other + "/")
+        self.pick_second()
+        self.assertEqual("512", self.state.getPref("rendersize"),
                          "a shared row kept the previous library's value")
         self.assertEqual(self.SECOND, self.shown(),
                          "a per-user row kept the previous user's value")
@@ -425,15 +416,13 @@ class AMachineRunningBeforeAChangeReadsIt(SharedPrefsCase):
                          "B wrote back the value it pushed before A's change")
 
     def test_preferences_shows_the_peers_value(self):
-        from amaze.dialogs import prefs_dialog
         a, b = self.both_open()
         with self.on("A"):
             a.rendersize = 512
             a.save()
         with self.on("B"):
-            dialog = prefs_dialog.PrefsDialog(b, panel=None)    # the dialog re-reads the stores
-            self.addCleanup(dialog.deleteLater)
-        self.assertEqual(512, dialog.line_rendersize.value(),
+            state = prefs_window.AmazePrefsState(b, panel=None)    # the window re-reads the stores
+        self.assertEqual("512", state.getPref("rendersize"),
                          "Preferences shows the value this machine started with")
 
 

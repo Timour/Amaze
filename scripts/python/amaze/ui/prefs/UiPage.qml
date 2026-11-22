@@ -1,4 +1,4 @@
-// The Look page: Houdini's own rows in Groups; `pref` names the Amaze setting each one sets.
+// The UI page: Houdini's own rows in Groups; `pref` names the Amaze setting each one sets.
 import QtQuick
 import houdini.pluto
 import houdini.ui
@@ -53,17 +53,30 @@ PrefsPage {
         }
     }
     Group {
-        text: "Paths"
+        text: "Renderer"
 
-        MenuPref {
-            label: "Write Paths As"
-            pref: "path_style"
-            options: [
-                {text: "$HOME", value: "home"},
-                {text: "$JOB", value: "job"},
-                {text: "$HIP", value: "hip"},
-                {text: "Absolute", value: "absolute"},
-            ]
+        // A row per renderer from the state, as Houdini's Badges page lists its rows
+        Repeater {
+            model: SharedState.rendererSwitches
+            delegate: TogglePref {
+                required property var modelData
+
+                label: modelData.label
+                pref: modelData.pref
+            }
+        }
+    }
+    Group {
+        text: "Sections"
+
+        Repeater {
+            model: SharedState.sectionSwitches
+            delegate: TogglePref {
+                required property var modelData
+
+                label: modelData.label
+                pref: modelData.pref
+            }
         }
     }
 }

@@ -21,8 +21,7 @@ from amaze.dialogs import prefs_window  # noqa: E402
 from amaze.prefs import prefs as prefs_mod  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
-PAGES = (("Library", "LibraryPage.qml"), ("Render", "RenderPage.qml"),
-         ("Show/Hide", "ShowHidePage.qml"), ("Look", "LookPage.qml"),
+PAGES = (("Library", "LibraryPage.qml"), ("Render", "RenderPage.qml"), ("UI", "UiPage.qml"),
          ("Add-On", "AddOnPage.qml"), ("About", "AboutPage.qml"))
 NO_PICTURE = "Failed to get image from provider"    # headless, Houdini's icon providers give none
 
@@ -68,20 +67,21 @@ class TheWindowLoads(unittest.TestCase):
                 self.assertTrue(shown, "the page did not load: %s" % self._qml_messages())
         self.assertEqual([], self._qml_messages())
 
-    def test_the_page_list_holds_the_six_pages_in_order(self):
+    def test_the_page_list_holds_the_five_pages_in_order(self):
         rows = self.root.property("pageModel").toVariant()
         self.assertEqual(list(PAGES), [(row["text"], os.path.basename(row["url"].toLocalFile()))
                                        for row in rows])
 
 
-class ALookSettingIsAppliedLikeTheOldDialog(unittest.TestCase):
+class AUiSettingIsAppliedLikeTheOldDialog(unittest.TestCase):
     """A change waits for Apply, as in Houdini's window; then it is saved and its side effect runs."""
 
     def test_system_file_icons_reaches_the_prefs_on_apply_and_the_file_tab_relists(self):
         prefs = test_support.fixture_prefs(self)
         prefs.save()
         files = mock.Mock(preferences=prefs_mod.Prefs())    # the File model's own Prefs ▸p/one-model-set
-        state = prefs_window.AmazePrefsState(prefs, types.SimpleNamespace(file_files_model=files))
+        panel = types.SimpleNamespace(file_files_model=files, serves=lambda _folder: True)
+        state = prefs_window.AmazePrefsState(prefs, panel)
         self.assertTrue(prefs.system_file_icons, "premise: on")
 
         state.setPref("system_file_icons", "0")    # what the row's switch sends

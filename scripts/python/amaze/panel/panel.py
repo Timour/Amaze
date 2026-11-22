@@ -143,7 +143,6 @@ _reload(model_registry)    # last of the models: it lists all ten classes
 
 _reload_loaded("amaze.dialogs.base_dialog")    # FIRST of the dialogs: each binds its AssetDialog class
 _reload_loaded("amaze.dialogs.library_dialog")
-_reload_loaded("amaze.dialogs.prefs_dialog")
 _reload_loaded("amaze.dialogs.prefs_window")
 _reload_loaded("amaze.dialogs.save_dialog")
 _reload_loaded("amaze.dialogs.icon_dialog")
@@ -795,13 +794,13 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _refresh_open_prefs(self) -> None:
         """An open Preferences window shows the library's new version."""
-        dialog = getattr(self, "_prefs_dialog", None)
-        if dialog is None:
+        window = getattr(self, "_prefs_window", None)
+        if window is None:
             return
         try:
-            dialog.refresh_library_version()
+            window.sharedState().refresh_library_version()
         except RuntimeError:    # closed and deleted
-            self._prefs_dialog = None
+            self._prefs_window = None
 
     def _library_too_new(self) -> bool:
         """A library a newer Amaze updated is not opened; the update is offered once Qt is idle."""
@@ -1868,7 +1867,8 @@ class AmazePanel(QtWidgets.QWidget):
             open_now = False
         if not open_now:
             window = self._prefs_window = prefs_window.AmazePrefsWindow(self.prefs, panel=self)
-            window.sharedState().applied.connect(self._prefs_dialog_closed)    # Apply, and Accept
+            window.sharedState().applied.connect(self._apply_preferences)    # Apply, and Accept
+            window.closed.connect(self._apply_preferences)    # any close: a library chosen behind it opens
             self.destroyed.connect(window.close)    # the window must not outlive the panel it applies to
         window.show()
         window.raise_()
@@ -1876,13 +1876,12 @@ class AmazePanel(QtWidgets.QWidget):
         if page:
             window.setPageName(page)
 
-    def _prefs_dialog_closed(self) -> None:
-        """Apply everything Preferences changed: on the window's Apply or Accept, the old dialog's close."""
+    def _apply_preferences(self) -> None:
+        """Apply everything Preferences changed: on the window's Apply or Accept, and at its close."""
         try:
             self.isVisible()    # the panel may be deleted already
         except RuntimeError:
             return
-        self._prefs_dialog = None
 
         if not self.material_model or not self.category_model:    # still no library after the dialog - nothing below applies
             return

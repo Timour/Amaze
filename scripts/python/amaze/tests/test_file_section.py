@@ -837,71 +837,75 @@ class HoudiniPathTest(unittest.TestCase):
 
     def test_default_restores_the_cache_path(self):
         """Default on the Cache Path row clears the preference, so the machine default applies."""
-        from amaze.dialogs import prefs_dialog
+        from amaze.dialogs import prefs_window
         from amaze.helpers import hostos as hostos_mod
 
         p = test_support.fixture_prefs(self)
         p.cache_dir = "/somewhere/else"
-        dlg = prefs_dialog.PrefsDialog(p, panel=None)
-        self.addCleanup(dlg.deleteLater)
-        self.assertEqual("Default", dlg._default_cache.text())
+        state = prefs_window.AmazePrefsState(p, panel=None)
 
-        dlg.reset_cache_path()
+        state.resetCachePath()
+        self.assertEqual(hostos_mod.cache_root(), state.cachePath,
+                         "the field still shows the old path")
+        state.apply()
 
         self.assertEqual("", p.cache_dir,
                          "a literal path was written instead of the "
                          "preference being cleared")
-        self.assertEqual(hostos_mod.cache_root(), dlg.line_cache.text(),
-                         "the field still shows the old path")
+
+    @staticmethod
+    def _shown_user(state):
+        """The name the User row shows for the user picked."""
+        from amaze.dialogs import prefs_window
+        picked = state.getPref(prefs_window.USER)
+        return next((row["text"] for row in state.userOptions if row["value"] == picked), "")
 
     def test_the_user_field_shows_a_real_name(self):
         """The User row shows names, never UIDs, and creates no user before Apply."""
         from amaze.core import users
-        from amaze.dialogs import prefs_dialog
+        from amaze.dialogs import prefs_window
         p = test_support.fixture_prefs(self)
         p.library_user = ""
-        dlg = prefs_dialog.PrefsDialog(p, panel=None)
-        self.addCleanup(dlg.deleteLater)
-        self.assertEqual(-1, dlg.cbb_library_user.currentIndex(),
+        state = prefs_window.AmazePrefsState(p, panel=None)
+        self.assertEqual("", state.getPref(prefs_window.USER),
                          "a user was selected in a library that has no users")
         self.assertEqual({}, users.all_users(p), "opening Preferences created a user")
-        dlg.create_library_user("  MyOwnName  ")
-        self.assertEqual("MyOwnName", dlg.cbb_library_user.currentText())
+        state.create_user("  MyOwnName  ")
+        self.assertEqual("MyOwnName", self._shown_user(state))
         self.assertEqual({}, users.all_users(p), "a user was made before Apply")
-        self.assertTrue(dlg.apply_library())
+        state.apply()
+        self.assertEqual(0, state.changeCount, "Apply left the new user pending")
         uid = p.library_user
         self.assertEqual({uid: "MyOwnName"}, users.all_users(p),
                          "Apply did not make the user it showed")
         self.assertNotEqual("MyOwnName", uid,
                             "`library_user` holds the NAME, not a UID")
-        dlg.rename_library_user("Renamed")
+        state.rename_user("Renamed")
         self.assertEqual("Renamed", users.name_for(p, uid),
                          "after the rename the UID does not map to the new name")
         self.assertEqual(uid, p.library_user,
                          "a RENAME created a new UID")
-        self.assertEqual("Renamed", dlg.cbb_library_user.currentText(),
+        self.assertEqual("Renamed", self._shown_user(state),
                          "the dropdown still shows the old name")
 
     def test_the_user_row_switches_between_the_librarys_users_on_apply(self):
         """The User row lists the library's users; a pick switches this computer on Apply."""
         from amaze.core import users
-        from amaze.dialogs import prefs_dialog
+        from amaze.dialogs import prefs_window
         p = test_support.fixture_prefs(self)
         first = users.create(p, "Cobalt")
         second = users.create(p, "Sienna")
         p.library_user = first
-        dlg = prefs_dialog.PrefsDialog(p, panel=None)
-        self.addCleanup(dlg.deleteLater)
-        combo = dlg.cbb_library_user
-        listed = {combo.itemText(i) for i in range(combo.count())}
+        state = prefs_window.AmazePrefsState(p, panel=None)
+        listed = {row["text"] for row in state.userOptions}
         self.assertIn("Cobalt", listed)
         self.assertIn("Sienna", listed)
-        self.assertEqual("Cobalt", combo.currentText(),
+        self.assertEqual("Cobalt", self._shown_user(state),
                          "the dropdown opened on another user")
-        combo.setCurrentIndex(combo.findData(second))
+        state.setPref(prefs_window.USER, second)    # what the User row's menu sends
         self.assertEqual(first, p.library_user,
                          "picking a user switched this computer before Apply")
-        self.assertTrue(dlg.apply_library())
+        state.apply()
         self.assertEqual(second, p.library_user,
                          "Apply did not switch this computer to the picked user")
 
@@ -1483,27 +1487,8 @@ class StarColourRowsAreNotInPreferencesTest(unittest.TestCase):
                              "%s was changed or removed by a save" % key)
 
 
-class PrefsComboFocusTest(unittest.TestCase):
-    """No Preferences dropdown takes focus: Houdini's stylesheet paints a focused combo navy."""
-
-    def test_every_prefs_combo_takes_no_focus(self):
-        from amaze.dialogs import prefs_dialog
-        p = test_support.fixture_prefs(self)
-        dlg = prefs_dialog.PrefsDialog(p, panel=None)
-        self.addCleanup(dlg.deleteLater)
-        combos = dlg.findChildren(QtWidgets.QComboBox)
-        self.assertGreater(
-            len(combos), 3,
-            "the dialog built no dropdowns to check - this test can "
-            "no longer show the NoFocus loop runs")
-        wrong = ["%s (policy %s)" % (c.currentText() or "unnamed",
-                                     c.focusPolicy())
-                 for c in combos
-                 if c.focusPolicy() != QtCore.Qt.FocusPolicy.NoFocus]
-        self.assertEqual(
-            [], wrong,
-            "dropdowns still take focus, so Houdini's navy focus ring "
-            "singles out the last-clicked one: %s" % wrong)
+class MultiLineTooltipsAreCappedTest(unittest.TestCase):
+    """A multi-line tooltip set in code goes through the width cap."""
 
     def test_every_dialog_tooltip_goes_through_the_cap(self):
         """Reads the source: a multi-line setToolTip without `tooltip_text` is screen-wide again."""
@@ -1511,7 +1496,7 @@ class PrefsComboFocusTest(unittest.TestCase):
         package = os.path.dirname(
             os.path.dirname(os.path.abspath(__file__)))
         offenders = []
-        for name in ("dialogs/prefs_dialog.py", "panel/panel.py"):
+        for name in ("panel/panel.py",):
             with open(os.path.join(package, name),
                       encoding="utf-8") as handle:
                 body = handle.read()
@@ -2686,30 +2671,20 @@ class FileSectionScanAndRerenderPinsTest(unittest.TestCase):
                          "a hidden folder is listed under its location")
 
     def test_the_section_toggle_keeps_keys_it_does_not_know(self):
-        """The Show/Hide rebuild keeps keys outside this registry, or an older build's tabs are lost."""
-        from amaze.dialogs import prefs_dialog
+        """The Sections switches keep keys outside this registry, or an older build's tabs are lost."""
+        from amaze.dialogs import prefs_window
 
         class _P:
             enabled_sections = ["material", "texture", "geometry",
                                 "hip", "file"]
-            saved = False
-
-            def save(self):
-                self.saved = True
 
         stub = type("_Stub", (), {})()
         stub._prefs = _P()
-        stub._section_boxes = {}
-        for key in ("material", "gradient", "cop", "code", "file"):
-            box = QtWidgets.QCheckBox()
-            box.setChecked(key in ("material", "file"))
-            stub._section_boxes[key] = box
-        prefs_dialog.PrefsDialog._on_section_toggled(stub, False)
+        prefs_window.AmazePrefsState._set_section(stub, "cop", False)    # a switch applied
         self.assertEqual(["material", "file", "texture", "geometry",
                           "hip"], stub._prefs.enabled_sections,
                          "the rebuild dropped the unused keys an "
                          "older build still reads its tabs from")
-        self.assertTrue(stub._prefs.saved)
 
     def test_rerender_counts_distinct_keys_and_registers_them(self):
         """Progress counts distinct keys; each new key goes into `_key_rows` or nothing repaints."""
@@ -2974,65 +2949,46 @@ class AStarIsKeptThroughRelocateFolder(unittest.TestCase):
 class TheUserPickerFollowsTheLibrary(unittest.TestCase):
     """Switching libraries reloads the open user picker with the new library's users."""
 
-    def _dialog_on_a_second_library(self):
-        """A dialog open on library A, plus a ready library B whose only user has a name A does not have."""
+    def _state_on_a_second_library(self):
+        """Preferences open on library A, plus a ready library B whose only user A does not have."""
         from amaze.core import users
-        from amaze.dialogs import prefs_dialog
+        from amaze.dialogs import prefs_window
 
         first = test_support.fixture_prefs(self)
-        dialog = prefs_dialog.PrefsDialog(first, panel=None)
-        self.addCleanup(dialog.deleteLater)
+        state = prefs_window.AmazePrefsState(first, panel=None)
 
         second = test_support.fresh_library(self)
         moved = test_support.fixture_prefs(self)
         moved.dir = second
         moved.library_user = ""
         theirs = "Theirs"
-        return dialog, first, second, users.create(moved, theirs), theirs
+        return state, first, second, users.create(moved, theirs), theirs
 
     def test_picking_a_library_lists_its_users(self):
         from amaze.core import users
-        dialog, first, second, uid_b, name_b = self._dialog_on_a_second_library()
+        from amaze.dialogs import prefs_window
+        state, first, second, uid_b, name_b = self._state_on_a_second_library()
         self.assertNotIn(uid_b, users.all_users(first),
                          "premise: both fixture libraries hold the same user")
-        dialog.pick_library(second)
-        listed = [dialog.cbb_library_user.itemData(i)
-                  for i in range(dialog.cbb_library_user.count())]
+        state.pick_library(second)
+        listed = [row["value"] for row in state.userOptions]
         self.assertIn(uid_b, listed,
                       "the picker still lists the open library's users")
-        self.assertEqual(-1, dialog.cbb_library_user.currentIndex(),
+        self.assertEqual("", state.getPref(prefs_window.USER),
                          "a user of another library was picked without being chosen")
 
-    def test_every_method_that_swaps_the_library_reloads_the_picker(self):
-        """By AST over the whole dialog, so any method that swaps the library is caught."""
-        import ast
-        import inspect
-        from amaze.dialogs import prefs_dialog
-
-        SWAPS = {"set_library", "switch_all_models", "open_library"}
-        tree = ast.parse(inspect.getsource(prefs_dialog))
-        offenders = []
-        sync_rows_calls = set()
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.FunctionDef):
-                continue
-            called = {
-                inner.func.attr for inner in ast.walk(node)
-                if isinstance(inner, ast.Call)
-                and isinstance(inner.func, ast.Attribute)
-            }
-            if node.name == "_sync_rows":
-                sync_rows_calls = called
-            if called & SWAPS and "_sync_rows" not in called:
-                offenders.append(node.name)
-        self.assertIn("_reload_library_users", sync_rows_calls,
-                      "_sync_rows, which every library change calls, no longer "
-                      "reloads the user picker")
-        self.assertEqual(
-            [], offenders,
-            "these change which library is live but leave the user "
-            "picker showing the previous library's users: %s"
-            % ", ".join(offenders))
+    def test_a_switch_applied_lists_the_new_librarys_users(self):
+        """Apply opens B; the picker then lists B's users with B's user picked."""
+        from amaze.dialogs import prefs_window
+        state, first, second, uid_b, name_b = self._state_on_a_second_library()
+        state.pick_library(second)
+        test_support.pick_user(state, name_b)
+        state.apply()
+        self.assertEqual(0, state.changeCount, "premise: Apply opened library B")
+        self.assertEqual((uid_b, [uid_b]),
+                         (state.getPref(prefs_window.USER),
+                          [row["value"] for row in state.userOptions[:-1]]),
+                         "the picker shows the previous library's users after the switch")
 
 
 class ReadinessIsCheckedOncePerGeneration(unittest.TestCase):

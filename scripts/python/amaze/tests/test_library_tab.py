@@ -8,7 +8,8 @@ import unittest
 from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")   # BEFORE the app exists ▸p/first-app-picks-the-platform
-from PySide6 import QtCore, QtWidgets
+import shiboken6
+from PySide6 import QtWidgets
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
@@ -16,16 +17,17 @@ import hou  # noqa: E402
 
 from amaze import amazetheme, messages  # noqa: E402
 from amaze.core import library_policy, users  # noqa: E402
-from amaze.dialogs import prefs_dialog, user_dialog  # noqa: E402
+from amaze.dialogs import prefs_window, user_dialog  # noqa: E402
 from amaze.prefs import persistence  # noqa: E402
 from amaze.prefs import prefs as prefs_mod  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
 
-def _dialog(case, preferences, panel=None):
-    dialog = prefs_dialog.PrefsDialog(preferences, panel=panel)
-    case.addCleanup(dialog.deleteLater)
-    return dialog
+LIBRARY, USER = prefs_window.LIBRARY, prefs_window.USER
+
+
+def _state(preferences, panel=None):
+    return prefs_window.AmazePrefsState(preferences, panel=panel)
 
 
 def _library_with(case, *names):
@@ -46,43 +48,51 @@ def _real_saves():
     return mock.patch.object(prefs_mod.Prefs, "save", persistence._Persistence.save)
 
 
+def _assert_on_the_library_page(case, window):
+    """Preferences is open on its Library page; closed and deleted after the test."""
+    case.addCleanup(test_support.close_window, window)
+    root = window.rootObject()
+    case.assertTrue(test_support.pump_until(
+        lambda: str(root.property("currentUrl")).endswith("/LibraryPage.qml"), timeout=5),
+        "Preferences is open on %s" % root.property("currentUrl"))
+
+
 class TheUserIsPickedByTheRule(unittest.TestCase):
     """A user is this computer's by its id in the open library; in any other library, pick or create."""
 
     def setUp(self):
         self.prefs = test_support.fixture_prefs(self)
         self.prefs.library_user = users.create(self.prefs, "Plum")
-        self.dialog = _dialog(self, self.prefs)
+        self.state = _state(self.prefs)
 
     def test_the_open_library_shows_this_computers_user(self):
-        self.dialog.pick_library(self.prefs.dir)
-        self.assertEqual(self.prefs.library_user, self.dialog.cbb_library_user.currentData())
+        self.state.pick_library(self.prefs.dir)
+        self.assertEqual(self.prefs.library_user, self.state.getPref(USER))
 
     def test_a_user_of_the_same_name_in_another_library_is_not_picked(self):
         other, _made = _library_with(self, "Sage", "Plum")
-        self.dialog.pick_library(other)
-        self.assertEqual(-1, self.dialog.cbb_library_user.currentIndex(),
-                         "a user was picked because the name matched")
+        self.state.pick_library(other)
+        self.assertEqual("", self.state.getPref(USER), "a user was picked because the name matched")
 
     def test_the_only_user_of_another_library_is_not_picked(self):
         other, _made = _library_with(self, "Sage")
-        self.dialog.pick_library(other)
-        self.assertEqual(-1, self.dialog.cbb_library_user.currentIndex(),
+        self.state.pick_library(other)
+        self.assertEqual("", self.state.getPref(USER),
                          "a user was picked because it was the only one")
 
     def test_nobody_is_picked_among_several_without_a_match(self):
         other, _made = _library_with(self, "Sage", "Fern")
-        self.dialog.pick_library(other)
-        self.assertEqual(-1, self.dialog.cbb_library_user.currentIndex())
-        self.assertFalse(self.dialog._btn_apply_library.isEnabled(),
-                         "Apply runs without a user")
+        before = self.prefs.dir
+        self.state.pick_library(other)
+        self.assertEqual("", self.state.getPref(USER))
+        self.state.apply()
+        self.assertEqual(before, self.prefs.dir, "Apply switched without a user")
+        self.assertEqual(other, self.state.getPref(LIBRARY), "the pick was dropped, not kept pending")
 
     def test_a_folder_with_no_library_offers_only_a_new_user(self):
-        self.dialog.pick_library(_empty_folder(self))
-        combo = self.dialog.cbb_library_user
-        self.assertEqual([user_dialog.CREATE],
-                         [combo.itemData(row) for row in range(combo.count())])
-        self.assertEqual("Format: v2.0", self.dialog._lbl_library_format.text())
+        self.state.pick_library(_empty_folder(self))
+        self.assertEqual([user_dialog.CREATE], [row["value"] for row in self.state.userOptions])
+        self.assertEqual("Format: v2.0", self.state.libraryFormat)
 
 
 class WhatApplyingDoesIsShownBeforeApply(unittest.TestCase):
@@ -90,31 +100,32 @@ class WhatApplyingDoesIsShownBeforeApply(unittest.TestCase):
 
     def setUp(self):
         self.prefs = test_support.fixture_prefs(self)
-        self.dialog = _dialog(self, self.prefs)
+        self.state = _state(self.prefs)
 
     def _picked_at(self, version):
         other, _made = _library_with(self, "Sage")
         test_support.set_library_version(other, version)
-        self.dialog.pick_library(other)
-        combo = self.dialog.cbb_library_user
-        combo.setCurrentIndex(combo.findText("Sage"))
-        return self.dialog._lbl_library_format.text(), self.dialog._lbl_library_apply.text()
+        self.state.pick_library(other)
+        test_support.pick_user(self.state, "Sage")
+        return self.state.libraryFormat, self.state.applyLine
+
+    def _applies(self):
+        """Apply, then whether the pick was opened rather than kept pending."""
+        before = self.prefs.dir
+        self.state.apply()
+        return self.prefs.dir != before and not self.state.changeCount
 
     def test_an_older_library_says_apply_upgrades_it(self):
         known = library_policy.LIBRARY_VERSION
         self.assertEqual((amazetheme.LABEL_LIBRARY_FORMAT % (known - 1),
                           amazetheme.LABEL_UPGRADES_LIBRARY % "2.0"), self._picked_at(known - 1))
-        self.assertTrue(self.dialog._btn_apply_library.isEnabled())
-        self.assertTrue(self.dialog._lbl_library_apply.alignment()
-                        & QtCore.Qt.AlignmentFlag.AlignRight,
-                        "the line does not end at Apply")
+        self.assertTrue(self._applies())
 
     def test_a_newer_library_says_update_amaze_and_does_not_apply(self):
         newer = library_policy.LIBRARY_VERSION + 1
         self.assertEqual((amazetheme.LABEL_LIBRARY_FORMAT % "2.1",
                           amazetheme.LABEL_LIBRARY_TOO_NEW), self._picked_at(newer))
-        self.assertFalse(self.dialog._btn_apply_library.isEnabled())
-        self.assertFalse(self.dialog._btn_accept_library.isEnabled())
+        self.assertFalse(self._applies())
 
     def test_this_amazes_version_says_nothing(self):
         self.assertEqual(
@@ -122,10 +133,9 @@ class WhatApplyingDoesIsShownBeforeApply(unittest.TestCase):
             self._picked_at(library_policy.LIBRARY_VERSION))
 
     def test_an_unreachable_library_says_so_and_does_not_apply(self):
-        self.dialog.pick_library(_empty_folder(self).rstrip("/") + "-gone/")
-        self.assertEqual(amazetheme.LABEL_LIBRARY_UNREACHABLE,
-                         self.dialog._lbl_library_apply.text())
-        self.assertFalse(self.dialog._btn_apply_library.isEnabled())
+        self.state.pick_library(_empty_folder(self).rstrip("/") + "-gone/")
+        self.assertEqual(amazetheme.LABEL_LIBRARY_UNREACHABLE, self.state.applyLine)
+        self.assertFalse(self._applies())
 
 
 class LibraryButtonsAreDisabledUntilApply(unittest.TestCase):
@@ -134,13 +144,12 @@ class LibraryButtonsAreDisabledUntilApply(unittest.TestCase):
     def test_the_library_buttons_are_disabled_for_a_picked_library(self):
         prefs = test_support.fixture_prefs(self)
         prefs.library_user = users.create(prefs, "Plum")
-        dialog = _dialog(self, prefs)
-        buttons = (dialog._btn_check, dialog._btn_reload, dialog._btn_show_folder,
-                   dialog._btn_edit_user, dialog._btn_delete_user)
-        self.assertTrue(all(button.isEnabled() for button in buttons))
+        state = _state(prefs)
+        self.assertEqual((True, True), (state.libraryOpen, state.userEditable),
+                         "premise: Check, Reload, Show Folder, Rename and Delete work")
         other, _made = _library_with(self, "Plum")
-        dialog.pick_library(other)
-        self.assertEqual([], [button.text() for button in buttons if button.isEnabled()],
+        state.pick_library(other)
+        self.assertEqual((False, False), (state.libraryOpen, state.userEditable),
                          "these act on a library that is only picked")
 
 
@@ -153,13 +162,12 @@ class TheDatabasesRowShowsOneCheck(unittest.TestCase):
         self.folder = test_support.scratch_dir("amaze_check_row_")
         self.addCleanup(shutil.rmtree, self.folder, True)
         self.prefs.add_file_folder(self.folder)
-        self.dialog = _dialog(self, self.prefs)
+        self.state = _state(self.prefs)
 
     def row(self):
-        dialog = self.dialog
-        return ([light.fill for light in dialog._check_lights],
-                [count.text() for count in dialog._check_counts],
-                dialog._lbl_check_info.toolTip(), dialog._btn_check.text())
+        lights = self.state.checkLights
+        return ([light["fill"] for light in lights], [light["count"] for light in lights],
+                self.state.checkInfo, self.state.checkLabel)
 
     def favorite_of_a_missing_file(self):
         star = os.path.join(self.folder, "shot.exr")
@@ -171,18 +179,17 @@ class TheDatabasesRowShowsOneCheck(unittest.TestCase):
 
     def assert_unchecked(self):
         self.assertEqual(([amazetheme.P01_LIGHT_IDLE] * 3, [""] * 3, "", "Check"), self.row())
-        self.assertEqual("", self.dialog._btn_check.styleSheet())
+        self.assertFalse(self.state.checkFixable)
 
     def test_nothing_is_checked_until_the_button_is_pressed(self):
         self.favorite_of_a_missing_file()
         self.assert_unchecked()
         self.assertEqual(["Errors", "Files", "Ref"],
-                         [label.text() for label in self.dialog._check_heads])
-        self.assertEqual("Databases", self.dialog._lbl_databases.text())
+                         [light["heading"] for light in self.state.checkLights])
 
     def test_a_check_fills_the_lights_and_turns_the_button_into_a_red_repair(self):
         self.favorite_of_a_missing_file()
-        self.dialog._btn_check.click()
+        self.state.checkOrRepair()
         fills, counts, info, button = self.row()
         self.assertEqual(amazetheme.P01_LIGHT_CLEAN, fills[0])
         self.assertEqual("0", counts[0])
@@ -190,20 +197,11 @@ class TheDatabasesRowShowsOneCheck(unittest.TestCase):
         self.assertNotIn(amazetheme.P01_LIGHT_IDLE, fills)
         self.assertTrue(info, "the row shows nothing about what it found")
         self.assertEqual("Repair", button)
-        sheet = self.dialog._btn_check.styleSheet()
-        self.assertIn(amazetheme.P01_REPAIR_FILL, sheet)
-        self.assertIn(amazetheme.P01_REPAIR_TEXT_COLOR, sheet)
-        self.assertIn("QPushButton:hover { background-color: %s; }" % amazetheme.P01_REPAIR_HOVER, sheet)
-        self.assertIn(
-            "QPushButton:pressed { background-color: %s; }" % amazetheme.P01_REPAIR_PRESSED, sheet)
-        self.assertIn("border:", sheet, "Qt paints no background on a button whose rule sets no border")
-        self.dialog._btn_check.resize(75, 22)
-        middle = self.dialog._btn_check.grab().toImage().pixelColor(6, 11).name()
-        self.assertEqual(amazetheme.P01_REPAIR_FILL, middle, "the Repair button is not drawn red")
+        self.assertTrue(self.state.checkFixable, "Repair is not Houdini's danger button")
 
     def test_repair_opens_the_dialog_and_checks_again_after_the_fix(self):
         star = self.favorite_of_a_missing_file()
-        self.dialog._btn_check.click()
+        self.state.checkOrRepair()
         asked = []
 
         def display(text, **kwargs):
@@ -211,7 +209,7 @@ class TheDatabasesRowShowsOneCheck(unittest.TestCase):
             return list(kwargs["buttons"]).index("Fix Safe") if kwargs.get("buttons") else 0
 
         with mock.patch.object(hou, "ui", mock.Mock(displayMessage=display), create=True):
-            self.dialog._btn_check.click()
+            self.state.checkOrRepair()
         self.assertTrue(asked[0][0].startswith("Check Library found:\n\n"))
         self.assertIn("1 favorite is of a file that is gone.", asked[0][0])
         self.assertEqual("Fix Safe", asked[0][1][-2])
@@ -222,20 +220,20 @@ class TheDatabasesRowShowsOneCheck(unittest.TestCase):
                          "the row still shows what the repair fixed")
 
     def test_a_clean_part_is_green_and_the_button_stays_check(self):
-        self.dialog._btn_check.click()
+        self.state.checkOrRepair()
         fills, counts, _info, _button = self.row()
         self.assertEqual((amazetheme.P01_LIGHT_CLEAN, "0"), (fills[2], counts[2]))
         if amazetheme.P01_LIGHT_FOUND not in fills:
             self.assertEqual(messages.CHECK_NOTHING_TO_REPAIR, self.row()[2])
         from amaze.core import library_check, repair
         if not library_check.summary(repair.survey(self.prefs))["lines"]:
-            self.assertEqual("Check", self.dialog._btn_check.text())
-            self.assertEqual("", self.dialog._btn_check.styleSheet())
+            self.assertEqual("Check", self.state.checkLabel)
+            self.assertFalse(self.state.checkFixable)
 
     def test_a_part_that_cannot_be_checked_is_amber_with_a_dash(self):
         from amaze.core import guard
         with mock.patch.object(guard.Guard, "_waiting", lambda self: True):
-            self.dialog._btn_check.click()
+            self.state.checkOrRepair()
         fills, counts, _info, button = self.row()
         self.assertEqual([amazetheme.P01_LIGHT_UNCHECKED] * 3, fills)
         self.assertEqual([amazetheme.LABEL_UNCHECKED] * 3, counts)
@@ -243,18 +241,18 @@ class TheDatabasesRowShowsOneCheck(unittest.TestCase):
 
     def test_picking_another_library_empties_the_row(self):
         self.favorite_of_a_missing_file()
-        self.dialog._btn_check.click()
+        self.state.checkOrRepair()
         other, _made = _library_with(self, "Plum")
-        self.dialog.pick_library(other)
+        self.state.pick_library(other)
         self.assert_unchecked()
-        self.assertFalse(self.dialog._btn_check.isEnabled())
+        self.assertFalse(self.state.libraryOpen, "Check works on a library that is only picked")
 
 
 class AddPutsAFolderInTheList(unittest.TestCase):
 
     def setUp(self):
         self.prefs = test_support.fixture_prefs(self)
-        self.dialog = _dialog(self, self.prefs)
+        self.state = _state(self.prefs)
         self.said, self.chosen = [], []
 
     def _adding(self, folder):
@@ -266,12 +264,12 @@ class AddPutsAFolderInTheList(unittest.TestCase):
             displayMessage=lambda text, *a, **k: self.said.append(text),
             selectFile=select_file)
         with mock.patch.object(hou, "ui", fake, create=True):
-            self.dialog.add_library()
+            self.state.addLibrary()
 
     def test_an_added_folder_is_picked_and_not_yet_listed(self):
         folder = _empty_folder(self)
         self._adding(folder)
-        self.assertEqual(folder, self.dialog._picked_library())
+        self.assertEqual(folder, self.state.getPref(LIBRARY))
         self.assertEqual([], self.said)
         self.assertNotIn(folder, self.prefs.libraries, "Add listed it before Apply")
 
@@ -293,9 +291,9 @@ class NothingSwitchesBeforeApply(unittest.TestCase):
     def test_closing_preferences_with_a_pick_switches_nothing(self):
         other, _made = _library_with(self, "Sage")
         self.panel.show_prefs()
-        dialog = self.panel._prefs_dialog
-        dialog.pick_library(other)
-        dialog.close()
+        window = self.panel._prefs_window
+        window.sharedState().pick_library(other)
+        test_support.close_window(window)
         QtWidgets.QApplication.processEvents()
         self.assertEqual(self.before_dir, self.panel.prefs.dir)
         self.assertEqual(self.before_dir, self.panel._models_dir)
@@ -327,14 +325,16 @@ class NothingSwitchesBeforeApply(unittest.TestCase):
     def test_accept_applies_then_closes(self):
         other, made = _library_with(self, "Sage")
         self.panel.show_prefs()
-        dialog = self.panel._prefs_dialog
-        dialog.pick_library(other)
-        combo = dialog.cbb_library_user    # another library: its user is picked by hand
-        combo.setCurrentIndex(combo.findText("Sage"))
+        window = self.panel._prefs_window
+        self.addCleanup(test_support.close_window, window)
+        state = window.sharedState()
+        state.pick_library(other)
+        test_support.pick_user(state, "Sage")    # another library: its user is picked by hand
         with _real_saves():
-            dialog.accept_library()
+            state.accept()
         QtWidgets.QApplication.processEvents()
-        self.assertIsNone(self.panel._prefs_dialog, "Accept left Preferences open")
+        self.assertFalse(shiboken6.isValid(window) and window.isVisible(),
+                         "Accept left Preferences open")
         self.assertEqual(made["Sage"], self.panel.prefs.library_user)
 
 
@@ -374,14 +374,12 @@ class AStartWithoutAUserOpensNoLibrary(unittest.TestCase):
         self.assertIsNone(panel.material_model, "a library opened with nobody picked")
         self.assertEqual([(messages.NO_USER_PICKED, messages.BUTTONS_OPEN_PREFERENCES)],
                          self._asking(panel, 1))
-        self.assertIsNone(getattr(panel, "_prefs_dialog", None), "Close opened Preferences")
+        self.assertIsNone(getattr(panel, "_prefs_window", None), "Close opened Preferences")
 
     def test_open_preferences_shows_the_library_tab(self):
         panel = self._reopened_with("")
         self._asking(panel, 0)
-        dialog = panel._prefs_dialog
-        self.addCleanup(dialog.close)
-        self.assertIs(dialog.frame_page("P01"), dialog._tabs.currentWidget())
+        _assert_on_the_library_page(self, panel._prefs_window)
 
     def test_apply_with_the_user_opens_the_library(self):
         panel = self._reopened_with("")
@@ -395,10 +393,12 @@ class SetLibraryOpensTheLibraryTab(unittest.TestCase):
 
     def test_set_library_shows_preferences_on_library(self):
         panel = test_support.fixture_panel(self)
+        panel.show_prefs(page="About")    # open on another page, so the switch to Library shows
+        root = panel._prefs_window.rootObject()
+        self.assertTrue(test_support.pump_until(
+            lambda: str(root.property("currentUrl")).endswith("/AboutPage.qml"), timeout=5))
         panel.set_library()
-        dialog = panel._prefs_dialog
-        self.addCleanup(dialog.close)
-        self.assertIs(dialog.frame_page("P01"), dialog._tabs.currentWidget())
+        _assert_on_the_library_page(self, panel._prefs_window)
 
 
 class ManageUpdatesTheList(unittest.TestCase):
@@ -408,8 +408,8 @@ class ManageUpdatesTheList(unittest.TestCase):
         other, _made = _library_with(self, "Sage")
         prefs.note_library_opened(other)
         prefs.note_library_opened(prefs.dir)
-        dialog = _dialog(self, prefs)
-        self.assertEqual(2, dialog.cbb_library.count())
+        state = _state(prefs)
+        self.assertEqual(2, len(state.libraryOptions))
 
         class Removing:
             removed = [other]
@@ -420,10 +420,9 @@ class ManageUpdatesTheList(unittest.TestCase):
             def exec(self):
                 prefs.remove_libraries([other])
 
-        with mock.patch.object(prefs_dialog.library_dialog, "ManageLibrariesDialog", Removing):
-            dialog.manage_libraries()
-        self.assertEqual([prefs.dir], [dialog.cbb_library.itemData(row)
-                                            for row in range(dialog.cbb_library.count())])
+        with mock.patch.object(prefs_window.library_dialog, "ManageLibrariesDialog", Removing):
+            state.manageLibraries()
+        self.assertEqual([prefs.dir], [row["value"] for row in state.libraryOptions])
 
 
 if __name__ == "__main__":

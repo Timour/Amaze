@@ -521,12 +521,11 @@ def with_fixture_user(library) -> str:
 
 def repair_from_preferences(testcase, panel):
     """Preferences on `panel`, its Databases button pressed twice: Check, then Repair."""
-    from amaze.dialogs import prefs_dialog
-    dialog = prefs_dialog.PrefsDialog(panel.prefs, panel=panel)
-    testcase.addCleanup(dialog.deleteLater)
-    dialog.check_or_repair()
-    dialog.check_or_repair()
-    return dialog
+    from amaze.dialogs import prefs_window
+    state = prefs_window.AmazePrefsState(panel.prefs, panel=panel)
+    state.checkOrRepair()
+    state.checkOrRepair()
+    return state
 
 
 def backup_now(library, name: str) -> str:
@@ -672,22 +671,38 @@ def reopened_panel(testcase):
     return panel
 
 
-def apply_library(testcase, panel, folder, user: str = "", dialog=None) -> bool:
+def pick_user(state, name: str) -> None:
+    """Pick the user called `name` in Preferences' User row, as its menu does."""
+    from amaze.dialogs import prefs_window
+    named = {row["text"]: row["value"] for row in state.userOptions}
+    state.setPref(prefs_window.USER, named[name])
+
+
+def apply_library(testcase, panel, folder, user: str = "", state=None) -> bool:
     """Switch `panel` to `folder` as Preferences does: pick it and a user, then Apply, saves real."""
     from unittest import mock
-    from amaze.dialogs import prefs_dialog
+    from amaze.dialogs import prefs_window
     from amaze.prefs import persistence
-    if dialog is None:
-        dialog = prefs_dialog.PrefsDialog(panel.prefs, panel=panel)
-        testcase.addCleanup(dialog.deleteLater)
-    dialog.pick_library(folder)
-    combo = dialog.cbb_library_user
-    if user and combo.findText(user) >= 0:
-        combo.setCurrentIndex(combo.findText(user))
-    elif user or combo.currentIndex() < 0:
-        dialog.create_library_user(user or "Tester")
+    if state is None:
+        state = prefs_window.AmazePrefsState(panel.prefs, panel=panel)
+    state.pick_library(folder)
+    if user and any(row["text"] == user for row in state.userOptions):
+        pick_user(state, user)
+    elif user or not state.getPref(prefs_window.USER):
+        state.create_user(user or "Tester")
     with mock.patch.object(prefs.Prefs, "save", persistence._Persistence.save):    # a switch re-reads it
-        return dialog.apply_library()
+        state.apply()
+    return state.changeCount == 0    # a pick Apply could not open stays pending
+
+
+def close_window(window) -> None:
+    """Close a QML window and delete it now, on this thread, as Houdini's own windows are."""
+    from PySide6 import QtCore
+    try:
+        window.close()
+    except RuntimeError:    # already deleted
+        return
+    QtCore.QCoreApplication.sendPostedEvents(None, QtCore.QEvent.Type.DeferredDelete)
 
 
 def fixture_unconfigured_panel(testcase):

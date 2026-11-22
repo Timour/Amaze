@@ -378,7 +378,7 @@ class FileRowTest(unittest.TestCase):
 
 
 class LineWeightTest(unittest.TestCase):
-    """The line-weight preference in Preferences - Look."""
+    """The line-weight preference in Preferences - UI."""
 
     def setUp(self):
         self.prefs = test_support.fixture_prefs(self)
@@ -1017,29 +1017,29 @@ class CustomColourOpensTheHoudiniPickerTest(unittest.TestCase):
 class TheAboutLogoHasItsDevicePixelRatioTest(unittest.TestCase):
     """The About logo holds device pixels with the devicePixelRatio set, like every badge."""
 
-    def test_the_logo_has_the_apps_device_pixel_ratio(self):
-        from PySide6 import QtWidgets
-        from amaze.dialogs import prefs_dialog
-        prefs_dialog._logo_cache = None          # a fresh render
-        image = prefs_dialog._logo_image()
-        if image is None:
+    def _logo(self, ratio):
+        """The logo as the About page asks Amaze's image provider for it, at pixel ratio `ratio`."""
+        from amaze.helpers import ui_helpers
+        ui_helpers._logo_cache = None          # a fresh render
+        tall = round(ui_helpers.LOGO_HEIGHT * ratio)
+        image = ui_helpers.LogoImages().requestImage("logo", QtCore.QSize(), QtCore.QSize(0, tall))
+        if image.isNull():
             self.skipTest("logo asset not renderable here")
-        app_ratio = QtWidgets.QApplication.instance().devicePixelRatio()
-        self.assertEqual(app_ratio, image.devicePixelRatio(),
+        return image
+
+    def test_the_logo_has_the_apps_device_pixel_ratio(self):
+        from amaze.helpers import theme
+        image = self._logo(2.0)
+        self.assertEqual(2.0, image.devicePixelRatio(),
                          "the logo does not carry the display's density "
                          "- on any ratio above 1.0 it renders soft")
-        from amaze.helpers import theme
-        self.assertEqual(max(1, round(theme.ui_px(34) * app_ratio)),
+        self.assertEqual(max(1, round(theme.ui_px(34) * 2.0)),
                          image.height(),
                          "the logo's pixel height is not density-scaled")
 
     def test_the_logo_keeps_the_proportions_of_its_file(self):
         """`logo.svg` draws from x 17 to 528.664 and y 16 to 125, so it is 4.69 times as wide as tall."""
-        from amaze.dialogs import prefs_dialog
-        prefs_dialog._logo_cache = None
-        image = prefs_dialog._logo_image()
-        if image is None:
-            self.skipTest("logo asset not renderable here")
+        image = self._logo(1.0)
         self.assertAlmostEqual((528.664 - 17) / (125 - 16), image.width() / image.height(), delta=0.15)
 
 
@@ -1451,24 +1451,23 @@ class AnIconEditWritesNoIndex(unittest.TestCase):
 
 
 class TheLineWeightRedrawsEverySection(unittest.TestCase):
-    """Look > Tile Icon Line reaches every section with tile icons, Colors included."""
+    """UI > Tile Icon Line reaches every section with tile icons, Colors included."""
 
     @classmethod
     def setUpClass(cls):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
     def setUp(self):
-        from amaze.dialogs import prefs_dialog
+        from amaze.dialogs import prefs_window
         prefs = self.panel.prefs
         self.addCleanup(setattr, prefs, "icon_line_weight",
                         prefs.icon_line_weight)
         prefs.icon_line_weight = "template"
-        self.dialog = prefs_dialog.PrefsDialog(prefs, panel=self.panel)
-        self.addCleanup(self.dialog.deleteLater)
+        self.state = prefs_window.AmazePrefsState(prefs, panel=self.panel)
 
     def set_weight(self, token):
-        combo = self.dialog._combo_icon_weight
-        combo.setCurrentIndex(combo.findData(token))
+        self.state.setPref("icon_line_weight", token)    # what the row's menu sends
+        self.state.apply()
         self.assertEqual(token, self.panel.prefs.icon_line_weight)
 
     def test_every_section_with_tile_icons_is_redrawn(self):

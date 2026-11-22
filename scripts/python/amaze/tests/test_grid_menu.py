@@ -656,7 +656,7 @@ class EveryRendererRowShowsTheFilterMenusIcon(unittest.TestCase):
                             "%s ▸ %s is not the Filter menu's icon" % (name, renderer))
 
     def test_a_renderer_switched_off_is_offered_by_no_menu(self):
-        """Hidden in Preferences ▸ Show/Hide: removed from Filter, Convert to and both Imports."""
+        """Hidden in Preferences ▸ UI: removed from Filter, Convert to and both Imports."""
         panel = self.panel
         for hidden in renderers.ALL:
             with self.subTest(hidden=hidden.label), self._everything_offered() as stack:

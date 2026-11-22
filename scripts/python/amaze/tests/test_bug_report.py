@@ -23,8 +23,7 @@ class TheBugReportIncludesTheVersions(unittest.TestCase):
         """Amaze, Houdini and OS versions, one per line, intact in the `QUrl` the button opens."""
         from PySide6 import QtCore
         from amaze.core import updater
-        from amaze.dialogs import prefs_dialog
-        url = prefs_dialog.bug_report_url()
+        url = updater.bug_report_url()
         self.assertTrue(url.startswith(updater.NEW_ISSUE_URL + "?body="),
                         "not the new-issue page: %r" % url)
         parts = urllib.parse.urlsplit(url)
@@ -44,14 +43,14 @@ class TheBugReportIncludesTheVersions(unittest.TestCase):
             "QUrl passes the OS a different query from the one built")
 
     def test_the_button_opens_exactly_that_url(self):
-        """Clicks the real button, so its connection is tested; only `_open_url` is stubbed."""
-        from amaze.dialogs import prefs_dialog
-        prefs = test_support.fixture_prefs(self)
-        dlg = prefs_dialog.PrefsDialog(prefs, panel=None)
-        self.addCleanup(dlg.deleteLater)
-        with mock.patch.object(prefs_dialog, "_open_url") as open_url:
-            dlg._btn_report.click()
-        open_url.assert_called_once_with(prefs_dialog.bug_report_url())
+        """The press the Report a Bug button makes; only `open_url` is stubbed."""
+        from amaze.core import updater
+        from amaze.dialogs import prefs_window
+        from amaze.helpers import ui_helpers
+        state = prefs_window.AmazePrefsState(test_support.fixture_prefs(self), panel=None)
+        with mock.patch.object(ui_helpers, "open_url") as open_url:
+            state.reportBug()
+        open_url.assert_called_once_with(updater.bug_report_url())
 
 
 if __name__ == "__main__":

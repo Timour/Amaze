@@ -18,7 +18,7 @@ ICON_DIR = amaze.package_file("ui", "feather")  # the icon set, joined by amaze.
 CANVAS = 512
 ICON_SCALE = 12.5  # 24-unit grid on CANVAS: 250px of ink; a change re-renders every tile
 STROKE_UNITS = 0.8  # the thin stroke - the one value chosen by eye rather than measured
-FEATHER_STROKE_UNITS = 2.0  # Feather's own default weight, the other option of the Look preference
+FEATHER_STROKE_UNITS = 2.0  # Feather's own default weight, the other option of the UI preference
 INK_SPAN = 250.0      # no icon's ink spans more pixels than this on a 512 tile
 
 INKS = {  # ink colours, stored by token name; light is for dark backgrounds
@@ -306,7 +306,7 @@ def normalise(spec) -> dict:
 
 
 def stroke_for(preferences) -> float:
-    """The line weight from Preferences - Look: the thin stroke or Feather's own."""
+    """The line weight from Preferences - UI: the thin stroke or Feather's own."""
     try:
         weight = str(getattr(preferences, "icon_line_weight", "") or "")
     except Exception:                                       # noqa: BLE001

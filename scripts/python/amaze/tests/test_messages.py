@@ -499,7 +499,7 @@ class CheckLibraryNamesWhereFilesGo(unittest.TestCase):
 
     def test_a_quoted_place_ends_before_the_next_word(self):
         """`Preferences ▸ Library` run into the word after it reads as one word on screen."""
-        glued = re.compile(r"▸ (?:Library|Render|Show/Hide|Look|Add-On|About)[A-Za-z]")
+        glued = re.compile(r"▸ (?:Library|Render|UI|Add-On|About)[A-Za-z]")
         for name, text in self._user_sentences():
             self.assertIsNone(glued.search(text), "%s runs a tab's name into the next word" % name)
 
