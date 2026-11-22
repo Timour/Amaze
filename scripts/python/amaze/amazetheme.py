@@ -1254,6 +1254,8 @@ def drawn_toolbar(frame_key: str = "B01") -> dict:
     right_end = [(owner, n) for owner, n in buttons if n[1] > field[1]]
     (_, first), (_, second) = left[0], left[1]
     icons = {owner: n[3] for owner, n in drawn_by_owner(frame_key, "icon").items()}
+    placed = {owner: {"x": n[1] - dict(buttons)[owner][1], "y": n[2] - dict(buttons)[owner][2]}
+              for owner, n in drawn_by_owner(frame_key, "icon").items() if owner in dict(buttons)}
     return {
         "left": tuple(owner for owner, _n in left),    # the buttons left of the slider, in drawn order
         "right": tuple(owner for owner, _n in right_end),    # and those right of the search field
@@ -1266,6 +1268,7 @@ def drawn_toolbar(frame_key: str = "B01") -> dict:
         "label_gap": field[1] - right(label),
         "button": first[3],
         "icons": icons,    # each button's own drawn icon, by its object name
+        "icon_at": placed,    # where each icon sits inside its button, as drawn
         "chip_icon": icons["btn_categories"],    # a toggle the frame does not draw
         "menu_icon": icons["btn_menu_view"],     # a menu button the frame does not draw
         "slider_w": slider[3],

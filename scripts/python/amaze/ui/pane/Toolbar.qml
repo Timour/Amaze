@@ -20,17 +20,21 @@ Item {
         property color artColor: "transparent"
         property string tip: ""
         flat: true
+        padding: 0    // the art sits where B01 draws it inside the button, not inside Houdini's padding
+        implicitWidth: root.drawn.button
+        implicitHeight: root.drawn.button
         opacity: enabled ? 1.0 : Theme.disabledAlpha
         ToolTip.text: button.tip
         ToolTip.visible: button.hovered && button.tip !== ""
         ToolTip.delay: Config.toolTipDelay
         contentItem: Item {
             AmazeIcon {
+                readonly property var at: root.drawn.icon_at[button.node]
                 file: button.art
                 width: root.drawn.icons[button.node]
                 height: width
-                x: Math.floor((parent.width - width) / 2)
-                y: Math.floor((parent.height - height) / 2)
+                x: at ? at.x : Math.floor((parent.width - width) / 2)
+                y: at ? at.y : Math.floor((parent.height - height) / 2)
                 color: button.artColor
             }
         }
