@@ -15,6 +15,9 @@ ScrollView {
     signal badgeClicked(int row, string name)
 
     ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+    background: Rectangle {
+        color: root.drawn.back
+    }
 
     GridView {
         id: view

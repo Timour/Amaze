@@ -74,8 +74,8 @@ def drawn_tile() -> dict:
         box = ui_helpers.svg_size(art + ".svg")    # its own width
         marks[art] = dict(drawn, width=round(drawn["height"] * box.width() / max(box.height(), 1)))
     return dict(amazetheme.drawn_tile(), strip=amazetheme.drawn_category_strip(),
-                ground=amazetheme.TILE_GROUND, least=amazetheme.BADGE_LEAST,
-                part=amazetheme.BADGE_PART, renderers=marks)
+                card=amazetheme.TILE_GROUND, back=amazetheme.GRID_BACK,
+                least=amazetheme.BADGE_LEAST, part=amazetheme.BADGE_PART, renderers=marks)
 
 
 class PaneState(qmlviews.SharedState, asks.Asks):

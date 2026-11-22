@@ -64,7 +64,7 @@ Item {
         width: root.side
         height: root.textTop + root.nameHeight + root.drawn.line_gap + root.subtitleHeight
                 + root.drawn.bottom_pad - root.drawn.pad
-        color: Theme.surfaceLow
+        color: root.drawn.card    // T01's card, also the ground of a generic icon drawn without one
         Rectangle {    // the text's part of it is the selection's colour on a selected tile
             y: root.side
             width: parent.width
@@ -89,11 +89,6 @@ Item {
         height: root.side
         clip: root.picture.crop === true
 
-        Rectangle {    // the generic file icon's ground: its art is drawn without one
-            anchors.fill: parent
-            visible: !!root.picture.art
-            color: root.drawn.ground
-        }
         AmazeIcon {
             anchors.fill: parent
             visible: !!root.picture.art
