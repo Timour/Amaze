@@ -3,11 +3,12 @@
 import json
 import os
 import sys
+import time
 import unittest
 from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
@@ -21,6 +22,7 @@ from amaze.actions import nodes as node_actions  # noqa: E402
 from amaze.core import category, file_library, locations  # noqa: E402
 from amaze.helpers import helpers  # noqa: E402
 from amaze.panel import grid  # noqa: E402
+from amaze.panel import panel as panel_mod  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
 SIDEBAR_CONTEXTS = ("MaterialSection", "CopSection", "CodeSection",    # every context with a sidebar menu
@@ -515,9 +517,16 @@ class RemovingACategoryLeavesNoTileOfIt(_FourAssetSidebars, unittest.TestCase):
     """Remove on the selected row selects All; on any other row the selection stays."""
 
     def _remove(self, stored):
-        index = self._press(stored)
-        self.panel.pane.active_section().menu_remove_category([index], index)
-        QtWidgets.QApplication.processEvents()
+        """Delete from the row's real right-click menu, then wait past the sidebar's key pause."""
+        view = self.panel.cat_list
+        pos = view.visualRect(self._press(stored)).center()
+        pick = lambda menu, *_a: next(a for a in menu.actions() if a.text() == "Delete")
+        with mock.patch.object(QtWidgets.QMenu, "exec_", pick):
+            QtWidgets.QApplication.sendEvent(view.viewport(), QtGui.QContextMenuEvent(
+                QtGui.QContextMenuEvent.Reason.Mouse, pos, view.viewport().mapToGlobal(pos)))
+        end = time.monotonic() + 2 * panel_mod.SIDEBAR_KEY_PAUSE_MS / 1000.0
+        while time.monotonic() < end:
+            QtWidgets.QApplication.processEvents()
 
     def test_removing_the_selected_category_selects_all(self):
         def case(kept, gone, everything, kept_tiles):

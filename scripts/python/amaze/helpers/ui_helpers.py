@@ -228,6 +228,8 @@ class Table(QtWidgets.QTreeView):
             self._quiet = False
 
     def viewportEvent(self, event) -> bool:
+        if event.type() == QtCore.QEvent.Type.ContextMenu:    # a menu runs the app's work, never a row choice
+            return super().viewportEvent(event)
         return self._by_user(super().viewportEvent, event)
 
     def keyPressEvent(self, event) -> None:
