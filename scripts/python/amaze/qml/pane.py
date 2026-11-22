@@ -218,6 +218,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         self._give_sidebar_selection()    # no row was current yet: the user's is the first
         if index.isValid() and self._sidebar_selection is not None \
                 and index.model() is self._sidebar_selection.model():
+            self._highlight_sidebar_row(index)    # the row is current and selected by this click alone
             self.pane.sidebar.show_row(index)
 
     @QtCore.Slot()
