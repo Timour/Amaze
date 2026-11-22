@@ -39,7 +39,7 @@ PrefsPage {
         LabeledPref {
             PrefMessage {
                 text: SharedState.versionLine
-                symbol: PhosphorGlyphs.warning
+                symbol: SharedState.updateOffered ? PhosphorGlyphs.warning : ""    // only for an update to take
                 symbolColor: Theme.yellow
             }
         }

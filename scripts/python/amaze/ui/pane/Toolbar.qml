@@ -51,22 +51,12 @@ Item {
             enabled: SharedState.onlinePossible
             onClicked: SharedState.setOnline(!SharedState.online)
         }
-        ButtonStrip {
+        IconButton {    // one button, its icon the current mode, as the widget panel's
             Layout.leftMargin: root.drawn.gap
-            passive: true    // the engine's view mode checks the button
-            model: [{icon: "grid.svg"}, {icon: "list.svg"}]
-            currentIndex: SharedState.viewMode === "list" ? 1 : 0
-            onTapped: index => SharedState.setViewMode(index === 1 ? "list" : "grid")
-            contentDelegate: Component {
-                Item {
-                    AmazeIcon {
-                        anchors.centerIn: parent
-                        width: root.drawn.icons.cb_viewmode
-                        height: width
-                        file: iconName
-                    }
-                }
-            }
+            node: "cb_viewmode"
+            art: SharedState.viewMode === "list" ? "list.svg" : "grid.svg"
+            tip: SharedState.tips.viewMode
+            onClicked: SharedState.setViewMode(SharedState.viewMode === "list" ? "grid" : "list")
         }
         IconButton {
             Layout.leftMargin: root.drawn.gap

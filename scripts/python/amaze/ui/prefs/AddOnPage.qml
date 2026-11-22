@@ -79,7 +79,7 @@ PrefsPage {
 
             PrefMessage {
                 text: SharedState.addonsLine
-                symbol: PhosphorGlyphs.warning
+                symbol: SharedState.addonsOffered ? PhosphorGlyphs.warning : ""    // only for an update to take
                 symbolColor: Theme.yellow
             }
         }

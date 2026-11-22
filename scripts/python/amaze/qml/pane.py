@@ -62,6 +62,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         self.toolbar = dict(amazetheme.drawn_toolbar(), end_gap=amazetheme.TOOLBAR_SEARCH_END_GAP)
         self.strip = {"height": tabs["height"], "left": tabs["left"]}
         self.tips = {"online": tooltips.PANEL_ONLINE, "favourites": tooltips.PANEL_FAVORITES,
+                     "viewMode": tooltips.PANEL_VIEW_MODE,
                      "prefs": tooltips.PANEL_PREFERENCES, "capture": tooltips.PANEL_CAPTURE,
                      "tileSize": tooltips.PANEL_TILE_SIZE, "tileSizeList": tooltips.PANEL_TILE_SIZE_LIST,
                      "search": tooltips.PANEL_SEARCH}
