@@ -117,7 +117,7 @@ test_prefs_equality test_karma_batch \
 test_nodes_section test_tile_icons test_category_colors \
 test_shell_gates test_delegates test_folder_sections test_folder_tree test_file_moves \
 test_viewport_pick test_host_engines test_log_export \
-test_hip_section test_library_settings test_library_list test_library_tab test_atomic_write \
+test_hip_section test_library_settings test_library_list test_library_tab test_prefs_window test_atomic_write \
 test_gradient_guard test_cleanup_counts test_check_library test_harness_reset \
 test_stale_proxy_index test_alert_sink \
 test_headless_dialogs test_save_from_node test_node_menu \
