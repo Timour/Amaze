@@ -69,30 +69,14 @@ class TheUserIsPickedByTheRule(unittest.TestCase):
         self.state.pick_library(self.prefs.dir)
         self.assertEqual(self.prefs.library_user, self.state.getPref(USER))
 
-    def test_a_user_of_the_same_name_in_another_library_is_not_picked(self):
-        other, _made = _library_with(self, "Sage", "Plum")
-        self.state.pick_library(other)
-        self.assertEqual("", self.state.getPref(USER), "a user was picked because the name matched")
-
-    def test_the_only_user_of_another_library_is_not_picked(self):
-        other, _made = _library_with(self, "Sage")
-        self.state.pick_library(other)
-        self.assertEqual("", self.state.getPref(USER),
-                         "a user was picked because it was the only one")
-
-    def test_nobody_is_picked_among_several_without_a_match(self):
-        other, _made = _library_with(self, "Sage", "Fern")
-        before = self.prefs.dir
-        self.state.pick_library(other)
-        self.assertEqual("", self.state.getPref(USER))
-        self.state.apply()
-        self.assertEqual(before, self.prefs.dir, "Apply switched without a user")
-        self.assertEqual(other, self.state.getPref(LIBRARY), "the pick was dropped, not kept pending")
-
-    def test_a_folder_with_no_library_offers_only_a_new_user(self):
+    def test_a_library_pick_shows_its_first_user_or_a_new_default_one(self):
         self.state.pick_library(_empty_folder(self))
-        self.assertEqual([user_dialog.CREATE], [row["value"] for row in self.state.userOptions])
-        self.assertEqual("Format: v2.0", self.state.libraryFormat)
+        self.assertEqual(prefs_window.NEW_USER + user_dialog.DEFAULT_NAME, self.state.getPref(USER))
+        other, _made = _library_with(self, "Sage", "Fern")
+        self.state.pick_library(other)
+        self.assertEqual("Fern", users.all_users(self.prefs, library=other)[self.state.getPref(USER)])
+        self.state.apply()
+        self.assertEqual(other, self.prefs.dir, "Apply did not open the picked library")
 
 
 class WhatApplyingDoesIsShownBeforeApply(unittest.TestCase):

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 CREATE = "\x00create"    # the create row's value: never a name and never a UID
 CREATE_TEXT = "Create a new user..."
+DEFAULT_NAME = "Amaze User"    # the user a library with nobody in it starts with
 
 
 def user_rows(known: dict) -> list:

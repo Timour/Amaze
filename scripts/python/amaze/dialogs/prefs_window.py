@@ -362,7 +362,7 @@ class AmazePrefsState(mainprefs.PrefsState):
         if name == "addon_betas":
             self._forget_addon_check()    # the other kind's last check result is no answer
         if record and name == LIBRARY:
-            self.setAll({LIBRARY: value, USER: self._preselected(value)}, registry, auto_apply)
+            self.setAll({LIBRARY: value, USER: self._picked_library_user(value)}, registry, auto_apply)
             return
         if record and name == USER and value == user_dialog.CREATE:
             self._ask_new_user()
@@ -469,6 +469,12 @@ class AmazePrefsState(mainprefs.PrefsState):
         if _same_folder(folder, self._prefs.dir) and current in self._known_users(folder):
             return current
         return ""
+
+    def _picked_library_user(self, folder: str) -> str:
+        """A library pick's user: this computer's in the open library, else the first A to Z, else new."""
+        rows = user_dialog.user_rows(self._known_users(folder))    # the create row last
+        first = rows[0][1] if len(rows) > 1 else NEW_USER + user_dialog.DEFAULT_NAME
+        return self._preselected(folder) or first
 
     def _library_folders(self) -> list:
         """The Library list: folders Add put there, newest first, the open library, then the rest."""
