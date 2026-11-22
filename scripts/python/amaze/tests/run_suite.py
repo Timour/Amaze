@@ -36,6 +36,22 @@ def host_line() -> str:
         return "suite host: UNKNOWN - hython could not report its version (%s)" % exc
 
 
+def close_qt_windows() -> None:
+    """Delete the run's widgets and windows while Python runs; at exit a QML view's hide crashed."""
+    try:
+        from PySide6 import QtCore, QtGui, QtWidgets
+    except ImportError:
+        return
+    app = QtWidgets.QApplication.instance()
+    if app is None:
+        return
+    for window in app.topLevelWidgets() + [w for w in QtGui.QGuiApplication.topLevelWindows()
+                                           if isinstance(w, QtGui.QWindow) and w.isVisible()]:
+        window.close()
+        window.deleteLater()
+    QtCore.QCoreApplication.sendPostedEvents(None, QtCore.QEvent.Type.DeferredDelete)
+
+
 def main(argv) -> None:
     print(host_line(), flush=True)
     map_path = os.environ.get(impact_map.MAP_VAR)
@@ -58,6 +74,7 @@ def main(argv) -> None:
             print("run_suite: could not write the skip report to %s (%s) - "
                   "the dead-cover check will refuse rather than guess"
                   % (report_path, exc), file=sys.stderr)
+    close_qt_windows()    # ▸r/suite-exit-crash
     # Houdini runs Python during shutdown, so flush while we still can.
     sys.stdout.flush()
     sys.stderr.flush()
