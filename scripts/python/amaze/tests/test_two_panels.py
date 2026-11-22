@@ -239,10 +239,11 @@ class AFileTabSwitchReachesBothPanelsTest(unittest.TestCase):
         self.assertIsNot(self.a.pane.prefs, files.preferences, "premise: the model reads the first panel's Prefs")
         state = prefs_window.AmazePrefsState(self.a.pane.prefs, pane=self.a.pane)
         for name in ("system_file_icons", "render_rat_files"):
+            to_text, _to_value = prefs_window.SETTINGS[name]
             for value in (not getattr(files.preferences, name), getattr(files.preferences, name)):
                 with self.subTest(switch=name, value=value), \
                         mock.patch.object(files, "refresh_current_folder") as refresh:
-                    state.setPref(name, "1" if value else "0")    # what the row's switch sends
+                    state.setPref(name, to_text(value))    # what the row's switch sends for that value
                     state.apply()
                     self.assertIs(value, getattr(self.a.pane.prefs, name))
                     self.assertIs(value, getattr(files.preferences, name),
