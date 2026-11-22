@@ -302,21 +302,21 @@ class TheMenusMatchTheOldHandlersOutput(unittest.TestCase):
                "Save Scene", "----"]    # the folder shown, whatever is selected
         for kind, count, expected in (
                 (locations.KIND_IMAGE, 1,
-                 top + ["Load Asset", "Copy Path", "----", "Show Location",
+                 top + ["Load Asset", "Copy Path", "----", "Show Location", "----",
                         "Render Image", "Capture Image", "Customize", "----", "Favorite"]),
                 (locations.KIND_IMAGE, 2,    # an image loads onto ONE node parameter
-                 top + ["Load Asset(off)", "Copy Path", "----", "Show Location(off)",
+                 top + ["Load Asset(off)", "Copy Path", "----", "Show Location(off)", "----",
                         "Render Image", "Capture Image(off)", "Customize", "----", "Favorite"]),
                 (locations.KIND_GEO, 2,      # geometry loads the whole selection
-                 top + ["Load Asset", "Copy Path", "----", "Show Location(off)",
+                 top + ["Load Asset", "Copy Path", "----", "Show Location(off)", "----",
                         "Render Image", "Capture Image(off)", "Customize", "----", "Favorite"]),
                 (locations.KIND_HIP, 1,      # a scene captures only while it is the open one
                  ["New Folder", "----", "Copy", "Paste(off)", "----",
                   "Open Scene", "Save Scene", "----",
-                  "Copy Path", "----", "Show Location",
+                  "Copy Path", "----", "Show Location", "----",
                   "Capture Image(off)", "Customize", "----", "Favorite"]),
                 (locations.KIND_OTHER, 1,    # what Houdini cannot open is absent, not greyed
-                 top + ["Copy Path", "----", "Show Location",
+                 top + ["Copy Path", "----", "Show Location", "----",
                         "Capture Image", "Customize", "----", "Favorite"])):
             with self.subTest(kind=kind, selected=count):
                 rows = self._rows_of_kind(kind)

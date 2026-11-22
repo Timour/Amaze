@@ -127,7 +127,6 @@ MENU_TEXT = "#e6e6e6"
 
 
 SIDEBAR_PICKER_START = "#4af2a1"    # the colour picker's starting colour for a row that has none
-LINK_COLOR = "#8e8a85"              # About-tab links, a step darker than body text so they look secondary
 
 BTN_APPLY = "Apply"                 # ▸ THE WORDS, from here down. Buttons first
 BTN_CANCEL = "Cancel"

@@ -533,6 +533,7 @@ class FileSection(FolderSection):
         base.MenuEntry("Copy Path", handler="menu_copy_path"),
         base.SEPARATOR,
         base.MenuEntry("Show Location", handler="menu_reveal", needs="one"),
+        base.SEPARATOR,
     ) + base.GRID_MENU_TAIL
 
     _PATH_ONLY = base.DropRule(on_node="drop_file_path_on_node",    # per row kind: every kind sets its path on a node; a drop off any node differs
