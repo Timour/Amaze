@@ -10,7 +10,7 @@ PrefsPage {
         text: "Library"
 
         // A list with its buttons under it, as Houdini's theme menus hold theirs
-        MenuPref {
+        ListMenuPref {
             label: "Library"
             pref: "library"
             options: SharedState.libraryOptions
@@ -146,7 +146,7 @@ PrefsPage {
                 }
             }
         }
-        MenuPref {
+        ListMenuPref {
             label: "User"
             pref: "library_user"
             options: SharedState.userOptions

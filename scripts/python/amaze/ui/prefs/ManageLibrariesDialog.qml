@@ -13,8 +13,8 @@ Dialog {
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
     standardButtons: Dialog.Cancel    // the Dialog gives its footer box its standard buttons
 
-    // Houdini's Geometry Spreadsheet table: Qt's TableView and selection model, and a
-    // SelectionRectangle for Ctrl-click, Shift-click and drag; a plain click makes a row current
+    // Qt's TableView and selection model as Houdini's Node Search and Geometry Spreadsheet use them;
+    // the SelectionRectangle gives Ctrl-click, Shift-click and drag, a plain click makes a row current
     contentItem: Item {
         implicitHeight: 200
 
@@ -37,18 +37,21 @@ Dialog {
                 id: cell
 
                 required property int row
-                required property bool current
                 required property bool selected
                 required property string display
                 required property bool dim
+                required property bool isOpen
+                // the whole row, selected or current, as Node Search draws its rows; never the
+                // open library, which cannot be removed, as the OCIO table leaves its Default rule
+                readonly property bool rowSelected: (
+                    !isOpen && (selected || row === tableView.currentRow)
+                )
 
                 implicitHeight: 20
                 color: (
-                    selected || current ? Theme.highlightSurface
+                    rowSelected ? Theme.highlightSurface
                         : (row % 2 ? Theme.fieldAlt : Theme.field)
                 )
-                border.color: Theme.highlight
-                border.width: current ? 1 : 0
 
                 Text {
                     anchors.fill: parent
@@ -58,7 +61,7 @@ Dialog {
                     leftPadding: 4
                     rightPadding: 4
                     color: (
-                        cell.selected || cell.current ? Theme.highlightSurfaceFg
+                        cell.rowSelected ? Theme.highlightSurfaceFg
                             : (cell.dim ? Theme.dimFg : Theme.fieldFg)
                     )
                 }
@@ -77,7 +80,10 @@ Dialog {
         Button {
             text: SharedState.removeFromListLabel
             implicitHeight: 22
-            enabled: tableView.selectionModel.hasSelection || tableView.currentRow >= 0
+            enabled: (
+                tableView.selectionModel.hasSelection
+                || (tableView.itemAtCell(Qt.point(0, tableView.currentRow))?.rowSelected ?? false)
+            )
             DialogButtonBox.buttonRole: DialogButtonBox.ActionRole
             onClicked: SharedState.removeLibraries(
                 tableView.selectionModel.currentIndex, tableView.selectionModel.selectedRows(0)
