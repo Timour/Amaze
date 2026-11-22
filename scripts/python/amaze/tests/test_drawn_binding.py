@@ -131,16 +131,19 @@ DRAWN_EXEMPT = (    # (does this node need no pin, why): every other drawn node 
     (lambda f, n: f == "N02",
      "the info pane's rows are drawn by Houdini's style: it reads its sizes through "
      "drawn_info, held by test_info_panel ▸ TheInfoPaneMatchesItsDesignFrame"),
-    (lambda f, n: f in ("D15", "D01") and n[0].startswith("QListWidget ▸ "),
+    (lambda f, n: f == "D01" and n[0].startswith("QListWidget ▸ "),
      "a row is drawn by Houdini's style, not pixel-matched: the list reads its column "
-     "from drawn_list_rows, held by TheManageWindowMatchesItsDesignFrame and test_versions_dialog"),
+     "from drawn_list_rows, held by test_versions_dialog"),
+    (lambda f, n: f == "D15",
+     "Manage Libraries is a QML dialog in Houdini's Preferences window: of this frame it "
+     "reads only its name column's width, through drawn_list_rows"),
 )
 
 
 def build_every_frame(case):
     """One live dialog per drawn frame, so the pinned sizes checked are the real ones."""
     from amaze.dialogs import (base_dialog, code_dialog, icon_dialog,
-                               library_dialog, save_dialog, versions_dialog)
+                               save_dialog, versions_dialog)
     built = (
         versions_dialog.VersionsDialog("brushed_steel", [
             {"n": 1, "name": "Version 1", "date": "2026-10-22 10:00"},
@@ -151,7 +154,6 @@ def build_every_frame(case):
         save_dialog.SaveDialog(["Metal"], "Metal", name="rocks1"),
         code_dialog.CodeDialog(["Metal"]),
         base_dialog.NameDialog(),
-        library_dialog.ManageLibrariesDialog(test_support.fixture_prefs(case)),
     )
     for dialog in built:
         case.addCleanup(dialog.deleteLater)
@@ -357,10 +359,10 @@ class EveryDrawnNodeIsBoundOrNamed(unittest.TestCase):
             "empty result proves nothing")
         self.assertEqual(
             {"P01", "P02", "P03a", "P03b", "P04", "P05", "P06", "T01", "T05", "T08", "T20", "T23",
-             "T24", "T25", "T26", "L01", "B01", "S01", "G01", "N01", "N01B", "N02"},
+             "T24", "T25", "T26", "L01", "B01", "S01", "G01", "N01", "N01B", "N02", "D15"},
             set(amazetheme.DIALOG_LAYOUT)
             - {frame_key for frame_key, _kind, _x, _y in self.pins},
-            "the P frames draw Preferences, now Houdini's own QML window, and the panel's areas "
+            "the P frames and D15 draw Preferences, now Houdini's own QML window, and the panel's areas "
             "are read through their own drawn_* - any other frame listed here "
             "built no widget sized from the document")
 
@@ -527,21 +529,6 @@ class MovingADrawnNodeMovesTheWidget(unittest.TestCase):
             if (node[0], node[1], node[2]) == (kind,) + at else node
             for node in frame["nodes"])
         return frame
-
-    def test_a_wider_drawn_button_builds_a_wider_button(self):
-        from amaze.dialogs import library_dialog
-        from amaze.prefs import prefs as prefs_mod
-        frame = self._widened("D15", "QPushButton", (237, 193), 5)
-        with mock.patch.dict(amazetheme.DIALOG_LAYOUT, {"D15": frame}):
-            amazetheme.forget_drawn_boxes()
-            dialog = library_dialog.ManageLibrariesDialog(prefs_mod.Prefs())
-            self.addCleanup(dialog.deleteLater)
-            button = [b for b in dialog.findChildren(QtWidgets.QPushButton)
-                      if b.text() == "Remove from List"][0]
-            self.assertEqual(
-                theme.ui_px(104 + 5), pinned(self, button)[0],
-                "the drawn rect was widened and the built button did not "
-                "follow, so the dialog is not reading the document")
 
     def test_a_wider_drawn_gap_builds_a_wider_gap(self):
         from amaze.dialogs import base_dialog

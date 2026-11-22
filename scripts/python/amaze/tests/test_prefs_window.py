@@ -67,6 +67,23 @@ class TheWindowLoads(unittest.TestCase):
                 self.assertTrue(shown, "the page did not load: %s" % self._qml_messages())
         self.assertEqual([], self._qml_messages())
 
+    def test_the_library_page_holds_both_dialogs_and_each_opens_with_no_qml_error(self):
+        self.window.setPageName("Library")
+        self.assertTrue(test_support.pump_until(
+            lambda: self.root.property("currentUrl").endswith("/LibraryPage.qml")
+            and self.root.property("currentPage") is not None))
+        page = self.root.property("currentPage")
+        for name in ("ManageLibrariesDialog", "UserNameDialog"):
+            with self.subTest(dialog=name):
+                found = [one for one in page.findChildren(QtCore.QObject)
+                         if one.metaObject().className().split("_QMLTYPE_")[0] == name]
+                self.assertEqual(1, len(found), "the Library page does not hold %s" % name)
+                QtCore.QMetaObject.invokeMethod(found[0], "open")
+                self.assertTrue(test_support.pump_until(lambda: found[0].property("opened")))
+                QtCore.QMetaObject.invokeMethod(found[0], "close")
+                self.assertTrue(test_support.pump_until(lambda: not found[0].property("visible")))
+        self.assertEqual([], self._qml_messages())
+
     def test_the_page_list_holds_the_five_pages_in_order(self):
         rows = self.root.property("pageModel").toVariant()
         self.assertEqual(list(PAGES), [(row["text"], os.path.basename(row["url"].toLocalFile()))

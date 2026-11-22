@@ -401,29 +401,5 @@ class SetLibraryOpensTheLibraryTab(unittest.TestCase):
         _assert_on_the_library_page(self, panel._prefs_window)
 
 
-class ManageUpdatesTheList(unittest.TestCase):
-
-    def test_a_removed_library_leaves_the_list(self):
-        prefs = test_support.fixture_prefs(self)
-        other, _made = _library_with(self, "Sage")
-        prefs.note_library_opened(other)
-        prefs.note_library_opened(prefs.dir)
-        state = _state(prefs)
-        self.assertEqual(2, len(state.libraryOptions))
-
-        class Removing:
-            removed = [other]
-
-            def __init__(self, *_a, **_k):
-                pass
-
-            def exec(self):
-                prefs.remove_libraries([other])
-
-        with mock.patch.object(prefs_window.library_dialog, "ManageLibrariesDialog", Removing):
-            state.manageLibraries()
-        self.assertEqual([prefs.dir], [row["value"] for row in state.libraryOptions])
-
-
 if __name__ == "__main__":
     unittest.main()

@@ -22,7 +22,7 @@ PrefsPage {
 
                 Button {
                     text: "Manage"
-                    onClicked: SharedState.manageLibraries()
+                    onClicked: manageDialog.open()
 
                     TipArea {
                         anchors.fill: parent
@@ -242,6 +242,29 @@ PrefsPage {
             shown: SharedState.applyLine !== ""
             symbol: PhosphorGlyphs.warning
             symbolColor: Theme.yellow
+        }
+    }
+
+    // Both drawn in this window, blocking only it, as Houdini's OCIO page draws its Add Rule
+    ManageLibrariesDialog {
+        id: manageDialog
+        anchors.centerIn: parent
+    }
+    UserNameDialog {
+        id: nameDialog
+        anchors.centerIn: parent
+        onAccepted: SharedState.nameUser(nameDialog.name)
+        onRejected: SharedState.prefsUpdated()    // the User row shows the user it showed before
+    }
+
+    // Python asks for the name dialog as Houdini's Node Search asks for its Save Query dialog
+    Connections {
+        target: SharedState
+
+        function onUserNameRequested(title, name) {
+            nameDialog.title = title
+            nameDialog.name = name
+            nameDialog.open()
         }
     }
 }

@@ -464,7 +464,7 @@ class EveryDialogKnowsWhichWindowOpenedIt(unittest.TestCase):
     """A dialog built with a parent opens on its parent's screen, not the primary ▸r/dialog-parents"""
 
     DIALOGS = {"NameDialog", "CategoryDialog",
-               "SaveDialog", "CodeDialog", "ManageLibrariesDialog",
+               "SaveDialog", "CodeDialog",
                "IconDialog", "VersionsDialog"}
 
     EXEMPT = set()
@@ -504,7 +504,7 @@ class EveryDialogKnowsWhichWindowOpenedIt(unittest.TestCase):
     def test_no_dialog_is_built_without_a_parent(self):
         found = self._constructions()
         self.assertGreaterEqual(    # ▸p/vacuous-register
-            len(found), 8,
+            len(found), 6,
             "the dialog scan found %d construction sites - it has stopped "
             "matching, so its empty result means nothing" % len(found))
         offenders = [
@@ -522,11 +522,10 @@ class EveryDialogKnowsWhichWindowOpenedIt(unittest.TestCase):
         """Every dialog class accepts a parent and passes it on to `super().__init__`."""
         import inspect
         from amaze.dialogs import (base_dialog, code_dialog, gradient_dialog,
-                                   icon_dialog, library_dialog, save_dialog)
+                                   icon_dialog, save_dialog)
         classes = [base_dialog.AssetDialog, base_dialog.NameDialog,
                    gradient_dialog.CategoryDialog, code_dialog.CodeDialog,
-                   icon_dialog.IconDialog, save_dialog.SaveDialog,
-                   library_dialog.ManageLibrariesDialog]
+                   icon_dialog.IconDialog, save_dialog.SaveDialog]
         for cls in classes:
             args = inspect.signature(cls.__init__).parameters
             self.assertIn(
@@ -672,17 +671,13 @@ class TheSaveDialogsHaveTheDrawnWidth(unittest.TestCase):
             "a caption is drawn on the editor; the design has none")
 
     def test_only_the_code_dialog_has_a_header_band(self):
-        """D11 has a header band; D01, D02, D15 and the save dialogs do not."""
-        from amaze.dialogs import (code_dialog, gradient_dialog, icon_dialog,
-                                   library_dialog, save_dialog)
-        from amaze.prefs import prefs as prefs_mod
+        """D11 has a header band; D01, D02 and the save dialogs do not."""
+        from amaze.dialogs import code_dialog, gradient_dialog, icon_dialog, save_dialog
         wants = (
             ("D02 Customize", lambda: icon_dialog.IconDialog(
                 None, 0.0, None, tile_name="rocks1"), False),
             ("D11 Save Code",
              lambda: code_dialog.CodeDialog(["Metal"]), True),
-            ("D15 Manage Libraries", lambda: library_dialog.ManageLibrariesDialog(
-                prefs_mod.Prefs()), False),
             ("D09 Save", lambda: save_dialog.SaveDialog(
                 ["Metal"], "Metal", name="rocks1"), False),
             ("D09 Gradient", lambda: save_dialog.SaveDialog(
@@ -785,12 +780,6 @@ class AnAnsweredDialogIsDeletedFromItsParent(unittest.TestCase):
         "category": lambda parent: __import__(
             "amaze.dialogs.gradient_dialog", fromlist=["_"]).CategoryDialog(
                 parent=parent),
-        "manage libraries": lambda parent: __import__(
-            "amaze.dialogs.library_dialog", fromlist=["_"]).ManageLibrariesDialog(
-                __import__("amaze.prefs.prefs", fromlist=["_"]).Prefs(), parent=parent),
-        "name": lambda parent: __import__(
-            "amaze.dialogs.base_dialog", fromlist=["_"]).NameDialog(
-                "Rename User", "Cobalt", parent=parent),
     }
 
     def _parent(self):
@@ -816,9 +805,8 @@ class AnAnsweredDialogIsDeletedFromItsParent(unittest.TestCase):
                     "parent for the whole session" % label)
 
     def test_the_typed_name_is_kept_after_the_dialog_is_deleted(self):
-        from amaze.dialogs import base_dialog
-        dialog = base_dialog.NameDialog("Rename User", "Cobalt",
-                                        parent=self._parent())
+        from amaze.dialogs import gradient_dialog
+        dialog = gradient_dialog.CategoryDialog(default="Cobalt", parent=self._parent())
         dialog._line_name.setText("  Sienna ")
         self._answer(dialog, dialog._on_accept)
         _app.sendPostedEvents(None, QtCore.QEvent.Type.DeferredDelete)

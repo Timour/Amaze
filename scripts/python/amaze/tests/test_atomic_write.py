@@ -837,33 +837,28 @@ class TheUserIsAUidWithANameTest(unittest.TestCase):
         self.assertEqual("Sage", users.name_for(p, sage))
         self.assertTrue(users.rename(p, plum, "PLUM"), "a user could not change the case of its own name")
 
-    def test_preferences_shows_user_name_taken_and_creates_no_user(self):
+    def test_preferences_create_user_refuses_a_taken_name_and_names_a_free_one(self):
         import types
         import hou
         from amaze import messages
         from amaze.core import users
-        from amaze.dialogs import base_dialog, prefs_window, user_dialog
+        from amaze.dialogs import prefs_window, user_dialog
         p = self._prefs()
         users.create(p, "Plum")
         state = prefs_window.AmazePrefsState(p, panel=None)
-        shown = []
-
-        class Named:
-            canceled = False
-            name = "plum"
-
-            def __init__(self, *_a, **_k):
-                pass
-
-            def exec(self):
-                pass
-
+        asked, shown = [], []
+        state.userNameRequested.connect(lambda title, name: asked.append((title, name)))
         ui = types.SimpleNamespace(displayMessage=lambda text, **_k: shown.append(text))
-        with mock.patch.object(base_dialog, "NameDialog", Named), \
-                mock.patch.object(hou, "ui", ui, create=True):
+        with mock.patch.object(hou, "ui", ui, create=True):
             state.setPref(prefs_window.USER, user_dialog.CREATE)    # what the create row sends
+            state.nameUser("plum")    # the name dialog's OK
+        self.assertEqual([("Create User", "")], asked, "the create row did not open the name dialog")
         self.assertEqual([messages.USER_NAME_TAKEN % "plum"], shown)
         self.assertEqual(1, len(users.all_users(p)), "a second Plum was made")
+        self.assertEqual("", state.getPref(prefs_window.USER), "a taken name was kept as the new user")
+        state.setPref(prefs_window.USER, user_dialog.CREATE)
+        state.nameUser("  Fern ")
+        self.assertEqual(prefs_window.NEW_USER + "Fern", state.getPref(prefs_window.USER))
 
     def test_renaming_keeps_the_uid(self):
         """THE WHOLE POINT. Nothing tagged is touched by a rename."""

@@ -1,4 +1,4 @@
-"""The list of libraries, most recent first, and Manage Libraries (D15), which removes from it."""
+"""The list of libraries, most recent first, and Manage Libraries, which removes from it."""
 
 import json
 import os
@@ -6,15 +6,14 @@ import shutil
 import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")   # BEFORE the app exists ▸p/first-app-picks-the-platform
-from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
+from PySide6 import QtCore, QtWidgets  # noqa: E402
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 import hou  # noqa: E402,F401
 
 from amaze import amazetheme  # noqa: E402
-from amaze.dialogs import library_dialog  # noqa: E402
-from amaze.helpers import theme, ui_helpers  # noqa: E402
+from amaze.dialogs import library_dialog, prefs_window  # noqa: E402
 from amaze.prefs import prefs as prefs_mod  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
@@ -113,112 +112,39 @@ class OpeningALibraryPutsItFirst(unittest.TestCase):
         self.assertEqual([other, first], self.panel.prefs.libraries[:2])
 
 
-class ManageLibrariesTest(unittest.TestCase):
+class ManageLibrariesRemovesThroughTheState(unittest.TestCase):
+    """Remove from List as Preferences' state does it: off the list and saved, the open one kept."""
 
-    def setUp(self):
-        self.prefs = test_support.fixture_prefs(self)
-        self.a, self.b = _folder(self, "Studio"), _folder(self, "Archive")
-        self.gone = self.b.rstrip("/") + "-gone/"
-        for folder in (self.gone, self.b, self.a):
-            self.prefs.note_library_opened(folder)
-        self.dialog = library_dialog.ManageLibrariesDialog(self.prefs, open_library=self.a)
-        self.addCleanup(self.dialog.deleteLater)
-
-    def _rows(self):
-        view = self.dialog._list
-        return [view.cell(row) for row in range(view.count())]
-
-    def _select(self, folder):
-        flag = QtCore.QItemSelectionModel.SelectionFlag
-        for cell in self._rows():
-            chosen = cell.data(library_dialog.FOLDER_ROLE) == folder
-            self.dialog._list.selectionModel().select(
-                cell.index(), (flag.Select if chosen else flag.Deselect) | flag.Rows)
-
-    def test_it_lists_the_libraries_most_recent_first(self):
-        self.assertEqual(["Studio", "Archive", "Archive-gone"],
-                         [item.text() for item in self._rows()])
-
-    def test_the_open_library_cannot_be_selected(self):
-        self.dialog._list.selectAll()
-        self.assertNotIn(self.a, [item.data(library_dialog.FOLDER_ROLE)
-                                  for item in self.dialog._list.selected()])
-
-    def test_remove_waits_for_a_selection(self):
-        self.assertFalse(self.dialog._remove.isEnabled())
-        self._select(self.b)
-        self.assertTrue(self.dialog._remove.isEnabled())
-
-    def test_remove_takes_the_selection_off_and_saves_the_list(self):
-        self._select(self.b)
-        self.dialog._remove.click()
-        self.assertEqual([self.a, self.gone], self.prefs.libraries)
-        self.assertEqual([self.a, self.gone], _reloaded(self.prefs).libraries,
-                         "the removal was not saved")
-        self.assertEqual([self.b], self.dialog.removed)
-        self.assertEqual(["Studio", "Archive-gone"], [item.text() for item in self._rows()])
-
-    def test_a_removed_library_keeps_its_folder(self):
-        marker = os.path.join(self.b, "library.json")
-        with open(marker, "w", encoding="utf-8") as handle:
+    def test_removed_libraries_leave_the_list_saved_and_a_removed_pick_goes_back_to_the_open_one(self):
+        prefs = test_support.fixture_prefs(self)
+        a, b = _folder(self, "Studio"), _folder(self, "Archive")
+        gone = b.rstrip("/") + "-gone/"
+        for folder in (gone, b, a, prefs.dir):
+            prefs.note_library_opened(folder)
+        state = prefs_window.AmazePrefsState(prefs)
+        state.listLibraries()    # what the dialog asks as it opens
+        model = state.libraryRows
+        rows = model.rows
+        self.assertEqual([prefs.dir, a, b, gone], [row["folder"] for row in rows])
+        self.assertEqual([True, False, False, False], [row["isOpen"] for row in rows])
+        self.assertEqual([False, False, False, True], [row["dim"] for row in rows])
+        self.assertEqual("%s, %s" % (library_dialog.shown_path(gone), amazetheme.LABEL_NOT_CONNECTED),
+                         rows[3]["shown"])
+        self.assertEqual([False, True, True, True], [bool(
+            model.flags(model.index(row, 0)) & QtCore.Qt.ItemFlag.ItemIsSelectable) for row in range(4)])
+        with open(os.path.join(b, "library.json"), "w", encoding="utf-8") as handle:
             handle.write("{}")
-        self._select(self.b)
-        self.dialog._remove.click()
-        self.assertTrue(os.path.isfile(marker), "Remove from List changed the folder")
+        state.setPref(prefs_window.LIBRARY, b)    # Archive picked, not applied
 
-    def test_no_band_sits_over_the_list(self):
-        self.assertIsNone(self.dialog.findChild(QtWidgets.QLabel, "amaze_header_band_text"))
-
-    def test_the_second_column_is_the_folder_and_says_when_it_is_not_connected(self):
-        view = self.dialog._list
-        seconds = {view.cell(row).text(): view.cell(row, 1).text() for row in range(view.count())}
-        self.assertEqual(library_dialog.shown_path(self.a), seconds["Studio"])
-        self.assertEqual("%s, %s" % (library_dialog.shown_path(self.gone), amazetheme.LABEL_NOT_CONNECTED),
-                         seconds["Archive-gone"])
-        dim = theme.color("text_dim").name()
-        gone = [view.cell(2, column).foreground().color().name() for column in (0, 1)]
-        self.assertEqual([dim, dim], gone, "a library not connected is not dimmed")
-        self.assertNotEqual(dim, view.cell(0).foreground().color().name())
+        # what Remove from List sends: the current row, here the open one, and the rows selected
+        state.removeLibraries(model.index(0, 0), [model.index(2, 0), model.index(3, 0)])
+        self.assertEqual([prefs.dir, a], prefs.libraries, "the open library left the list")
+        self.assertEqual([prefs.dir, a], _reloaded(prefs).libraries, "the removal was not saved")
+        self.assertEqual([prefs.dir, a], [row["folder"] for row in model.rows])
+        self.assertEqual([prefs.dir, a], [row["value"] for row in state.libraryOptions])
+        self.assertEqual(prefs.dir, state.getPref(prefs_window.LIBRARY), "the removed pick is shown")
+        self.assertTrue(os.path.isfile(os.path.join(b, "library.json")), "the folder was changed")
 
 
-class TheManageWindowMatchesItsDesignFrame(unittest.TestCase):
-    """D15's window, list, buttons and rows match the boxes of its design frame."""
-
-    def setUp(self):
-        self.prefs = test_support.fixture_prefs(self)
-        self.gone = _folder(self, "Gone").rstrip("/") + "-unplugged/"
-        self.prefs.note_library_opened(self.gone)    # the last row: a library not connected
-        for name in ("C", "B", "A"):
-            self.prefs.note_library_opened(_folder(self, name))
-        self.dialog = library_dialog.ManageLibrariesDialog(self.prefs)
-        self.addCleanup(self.dialog.deleteLater)
-        self.dialog.show()
-        self.addCleanup(self.dialog.hide)
-        QtWidgets.QApplication.processEvents()
-
-    def _box(self, widget):
-        corner = widget.mapTo(self.dialog, widget.rect().topLeft())
-        return (corner.x(), corner.y(), widget.width(), widget.height())
-
-    def test_the_window_is_the_drawn_frame(self):
-        self.assertEqual(tuple(theme.ui_px(n) for n in amazetheme.DIALOG_LAYOUT["D15"]["frame"]),
-                         (self.dialog.width(), self.dialog.height()))
-
-    def test_the_list_and_the_buttons_are_where_drawn(self):
-        boxes = amazetheme.drawn_boxes("D15")
-        for widget, key in ((self.dialog._list, ("QListWidget", None)),
-                            (self.dialog._remove, ("QPushButton", amazetheme.BTN_REMOVE_FROM_LIST)),
-                            (self.dialog._cancel, ("QPushButton", amazetheme.BTN_CANCEL))):
-            drawn = boxes[key][0] if key[1] is None else boxes[key]
-            with self.subTest(widget=key):
-                self.assertEqual(tuple(theme.ui_px(n) for n in drawn), self._box(widget))
-
-    def test_the_list_is_the_apps_one_table_with_two_columns_and_no_painter(self):
-        view = self.dialog._list
-        self.assertIsInstance(view, ui_helpers.Table, "the list is not the app's one table")
-        self.assertEqual(2, view.model().columnCount())
-        self.assertIs(QtWidgets.QStyledItemDelegate, type(view.itemDelegate()), "the list paints its own rows")
-        self.assertEqual("", view.styleSheet(), "the list sets colours of its own over the style's")
-        drawn = amazetheme.drawn_list_rows("D15")
-        self.assertEqual(theme.ui_px(drawn["second_x"]), view.header().sectionSize(0))
-
+if __name__ == "__main__":
+    unittest.main()

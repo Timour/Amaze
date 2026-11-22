@@ -1,16 +1,13 @@
-"""Manage Libraries (D15): take libraries off the Library list; their folders stay as they are."""
+"""A library's name and folder as its lists show them, and the two-column table dialogs use."""
 
 from __future__ import annotations
 
 import os
 
-from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore
 
 from amaze import amazetheme
-from amaze.dialogs.base_dialog import AssetDialog
 from amaze.helpers import hostos, theme, ui_helpers
-
-FOLDER_ROLE = QtCore.Qt.ItemDataRole.UserRole           # the library's folder, as the list holds it
 
 
 def library_name(folder: str) -> str:
@@ -50,60 +47,3 @@ class DialogTable(ui_helpers.TwoColumnTable):
 
     def remove(self, cell) -> None:
         self._items.removeRow(cell.row())
-
-
-class ManageLibrariesDialog(AssetDialog):
-    """The Library list, most recent first; the open library is shown and cannot be selected."""
-
-    FORM_WIDTH = amazetheme.D15_WIDTH
-    FRAME_KEY = "D15"
-
-    def __init__(self, preferences, open_library: str = "", parent=None) -> None:
-        super().__init__(amazetheme.TITLE_MANAGE_LIBRARIES, parent=parent)
-        self._prefs = preferences
-        self._open_library = open_library
-        self.removed: list = []    # the folders taken off the list
-        drawn = amazetheme.drawn_list_rows()
-
-        self._list = DialogTable(
-            self.FRAME_KEY, QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)    # one or more
-        self._remove, self._cancel, buttons = self.drawn_pair(    # Cancel closes; removals already made are kept
-            amazetheme.BTN_REMOVE_FROM_LIST, self._remove_selected)
-        self._cancel.setDefault(True)
-
-        body = QtWidgets.QWidget()
-        column = QtWidgets.QVBoxLayout(body)
-        column.setContentsMargins(0, 0, 0, 0)
-        column.setSpacing(theme.ui_px(drawn["button_top"]))
-        column.addWidget(self._list)
-        column.addLayout(buttons)
-        self.set_content(body)
-        self.finish(ok_cancel=False, margins=drawn["margins"])
-
-        self._fill(open_library)
-        self._list.selectionModel().selectionChanged.connect(self._sync_remove)
-        self._sync_remove()
-
-    def _fill(self, open_library: str) -> None:
-        current = hostos.comparable_path(open_library) if open_library else ""
-        for folder in self._prefs.libraries:
-            reached = os.path.isdir(folder)
-            path = shown_path(folder)
-            cell = self._list.add_row(
-                library_name(folder), path if reached else "%s, %s" % (path, amazetheme.LABEL_NOT_CONNECTED),
-                selectable=hostos.comparable_path(folder) != current, dim=not reached)
-            cell.setData(folder, FOLDER_ROLE)
-
-    def _sync_remove(self, *_selection) -> None:
-        self._remove.setEnabled(bool(self._list.selected()))
-
-    def _remove_selected(self) -> None:
-        """Take the selected libraries off the list and save it."""
-        chosen = self._list.selected()
-        folders = [str(cell.data(FOLDER_ROLE)) for cell in chosen]
-        if not folders or not self._prefs.remove_libraries(folders):
-            return
-        self._prefs.save()
-        self.removed.extend(folders)
-        for cell in chosen:
-            self._list.remove(cell)

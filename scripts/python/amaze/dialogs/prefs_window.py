@@ -3,7 +3,7 @@
 import html
 import os
 
-from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtGui
 
 import amaze
 from amaze import amazetheme, branding, messages, tooltips
@@ -11,7 +11,7 @@ from amaze.actions import check as check_actions
 from amaze.actions import library as library_actions
 from amaze.core import (debug, library_check, library_db, library_settings, model_registry,
                         renderers, repair, section_list, texture_library, tile_icons, users)
-from amaze.dialogs import base_dialog, library_dialog, user_dialog
+from amaze.dialogs import library_dialog, user_dialog
 from amaze.helpers import hostos, ui_helpers
 from amaze.prefs import prefs as prefs_mod
 from hutil.qt.common import qmlviews    # Houdini's own QML windows' base ▸r/qml-widget-blackout
@@ -207,6 +207,57 @@ def _tip_html(text: str) -> str:
     return html.escape(text).replace("\n", "<br>")
 
 
+class LibraryRows(QtCore.QAbstractTableModel):
+    """Manage Libraries' rows, a model with a role per field as Houdini's OCIO page has its rules."""
+
+    COLUMNS = ("name", "shown")    # the library's name, then its folder as shown
+    FIELDS = ("shown", "folder", "dim", "isOpen")    # a row's roles besides `display`, its name
+    FOLDER_ROLE = QtCore.Qt.ItemDataRole.UserRole + FIELDS.index("folder")
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.rows: list = []    # one dict per library, keyed by `name` and FIELDS
+
+    def fill(self, rows: list) -> None:
+        """New rows, the old removed as rows: a reset clears Qt's selection model with no signal."""
+        if self.rows:
+            self.beginRemoveRows(QtCore.QModelIndex(), 0, len(self.rows) - 1)
+            self.rows = []
+            self.endRemoveRows()
+        if rows:
+            self.beginInsertRows(QtCore.QModelIndex(), 0, len(rows) - 1)
+            self.rows = rows
+            self.endInsertRows()
+
+    def roleNames(self) -> dict:
+        roles = {QtCore.Qt.ItemDataRole.DisplayRole: b"display"}
+        roles.update({QtCore.Qt.ItemDataRole.UserRole + number: field.encode()
+                      for number, field in enumerate(self.FIELDS)})
+        return roles
+
+    def rowCount(self, parent=QtCore.QModelIndex()) -> int:
+        return 0 if parent.isValid() else len(self.rows)
+
+    def columnCount(self, parent=QtCore.QModelIndex()) -> int:
+        return 0 if parent.isValid() else len(self.COLUMNS)
+
+    def flags(self, index):
+        """Every row can be selected but the open library's, which is only shown."""
+        flags = QtCore.Qt.ItemFlag.ItemIsEnabled | QtCore.Qt.ItemFlag.ItemNeverHasChildren
+        if index.isValid() and not self.rows[index.row()]["isOpen"]:
+            flags |= QtCore.Qt.ItemFlag.ItemIsSelectable
+        return flags
+
+    def data(self, index, role=QtCore.Qt.ItemDataRole.DisplayRole):
+        if not index.isValid():
+            return None
+        row = self.rows[index.row()]
+        if role == QtCore.Qt.ItemDataRole.DisplayRole:
+            return row[self.COLUMNS[index.column()]]
+        number = int(role) - int(QtCore.Qt.ItemDataRole.UserRole)
+        return row[self.FIELDS[number]] if 0 <= number < len(self.FIELDS) else None
+
+
 class AmazePrefsState(mainprefs.PrefsState):
     """Houdini's prefs state - undo, unapplied changes, Apply, Accept, Cancel - on Amaze's Prefs."""
 
@@ -224,6 +275,10 @@ class AmazePrefsState(mainprefs.PrefsState):
     updateWarns: bool = False
     updateBusy: bool = False
     libraryOptions: list = []    # the Library list as {text, value}: each folder by name
+    libraryRows: QtCore.QObject = None    # Manage Libraries' rows, a `LibraryRows`
+    libraryNameWidth: int = amazetheme.drawn_list_rows("D15")["second_x"]    # its name column
+    manageLibrariesTitle: str = amazetheme.TITLE_MANAGE_LIBRARIES
+    removeFromListLabel: str = amazetheme.BTN_REMOVE_FROM_LIST
     userOptions: list = []    # the picked library's users A to Z, a new one, then the create row
     userPicked: bool = False
     userEditable: bool = False    # Rename and Delete: a new user, or one of the open library
@@ -244,10 +299,14 @@ class AmazePrefsState(mainprefs.PrefsState):
     addonsOffered: bool = False
     addonsBusy: bool = False
 
+    userNameRequested = QtCore.Signal(str, str)    # the name dialog opens: its title, its field's name
+
     def __init__(self, prefs, panel=None, **kwargs) -> None:
         super().__init__(**kwargs)
         self._prefs = prefs
         self._panel = panel    # None in tests; it holds the models a setting changes
+        self.libraryRows = LibraryRows(self)
+        self._creating = False    # the name dialog was opened by the create row, not by Rename
         self._last_update = None    # what the last Check for Updates found
         self._added: list = []    # folders Add put in the Library list, until applied
         self._shown_folder = None    # the library the Databases row was last emptied for
@@ -391,10 +450,6 @@ class AmazePrefsState(mainprefs.PrefsState):
             return
         for model in self._panel.tile_icon_models():
             model.rerender_tile_icons()
-
-    def _parent_widget(self):
-        """The widget an Amaze dialog opens over: the panel, so it opens on the panel's screen."""
-        return self._panel if isinstance(self._panel, QtWidgets.QWidget) else None
 
     def _is_open(self, folder: str) -> bool:
         """Whether the pane has `folder` open; with no pane, whether it is the library Prefs names."""
@@ -552,12 +607,29 @@ class AmazePrefsState(mainprefs.PrefsState):
         self.pick_library(folder)
 
     @QtCore.Slot()
-    def manageLibraries(self) -> None:
-        """Manage Libraries (D15), then the Library list again; a removed pick goes back to the open one."""
-        dialog = library_dialog.ManageLibrariesDialog(
-            self._prefs, open_library=self._prefs.dir, parent=self._parent_widget())
-        dialog.exec()
-        if any(_same_folder(self.getPref(LIBRARY), folder) for folder in dialog.removed):
+    def listLibraries(self) -> None:
+        """Manage Libraries' rows, read as it opens: the Library list, most recent first."""
+        rows = []
+        for folder in self._prefs.libraries:
+            reached, shown = os.path.isdir(folder), library_dialog.shown_path(folder)
+            rows.append({
+                "name": library_dialog.library_name(folder), "folder": folder, "dim": not reached,
+                "shown": shown if reached else "%s, %s" % (shown, amazetheme.LABEL_NOT_CONNECTED),
+                "isOpen": _same_folder(folder, self._prefs.dir)})    # shown, never selectable
+        self.libraryRows.fill(rows)
+
+    @QtCore.Slot(QtCore.QModelIndex, list)
+    def removeLibraries(self, current, indexes: list) -> None:
+        """Remove from List on the current and selected rows, as Node Search reads its table's."""
+        folders = [str(index.data(LibraryRows.FOLDER_ROLE)) for index in [current, *indexes]
+                   if index.isValid()]
+        folders = [one for one in folders if not _same_folder(one, self._prefs.dir)]    # it stays
+        if not folders or not self._prefs.remove_libraries(folders):
+            return
+        self._prefs.save()
+        self.libraryRows.fill([row for row in self.libraryRows.rows
+                               if not any(_same_folder(row["folder"], gone) for gone in folders)])
+        if any(_same_folder(self.getPref(LIBRARY), gone) for gone in folders):
             self._drop_library_pick()
         self.prefsUpdated.emit()
 
@@ -592,15 +664,9 @@ class AmazePrefsState(mainprefs.PrefsState):
         self.setPref(USER, NEW_USER + str(name or "").strip())
 
     def _ask_new_user(self) -> None:
-        """The create row: a name for a new user; else the list shows the user it showed before."""
-        dialog = base_dialog.NameDialog("Create User", "", parent=self._parent_widget())
-        dialog.exec()
-        if not dialog.canceled and dialog.name:
-            if not self._name_taken(dialog.name):
-                self.create_user(dialog.name)
-                return
-            self._show_name_taken(dialog.name)
-        self.prefsUpdated.emit()
+        """The create row opens the name dialog, empty; its OK comes back to `nameUser`."""
+        self._creating = True
+        self.userNameRequested.emit("Create User", "")
 
     def rename_user(self, name: str) -> None:
         """Rename the user the User row shows: a new one before Apply, else in the open library now."""
@@ -614,20 +680,31 @@ class AmazePrefsState(mainprefs.PrefsState):
 
     @QtCore.Slot()
     def renameUser(self) -> None:
+        """Rename opens the name dialog on the user's name; its OK comes back to `nameUser`."""
         uid = self.getPref(USER)
         if not uid or uid == user_dialog.CREATE:
             return
+        self._creating = False
         new = uid.startswith(NEW_USER)
-        dialog = base_dialog.NameDialog(
-            "Rename User", uid[len(NEW_USER):] if new else users.name_for(self._prefs, uid),
-            parent=self._parent_widget())
-        dialog.exec()
-        if dialog.canceled:
+        self.userNameRequested.emit(
+            "Rename User", uid[len(NEW_USER):] if new else users.name_for(self._prefs, uid))
+
+    @QtCore.Slot(str)
+    def nameUser(self, name: str) -> None:
+        """The name dialog's OK: a new user named, or the user renamed; a taken name is only shown."""
+        name, uid = str(name or "").strip(), self.getPref(USER)
+        if self._creating:
+            if name and not self._name_taken(name):
+                self.create_user(name)
+                return
+            if name:
+                self._show_name_taken(name)
+            self.prefsUpdated.emit()    # the User row shows the user it showed before
             return
-        if self._name_taken(dialog.name, besides="" if new else uid):
-            self._show_name_taken(dialog.name)
+        if self._name_taken(name, besides="" if uid.startswith(NEW_USER) else uid):
+            self._show_name_taken(name)
             return
-        self.rename_user(dialog.name)
+        self.rename_user(name)
 
     def delete_user(self, uid: str) -> None:
         """Delete `uid` and everything tagged theirs from the open library; nobody is picked after."""
