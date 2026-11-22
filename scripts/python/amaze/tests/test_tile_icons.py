@@ -227,7 +227,7 @@ class ChoiceTest(unittest.TestCase):
         path = self.model._mat_paths[self.row]
         if os.path.exists(path):
             os.remove(path)
-        image = self.model._missing_thumb_image(self.row)
+        image = self.model.shown_picture(self.row)[0]
         self.assertIsNotNone(image)
         self.assertEqual("#4af2a1", QtGui.QColor(image.pixel(4, 4)).name())
 

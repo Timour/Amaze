@@ -1,11 +1,11 @@
 """The Amaze (QML) pane: its pane-tab widget, its QML view, and the state hosting the engine."""
 
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtQml, QtQuick, QtWidgets
 import shiboken6
 
 import amaze
 from amaze import amazetheme, tooltips
-from amaze.core import debug
+from amaze.core import debug, grid_engine
 from amaze.helpers import ui_helpers
 from amaze.pane import asks, pane as pane_mod, sidebar as pane_sidebar
 from amaze.panel import delegates
@@ -14,6 +14,68 @@ from hutil.qt.common import qmlviews    # Houdini's own QML panels' base ▸r/ho
 
 PANE_QML = amaze.package_file("ui", "pane", "Pane.qml")
 SIZE_SAVE_MS = 500    # the slider's pause before its tile size is saved, as in the widget panel
+WIRED_BADGES = ("favourite",)    # the badges whose click works here; the others come with the menus
+PINNED_BADGES = ("favourite",)    # shown while on; every other badge shows only under the pointer
+
+
+class TilePictures(QtQuick.QQuickImageProvider):
+    """`image://amazetile/...`: a tile's painted picture, made on the main thread, kept nowhere."""
+
+    def __init__(self, state) -> None:
+        super().__init__(QtQml.QQmlImageProviderBase.ImageType.Image)
+        self._state = state
+
+    def requestImage(self, key: str, size: QtCore.QSize, requested: QtCore.QSize) -> QtGui.QImage:
+        image = None
+        try:    # the shown grid's model paints it, if the url is that model's
+            token, row = key.split("/")[:2]
+            proxy = self._state.gridModel
+            model = proxy.sourceModel() if proxy is not None else None
+            if model is not None and "%x" % id(model) == token:
+                image = model.paint_tile(int(row))
+        except (RuntimeError, ValueError):    # the pane closed, or a url not made by `picture_for_view`
+            image = None
+        if image is None or image.isNull():    # a null image is an error in the QML log: a clear dot instead
+            image = QtGui.QImage(1, 1, QtGui.QImage.Format.Format_ARGB32_Premultiplied)
+            image.fill(QtCore.Qt.GlobalColor.transparent)
+        elif requested.isValid() and (image.width() > requested.width() or image.height() > requested.height()):
+            image = image.scaled(requested, QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                                 QtCore.Qt.TransformationMode.SmoothTransformation)
+        size.setWidth(image.width())
+        size.setHeight(image.height())
+        return image
+
+
+def badge_rows(section) -> list:
+    """The section's tile badges in paint order: the role each reads, its arts and rules, its corner."""
+    places = amazetheme.drawn_badges()
+    rows = []
+    for badge in delegates.BADGES:
+        if badge.name not in section.tile_badges:
+            continue
+        edge_x, inset_x, edge_y, inset_y, side = places[badge.name]
+        button = bool(section.tile_badge_clicks and badge.handler)
+        rows.append({
+            "name": badge.name, "role": grid_engine.role_name(badge.role) if badge.role else "",
+            "minimum": badge.minimum, "equals": badge.equals,
+            "art": badge.svg, "hover": badge.hover_svg, "press": badge.press_svg,
+            "off": badge.off_svg if button else "", "offHover": badge.off_hover_svg,    # a button at rest
+            "button": button, "wired": button and badge.name in WIRED_BADGES,
+            "pinned": badge.name in PINNED_BADGES, "tip": badge.tip, "offTip": badge.off_tip,
+            "endX": edge_x == "end", "insetX": inset_x, "endY": edge_y == "end", "insetY": inset_y,
+            "side": side})
+    return rows
+
+
+def drawn_tile() -> dict:
+    """For `Tile`: the spacing of T01, the strip of T20, the badge sizes and each renderer icon box."""
+    marks = {}
+    for art, drawn in amazetheme.drawn_renderer_icons().items():
+        box = ui_helpers.svg_size(art + ".svg")    # its own width
+        marks[art] = dict(drawn, width=round(drawn["height"] * box.width() / max(box.height(), 1)))
+    return dict(amazetheme.drawn_tile(), strip=amazetheme.drawn_category_strip(),
+                ground=amazetheme.TILE_GROUND, least=amazetheme.BADGE_LEAST,
+                part=amazetheme.BADGE_PART, renderers=marks)
 
 
 class PaneState(qmlviews.SharedState, asks.Asks):
@@ -49,6 +111,11 @@ class PaneState(qmlviews.SharedState, asks.Asks):
     sidebarShown: bool = True
     prefsOpen: bool = False    # the Preferences button shows its on state while the window is open
     sidebarWidth: float = 0.0    # in the pane's design px
+    gridModel: QtCore.QAbstractItemModel = None    # the shown section's tiles, the proxy the widget grid shows
+    gridSelection: QtCore.QObject = None    # the section's own selection of them, the engine's
+    gridTileSize: int = amazetheme.TILE_SIZES[1]    # the grid's size, which list mode keeps for now
+    tile: dict = {}    # `drawn_tile`
+    badges: list = []    # `badge_rows` of the shown section
 
     searchCleared = QtCore.Signal()    # the empty state's Clear Search: the QML empties its field
     sidebarOpened = QtCore.Signal(QtCore.QModelIndex)    # the tree opens this folder and those above it
@@ -76,6 +143,8 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         self._app_moves_row = False    # the app is moving the sidebar's current row: no choice
         self._reveal = ""    # a File folder highlighted once the walks have given it a row
         self._rows_followed = None
+        self._grid_anchor = QtCore.QPersistentModelIndex()    # where a Shift click's span starts
+        self.tile = drawn_tile()
         tabs = amazetheme.drawn_tabs()
         self.toolbar = dict(amazetheme.drawn_toolbar(), end_gap=amazetheme.TOOLBAR_SEARCH_END_GAP,
                             on=amazetheme.TOOLBAR_ON)
@@ -93,6 +162,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         pane = self.pane = pane_mod.Pane(self, self)
         pane.tabs_changed.connect(self._show_tabs)
         pane.context_bound.connect(self._use_sidebar_rows)
+        pane.context_bound.connect(self._show_grid)
         pane.context_shown.connect(self._show_context)
         pane.online_changed.connect(self._show_online)
         pane.sidebar_highlight.connect(self._highlight_sidebar_row)
@@ -130,6 +200,13 @@ class PaneState(qmlviews.SharedState, asks.Asks):
                 pass
             self._rows_followed = listed
             listed.rowsInserted.connect(self._reveal_step)
+
+    def _show_grid(self, section) -> None:
+        """The section's tiles, its own selection of them and its badges, as the widget grid binds them."""
+        proxy = getattr(self.pane, section.proxy_attr, None) if section.proxy_attr else None
+        self._grid_anchor = QtCore.QPersistentModelIndex()
+        self.badges = badge_rows(section)
+        self._show_rows("grid", proxy, section.grid_selection_model() if proxy is not None else None)
 
     def _show_rows(self, view: str, rows, selection) -> None:
         """A view's rows, then its selection: Qt's view points any selection it holds at its rows."""
@@ -185,6 +262,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         self.viewMode = prefs.view_mode
         self.tileStepped = bool(prefs.step_size)
         self.tileSize = self.pane.tile_size()
+        self.gridTileSize = self.pane.tile_size("grid")
         self.sidebarShown = bool(prefs.show_categories)
         self.sidebarCounts = bool(prefs.sidebar_counts)
         drawn = self.sidebar["width"]    # the last dragged width, never wider than drawn
@@ -232,6 +310,36 @@ class PaneState(qmlviews.SharedState, asks.Asks):
             self._reveal = ""
             self.pane.sidebar.show_row(current)
 
+    @QtCore.Slot(int, int)
+    def clickTile(self, row: int, modifiers: int) -> None:
+        """The user's click on tile `row`, -1 for none, as Qt's views take it; Ctrl/Cmd, Shift."""
+        selection = self.gridSelection
+        if selection is None or self.gridModel is None:
+            return
+        flag = QtCore.QItemSelectionModel.SelectionFlag
+        keys = QtCore.Qt.KeyboardModifier(modifiers)
+        span, toggle = keys & QtCore.Qt.KeyboardModifier.ShiftModifier, keys & QtCore.Qt.KeyboardModifier.ControlModifier
+        index = self.gridModel.index(row, 0) if row >= 0 else QtCore.QModelIndex()
+        if not index.isValid():
+            if not (span or toggle):
+                selection.clearSelection()
+            return
+        if span:
+            anchor = QtCore.QModelIndex(self._grid_anchor)
+            anchor = anchor if anchor.isValid() else index
+            selection.select(QtCore.QItemSelection(anchor, index), flag.SelectCurrent | flag.Rows)
+            selection.setCurrentIndex(index, flag.NoUpdate)
+            return
+        selection.setCurrentIndex(index, (flag.Toggle if toggle else flag.ClearAndSelect) | flag.Rows)
+        self._grid_anchor = QtCore.QPersistentModelIndex(index)
+
+    @QtCore.Slot(int, str)
+    def clickBadge(self, row: int, name: str) -> None:
+        """The user's click on a tile's badge: the section's handler for it, by the engine's rule."""
+        badge = delegates.BADGE.get(name)
+        if badge is not None and name in WIRED_BADGES and self.gridModel is not None:
+            self.pane.assets.click_badge(badge.handler, self.gridModel.index(row, 0))
+
     @QtCore.Slot(bool)
     def showSidebar(self, on: bool) -> None:
         """The toolbar's sidebar button: shown or hidden, remembered as the widget panel does."""
@@ -269,7 +377,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
     def setTileSize(self, size: int) -> None:
         """The slider moved: the grid's tile size, saved once the slider rests."""
         self.pane.prefs.thumbsize = int(size)
-        self.tileSize = self.pane.tile_size()
+        self.tileSize = self.gridTileSize = self.pane.tile_size()
         self._size_save.start()
 
     def save_size(self) -> None:
@@ -362,6 +470,9 @@ class PaneView(qmlviews.BaseQmlWidget):
 
     def _makeSharedState(self) -> PaneState:
         return PaneState()
+
+    def setupEngine(self) -> None:
+        self.engine().addImageProvider(grid_engine.PAINTED, TilePictures(self.sharedState()))
 
 
 class QmlPanel(QtWidgets.QFrame):

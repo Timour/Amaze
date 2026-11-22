@@ -1089,11 +1089,11 @@ class OsIconTest(unittest.TestCase):
         for name in ("mocap.bvh", "README"):
             with self.subTest(name=name):
                 model = self._model_with(name)
+                asked = self._count_icons(model)
                 shown = model.data(model.index(0, 0), QtCore.Qt.ItemDataRole.DecorationRole)
                 self.assertIsNotNone(shown)
                 self.assertFalse(shown.isNull(), "the default icon is empty")
-                self.assertEqual(1, len(model._os_icons),
-                                 "the default did not request the system icon")
+                self.assertEqual(1, len(asked), "the default did not request the system icon")
                 with mock.patch.object(model, "tile_icon", return_value={"face": "generic"}):
                     face = model.data(model.index(0, 0), QtCore.Qt.ItemDataRole.DecorationRole)
                 self.assertEqual(tile_icons.generic_image("face_file"), face)
@@ -1112,13 +1112,23 @@ class OsIconTest(unittest.TestCase):
 
     def test_one_icon_is_composed_per_extension_not_per_file(self):
         model = self._model_with("a.log", "b.log", "c.log")
+        asked = self._count_icons(model)
         with mock.patch.object(model, "tile_icon", return_value={"face": "image"}):
             for row in range(3):
                 model.data(model.index(row, 0),
                            QtCore.Qt.ItemDataRole.DecorationRole)
-        self.assertEqual(1, len(model._os_icons),
+        self.assertEqual(1, len(asked),
                          "a folder of logs composed three identical "
                          "icons instead of one")
+
+    @staticmethod
+    def _count_icons(model) -> list:
+        """The paths the model asks the system's icon for from here on, the engine's held ones let go."""
+        from amaze.core import thumbnails
+        thumbnails.engine.clear()
+        asked, drawn = [], model.os_icon
+        model.os_icon = lambda path, side: asked.append(path) or drawn(path, side)
+        return asked
 
 
 class AFailedConversionShowsTheFileFaceTest(unittest.TestCase):

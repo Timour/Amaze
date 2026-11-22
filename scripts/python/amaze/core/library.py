@@ -130,7 +130,6 @@ class AssetLibrary(grid_engine.GridEngine,
     ActiveVersionRole = QtCore.Qt.ItemDataRole.UserRole + 11  # 267: the active version's name, "" when there are none
 
     CropRole = QtCore.Qt.ItemDataRole.UserRole + 12  # 268 - a capture is viewport-shaped, so it fills the tile
-    TileSubtitleRole = QtCore.Qt.ItemDataRole.UserRole + 14  # 270: the tile's second line; 269 is Color's category label
 
     DB_FILENAME = ""  # the json file in the library dir backing this model; every subclass names its own
 
@@ -306,12 +305,6 @@ class AssetLibrary(grid_engine.GridEngine,
         image = QtGui.QImage(self._tile_image_path(row))
         return None if image.isNull() else image
 
-    def _missing_thumb_image(self, row: int = -1):
-        """A row with no picture shows its chosen face."""
-        if 0 <= row < len(self._assets):
-            return tile_icons.chosen_image(self, row)
-        return tile_icons.generic_image(self.TILE_FACE)
-
     def tile_name(self, row: int) -> str:
         """The asset's display name - what the Customize dialog's Name field shows."""
         if not 0 <= row < len(self._assets):
@@ -453,16 +446,22 @@ class AssetLibrary(grid_engine.GridEngine,
         """Recompose every icon in this library, for when the look changed rather than the choice."""
         return tile_icons.repaint_custom(self)    # composed in memory: a repaint is the whole update
 
-    def _decoration_image(self, row: int):
-        """A row's tile picture: its PNG through the thumbnail engine, or its icon composed in memory."""
-        if tile_icons.face_for(self, row) in ("generic", "custom"):
-            return tile_icons.chosen_image(self, row)
-        key = self._thumb_key(row)
-        image = thumbnails.engine.request_file(key, self._mat_paths[row])
-        if image is not None:
-            return image
-        if thumbnails.engine.is_missing(key):
-            return self._missing_thumb_image(row)
+    def tile_picture(self, row: int, face: str = "") -> grid_engine.Picture:
+        """Its custom or generic file icon; else its render or capture, then what it paints of itself."""
+        spec = self.tile_icon(row)
+        face = face or tile_icons.face_of(spec, self.default_face(row), self.can_preview(row))
+        if face == "custom":
+            return grid_engine.custom_picture(self.preferences, spec)
+        if face == "generic":
+            return grid_engine.Picture(art=self.tile_face_art(row))
+        files = ((self._mat_paths[row], self._thumb_key(row, spec), True),)    # a capture fills the tile
+        painted = self.painted_preview(row)
+        if painted is not None:
+            return grid_engine.Picture(files, paint=painted[1], stamp=painted[0])
+        return grid_engine.Picture(files, art=self.tile_face_art(row))
+
+    def painted_preview(self, row: int):
+        """(stamp, paint) of the preview a row with no picture file paints of itself; None for none."""
         return None
 
     def rowCount(
@@ -511,9 +510,6 @@ class AssetLibrary(grid_engine.GridEngine,
         if role == self.TileSubtitleRole:
             return self.tile_subtitle(asset)
 
-        if role == QtCore.Qt.ItemDataRole.DecorationRole:
-            return self._decoration_image(row)  # the RAW stored image; the delegate scales it
-
         if role == self.CategoryRole:
             return asset.categories
         if role == self.CategoryColorRole:
@@ -526,7 +522,7 @@ class AssetLibrary(grid_engine.GridEngine,
             return str(asset.license or "")
 
         if role == self.CropRole:
-            return tile_icons.face_for(self, row) == "image"    # a capture fills the tile; a render is square
+            return self.shown_picture(row)[1]
 
         if role == self.FavoriteRole:
             return locations.is_favourite(  # the USER'S star, in the database, never the record
@@ -1136,6 +1132,13 @@ class MaterialLibrary(AssetLibrary):
     def tile_subtitle(self, asset) -> str:
         """The renderer's name alone, `Redshift`: the tile's second line shares its line with the icon."""
         return renderers.label(str(asset.renderer or "").strip())
+
+    RendererIconRole = QtCore.Qt.ItemDataRole.UserRole + 16    # the renderer's art on that line, "" for none
+
+    def row_data(self, row: int, role: int):
+        if role == self.RendererIconRole:
+            return renderers.tile_icon(self._assets[row].renderer)
+        return super().row_data(row, role)
 
     def _info_facts(self, row: int, asset) -> tuple:
         """Size, Renderer and Textures, and the read that finds the largest texture."""

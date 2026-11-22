@@ -660,8 +660,8 @@ class PreviewlessTileTest(unittest.TestCase):
             preferences=type("P", (), {"rendersize": 64})())
         key = model._preview_key(record)
         thumbnails.engine.discard(key)
-        model._queue_previews([record])
-        image = thumbnails.engine.peek(key)
+        model._records = [record]
+        image = model.shown_picture(0)[0]
         self.assertIsNotNone(image, "a tile with no preview stayed blank")
         self.assertEqual(tile_icons.generic_image(matx_library.ONLINE_FACE), image,
                          "a SimReady tile with no preview does not show the online face")
@@ -875,7 +875,9 @@ class HostedPreviewTileTest(unittest.TestCase):
                 pass
 
         with mock.patch.object(matx_library, "_PreviewWorker", Worker):
-            model._queue_previews([record])
+            model._records = [record]
+            model.tile_picture(0)
+            model._flush_pending()
         return made
 
     def test_the_tile_reads_its_picture_and_its_crc_names_tile_and_cache(self):
@@ -928,7 +930,9 @@ class HostedPreviewTileTest(unittest.TestCase):
     def _paint(self, model, record):
         """One paint of the tile, then the event loop until its workers have reported back."""
         from amaze.core import thumbnails
-        model._preview(record)
+        model._records = [record]
+        model.rows_reordered()
+        model.shown_picture(0)
         deadline = time.monotonic() + 10
         while (model._pending_scheduled or model._pending or model._preview_workers) \
                 and time.monotonic() < deadline:
@@ -1057,10 +1061,11 @@ class TheOnlineQuitStopsEveryWorkerAtOnce(unittest.TestCase):
         patcher = mock.patch.object(model, "_sources", [source])    # the registry, not the lookup
         patcher.start()
         self.addCleanup(patcher.stop)
-        for n in range(count):
-            model._preview(matx_sources.MatxRecord(
-                source=source.name, uid="Quit/%03d" % n, title="Quit", category="Quit",
-                payload={"preview": {"offset": 0, "size": 1, "crc": 7}}))
+        model._records = [matx_sources.MatxRecord(
+            source=source.name, uid="Quit/%03d" % n, title="Quit", category="Quit",
+            payload={"preview": {"offset": 0, "size": 1, "crc": 7}}) for n in range(count)]
+        for row in range(count):
+            model.tile_picture(row)
         self.assertTrue(test_support.pump_until(ready), "premise: the downloads never started")
         threads, ended = list(model._preview_workers), []
         for thread in threads:

@@ -191,6 +191,10 @@ class ThumbnailEngine(QtCore.QObject):
         """The cached image or None, with no request on a miss."""
         return self._cache_get(key)
 
+    def generation(self, key) -> int:
+        """How often `key`'s picture was discarded, so replaced; 0 for a key never discarded."""
+        return self._generations.get(key, 0)
+
     def is_pending(self, key) -> bool:
         return self._states.get(key) == "pending"
 

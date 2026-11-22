@@ -228,9 +228,9 @@ class Pane(QtCore.QObject):
         self.prefs.view_mode = mode
         self.prefs.save()
 
-    def tile_size(self) -> int:
-        """The tile size in use: list's one size, else the saved one, on a step under Step Size."""
-        if self.prefs.view_mode == "list":
+    def tile_size(self, mode: str = "") -> int:
+        """The tile size of `mode`, by default the one in use: list's one size, else the saved one."""
+        if (mode or self.prefs.view_mode) == "list":
             return amazetheme.LIST_TILE_SIZE
         if self.prefs.step_size:
             return min(amazetheme.TILE_SIZES, key=lambda size: abs(size - self.prefs.thumbsize))

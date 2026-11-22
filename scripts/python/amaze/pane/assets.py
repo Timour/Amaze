@@ -24,6 +24,14 @@ class Assets:
             return
         context.toggle_favourite(list(indexes))
 
+    def click_badge(self, handler: str, index) -> None:
+        """A tile badge's click: the section's `handler` on the grid selection if the tile is in it."""
+        context = self.pane.active_section()
+        if context is None or not hasattr(context, handler):
+            return
+        rows = context.grid_selection()
+        getattr(context, handler)(rows if index in rows else [index], index)
+
     def update_preview(self, indexes) -> None:
         """Re-render the grid selection's thumbnails, through the active context."""
         context = self.pane.active_section()

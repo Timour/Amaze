@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import math
 import os
 
@@ -102,9 +103,9 @@ class _CatalogueWorker(QtCore.QThread):
 
 
 class _PreviewWorker(QtCore.QThread):
-    """Fetches preview images by URL or callable reader; reports them by thumbnail-engine key."""
+    """Writes each preview's file by URL or callable reader, checks it reads, and reports its key."""
 
-    ready = QtCore.Signal(object, object)   # (key, QImage)
+    ready = QtCore.Signal(object)           # (key): its file is written and reads
     failed = QtCore.Signal(object)          # (key): the job produced no picture
     attempted = QtCore.Signal()             # per job, success OR failure
 
@@ -133,7 +134,7 @@ class _PreviewWorker(QtCore.QThread):
                                 or str(fetch), path=path)
                     self.failed.emit(key)
                 else:
-                    self.ready.emit(key, image)
+                    self.ready.emit(key)
             except Exception as exc:
                 debug.exception("preview download", exc,
                                 url=getattr(fetch, "label", None)
@@ -413,29 +414,6 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
         except (AttributeError, TypeError, ValueError):
             return 256
 
-    def _preview(self, rec):
-        """Cached preview, requested when not cached; requests are batched by a zero-delay timer."""
-        key = self._preview_key(rec)
-        image = thumbnails.engine.peek(key)
-        if image is not None:
-            return image
-        if key in self._requested:
-            return None
-
-        if rec.preview_url:    # a preview already on disk is never downloaded again
-            path = self._cache_path(rec)
-            if not thumbnails.engine.is_missing(key) and (
-                    thumbnails.engine.is_pending(key)
-                    or os.path.exists(path)):
-                return thumbnails.engine.request_file(key, path)    # read off-thread; a failed read comes back here as missing
-
-        self._requested.add(key)
-        self._pending.append(rec)
-        if not self._pending_scheduled:
-            self._pending_scheduled = True
-            QtCore.QTimer.singleShot(0, self._flush_pending)
-        return None
-
     def _parallel(self) -> int:
         try:
             return max(1, min(16, int(
@@ -453,7 +431,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
             size = max(1, math.ceil(len(self._pending) / slots))
             chunk = self._pending[:size]
             self._pending = self._pending[size:]
-            self._queue_previews(chunk)
+            self._start_fetches(chunk)
 
     def _preview_batch_done(self, worker):
         if worker in self._preview_workers:
@@ -464,87 +442,12 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
             self._pending_scheduled = True
             QtCore.QTimer.singleShot(0, self._flush_pending)
 
-    def _queue_previews(self, records):
-        from amaze.core import matx_icon
-        jobs = []
-        for rec in records:
-            key = self._preview_key(rec)
-            if thumbnails.engine.peek(key) is not None:
-                continue
-            if rec.kind == "amazepkg":
-                member = rec.payload.get("thumb_member")    # first: a named member is used before any drawn placeholder
-                source = self.source_for(rec)
-                if member and source is not None:
-                    reader = (lambda path, s=source, r=rec:
-                              s.read_thumb_to(r, path))
-                    reader.label = str(rec.uid)    # folder/file#id - what a failure log names instead of a lambda repr
-                    jobs.append((key, reader, self._cache_path(rec)))
-                    continue
-                row = ((rec.payload.get("entry") or {})
-                       .get("record") or {})
-                colors = row.get("colors") or []
-                if colors:
-                    from amaze.core import gradient_library
-                    try:    # the Color section's own painter; same marker rules as the values branch
-                        thumbnails.engine.deposit(
-                            key, gradient_library.paint_swatch(
-                                colors, row.get("ramp") or {}))
-                    except Exception as exc:              # noqa: BLE001
-                        debug.event("online", "swatch not drawn",
-                                    title=rec.title, error=str(exc))
-                        continue
-                    self._requested.discard(key)
-                    continue
-                code = str(row.get("code") or "")
-                if code:
-                    from amaze.core import code_library
-                    try:    # the Code section's own painter
-                        thumbnails.engine.deposit(
-                            key, code_library.paint_code_preview(code))
-                    except Exception as exc:              # noqa: BLE001
-                        debug.event("online", "snippet tile not drawn",
-                                    title=rec.title, error=str(exc))
-                        continue
-                    self._requested.discard(key)
-                    continue
-                self._deposit_face(key, str(rec.payload.get("section") or ""))
-                continue
-            source = self.source_for(rec)
-            if (_preview_crc(rec) is not None and source is not None
-                    and self._hosted.get(key, True)):
-                self._hosted[key] = True
-                reader = (lambda path, s=source, r=rec:    # Amaze's render, before any drawn face
-                          s.read_thumb_to(r, path))
-                reader.label = str(rec.uid)
-                jobs.append((key, reader, self._cache_path(rec)))
-                continue
-            if rec.kind == "values":
-                try:    # no render to download: the tile is drawn from the numbers, no worker
-                    thumbnails.engine.deposit(
-                        key,
-                        matx_icon.render(
-                            rec.payload.get("values", {}),
-                            self._icon_size(),
-                            rec.source,
-                        ),
-                    )
-                except Exception as exc:
-                    debug.event("online", "tile icon not drawn",
-                                title=rec.title, error=str(exc))
-                    continue    # a failed draw keeps its marker: blank for the session, a reopen retries
-                self._requested.discard(key)    # drawing is cheap: an evicted icon redraws on the next paint - don't hold the marker
-                continue
-            if not rec.preview_url:
-                self._deposit_face(key, "material")    # a source that ships no picture
-                continue
-            url = rec.preview_url.replace("format=webp", "format=png")    # Qt reads no WebP ▸r/matx-source-quirks
-            jobs.append((key, url, self._cache_path(rec, hosted=False)))    # never the hosted file's path
-        if not jobs:
-            return
+    def _start_fetches(self, jobs) -> None:
+        """One worker for these (key, fetch, path) jobs: each writes its picture file."""
         self._preview_total += len(jobs)
         self.progress_changed.emit(self._preview_done, self._preview_total)
         worker = _PreviewWorker(jobs)
-        worker.ready.connect(self._deposit_preview)
+        worker.ready.connect(self._on_fetched)
         worker.failed.connect(self._on_preview_failed)
         worker.attempted.connect(self._on_preview_attempted)
         worker.finished.connect(lambda w=worker: self._preview_batch_done(w))
@@ -552,12 +455,19 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
         self._preview_workers.append(worker)
         worker.start()
 
-    def _deposit_face(self, key, section: str) -> None:
-        """An online tile with no picture: the online face, or the Node section's. ▸r/tile-faces"""
-        from amaze.core import cop_library, tile_icons
-        thumbnails.engine.deposit(key, tile_icons.generic_image(
-            cop_library.CopLibrary.TILE_FACE if section == "cop" else ONLINE_FACE))
-        self._requested.discard(key)
+    def _fetched(self, key, fetch, path: str, hosted: bool = False) -> grid_engine.Picture:
+        """The picture file at `path`, fetched by `fetch` the first time it is asked for; none until then."""
+        if os.path.exists(path) and not thumbnails.engine.is_missing(key):    # one that does not read
+            return grid_engine.Picture(((path, key, False),))    # goes to the worker, which removes it
+        if key not in self._requested:    # a fetch that failed keeps its marker: it is not tried again
+            self._requested.add(key)
+            if hosted:    # its failure gives way to the record's next picture
+                self._hosted[key] = True
+            self._pending.append((key, fetch, path))
+            if not self._pending_scheduled:
+                self._pending_scheduled = True
+                QtCore.QTimer.singleShot(0, self._flush_pending)
+        return grid_engine.Picture()
 
     def _on_preview_attempted(self):
         """One preview download finished: advance the bar, reset it when all queued ones are done."""
@@ -567,9 +477,12 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
             self._preview_done = 0
             self._preview_total = 0
 
-    def _deposit_preview(self, key, image):
-        thumbnails.engine.deposit(key, image)
-        self._requested.discard(key)    # drop the marker so the next paint requests it again after an eviction
+    def _on_fetched(self, key) -> None:
+        """A picture file was written: its tile shows it, read as every other picture file is."""
+        self._requested.discard(key)
+        row = self._key_rows.get(key)
+        if row is not None and 0 <= row < len(self._records):
+            self.row_changed(row, [QtCore.Qt.ItemDataRole.DecorationRole])
 
     def _on_preview_failed(self, key):
         """A hosted picture that did not download: the next paint uses the tile's own face."""
@@ -600,13 +513,41 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
             return self._records[row]
         return None
 
+    def tile_picture(self, row: int, face: str = "") -> grid_engine.Picture:
+        """Its store or hosted picture, else what its record paints, its preview, else its generic icon."""
+        from amaze.core import code_library, cop_library, gradient_library, matx_icon
+        rec = self._records[row]
+        key, source = self._preview_key(rec), self.source_for(rec)
+        reader = functools.partial(source.read_thumb_to, rec) if source is not None else None
+        if reader is not None:
+            reader.label = str(rec.uid)    # what a failure log names
+        if rec.kind == "amazepkg":    # a named member before any drawn placeholder
+            entry = (rec.payload.get("entry") or {}).get("record") or {}
+            if rec.payload.get("thumb_member") and reader is not None:
+                return self._fetched(key, reader, self._cache_path(rec))
+            if entry.get("colors"):    # the Color section's own painter
+                return grid_engine.Picture(paint=functools.partial(
+                    gradient_library.paint_swatch, entry["colors"], entry.get("ramp") or {}), stamp=key)
+            if str(entry.get("code") or ""):    # the Code section's own painter
+                return grid_engine.Picture(paint=functools.partial(
+                    code_library.paint_code_preview, str(entry["code"])), stamp=key)
+            cop = rec.payload.get("section") == "cop"
+            return grid_engine.Picture(art=cop_library.CopLibrary.TILE_FACE if cop else ONLINE_FACE)
+        if _preview_crc(rec) is not None and reader is not None and self._hosted.get(key, True):
+            return self._fetched(key, reader, self._cache_path(rec), hosted=True)    # Amaze's render
+        if rec.kind == "values":    # drawn from the numbers
+            return grid_engine.Picture(paint=functools.partial(
+                matx_icon.render, rec.payload.get("values", {}), self._icon_size(), rec.source), stamp=key)
+        if not rec.preview_url:    # a source that ships no picture
+            return grid_engine.Picture(art=ONLINE_FACE)
+        url = rec.preview_url.replace("format=webp", "format=png")    # Qt reads no WebP ▸r/matx-source-quirks
+        return self._fetched(key, url, self._cache_path(rec, hosted=False))    # never the hosted file's path
+
     def row_data(self, row, role):
         rec = self._records[row]
 
         if role == QtCore.Qt.ItemDataRole.DisplayRole:
             return rec.title
-        if role == QtCore.Qt.ItemDataRole.DecorationRole:
-            return self._preview(rec)
         if role == QtCore.Qt.ItemDataRole.ToolTipRole:
             bits = [rec.title]
             if rec.author:
@@ -616,7 +557,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
             if rec.kind == "values":
                 bits.append("measured values - no textures")
             return "\n".join(bits)
-        if role == self.RendererLabelRole:
+        if role in (self.RendererLabelRole, self.TileSubtitleRole):
             # the Type column: the source, or what a store tile is
             if rec.kind == "amazepkg":
                 section = str(rec.payload.get("section") or "")

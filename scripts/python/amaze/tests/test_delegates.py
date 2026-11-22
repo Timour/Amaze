@@ -451,7 +451,7 @@ class TheRendererIconIsOnTheSubtitlesLine(unittest.TestCase):
 
     def _painted(self, renderer, with_role=True):
         """(name rect, subtitle rect, [pixmap rects], cell rect) of a tile storing `renderer`."""
-        values = {self.RENDERER: renderer, self.SUBTITLE: "a subtitle far too long for its line",
+        values = {self.RENDERER: renderers.tile_icon(renderer), self.SUBTITLE: "a subtitle far too long for its line",
                   QtCore.Qt.ItemDataRole.DisplayRole: "a_material_with_a_very_long_name"}
 
         class _Model(QtCore.QAbstractListModel):
@@ -465,7 +465,7 @@ class TheRendererIconIsOnTheSubtitlesLine(unittest.TestCase):
         self.addCleanup(view.deleteLater)
         model = _Model()
         delegate = delegates.AssetItemDelegate(
-            self.SUBTITLE, renderer_role=self.RENDERER if with_role else None)
+            self.SUBTITLE, renderer_icon_role=self.RENDERER if with_role else None)
         cell = delegate.grid_cell_size(amazetheme.TILE_DRAWN_SIZE, view.font())
         image = QtGui.QImage(cell.width(), cell.height(), QtGui.QImage.Format.Format_ARGB32)
         painter = _TileSpy(image)

@@ -433,7 +433,7 @@ class OnePicturePerAssetTest(_Library):
         after = sorted(os.path.join(here, name) for here, _dirs, names in os.walk(self.dir)
                        for name in names if name.endswith(".png"))
         self.assertEqual(before, after, "a custom icon wrote a file into the library")
-        self.assertIsNotNone(tile_icons.chosen_image(model, row), "no icon was composed")
+        self.assertIsNotNone(model.shown_picture(row)[0], "no icon was composed")
 
     def test_check_library_on_the_new_layout(self):
         os.remove(os.path.join(self.materials, self.ASSET + ".png"))

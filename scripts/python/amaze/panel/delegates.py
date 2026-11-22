@@ -7,7 +7,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 import amaze
 from amaze import amazetheme
 from amaze import tooltips
-from amaze.core import category, debug, renderers
+from amaze.core import category, debug
 from amaze.helpers import theme, ui_helpers
 
 
@@ -347,11 +347,11 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         tile_badges=(),
         tile_model=None,
         on_badge=None,
-        renderer_role=None,
+        renderer_icon_role=None,
     ):
         """Every role is optional; None means the delegate does not paint that thing."""
         super().__init__(parent)
-        self._renderer_role = renderer_role    # a material's renderer: its icon at the subtitle's right end
+        self._renderer_icon_role = renderer_icon_role    # its renderer's icon at the subtitle's right end
         self._active_version_role = active_version_role    # the active version's name, list mode
         self._crop_role = crop_role            # per row: truthy fills and crops the tile; None never crops
         self._subtitle_role = subtitle_role
@@ -468,7 +468,8 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
     @classmethod
     def _badge_side(cls, icon_side, cap=None):
         """A badge grows with the tile up to its drawn size, never below 12px."""
-        return max(theme.ui_px(12), min(icon_side // 4, cap or cls.BADGE_CAP))
+        return max(theme.ui_px(amazetheme.BADGE_LEAST),
+                   min(icon_side // amazetheme.BADGE_PART, cap or cls.BADGE_CAP))
 
     def _badge_at(self, name, area_x, area_y, icon_side, mark_w=None, mark_h=None):
         """(x, y, w, h) of a badge on a thumbnail, from its drawn edges and insets."""
@@ -485,7 +486,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         """A corner badge's side follows `_badge_side`; a centred one scales with the tile."""
         edge_x, _ix, edge_y, _iy, cap = self.PLACES[name]
         if "centre" in (edge_x, edge_y):
-            return max(theme.ui_px(12),
+            return max(theme.ui_px(amazetheme.BADGE_LEAST),
                        min(cap, int(round(cap * icon_side / float(self.DRAWN_THUMB)))))
         return self._badge_side(icon_side, cap)
 
@@ -651,14 +652,12 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
             painter.drawPixmap(x, y, mark)
 
     def _renderer_icon(self, index, dpr):
-        """The row's renderer icon, or None: no role, no renderer, or one Amaze does not offer."""
-        if self._renderer_role is None:
+        """The row's renderer icon, or None: no role, no icon, or one no frame draws."""
+        art = index.data(self._renderer_icon_role) if self._renderer_icon_role is not None else None
+        if art not in self.RENDERER_ICONS:
             return None
-        renderer = renderers.get(index.data(self._renderer_role))
-        if renderer is None or renderer.tile_icon not in self.RENDERER_ICONS:
-            return None
-        mark = self._renderer_pixmap(renderer.tile_icon, dpr)
-        return None if mark.isNull() else (mark,) + self.RENDERER_ICONS[renderer.tile_icon][1:]
+        mark = self._renderer_pixmap(art, dpr)
+        return None if mark.isNull() else (mark,) + self.RENDERER_ICONS[art][1:]
 
     @classmethod
     def _renderer_pixmap(cls, name, dpr=1.0):

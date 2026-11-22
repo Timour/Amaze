@@ -94,14 +94,6 @@ def generic_image(art: str):
     return _generic_images[key]
 
 
-def chosen_image(model, row: int):
-    """A row's face when it shows no preview: its custom icon composed in memory, else generic."""
-    spec = model.tile_icon(row)
-    if is_custom(spec):
-        return compose_for(model.preferences, spec)    # in memory: painting never writes a file
-    return generic_image(model.tile_face_art(row))
-
-
 def repaint_custom(model) -> int:
     """Repaint every row of `model` showing a custom icon, for a model that composes in memory."""
     rows = [row for row in range(model.rowCount())
@@ -225,11 +217,11 @@ def compose_svg(name: str, background: str, stroke_units: float = 0.0,
 
 
 def compose(name: str, background: str, size: int = CANVAS,
-            stroke_units: float = 0.0, ink: str = DEFAULT_INK):
-    """The finished tile image, or None if the icon does not exist."""
+            stroke_units: float = 0.0, ink: str = DEFAULT_INK, keep: bool = True):
+    """The finished tile image, or None if the icon does not exist; `keep` False leaves it uncached."""
     stroke_units = float(stroke_units or STROKE_UNITS)
     key = (str(name), str(background), int(size), stroke_units, str(ink))
-    cached = _composed.get(key)
+    cached = _composed.get(key) if keep else None
     if cached is not None:
         _composed.move_to_end(key)      # LRU: a cache hit becomes the most recent
         return cached or None
@@ -240,6 +232,8 @@ def compose(name: str, background: str, size: int = CANVAS,
         drawn = QtGui.QImage(int(size), int(size), QtGui.QImage.Format.Format_ARGB32)
         if ui_helpers.paint_svg(drawn, svg.encode("utf-8")):
             image = drawn
+    if not keep:
+        return image
     global _composed_bytes
     entry = image if image is not None else False
     _composed[key] = entry
@@ -340,13 +334,20 @@ def render_size(preferences) -> int:
         return CANVAS
 
 
-def compose_for(preferences, spec):
+def compose_for(preferences, spec, keep: bool = True):
     """One normalised spec composed in memory at the preferences' size, for every section."""
     spec = normalise(spec)
     if not is_custom(spec):
         return None
     return compose(spec["name"], spec["bg"], render_size(preferences),
-                   stroke_for(preferences), spec["ink"])
+                   stroke_for(preferences), spec["ink"], keep)
+
+
+def custom_stamp(preferences, spec) -> tuple:
+    """What a custom icon is composed from, so a changed choice, weight or size is a new picture."""
+    spec = normalise(spec)
+    return ("custom", spec.get("name"), spec.get("bg"), spec.get("ink"), stroke_for(preferences),
+            render_size(preferences))
 
 
 def forget_composed() -> None:

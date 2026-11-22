@@ -1,6 +1,7 @@
 """The Code section's library: snippets inline in code.json, the `renderer` field is the language."""
 
 import os
+import functools
 import json
 import shutil
 import tempfile
@@ -340,25 +341,10 @@ class CodeLibrary(library.AssetLibrary):
         """The preview key from the code text and language, so an edit makes a new key."""
         return ("code", asset.mat_id, hash(asset.code), asset.renderer)
 
-    def _decoration_image(self, row: int):
-        """The tile image: a chosen icon, else the code preview, painted when not cached."""
+    def painted_preview(self, row: int):
+        """The code itself, painted when the snippet has no capture."""
         asset = self._assets[row]
-        face = tile_icons.face_for(self, row)
-        if face != "image":
-            return self._missing_thumb_image(row)
-        held = self._thumb_key(row)    # a capture replaces the painted preview; thumbnails.engine loads its file
-        captured = thumbnails.engine.request_file(held, self._mat_paths[row])
-        if captured is not None:
-            return captured
-        if not thumbnails.engine.is_missing(held):
-            return None    # still being read: the tile repaints when it is loaded
-        key = self._preview_key(asset)
-        image = thumbnails.engine.peek(key)
-        if image is not None:
-            return image
-        image = self._paint_preview(asset)
-        thumbnails.engine.deposit(key, image)
-        return image
+        return self._preview_key(asset), functools.partial(self._paint_preview, asset)
 
     def preview_image(self, row: int):
         """The painted code, for the Customize preview."""

@@ -71,6 +71,7 @@ class Section:
     proxy_attr = ""       # the grid's proxy, which `activate` binds to the grid views
     delegate_attr = ""
     tile_badges: tuple = ()    # the badge IDs this section's tile shows ▸r/tile-from-frame
+    tile_badge_clicks = True    # its tile badges are buttons; where False they only show a state
     library_model_attrs: tuple = ()  # re-pointed on a library switch; () is a valid value
     selection_attr = ""   # a menu acts on THIS section's selection
     GRID_MENU: tuple = ()     # MenuEntry rows; empty = no menu opens

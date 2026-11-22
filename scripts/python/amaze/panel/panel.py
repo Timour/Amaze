@@ -276,7 +276,7 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
         self.thumb_delegate = delegates.AssetItemDelegate(
             pane.material_model.TileSubtitleRole,
             self.thumblist,
-            renderer_role=pane.material_model.RendererRole,
+            renderer_icon_role=pane.material_model.RendererIconRole,
             category_role=pane.material_model.CategoryRole,
             tag_role=pane.material_model.TagRole,
             licence_role=pane.material_model.LicenceRole,
@@ -285,9 +285,8 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
             date_role=pane.material_model.DateRole,
             id_role=pane.material_model.IdRole,
             crop_role=pane.material_model.CropRole,
-            tile_badges=material_section.MaterialSection.tile_badges,
             tile_model=library.MaterialLibrary,
-            on_badge=self._badge_click_handler,
+            **self._tile_badges(material_section.MaterialSection),
         )
 
         node_roles = dict(
@@ -298,16 +297,13 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
             date_role=pane.material_model.DateRole,
             id_role=pane.material_model.IdRole,
             crop_role=pane.material_model.CropRole,
-            on_badge=self._badge_click_handler,
         )
         self.asset_delegate = delegates.AssetItemDelegate(    # Node and Code: their own delegate, without the version roles
             pane.material_model.RendererLabelRole, self.thumblist,
-            tile_badges=node_section.CopSection.tile_badges,
-            tile_model=cop_library.CopLibrary, **node_roles)
+            tile_model=cop_library.CopLibrary, **node_roles, **self._tile_badges(node_section.CopSection))
         self.code_delegate = delegates.AssetItemDelegate(
             pane.material_model.RendererLabelRole, self.thumblist,
-            tile_badges=code_section.CodeSection.tile_badges,
-            tile_model=code_library.CodeLibrary, **node_roles)
+            tile_model=code_library.CodeLibrary, **node_roles, **self._tile_badges(code_section.CodeSection))
 
         self.file_delegate = delegates.AssetItemDelegate(
             pane.file_files_model.FormatRole,
@@ -315,9 +311,8 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
             category_role=pane.file_files_model.FolderRole,
             category_color_role=pane.file_files_model.CategoryColorRole,
             crop_role=pane.file_files_model.CropRole,
-            tile_badges=file_section.FileSection.tile_badges,
             tile_model=file_library.FileFiles,
-            on_badge=self._badge_click_handler,
+            **self._tile_badges(file_section.FileSection),
         )
 
         self.gradient_delegate = delegates.AssetItemDelegate(
@@ -326,9 +321,8 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
             category_role=pane.gradient_model.CategoryLabelRole,
             category_color_role=pane.gradient_model.CategoryColorRole,
             crop_role=pane.gradient_model.CropRole,
-            tile_badges=color_section.GradientSection.tile_badges,
             tile_model=gradient_library.GradientLibrary,
-            on_badge=self._badge_click_handler,
+            **self._tile_badges(color_section.GradientSection),
         )
 
         self.matx_delegate = delegates.AssetItemDelegate(    # the online section's own delegate, with only the roles its model has
@@ -336,8 +330,8 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
             self.thumblist,
             category_role=pane.matx_online_model.CategoryRole,
             tag_role=pane.matx_online_model.TagRole,
-            tile_badges=online_section.OnlineContext.tile_badges,
             tile_model=matx_library.MatxOnlineLibrary,
+            **self._tile_badges(online_section.OnlineContext),
         )
         self._sync_notes_button_pixmaps()
         self._sync_info_button_pixmaps()
@@ -1243,16 +1237,14 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
         """Locate in the unreachable-folder empty state: the folder it names is re-pointed."""
         self.pane.files.locate_unreadable(self.pane.empty_state.unreadable_folder())
 
+    def _tile_badges(self, section) -> dict:
+        """A tile delegate's badges and whether they take clicks, as the section declares them."""
+        return dict(tile_badges=section.tile_badges,
+                    on_badge=self._badge_click_handler if section.tile_badge_clicks else None)
+
     def _badge_click_handler(self, handler):
-        """A badge click runs the section's `handler` method: on the selection if the tile is in it."""
-        def click(index):
-            context = self.pane.active_section()
-            if context is None or not hasattr(context, handler):
-                return
-            selmodel = self.thumblist.selectionModel()
-            rows = grid_columns.selected_rows(selmodel) if selmodel is not None else []
-            getattr(context, handler)(rows if index in rows else [index], index)
-        return click
+        """A badge click runs the section's `handler` method, by the engine's one rule for it."""
+        return lambda index: self.pane.assets.click_badge(handler, index)
 
     def show_prefs(self, page: str = "") -> None:
         """Show Preferences, made as Houdini's own: one window per panel, a second open raises it."""

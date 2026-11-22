@@ -85,6 +85,47 @@ class TheQmlPaneOpensAndCloses(unittest.TestCase):
         self.assertIs(engine.selection, trees[0].property("selectionModel"),
                       "the tree keeps a selection other than the one the engine moves")
 
+    def test_the_grid_loads_silently_and_shows_the_sections_tiles(self):
+        test_support.fixture_panel(self)
+        said = []
+
+        def hear(_kind, context, text):
+            if ".qml" in text or context.category in ("qml", "js"):
+                said.append(text)
+
+        previous = QtCore.qInstallMessageHandler(hear)
+        try:
+            panel = qml_pane.QmlPanel()
+            self.addCleanup(test_support.stop_panel_workers, panel)
+            self.addCleanup(QtCore.QCoreApplication.sendPostedEvents, None, QtCore.QEvent.Type.DeferredDelete)
+            self.addCleanup(panel.deleteLater)
+            panel.setAttribute(QtCore.Qt.WidgetAttribute.WA_DontShowOnScreen)
+            panel.resize(840, 420)
+            panel.show()
+            QtWidgets.QApplication.processEvents()
+            panel.view.grabFramebuffer()    # a frame: the grid makes its tiles as it is drawn
+            QtCore.QCoreApplication.sendPostedEvents(None, QtCore.QEvent.Type.DeferredDelete)    # as Houdini's loop
+        finally:
+            QtCore.qInstallMessageHandler(previous)
+
+        self.assertEqual([], said, "the grid's QML reported errors or warnings")
+
+        def walk(item):
+            yield item
+            for child in item.childItems():
+                yield from walk(child)
+
+        views = [item for item in walk(panel.view.rootObject())
+                 if item.metaObject().className().startswith("QQuickGridView")]
+        self.assertEqual(1, len(views), "the pane has not one tile grid")
+        section = panel.pane.active_section()
+        proxy = getattr(panel.pane, section.proxy_attr)
+        self.assertIs(proxy, views[0].property("model"), "the grid does not show the section's own tiles")
+        tiles = [item for item in views[0].property("contentItem").childItems()
+                 if item.metaObject().className().startswith("Tile_")]
+        self.assertGreater(proxy.rowCount(), 1, "the fixture's section has no tiles")
+        self.assertEqual(proxy.rowCount(), len(tiles), "the grid does not show every tile of the section")
+
 
 if __name__ == "__main__":
     unittest.main()

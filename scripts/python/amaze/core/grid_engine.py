@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+import collections
 import contextlib
+import functools
+import os
 
 from PySide6 import QtCore, QtGui
 
-from amaze.core import debug, grid_columns
+from amaze.core import debug, grid_columns, thumbnails, tile_icons
 
 DISPLAY = QtCore.Qt.ItemDataRole.DisplayRole
+DECORATION = QtCore.Qt.ItemDataRole.DecorationRole
+PAINTED = "amazetile"    #: image://amazetile/<model>/<row>/<stamp>: a picture painted when a view shows it
 NAME = grid_columns.KEYS.index("name")
 ASCENDING = QtCore.Qt.SortOrder.AscendingOrder
 DESCENDING = QtCore.Qt.SortOrder.DescendingOrder
@@ -25,6 +30,31 @@ def relayout(*models):
     finally:
         for model in reversed(live):   # reverse order: the last model given layoutAboutToBeChanged gets layoutChanged first
             model.layoutChanged.emit()
+
+
+def role_name(attr: str) -> str:
+    """The name a view reads a role by: `TileSubtitleRole` is `tileSubtitle`."""
+    return attr[0].lower() + attr[1:-len("Role")]
+
+
+class Picture(collections.namedtuple("Picture", "files paint stamp art blank_while_loading",
+                                     defaults=((), None, None, "", True))):
+    """What a tile shows: the first of `files` (path, key, crop) that reads, `paint()`, or `art`."""
+
+    __slots__ = ()
+
+
+def custom_picture(preferences, spec) -> Picture:
+    """A tile's custom icon: composed when shown, for every section."""
+    return Picture(paint=functools.partial(tile_icons.compose_for, preferences, spec, False),
+                   stamp=tile_icons.custom_stamp(preferences, spec))
+
+
+def picture_file(path: str, key) -> str:
+    """A picture file's url; its query counts the engine's replacements of `key`, so a rewrite reloads."""
+    url = QtCore.QUrl.fromLocalFile(path)
+    url.setQuery(str(thumbnails.engine.generation(key)))
+    return url.toString()
 
 
 def sort_key(value) -> tuple:
@@ -49,6 +79,9 @@ class GridEngine:
 
     TILE_FIELDS: tuple = ()    #: the record fields the tile dialog edits here, from name, tags and category
 
+    TileSubtitleRole = QtCore.Qt.ItemDataRole.UserRole + 14    #: the tile's second line; 269 is Color's own
+    PictureRole = QtCore.Qt.ItemDataRole.UserRole + 15    #: `picture_for_view`
+
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._sort_column = NAME
@@ -71,6 +104,52 @@ class GridEngine:
             return grid_columns.LABELS[section]
         return None
 
+    def roleNames(self) -> dict:
+        """Qt's role names and one per `<Name>Role` attribute; the decoded picture has none."""
+        names = {role: name for role, name in super().roleNames().items() if role != DECORATION}
+        for attr in dir(type(self)):
+            if attr.endswith("Role") and len(attr) > len("Role"):
+                names[int(getattr(type(self), attr))] = QtCore.QByteArray(role_name(attr).encode())
+        return names
+
+    def tile_picture(self, row: int, face: str = "") -> Picture:
+        """The one decision of what `row`'s tile shows on `face`, by default its own; views only read it."""
+        return Picture()
+
+    def paint_tile(self, row: int):
+        """The picture `tile_picture` paints for `row`, made now and kept nowhere; None for none."""
+        picture = self.tile_picture(row)
+        return picture.paint() if picture.paint is not None else None
+
+    def shown_picture(self, row: int, face: str = "") -> tuple:
+        """(image, crop) of `tile_picture`, read through the thumbnail engine, for the widget grid."""
+        picture = self.tile_picture(row, face)
+        for path, key, crop in picture.files:
+            image = thumbnails.engine.request_file(key, path)
+            if image is not None:
+                return image, crop
+            if picture.blank_while_loading and not thumbnails.engine.is_missing(key):
+                return None, crop    # still being read: the tile repaints when it is loaded
+        if picture.paint is not None:
+            image = thumbnails.engine.peek(picture.stamp)
+            if image is None:
+                image = picture.paint()
+                if image is not None:
+                    thumbnails.engine.deposit(picture.stamp, image)
+            return image, False
+        return (tile_icons.generic_image(picture.art) if picture.art else None), False
+
+    def picture_for_view(self, row: int) -> dict:
+        """`tile_picture` as a url a view loads itself, a file read in the background or a painted one."""
+        picture = self.tile_picture(row)
+        for path, key, crop in picture.files:
+            if path and os.path.isfile(path):
+                return {"url": picture_file(path, key), "art": "", "crop": bool(crop)}
+        if picture.paint is not None:
+            url = "image://%s/%x/%d/%x" % (PAINTED, id(self), row, hash(picture.stamp) & 0xffffffff)
+            return {"url": url, "art": "", "crop": False}
+        return {"url": "", "art": picture.art, "crop": False}
+
     def _column_role(self, key):
         """The role this model reads for a column, or None."""
         named = self.COLUMN_ROLES.get(key)
@@ -90,6 +169,8 @@ class GridEngine:
             return
         top = self.index(row, 0)
         bottom = self.index(row, self.last_column())
+        if roles is not None and DECORATION in roles:
+            roles = list(roles) + [self.PictureRole]    # the same picture, for a view that loads it itself
         if roles is None:
             self.dataChanged.emit(top, bottom)
         else:
@@ -102,7 +183,9 @@ class GridEngine:
             return None
         column = index.column()
         if column <= 0:
-            return self.row_data(row, role)
+            if role == DECORATION:
+                return self.shown_picture(row)[0]
+            return self.picture_for_view(row) if role == self.PictureRole else self.row_data(row, role)
         return self.cell_data(row, column, role)
 
     def row_data(self, row: int, role):

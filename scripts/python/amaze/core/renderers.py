@@ -62,6 +62,12 @@ def get(stored):
     return None
 
 
+def tile_icon(stored) -> str:
+    """The icon a material stored with `stored` shows on its tile, "" for none."""
+    found = get(stored)
+    return found.tile_icon if found is not None else ""
+
+
 def is_karma(stored) -> bool:
     return get(stored) is KARMA
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import os
 import stat
 
@@ -264,7 +265,6 @@ class FileFiles(grid_engine.GridEngine,
         self._progress_keys: set = set()
         self._progress_done = 0
         self._progress_total = 0
-        self._os_icons: dict = {}
         self.hfs = os.environ.get("HFS", "")    # Houdini's install, for the converter; the panel sets $HFS
         self.open_scene = lambda: ""    # the scene Houdini has open; the panel sets the live function
         self.render_geo = None    # the geometry render pass; the panel sets it, a model without it renders none
@@ -547,18 +547,6 @@ class FileFiles(grid_engine.GridEngine,
         image = QtGui.QImage(path) if captures.exists(path) else QtGui.QImage()
         return None if image.isNull() else image
 
-    def _capture_tile_image(self, row: int):
-        """The tile's capture through the engine, its row registered for the repaint once loaded."""
-        path = self.capture_path(row)
-        key = ("capture", path)
-        rows = self._key_rows.setdefault(key, [])
-        if row not in rows:
-            rows.append(row)
-        image = thumbnails.engine.request_file(key, path) if path else None
-        if image is not None:
-            return image
-        return self.preview_image(row)    # no capture, or not loaded yet: the file's own preview
-
     def _on_capture_saved(self, key) -> None:
         """A capture was saved for `key`: drop the old picture and repaint the rows showing that file."""
         thumbnails.engine.discard(("capture", captures.file_path(self.preferences, str(key))))
@@ -572,17 +560,6 @@ class FileFiles(grid_engine.GridEngine,
             if self._full_path(row) == wanted:
                 return row
         return -1
-
-    def _os_icon_image(self, path: str):
-        """The system's icon for this file type, drawn by the panel's `os_icon`, cached per extension."""
-        ext = os.path.splitext(path)[1].lower()
-        canvas_side = int(getattr(
-            self.preferences, "rendersize", 512) or 512)
-        cache_key = (ext, canvas_side)
-        cached = self._os_icons.get(cache_key)
-        if cached is None and self.os_icon is not None:
-            cached = self._os_icons[cache_key] = self.os_icon(path, canvas_side)
-        return cached
 
     def _full_path(self, row: int):
         if 0 <= row < len(self._files):
@@ -759,47 +736,46 @@ class FileFiles(grid_engine.GridEngine,
         return "image"
 
     def preview_image(self, row: int):
-        """The row's own picture as far as it has loaded: the tile's Preview, and Customize's."""
-        if not 0 <= row < len(self._row_specs):
-            return None
+        """The row's picture on its image face as far as it has loaded, for the Customize preview."""
+        return self.shown_picture(row, "image")[0] if 0 <= row < len(self._row_specs) else None
+
+    def tile_picture(self, row: int, face: str = "") -> grid_engine.Picture:
+        """Its custom or generic file icon; else its capture over its image, render or system icon."""
+        spec = self.tile_icon(row)
+        face = face or tile_icons.face_of(spec, self.default_face(row), self.can_preview(row))
+        if face == "custom":
+            return grid_engine.custom_picture(self.preferences, spec)
+        if face != "image":
+            return grid_engine.Picture(art=self.tile_face_art(row))
+        capture = self.capture_path(row)
+        rows = self._key_rows.setdefault(("capture", capture), [])    # repainted once its capture is read
+        if row not in rows:
+            rows.append(row)
+        files = ((capture, ("capture", capture), True),) if capture else ()    # a capture fills the tile
+        shown = functools.partial(grid_engine.Picture, blank_while_loading=False)    # shown while it loads
+        if row >= len(self._row_specs):    # a row listed before its kind is read
+            return shown(files)
         key, source, payload = self._row_specs[row]
-        if source == "os-icon":
-            if not self.preferences.system_file_icons:
-                return tile_icons.generic_image("face_file")    # Preferences ▸ UI ▸ Show Generic File Icons, on
-            return self._os_icon_image(payload)
-        if source in ("missing", "none", "face"):
-            return tile_icons.generic_image(self.tile_face_art(row))    # unreadable, a scene, or a .rat not rendered
         if source == "file":
-            return thumbnails.engine.request_file(key, payload)
-        image = thumbnails.engine.peek(key)    # convert/render rows: what has loaded so far
-        if image is not None:
-            return image
-        if source == "convert":
-            if thumbnails.engine.is_missing(key):
-                return tile_icons.generic_image(self.tile_face_art(row))    # no converter read it
-            if not thumbnails.engine.is_pending(key):
-                cache = self._image_cache
-                cached_png = (
-                    cache.valid_path(payload) if cache else None)
-                if cached_png is not None:
-                    return thumbnails.engine.request_file(
-                        key, cached_png)
-            return None
-        cached_png = self._get_geo_cache().valid_path(payload)
-        if cached_png is not None:
-            return thumbnails.engine.request_file(key, cached_png)
-        return None
+            return shown(files + ((payload, key, False),))
+        if source == "convert" and thumbnails.engine.is_missing(key):    # no converter read it
+            return shown(files, art=self.tile_face_art(row))
+        if source in ("convert", "render"):    # made in the background: nothing until its file is
+            cache = self._image_cache if source == "convert" else self._get_geo_cache()
+            made = None if cache is None or thumbnails.engine.is_pending(key) else cache.valid_path(payload)
+            return shown(files + (((made, key, False),) if made else ()))
+        if source == "os-icon" and self.preferences.system_file_icons:    # one per type, as Qt gives it
+            side = int(getattr(self.preferences, "rendersize", 512) or 512)
+            paint = functools.partial(self.os_icon, payload, side) if self.os_icon is not None else None
+            return shown(files, paint=paint, stamp=("os-icon", os.path.splitext(payload)[1].lower(), side))
+        return shown(files, art="face_file" if source == "os-icon" else self.tile_face_art(row))
 
     def row_data(self, row, role):
         folder, name = self._files[row]
         kind = self._kinds[row]
         if role == QtCore.Qt.ItemDataRole.DisplayRole:
             return name
-        if role == QtCore.Qt.ItemDataRole.DecorationRole:
-            if tile_icons.face_for(self, row) != "image":
-                return tile_icons.chosen_image(self, row)
-            return self._capture_tile_image(row)    # the engine handles a missing capture, no stat
-        if role == self.FormatRole:
+        if role in (self.FormatRole, self.TileSubtitleRole):
             if kind == locations.KIND_GEO:
                 return geo_library.matched_extension(
                     name).lstrip(".").upper()
@@ -822,8 +798,7 @@ class FileFiles(grid_engine.GridEngine,
         if role == self.KindRole:
             return kind
         if role == self.CropRole:
-            return (tile_icons.face_for(self, row) == "image"    # a loaded capture fills the tile
-                    and thumbnails.engine.peek(("capture", self.capture_path(row))) is not None)
+            return self.shown_picture(row)[1]
         if role == self.NotesRole:
             from amaze.core import notes
             return notes.has_note(

@@ -218,11 +218,11 @@ class EveryContextShowsTheBadgesItsModelSupports(AreaBindingCase):
         delegate, model = panel.thumblist.itemDelegate(), panel.pane.material_model
         self.assertEqual(model.TileSubtitleRole, delegate._subtitle_role,
                          "a material tile's second line is not the renderer's name alone")
-        self.assertEqual(model.RendererRole, delegate._renderer_role,
+        self.assertEqual(model.RendererIconRole, delegate._renderer_icon_role,
                          "a material tile has no role to draw its renderer icon from")
         for key in ("cop", "code", "file", "gradient"):
             with self.subTest(section=key):
-                self.assertIsNone(self.activate(key).thumblist.itemDelegate()._renderer_role,
+                self.assertIsNone(self.activate(key).thumblist.itemDelegate()._renderer_icon_role,
                                   "%s's tiles draw a renderer icon" % key)
 
     def test_the_online_mode_grid_shows_only_online_badges(self):

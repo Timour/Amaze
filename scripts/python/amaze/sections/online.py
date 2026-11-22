@@ -12,6 +12,7 @@ class OnlineContext(base.Section):
     key = "online"
     label = "Online"
     tile_badges = ("favourite",)    # an indicator with no click: the list keeps its Favourite column
+    tile_badge_clicks = False
     sidebar_attr = "matx_source_model"
     proxy_attr = "matx_sorted_model"
     selection_attr = "matx_selection_model"

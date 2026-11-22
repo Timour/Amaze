@@ -76,9 +76,20 @@ PaneRoot {
                     }
                 }
             }
-            Item {    // the grid's area; the grid, info and comments come in later steps
+            Item {    // the grid's area: the grid, which list mode also shows until the list is built
                 SplitView.fillWidth: true
 
+                TileGrid {
+                    anchors.fill: parent
+                    visible: SharedState.emptyHeadline === ""    // an empty category is an empty grid
+                    model: SharedState.gridModel
+                    selectionModel: SharedState.gridSelection
+                    tileSize: SharedState.gridTileSize
+                    drawn: SharedState.tile
+                    badges: SharedState.badges
+                    onTileClicked: (row, modifiers) => SharedState.clickTile(row, modifiers)
+                    onBadgeClicked: (row, name) => SharedState.clickBadge(row, name)
+                }
                 EmptyState {
                     anchors.centerIn: parent
                     width: parent.width - 48    // the widget panel's empty page keeps 24 px each side

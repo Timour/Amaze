@@ -2068,8 +2068,8 @@ class OnlineTilePaintingTest(unittest.TestCase):
             preferences=type("P", (), {"rendersize": 64})())
         key = model._preview_key(record)
         thumbnails.engine.discard(key)
-        model._queue_previews([record])
-        image = thumbnails.engine.peek(key)
+        model._records = [record]
+        image = model.shown_picture(0)[0]
         self.assertIsNotNone(image)
         self.assertEqual(
             gradient_library.paint_swatch(
@@ -2093,7 +2093,9 @@ class OnlineTilePaintingTest(unittest.TestCase):
         with mock.patch.object(
                 matx_library, "_PreviewWorker",
                 side_effect=lambda given: jobs.extend(given) or mock.MagicMock()):
-            model._queue_previews([record])
+            model._records = [record]
+            model.tile_picture(0)
+            model._flush_pending()
         self.assertEqual(
             [thumbs + "bamboo_veneer.png?width=256&format=png&v=1"],
             [url for _key, url, _path in jobs],
@@ -2113,8 +2115,8 @@ class OnlineTilePaintingTest(unittest.TestCase):
                          "entry": {"record": record}})
             key = model._preview_key(rec)
             thumbnails.engine.discard(key)
-            model._queue_previews([rec])
-            return thumbnails.engine.peek(key)
+            model._records = [rec]
+            return model.shown_picture(0)[0]
 
         node = face_of("cop", {"name": "domelight1", "renderer": "LOP"})
         self.assertIsNotNone(
@@ -2152,9 +2154,9 @@ class OnlineTilePaintingTest(unittest.TestCase):
             preferences=type("P", (), {"rendersize": 64})())
         key = model._preview_key(record)
         thumbnails.engine.discard(key)
-        model._queue_previews([record])
+        model._records = [record]
         self.assertIsNone(
-            thumbnails.engine.peek(key),
+            model.shown_picture(0)[0],
             "a swatch was painted for a record that NAMES its icon - "
             "the chosen icon must take precedence over the drawn preview, as in "
             "every local section")
@@ -2201,8 +2203,8 @@ class OnlineTilePaintingTest(unittest.TestCase):
             preferences=type("P", (), {"rendersize": 64})())
         key = model._preview_key(record)
         thumbnails.engine.discard(key)
-        model._queue_previews([record])
-        image = thumbnails.engine.peek(key)
+        model._records = [record]
+        image = model.shown_picture(0)[0]
         self.assertIsNotNone(
             image, "a code snippet tile stayed BLANK - 15 invisible "
                    "tiles in a grid of colours is a package that "
@@ -2267,8 +2269,7 @@ class OnlineTilePaintingTest(unittest.TestCase):
         model.data(index, QtCore.Qt.ItemDataRole.DecorationRole)
         self._settle(lambda: thumbnails.engine.is_missing(key))
         model.data(index, QtCore.Qt.ItemDataRole.DecorationRole)
-        self.assertEqual([key], [model._preview_key(r)
-                                 for r in model._pending],
+        self.assertEqual([key], [queued for queued, _fetch, _path in model._pending],
                          "a broken cached preview never reached the "
                          "worker that clears it")
 
@@ -2287,11 +2288,11 @@ class OnlineTilePaintingTest(unittest.TestCase):
 
         worker = matx_library._PreviewWorker([("k", fetch, path)])
         seen = []
-        worker.ready.connect(lambda key, img: seen.append((key, img)))
+        worker.ready.connect(seen.append)
         worker.run()
-        self.assertEqual(1, len(seen),
-                         "the callable job never produced an image")
-        self.assertFalse(seen[0][1].isNull())
+        self.assertEqual(["k"], seen, "the callable job never produced an image")
+        from PySide6 import QtGui
+        self.assertFalse(QtGui.QImage(path).isNull(), "the file it wrote does not read")
 
 
 if __name__ == "__main__":

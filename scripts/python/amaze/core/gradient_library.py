@@ -1,5 +1,6 @@
 """Models for the Colors section over colors.json; curated sets are added once as user gradients."""
 
+import functools
 import json
 import os
 
@@ -323,28 +324,9 @@ class GradientLibrary(library.AssetLibrary):
         return ("grad", self._is_banded(colors, ramp), hexes, bases,
                 stops, icon_key, THUMB_SIZE)
 
-    def _decoration_image(self, row: int):
-        """The painted swatch, its capture, or its chosen icon."""
-        face = tile_icons.face_for(self, row)
-        if face == "image":    # a capture replaces the swatch; thumbnails.engine loads its file
-            held = self._thumb_key(row)
-            captured = thumbnails.engine.request_file(held, self._mat_paths[row])
-            if captured is not None:
-                return captured
-            if not thumbnails.engine.is_missing(held):
-                return None    # still being read: the tile repaints when it is loaded
-        key = self._swatch_key(row)
-        image = thumbnails.engine.peek(key)
-        if image is not None:
-            return image
-        if face != "image":
-            face = self._missing_thumb_image(row)
-            if face is not None:
-                thumbnails.engine.deposit(key, face)
-                return face
-        image = self.preview_image(row)
-        thumbnails.engine.deposit(key, image)
-        return image
+    def painted_preview(self, row: int):
+        """The palette's swatch, painted when it has no capture."""
+        return self._swatch_key(row), functools.partial(self.preview_image, row)
 
     def preview_image(self, row: int):
         """The painted swatch, for the tile and the Customize preview."""

@@ -493,8 +493,9 @@ class NodesSectionTest(unittest.TestCase):
 
         face = tile_icons.generic_image(self.model.TILE_FACE)
         self.assertIsNotNone(face, "ui/%s.svg does not render" % self.model.TILE_FACE)
-        self.assertEqual(face, self.model._missing_thumb_image(0))
-        self.assertEqual(face, self.model._missing_thumb_image(1))
+        self.assertEqual(face, self.model.shown_picture(0)[0], "the LOP tile does not show the face")
+        self.assertEqual(self.model.TILE_FACE, self.model.tile_picture(1).art,
+                         "the SOP tile with no picture would not show the face")
         self.assertEqual(("generic", "image"),
                          (self.model.default_face(0), self.model.default_face(1)),
                          "a LOP tile can have no picture, a SOP tile can")
