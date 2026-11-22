@@ -19,7 +19,7 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 import hou  # noqa: E402,F401
 from amaze.core import texture_library, thumbnails  # noqa: E402
 from amaze.helpers import hostos  # noqa: E402
-from amaze.panel import sections  # noqa: E402
+from amaze.sections import file as file_section, base as section_base  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
 
@@ -334,7 +334,7 @@ class TheFilesAndProxyArePairedOnce(unittest.TestCase):
     def test_no_method_derives_the_pair_or_maps_a_selection_for_itself(self):
         import ast
         import inspect
-        tree = ast.parse(inspect.getsource(sections))
+        tree = ast.parse(inspect.getsource(file_section))
         methods = [scope for klass in ast.walk(tree)
                    if isinstance(klass, ast.ClassDef) and klass.name == "FolderSection"
                    for scope in klass.body if isinstance(scope, ast.FunctionDef)]
@@ -351,14 +351,14 @@ class TheFilesAndProxyArePairedOnce(unittest.TestCase):
 
     def test_a_dropped_index_is_no_row_and_each_is_mapped_once(self):
         """An invalid map is no row, never -1, and one map per index: a proxy can move in between."""
-        section = sections.FileSection.__new__(sections.FileSection)
+        section = file_section.FileSection.__new__(file_section.FileSection)
         section.tile_models = lambda: (object(), _InvalidIndexProxy())
-        files, rows = sections.Section._model_and_rows(
+        files, rows = section_base.Section._model_and_rows(
             section, [QtCore.QModelIndex()])
         self.assertEqual([], rows)
         proxy = _CountingProxy()
         section.tile_models = lambda: (object(), proxy)
-        sections.Section._model_and_rows(
+        section_base.Section._model_and_rows(
             section, [QtCore.QModelIndex()] * 3)
         self.assertEqual(3, proxy.calls)
 
@@ -368,7 +368,7 @@ class FileOpensOnTheFolderItLeft(unittest.TestCase):
 
     def test_activation_selects_the_remembered_row(self):
         panel = test_support.fixture_panel(self)
-        folders = panel.file_folders_model
+        folders = panel.pane.file_folders_model
         second = test_support.fresh_files_folder(self)
         self.assertTrue(folders.add_folder(second), "premise: a second location")
         for remembered, row in ((second, folders.row_of(second)),
@@ -376,7 +376,7 @@ class FileOpensOnTheFolderItLeft(unittest.TestCase):
                                 ("/nowhere/registered/", folders.scene_row())):
             with self.subTest(remembered=remembered):
                 panel.section_tabs.setChecked("material")
-                panel.prefs.last_file_folder = remembered
+                panel.pane.prefs.last_file_folder = remembered
                 panel.section_tabs.setChecked("file")
                 QtWidgets.QApplication.processEvents()
                 self.assertEqual(row, panel.cat_list.currentIndex().row())
@@ -414,13 +414,13 @@ class RemovingALocationLeavesNoTileOfIt(unittest.TestCase):
         self.panel = test_support.fixture_panel(self)
         self.panel.section_tabs.setChecked("file")
         QtWidgets.QApplication.processEvents()
-        self.folders = self.panel.file_folders_model
+        self.folders = self.panel.pane.file_folders_model
         self.kept = self.folders.registered_at(self.folders._offset())    # the first location
         self.gone = test_support.fresh_files_folder(self)
         below = test_support.fresh_files_folder(self)    # the row Qt moves the selection to
         for path in (self.gone, below):
             self.assertTrue(self.folders.add_folder(path), "premise: no location added")
-        self.section = self.panel.sections["file"]
+        self.section = self.panel.pane.sections["file"]
         self.kept_tiles = self._click_row(self.folders.row_of(self.kept))
         self.assertTrue(self.kept_tiles, "premise: the kept location shows tiles")
         self.rest = sorted(self.kept_tiles + self._click_row(self.folders.row_of(below)))
@@ -436,13 +436,13 @@ class RemovingALocationLeavesNoTileOfIt(unittest.TestCase):
     def _click_row(self, row):
         """A left click: the press, then the sidebar's own clicked handler. Returns the tiles."""
         self._press(row)
-        self.panel.update_selected_cat()
+        self.panel.pane.sidebar.show_row()
         QtWidgets.QApplication.processEvents()
         return self._tiles()
 
     def _tiles(self):
         grid = self.panel.thumblist.model()
-        role = self.panel.file_files_model.PathRole
+        role = self.panel.pane.file_files_model.PathRole
         return sorted(grid.index(row, 0).data(role)
                       for row in range(grid.rowCount()))
 
@@ -467,7 +467,7 @@ class RemovingALocationLeavesNoTileOfIt(unittest.TestCase):
                             "premise: the removed location shows its own tiles")
         self._remove_gone()
         self._assert_selected(0, self.rest)
-        self.assertEqual(self.folders.ALL_LABEL, self.panel.prefs.last_file_folder,
+        self.assertEqual(self.folders.ALL_LABEL, self.panel.pane.prefs.last_file_folder,
                          "File reopens on the removed location's neighbour")
 
     def test_removing_another_location_keeps_the_selection(self):

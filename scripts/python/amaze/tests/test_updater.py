@@ -582,7 +582,7 @@ class TheAboutTabCanActuallyRunAnInstall(unittest.TestCase):
     def _state(self):
         from amaze.dialogs import prefs_window
 
-        return prefs_window.AmazePrefsState(test_support.fixture_prefs(self), panel=None)
+        return prefs_window.AmazePrefsState(test_support.fixture_prefs(self), pane=None)
 
     def test_a_successful_install_reports_and_withdraws_the_offer(self):
         import hou
@@ -673,7 +673,7 @@ class TheAboutTabOffersTheUpdateInOnePlace(unittest.TestCase):
     def _state(self):
         from amaze.dialogs import prefs_window
 
-        return prefs_window.AmazePrefsState(test_support.fixture_prefs(self), panel=None)
+        return prefs_window.AmazePrefsState(test_support.fixture_prefs(self), pane=None)
 
     def test_the_version_line_is_shown_before_the_feed_is_checked(self):
         state = self._state()

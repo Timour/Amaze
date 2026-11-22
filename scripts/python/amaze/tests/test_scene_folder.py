@@ -12,9 +12,8 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 import hou  # noqa: E402
 
-from amaze.core import category  # noqa: E402
+from amaze.core import category, sidebar_model  # noqa: E402
 from amaze.helpers import hostos  # noqa: E402
-from amaze.panel import sidebar  # noqa: E402
 from amaze.tests import test_support  # noqa: E402 - sets up the sandbox
 from amaze.tests.test_folder_tree import _shown  # noqa: E402
 
@@ -27,9 +26,9 @@ class _SceneCase(unittest.TestCase):
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
-        self.folders = self.panel.file_folders_model
-        self.files = self.panel.file_files_model
-        self.section = self.panel.sections["file"]
+        self.folders = self.panel.pane.file_folders_model
+        self.files = self.panel.pane.file_files_model
+        self.section = self.panel.pane.sections["file"]
         self.panel.section_tabs.setChecked("file")
         QtWidgets.QApplication.processEvents()
         self.loc = self.folders.registered_at(self.folders._offset())
@@ -38,7 +37,7 @@ class _SceneCase(unittest.TestCase):
         view = self.panel.cat_list
         view.selectionModel().setCurrentIndex(
             index, QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
-        self.panel.update_selected_cat()
+        self.panel.pane.sidebar.show_row()
         QtWidgets.QApplication.processEvents()
 
     def _row(self):
@@ -55,7 +54,7 @@ class TheSceneRowInTheFileTab(_SceneCase):
         self.assertEqual(_hip(), row.data(QtCore.Qt.ItemDataRole.ToolTipRole))
         self.assertEqual(["notes.txt", "shot.hip"], sorted(os.listdir(_hip())),
                          "premise: the fixture did not pin its own scene folder")
-        self.assertEqual(self.loc, self.panel.file_files_model.browsing(),
+        self.assertEqual(self.loc, self.panel.pane.file_files_model.browsing(),
                          "the tab no longer opens on the remembered location")
 
     def test_no_drag_and_no_location_entry_reaches_it(self):
@@ -72,13 +71,13 @@ class TheSceneRowInTheFileTab(_SceneCase):
     def test_remove_and_locate_leave_every_location_alone(self):
         before = list(self.folders._folders())
         self._select_row(self._row())
-        self.assertEqual([], self.panel.remove_file_folder_user(), "the scene row was removed")
+        self.assertEqual([], self.panel.pane.files.remove_locations(), "the scene row was removed")
         picked, said = [], []
         ui = mock.MagicMock()
         ui.selectFile.side_effect = lambda *a, **k: picked.append(1) or self.loc
         ui.displayMessage.side_effect = lambda *a, **k: said.append(a)
         with mock.patch.object(hou, "ui", ui, create=True):
-            self.panel.locate_folder_user(self.folders)
+            self.panel.pane.files.locate_folder(self.folders)
         self.assertEqual([], picked, "Locate opened a folder picker on the scene row")
         self.assertEqual(1, len(said), "Locate said nothing on the scene row")
         self.assertEqual(before, list(self.folders._folders()), "a location's path changed")
@@ -87,11 +86,11 @@ class TheSceneRowInTheFileTab(_SceneCase):
     def test_a_click_browses_the_scene_folder_and_remembers_it_by_its_token(self):
         self._select_row(self._row())
         self.assertEqual(_hip(), self.files.browsing())
-        self.assertEqual("$HIP", self.panel.prefs.last_file_folder)
+        self.assertEqual("$HIP", self.panel.pane.prefs.last_file_folder)
 
     def test_the_tab_reopens_on_the_scene_row(self):
         self.panel.section_tabs.setChecked("material")
-        self.panel.prefs.last_file_folder = "$HIP"
+        self.panel.pane.prefs.last_file_folder = "$HIP"
         self.panel.section_tabs.setChecked("file")
         QtWidgets.QApplication.processEvents()
         self.assertEqual(1, self.panel.cat_list.currentIndex().row())
@@ -102,12 +101,12 @@ class TheSceneRowInTheFileTab(_SceneCase):
         sub = _hip() + "plates"
         os.makedirs(sub)
         self.panel.section_tabs.setChecked("material")
-        self.panel.prefs.last_file_folder = sub
+        self.panel.pane.prefs.last_file_folder = sub
         self.panel.section_tabs.setChecked("file")
         QtWidgets.QApplication.processEvents()
         self.assertEqual(sub, self.files.browsing(), "the grid shows another folder")
         view = self.panel.cat_list
-        self.assertTrue(self.folders.is_scene_row(sidebar.top_level(view.currentIndex())),
+        self.assertTrue(self.folders.is_scene_row(sidebar_model.top_level(view.currentIndex())),
                         "the sidebar's current row is not under the scene row")
         self.folders.data(self._row(), category.SIDEBAR_COUNT_ROLE)    # painting requests this; headless, request it here
         self.assertTrue(test_support.pump_until(
@@ -125,20 +124,20 @@ class TheSceneRowFollowsTheScene(_SceneCase):
         folder = test_support.scratch_dir("amaze_test_saved_scene_")
         self.addCleanup(shutil.rmtree, folder, True)
         self.addCleanup(hou.hipFile.clear, suppress_save_prompt=True)
-        self.addCleanup(self.panel.unwatch_scene)    # runs first, so the clear moves no grid onto the test runner's folder
+        self.addCleanup(self.panel.pane.files.unwatch_scene)    # runs first, so the clear moves no grid onto the test runner's folder
         hou.hipFile.save(os.path.join(folder, "moved.hip"), save_to_recent_files=False)
         QtWidgets.QApplication.processEvents()
         return hostos.canonical_path_key(folder).rstrip("/") + "/"
 
     def test_the_panel_adds_one_callback_and_unwatch_takes_it_back(self):
-        watch = self.panel._scene_watch
+        watch = self.panel.pane.files.scene_watch
         self.assertIn(watch, hou.hipFile.eventCallbacks())
         self.assertEqual(1, list(hou.hipFile.eventCallbacks()).count(watch))
         before = len(hou.hipFile.eventCallbacks())
-        self.panel.unwatch_scene()
+        self.panel.pane.files.unwatch_scene()
         self.assertNotIn(watch, hou.hipFile.eventCallbacks())
         self.assertEqual(before - 1, len(hou.hipFile.eventCallbacks()))
-        self.panel.unwatch_scene()
+        self.panel.pane.files.unwatch_scene()
         self.assertEqual(before - 1, len(hou.hipFile.eventCallbacks()))
 
     def test_a_save_moves_a_grid_showing_the_scene_row(self):
@@ -147,7 +146,7 @@ class TheSceneRowFollowsTheScene(_SceneCase):
         self.assertEqual(moved, _hip(), "premise: the save did not move $HIP")
         self.assertEqual(moved, self.folders.scene_folder())
         self.assertEqual(moved, self.files.browsing(), "the grid stayed on the old scene folder")
-        self.assertEqual("$HIP", self.panel.prefs.last_file_folder)
+        self.assertEqual("$HIP", self.panel.pane.prefs.last_file_folder)
         self.assertEqual(self._row(), self.panel.cat_list.currentIndex())
 
     def test_a_save_moves_a_grid_showing_a_scene_subfolder(self):

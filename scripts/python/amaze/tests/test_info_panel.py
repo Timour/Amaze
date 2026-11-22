@@ -644,17 +644,17 @@ class TheInfoPaneOnThePanel(unittest.TestCase):
         panel = self.panel
         self.assertTrue(panel.info_panel.isHidden(), "the info pane is open before its button was pressed")
         panel.btn_notes.setChecked(True)
-        with mock.patch.object(panel, "active_section", return_value=None):
+        with mock.patch.object(panel.pane, "active_section", return_value=None):
             panel.btn_info.setChecked(True)
         self.assertFalse(panel.info_panel.isHidden(), "the info button did not open its pane")
         self.assertTrue(panel.notes_panel.isHidden(), "the comments pane stayed open")
         self.assertFalse(panel.btn_notes.isChecked())
-        self.assertEqual((False, True), (panel.prefs.show_notes, panel.prefs.show_info))
+        self.assertEqual((False, True), (panel.pane.prefs.show_notes, panel.pane.prefs.show_info))
         panel.btn_notes.setChecked(True)
         self.assertFalse(panel.notes_panel.isHidden(), "the comments button did not open its pane")
         self.assertTrue(panel.info_panel.isHidden(), "the info pane stayed open")
         self.assertFalse(panel.btn_info.isChecked())
-        self.assertEqual((True, False), (panel.prefs.show_notes, panel.prefs.show_info))
+        self.assertEqual((True, False), (panel.pane.prefs.show_notes, panel.pane.prefs.show_info))
 
     def test_the_page_is_in_the_one_side_pane_which_does_not_stretch(self):
         pane = self.panel.side_pane
@@ -694,7 +694,7 @@ class TheInfoPaneOnThePanel(unittest.TestCase):
                              | QtCore.QItemSelectionModel.SelectionFlag.Rows)
 
     def _open_with(self, context):
-        patcher = mock.patch.object(self.panel, "active_section", return_value=context)
+        patcher = mock.patch.object(self.panel.pane, "active_section", return_value=context)
         patcher.start()
         self.addCleanup(patcher.stop)
         self.addCleanup(self.panel.thumblist.selectionModel().clearSelection)
@@ -726,7 +726,7 @@ class TheInfoPaneOnThePanel(unittest.TestCase):
 
     def test_a_hidden_pane_asks_nothing(self):
         context = _Context(self.panel.thumblist.selectionModel())
-        with mock.patch.object(self.panel, "active_section", return_value=context):
+        with mock.patch.object(self.panel.pane, "active_section", return_value=context):
             self._select([1])
             self.panel.thumblist.selectionModel().clearSelection()
         context.info_subject.assert_not_called()
@@ -741,7 +741,7 @@ class TheInfoPaneOnThePanel(unittest.TestCase):
                                return_value=None) as destination, \
                 mock.patch.object(panel_mod.hou, "ui", None, create=True):
             first.trigger()    # the generate function's first step: where the material would go
-        destination.assert_called_once_with(self.panel.prefs)
+        destination.assert_called_once_with(self.panel.pane.prefs)
 
 
 if __name__ == "__main__":

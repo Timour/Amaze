@@ -20,7 +20,7 @@ sys.path.insert(
 from amaze.actions import nodes as node_actions  # noqa: E402
 from amaze.core import category, file_library, locations  # noqa: E402
 from amaze.helpers import helpers  # noqa: E402
-from amaze.panel import sections  # noqa: E402
+from amaze.panel import grid  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
 SIDEBAR_CONTEXTS = ("MaterialSection", "CopSection", "CodeSection",    # every context with a sidebar menu
@@ -54,7 +54,7 @@ class TheTableIsWellFormED(unittest.TestCase):
 
     def test_every_named_handler_and_fact_resolves(self):
         for name in SIDEBAR_CONTEXTS:
-            context = getattr(sections, name)
+            context = test_support.section_class(name)
             for entry in context.SIDEBAR_MENU:
                 if not entry.label:
                     continue
@@ -105,7 +105,7 @@ class TheSidebarMenusAreWhatSHIPPED(unittest.TestCase):
         with mock.patch.object(QtWidgets.QMenu, "exec_",
                                lambda menu, *a, **k: seen.extend(
                                    render(menu))):
-            panel.active_section().catlist_menu()
+            grid.open_catlist_menu(panel, panel.pane.active_section())
         return seen
 
     SPINE = ["Add", "Rename", "Delete", "----",
@@ -160,7 +160,7 @@ class ADismissedSidebarMenuRunsNOTHING(unittest.TestCase):
                 panel.cat_list.selectionModel().select(
                     model.index(0, 0),
                     QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
-                context = panel.active_section()
+                context = panel.pane.active_section()
                 called = []
                 handlers = {e.handler for e in context.SIDEBAR_MENU if e.handler}
                 patches = [
@@ -173,7 +173,7 @@ class ADismissedSidebarMenuRunsNOTHING(unittest.TestCase):
                     for patch in patches:
                         patch.start()
                     try:
-                        context.catlist_menu()
+                        grid.open_catlist_menu(panel, context)
                     finally:
                         for patch in patches:
                             patch.stop()
@@ -200,7 +200,7 @@ class EachSubmenuRowWritesWhatItsLabelNames(unittest.TestCase):
             self.skipTest("the %s sidebar has no row %d" % (key, row))
         self._row = row
         index = view.model().index(row, 0)
-        context = self.panel.active_section()
+        context = self.panel.pane.active_section()
         return context, context.sidebar_key(index)
 
     def _choose(self, *labels):
@@ -216,7 +216,7 @@ class EachSubmenuRowWritesWhatItsLabelNames(unittest.TestCase):
             return action
 
         with mock.patch.object(QtWidgets.QMenu, "exec_", pick):
-            self.panel.active_section().catlist_menu()
+            grid.open_catlist_menu(self.panel, self.panel.pane.active_section())
 
     def test_a_chip_colours_every_kind_of_row_and_Remove_clears_it(self):
         from amaze import amazetheme
@@ -241,13 +241,13 @@ class EachSubmenuRowWritesWhatItsLabelNames(unittest.TestCase):
     def test_rename_opens_on_the_folder_name_and_Set_to_Default_goes_back(self):
         context, path = self._on_row("file")
         asked = []
-        with mock.patch.object(self.panel, "ask_category_name",
-                               lambda title, default="": (asked.append(
-                                   (title, default)), "Textures")[1]):
+        with mock.patch.object(self.panel, "ask_name",
+                               lambda title, default, then: then((asked.append(
+                                   (title, default)), "Textures")[1])):
             self._choose("Rename", "Edit")
         folder = os.path.basename(path.rstrip("/\\"))
         self.assertEqual([("Rename Location", folder)], asked)
-        folders = self.panel.file_folders_model
+        folders = self.panel.pane.file_folders_model
         self.assertEqual("Textures", folders.display_name(path))
         self._choose("Rename", "Set to Default")
         self.assertEqual(folder, folders.display_name(path))
@@ -265,7 +265,7 @@ class TheChipsArePaintedWhereTheDesignDrawsThem(unittest.TestCase):
         from amaze.panel import grid
         self.panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()
-        section = self.panel.active_section()
+        section = self.panel.pane.active_section()
         index = self.panel.cat_list.model().index(1, 0)
         menu, _handlers = grid.build_menu(self.panel, section, section.SIDEBAR_MENU, [index], index)
         self.addCleanup(menu.deleteLater)
@@ -292,7 +292,7 @@ class TheChipsArePaintedWhereTheDesignDrawsThem(unittest.TestCase):
 
 
 class StructuralSignalsStayOutsideRelayout(unittest.TestCase):
-    """`ui_helpers.relayout` is for data changes only, never around row inserts or removals."""
+    """`grid_engine.relayout` is for data changes only, never around row inserts or removals."""
 
     ROW_WRITERS = (    # each inserts or removes rows, or saves - and a save loads another session's rows
         "save", "add_asset", "import_record", "update_asset",
@@ -307,9 +307,11 @@ class StructuralSignalsStayOutsideRelayout(unittest.TestCase):
 
         package = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         offenders = []
-        for name in ("panel.py", "sections.py", "online_import.py", "package_import.py",
-                     "drop_placement.py", "tile_capture.py"):
-            with open(os.path.join(package, "panel", name),
+        for name in ("panel/panel.py", *test_support.section_files(), "pane/pane.py", "pane/library.py",
+                     "pane/sidebar.py", "pane/assets.py", "pane/loading.py", "pane/saving.py",
+                     "pane/files.py", "pane/online_import.py", "pane/package_import.py",
+                     "pane/drop_placement.py", "pane/tile_capture.py"):
+            with open(os.path.join(package, *name.split("/")),
                       encoding="utf-8") as handle:
                 tree = ast.parse(handle.read())
             for node in ast.walk(tree):
@@ -341,10 +343,10 @@ class TheCategoryHandlersMoveNoRowInsideALayoutChange(unittest.TestCase):
         self.panel = test_support.fixture_panel(self)
         self.panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()
-        self.model = self.panel.material_model
-        self.section = self.panel.sections["material"]
+        self.model = self.panel.pane.material_model
+        self.section = self.panel.pane.sections["material"]
         self.assertTrue(self.model.save(), "premise: the baseline save failed")
-        path = os.path.join(self.panel.prefs.dir, self.model.DB_FILENAME)
+        path = os.path.join(self.panel.pane.prefs.dir, self.model.DB_FILENAME)
         with open(path, encoding="utf-8-sig") as handle:
             document = json.load(handle)
         document["assets"]["PEER-CAT"] = {"id": "PEER-CAT", "categories": [],
@@ -370,18 +372,18 @@ class TheCategoryHandlersMoveNoRowInsideALayoutChange(unittest.TestCase):
             "segfaults H21: %s" % (operation, caught))
 
     def test_rename(self):
-        self.assertTrue(self.panel._select_category("usds"))
+        self.assertTrue(self.panel.pane.sidebar.select_key("usds"))
         index = self._row("usds")
-        with mock.patch.object(self.panel, "ask_category_name",
-                               lambda _title, _default="": "Surfaces"), \
+        with mock.patch.object(self.panel, "ask_name",
+                               lambda _title, _default, then: then("Surfaces")), \
                 test_support.row_moves_inside_a_layout_change(
-                    self.model, self.panel.category_model) as caught:
+                    self.model, self.panel.pane.category_model) as caught:
             self.section.menu_rename_category([index], index)
         self._assert_no_row_moved_inside(caught, "Rename")
-        self.assertEqual("Surfaces", self.panel.selected_category_name(),
+        self.assertEqual("Surfaces", self.panel.pane.sidebar.selected_category_name(),
                          "the renamed row is no longer the selected one")
         self.assertEqual(
-            "Surfaces", self.panel.material_sorted_model.filter_value(
+            "Surfaces", self.panel.pane.material_sorted_model.filter_value(
                 self.model.CategoryRole),
             "the grid is still narrowed to the old name")
         self.assertEqual(
@@ -390,7 +392,7 @@ class TheCategoryHandlersMoveNoRowInsideALayoutChange(unittest.TestCase):
 
     def test_rename_opens_on_the_name_being_renamed(self):
         from amaze.dialogs import base_dialog
-        self.assertTrue(self.panel._select_category("usds"))
+        self.assertTrue(self.panel.pane.sidebar.select_key("usds"))
         index = self._row("usds")
         shown = []
 
@@ -406,14 +408,14 @@ class TheCategoryHandlersMoveNoRowInsideALayoutChange(unittest.TestCase):
     def test_remove(self):
         index = self._row("usds")
         with test_support.row_moves_inside_a_layout_change(
-                self.model, self.panel.category_model) as caught:
+                self.model, self.panel.pane.category_model) as caught:
             self.section.menu_remove_category([index], index)
         self._assert_no_row_moved_inside(caught, "Remove")
         self.assertNotIn("usds", [
-            self.panel.category_model.data(
-                self.panel.category_model.index(row, 0),
+            self.panel.pane.category_model.data(
+                self.panel.pane.category_model.index(row, 0),
                 category.SIDEBAR_KEY_ROLE)
-            for row in range(self.panel.category_model.rowCount())])
+            for row in range(self.panel.pane.category_model.rowCount())])
 
 
 class _FourAssetSidebars:
@@ -433,17 +435,17 @@ class _FourAssetSidebars:
             kinds = hou.copNodeTypeCategory().nodeTypes()
             net.createNode(next(kind for kind in ("constant", "ramp", "noise")
                                 if kind in kinds))
-            self.assertTrue(node_actions.add_asset(panel.cop_model, net, name, "", False,
+            self.assertTrue(node_actions.add_asset(panel.pane.cop_model, net, name, "", False,
                                                    name=name + " one"))
         elif key == "code":
-            self.assertTrue(panel.code_model.add_asset(
+            self.assertTrue(panel.pane.code_model.add_asset(
                 "x = 1", name + " one", "Python", name, "", False))
         else:
-            panel.gradient_model.add_user_gradient(
+            panel.pane.gradient_model.add_user_gradient(
                 name + " one", name, {"keys": [0.0, 0.5],
                                       "values": [[1, 0, 0], [0, 0, 1]],
                                       "bases": ["Constant"] * 2})
-        panel.active_section().stack().categories.check_add_category(name)
+        panel.pane.active_section().stack().categories.check_add_category(name)
 
     def _enter(self, key):
         """This section, with a kept and a removed category each holding a tile, and a row below."""
@@ -454,8 +456,8 @@ class _FourAssetSidebars:
             kept, gone = "Kept", "Gone"
             for name in (kept, gone):
                 self._file(key, name)
-        self.panel.active_section().stack().categories.check_add_category("Below")    # where Qt moves the selection
-        self.panel.refresh_sidebar_categories()
+        self.panel.pane.active_section().stack().categories.check_add_category("Below")    # where Qt moves the selection
+        self.panel.pane.sidebar.refresh()
         self.assertEqual(self._row(gone) + 1, self._row("Below"), "premise: no row below")
         return kept, gone
 
@@ -478,7 +480,7 @@ class _FourAssetSidebars:
     def _click_row(self, stored):
         """A left click: the press, then the sidebar's own clicked handler. Returns the tiles."""
         self._press(stored)
-        self.panel.update_selected_cat()
+        self.panel.pane.sidebar.show_row()
         QtWidgets.QApplication.processEvents()
         return self._tiles()
 
@@ -487,7 +489,7 @@ class _FourAssetSidebars:
         return sorted(str(grid.index(row, 0).data()) for row in range(grid.rowCount()))
 
     def _assert_selected(self, stored, tiles):
-        st = self.panel.active_section().stack()
+        st = self.panel.pane.active_section().stack()
         self.assertEqual(tiles, self._tiles(), "the grid does not show the selected row")
         self.assertEqual("" if category.is_all(stored) else stored,
                          st.proxy.filter_value(st.model.CategoryRole) or "",
@@ -514,7 +516,7 @@ class RemovingACategoryLeavesNoTileOfIt(_FourAssetSidebars, unittest.TestCase):
 
     def _remove(self, stored):
         index = self._press(stored)
-        self.panel.active_section().menu_remove_category([index], index)
+        self.panel.pane.active_section().menu_remove_category([index], index)
         QtWidgets.QApplication.processEvents()
 
     def test_removing_the_selected_category_selects_all(self):
@@ -544,19 +546,19 @@ class RenameAndSortKeepTheGridsRowSelected(_FourAssetSidebars, unittest.TestCase
 
     def _rename(self, stored):
         index = self._press(stored)
-        with mock.patch.object(self.panel, "ask_category_name",
-                               lambda _title, _default="": "Renamed"):
-            self.panel.active_section().menu_rename_category([index], index)
+        with mock.patch.object(self.panel, "ask_name",
+                               lambda _title, _default, then: then("Renamed")):
+            self.panel.pane.active_section().menu_rename_category([index], index)
         QtWidgets.QApplication.processEvents()
 
     def _sort(self, stored):
         """Sort by name from a right press on `stored`, over a list the sort reorders."""
-        categories = self.panel.active_section().stack().categories
+        categories = self.panel.pane.active_section().stack().categories
         categories.check_add_category("Aaa")    # appended last, so the sort moves it
-        self.panel.refresh_sidebar_categories()
+        self.panel.pane.sidebar.refresh()
         before = list(categories._categories)
         index = self._press(stored)
-        self.panel.active_section().menu_sort_categories([index], index)
+        self.panel.pane.active_section().menu_sort_categories([index], index)
         QtWidgets.QApplication.processEvents()
         self.assertNotEqual(before, list(categories._categories), "premise: no row moved")
 
@@ -611,7 +613,7 @@ class ADismissedMenuRestoresTheGridsRow(_FourAssetSidebars, unittest.TestCase):
             self._click_row(kept)
             self._press(gone)
             with mock.patch.object(QtWidgets.QMenu, "exec_", lambda *a, **k: None):
-                self.panel.active_section().catlist_menu()
+                grid.open_catlist_menu(self.panel, self.panel.pane.active_section())
             QtWidgets.QApplication.processEvents()
             self._assert_selected(kept, kept_tiles)
         self._each_section(case)
@@ -624,8 +626,8 @@ class ANameThatReadsAsAnotherIsThatCategory(unittest.TestCase):
         self.panel = test_support.fixture_panel(self)
         self.panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()
-        self.section = self.panel.sections["material"]
-        self.categories = self.panel.category_model
+        self.section = self.panel.pane.sections["material"]
+        self.categories = self.panel.pane.category_model
         self.categories.check_add_category("_WIP")
 
     def _rows_read(self):
@@ -633,8 +635,8 @@ class ANameThatReadsAsAnotherIsThatCategory(unittest.TestCase):
                 for row in range(self.categories.rowCount())]
 
     def _typing(self, name):
-        return mock.patch.object(self.panel, "ask_category_name",
-                                 lambda _title, _default="": name)
+        return mock.patch.object(self.panel, "ask_name",
+                                 lambda _title, _default, then: then(name))
 
     def _sidebar_row(self, stored):
         proxy = self.panel.cat_list.model()
@@ -645,10 +647,10 @@ class ANameThatReadsAsAnotherIsThatCategory(unittest.TestCase):
         return found[0]
 
     def _renamed(self, stored, typed):
-        filed = [asset for asset in self.panel.material_model.assets
+        filed = [asset for asset in self.panel.pane.material_model.assets
                  if stored in asset.categories]
         self.assertTrue(filed, "premise: nothing is filed under %r" % stored)
-        self.assertTrue(self.panel._select_category(stored), "premise: no row to select")
+        self.assertTrue(self.panel.pane.sidebar.select_key(stored), "premise: no row to select")
         index = self._sidebar_row(stored)
         with self._typing(typed):
             self.section.menu_rename_category([index], index)
@@ -667,10 +669,10 @@ class ANameThatReadsAsAnotherIsThatCategory(unittest.TestCase):
         self.assertEqual([["_WIP"]] * len(filed),
                          [list(asset.categories) for asset in filed],
                          "the renamed tiles are not under the row reading WIP")
-        self.assertEqual("_WIP", self.panel.selected_category_name(),
+        self.assertEqual("_WIP", self.panel.pane.sidebar.selected_category_name(),
                          "the sidebar does not select the row the renamed tiles moved to")
-        self.assertEqual("_WIP", self.panel.material_sorted_model.filter_value(
-            self.panel.material_model.CategoryRole),
+        self.assertEqual("_WIP", self.panel.pane.material_sorted_model.filter_value(
+            self.panel.pane.material_model.CategoryRole),
             "the grid is narrowed to a category that is gone")
 
     def test_renaming_onto_a_row_above_merges_and_selects_it(self):
@@ -679,7 +681,7 @@ class ANameThatReadsAsAnotherIsThatCategory(unittest.TestCase):
                          "renaming onto a category that exists left two rows")
         self.assertEqual([["Karma_Mats"]] * len(filed),
                          [list(asset.categories) for asset in filed])
-        self.assertEqual("Karma_Mats", self.panel.selected_category_name(),
+        self.assertEqual("Karma_Mats", self.panel.pane.sidebar.selected_category_name(),
                          "the sidebar selected the row below the merged one")
 
     def test_renaming_to_All_changes_nothing(self):

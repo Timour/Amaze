@@ -102,20 +102,20 @@ class EveryAssetSidebarFollowsItsFilter(unittest.TestCase):
 
     def test_every_filter_change_reaches_all_four_sidebars_through_apply_filter(self):
         """By AST: a text search matches `apply_filter`'s own docstring."""
-        from amaze.panel import panel as panel_mod
+        from amaze.pane import sidebar as pane_sidebar
         self.assertEqual(
             {"material", "cop", "code", "gradient"},
-            set(panel_mod.AmazePanel.SIDEBAR_PROXY_ATTRS),
+            set(pane_sidebar.Sidebar.SIDEBAR_PROXY_ATTRS),
             "a section gained or lost a sidebar proxy without the "
             "one list that every filter update reads")
         self.assertTrue(
-            self._calls("panel/sections.py", "AssetSection", "apply_filter",
+            self._calls("sections/base.py", "AssetSection", "apply_filter",
                         "set_renderer_filter"),
             "the shared apply_filter no longer CALLS set_renderer_filter, "
             "so the sidebar can disagree with the grid again")
         self.assertTrue(
-            self._calls("panel/panel.py", "AmazePanel",
-                        "_apply_preferences", "sidebar_proxies"),
+            self._calls("pane/pane.py", "Pane",
+                        "settings_applied", "proxies"),
             "the Preferences update lists the proxies by hand "
             "again - a hand-written list that was short is exactly how "
             "Code was missed")
@@ -204,9 +204,10 @@ class NoCallerMapsASidebarListsRows(unittest.TestCase):
         self.assertEqual([], _sidebar_row_mappings(grid))
 
     def test_no_sidebar_row_is_mapped_outside_the_list(self):
-        for relative in ("panel/sections.py", "panel/panel.py", "panel/online_import.py"):
+        for relative in (*test_support.section_files(), "panel/panel.py", "pane/online_import.py",
+                         "pane/pane.py", "pane/sidebar.py", "pane/files.py", "pane/library.py"):
             with self.subTest(relative):
-                allowed = self.REORDER if relative == "panel/sections.py" else ()
+                allowed = self.REORDER if relative.startswith("sections/") else ()
                 self.assertEqual(
                     [], _sidebar_row_mappings(source_of(relative), allowed),
                     "%s maps a sidebar list's rows itself; the list's index_of, key role "
@@ -217,7 +218,7 @@ class ACategoryIsActedOnByItsStoredName(_PanelCase):
     """`Categories.data` strips a leading underscore for `DisplayRole`."""
 
     def test_the_panel_reads_the_stored_name(self):
-        model = self.panel.category_model
+        model = self.panel.pane.category_model
         model.check_add_category("_WIP")
         row = -1
         for i in range(model.rowCount()):
@@ -233,7 +234,7 @@ class ACategoryIsActedOnByItsStoredName(_PanelCase):
             "the sidebar no longer strips the underscore - this test "
             "no longer checks anything")
         self.assertEqual(
-            "_WIP", self.panel.raw_category_name(index),
+            "_WIP", self.panel.pane.sidebar.raw_category_name(index),
             "the panel reads the DISPLAYED name, so Rename matches no "
             "asset and silently does nothing, Remove returns early and "
             "leaves the row, and a drop creates a SECOND category "
@@ -251,7 +252,7 @@ class ACategoryIsActedOnByItsStoredName(_PanelCase):
 
         self.assertIn(
             "raw_category_name",
-            method_source("panel/sections.py", "Section",
+            method_source("sections/base.py", "Section",
                           "sidebar_key"),
             "Section.sidebar_key stopped reading the helper, so "
             "every sidebar handler behind it now acts on the DISPLAYED "
@@ -259,25 +260,26 @@ class ACategoryIsActedOnByItsStoredName(_PanelCase):
         for handler in ("menu_rename_category", "menu_remove_category"):
             self.assertIn(
                 "sidebar_key",
-                method_source("panel/sections.py", "AssetSection", handler),
+                method_source("sections/base.py", "AssetSection", handler),
                 "%s reads a category name without going through "
                 "sidebar_key" % handler)
-        source = source_of("panel/panel.py")    # one function for the selected category, or the dialogs disagree
+        source = source_of("pane/sidebar.py")    # one function for the selected category, or the dialogs disagree
         self.assertEqual(
             1, source.count("def selected_category_name"),
             "selected_category_name is gone or duplicated")
         self.assertIn(
             "selected_category_name",
-            func_source("panel/panel.py", "_current_code_category"),
+            func_source("pane/saving.py", "_current_code_category"),
             "_current_code_category works out 'which category is selected' "
             "on its own again")
         self.assertIn(    # Material, Node and Code share one body; Color keeps its first-category default
             "selected_category_name",
-            method_source("panel/sections.py", "AssetSection", "save_categories"),
+            method_source("sections/base.py", "AssetSection", "save_categories"),
             "the asset sections work out 'which category is selected' on their own again")
-        for cls in ("MaterialSection", "CopSection", "CodeSection"):
+        for cls, path in (("MaterialSection", "sections/material.py"), ("CopSection", "sections/node.py"),
+                          ("CodeSection", "sections/code.py")):
             with self.assertRaises(AssertionError, msg="%s keeps a save_categories of its own" % cls):
-                method_source("panel/sections.py", cls, "save_categories")
+                method_source(path, cls, "save_categories")
 
 
 class TheMapNamesEveryModule(unittest.TestCase):
@@ -345,7 +347,7 @@ class TheSaveDialogOffersEveryCategory(unittest.TestCase):
 
         from amaze.panel import panel as panel_mod
         panel = test_support.fixture_panel(self)
-        panel.category_model.check_add_category("Alloys")
+        panel.pane.category_model.check_add_category("Alloys")
         offered = {}
 
         class _Dialog:
@@ -360,7 +362,7 @@ class TheSaveDialogOffersEveryCategory(unittest.TestCase):
                 return 0
 
         with mock.patch.object(save_dialog, "SaveDialog", _Dialog):
-            panel.get_material_info_user([_material(self, "alloy_mat")])
+            panel.pane.saving.save_new_materials([_material(self, "alloy_mat")])
         self.assertIn(
             "Alloys", offered.get("cats", []),
             "a category starting with the pseudo-category's name is "
@@ -391,7 +393,7 @@ class TheMaterialSaveOffersANameOnlyWhenOneWillDo(unittest.TestCase):
                 return 0
 
         with mock.patch.object(save_dialog, "SaveDialog", _Dialog):
-            panel.get_material_info_user(selection)
+            panel.pane.saving.save_new_materials(selection)
         return seen.get("name"), seen.get("enabled")
 
     def _node(self, name):
@@ -488,7 +490,7 @@ class StepSizeKeepsTheSliderOnItsMarks(unittest.TestCase):
     def test_a_size_between_marks_opens_on_the_nearest(self):
         from amaze.panel import grid
         prefs = types.SimpleNamespace(view_mode="grid", thumbsize=200, step_size=True)
-        panel = types.SimpleNamespace(prefs=prefs, LIST_THUMB_SIZE=16)
+        panel = types.SimpleNamespace(pane=types.SimpleNamespace(prefs=prefs), LIST_THUMB_SIZE=16)
         self.assertEqual(192, grid.active_thumbsize(panel))
         prefs.step_size = False
         self.assertEqual(200, grid.active_thumbsize(panel))
@@ -578,18 +580,17 @@ class NodeAndCodeHaveNoVersionColumn(unittest.TestCase):
 
     def test_they_get_a_delegate_without_the_version_roles(self):
         """A column exists if the section's declared delegate has its role."""
-        import importlib
-
-        sections = importlib.import_module("amaze.panel.sections")
-        self.assertEqual("asset_delegate", sections.CopSection.delegate_attr,
+        from amaze.sections import (code as code_section, color as color_section,
+                                    material as material_section, node as node_section)
+        self.assertEqual("asset_delegate", node_section.CopSection.delegate_attr,
                          "Node points the grid at the Materials delegate")
-        self.assertEqual("code_delegate", sections.CodeSection.delegate_attr,
+        self.assertEqual("code_delegate", code_section.CodeSection.delegate_attr,
                          "Code lost its own delegate, and with it the Run button")
         self.assertEqual("thumb_delegate",
-                         sections.MaterialSection.delegate_attr,
+                         material_section.MaterialSection.delegate_attr,
                          "Materials lost its own delegate")
         self.assertEqual("gradient_delegate",
-                         sections.GradientSection.delegate_attr,
+                         color_section.GradientSection.delegate_attr,
                          "Color lost its own delegate")
         source = func_source("panel/panel.py", "_sync_badge_hover")
         self.assertIn(
@@ -608,17 +609,17 @@ class TheOnlineGridIsFittedLikeTheOthers(unittest.TestCase):
         """`COLUMN_DEFAULT_WIDTH` before and after a reset; nothing measures."""
         panel = self.panel
         panel.section_tabs.setChecked("material")
-        panel.prefs.view_mode = "list"
+        panel.pane.prefs.view_mode = "list"
         panel.apply_view_mode()
         self.addCleanup(panel.apply_view_mode)
-        self.addCleanup(setattr, panel.prefs, "view_mode", "grid")
+        self.addCleanup(setattr, panel.pane.prefs, "view_mode", "grid")
         panel.show()
         self.addCleanup(panel.hide)
         QtWidgets.QApplication.processEvents()
         table = panel.thumbrows
         column = grid_columns.KEYS.index("name")
         before = table.columnWidth(column)
-        model = panel.material_model
+        model = panel.pane.material_model
         self.assertTrue(model.rowCount(), "no rows to widen")
         long_name = "a_material_with_a_very_long_name_indeed_x40"
         record = model._assets[0]
@@ -686,9 +687,9 @@ class OneProgressBarPerThingShown(unittest.TestCase):
 
     def test_the_folder_bar_is_hidden_in_the_online_world(self):
         """`current_section` still names the local section in the online world."""
-        source = func_source("panel/panel.py", "_on_file_folder_progress")
+        source = func_source("pane/pane.py", "_on_file_folder_progress")
         self.assertIn(
-            "_is_online()", source,
+            "is_online()", source,
             "a conversion batch started in a File folder draws its bar "
             "over the ONLINE grid, shifting every tile down and up")
 
@@ -899,15 +900,15 @@ class EveryActivateEstablishesADefaultRow(unittest.TestCase):
         """`setModel` leaves nothing selected, and one `activate` fixes it."""
         self.assertIn(
             "self.restore_sidebar_selection()",
-            method_source("panel/sections.py", "Section",
+            method_source("sections/base.py", "Section",
                           "activate"),
             "Section.activate establishes its default sidebar "
             "row on its own again, or not at all")
         self.assertIn(
-            "select_default_sidebar_row",
-            method_source("panel/sections.py", "AssetSection",
+            "select_default_row",
+            method_source("sections/base.py", "AssetSection",
                           "restore_sidebar_selection"),
-            "the shared default row no longer goes through the panel's helper")
+            "the shared default row no longer goes through the pane's helper")
 
 
 class AnOnlineBatchContinuesPastOneBadRecord(unittest.TestCase):
@@ -917,7 +918,7 @@ class AnOnlineBatchContinuesPastOneBadRecord(unittest.TestCase):
         for name in ("import_records",
                      "import_records_to_scene"):
             self.assertIn(
-                "except Exception", func_source("panel/online_import.py", name),
+                "except Exception", func_source("pane/online_import.py", name),
                 "%s stops its batch on a record that raises" % name)
 
 
@@ -993,10 +994,10 @@ class AnUnconfiguredPanelStillOpensPreferences(unittest.TestCase):
         self.addCleanup(test_support.reset_database_singletons)
         panel = test_support.fixture_unconfigured_panel(self)
         self.assertIsNone(
-            getattr(panel, "material_model", "missing"),
+            getattr(panel.pane, "material_model", "missing"),
             "premise: the panel took the no-library branch")
         self.assertIsNone(
-            getattr(panel, "file_files_model", "missing"),
+            getattr(panel.pane, "file_files_model", "missing"),
             "the File models were left unset - any reader raises "
             "AttributeError instead of seeing None")
         panel.show_prefs()          # raised before the fix
@@ -1012,19 +1013,19 @@ class TheOnlineWorldNeedsALibrary(unittest.TestCase):
     def setUp(self):
         self.addCleanup(test_support.reset_database_singletons)
         self.panel = test_support.fixture_unconfigured_panel(self)
-        self.assertIsNone(getattr(self.panel, "material_model", "missing"),
+        self.assertIsNone(getattr(self.panel.pane, "material_model", "missing"),
                           "premise: the panel took the no-library branch")
 
     def _assert_still_local(self):
-        self.assertFalse(self.panel._is_online(),
+        self.assertFalse(self.panel.pane.is_online(),
                          "the panel is left half in the online world")
         self.assertFalse(self.panel.btn_online.isChecked(),
                          "the Online chip shows as on with no online view loaded")
 
     def test_enter_online_mode_and_every_caller_of_it_stay_local(self):
-        self.panel.enter_online_mode()
+        self.panel.pane.enter_online()
         self._assert_still_local()
-        self.panel.open_online_source("PhysicallyBased")
+        self.panel.pane.open_online_source("PhysicallyBased")
         self._assert_still_local()
 
     def test_the_chip_raises_nothing_and_stays_off(self):
@@ -1053,12 +1054,12 @@ class EveryGridProxyIsSetUpOneWay(_PanelCase):
                  ("gradient_sorted_model", "gradient_selection_model"),
                  ("matx_sorted_model", "matx_selection_model"))
         dynamic = [proxy for proxy, _selection in pairs
-                   if getattr(self.panel, proxy).dynamicSortFilter()]
+                   if getattr(self.panel.pane, proxy).dynamicSortFilter()]
         self.assertEqual([], dynamic)
         for proxy, selection in pairs:
             with self.subTest(proxy):
-                self.assertIs(getattr(self.panel, proxy),
-                              getattr(self.panel, selection).model())
+                self.assertIs(getattr(self.panel.pane, proxy),
+                              getattr(self.panel.pane, selection).model())
         self.assertTrue(self.panel.btn_online.isEnabled(),    # setup turns the Online chip on
                         "a panel with a library opened with Online off")
 
@@ -1069,7 +1070,7 @@ class EveryGridProxyIsSetUpOneWay(_PanelCase):
         QtWidgets.QApplication.processEvents()
         self.addCleanup(panel.section_tabs.setChecked, "material")
         self.addCleanup(panel.cb_favsonly.setChecked, False)
-        proxy, files = panel.file_sorted_model, panel.file_files_model
+        proxy, files = panel.pane.file_sorted_model, panel.pane.file_files_model
         self.assertTrue(proxy.rowCount(), "premise: File shows files")
         row = proxy.mapToSource(proxy.index(0, 0)).row()
         files.toggle_favorite(row)
@@ -1088,10 +1089,10 @@ class LeavingOnlineSelectsAShownSection(unittest.TestCase):
         self.panel = test_support.fixture_panel(self)
 
     def _close_preferences_hiding(self, key):
-        settings = os.path.join(self.panel.prefs.path, "settings.json")
+        settings = os.path.join(self.panel.pane.prefs.path, "settings.json")
         with open(settings, encoding="utf-8") as handle:
             data = json.load(handle)
-        block = data["users"][self.panel.prefs.library_user]
+        block = data["users"][self.panel.pane.prefs.library_user]
         block["enabled_sections"] = [k for k in block["enabled_sections"] if k != key]
         with open(settings, "w", encoding="utf-8") as handle:
             json.dump(data, handle)
@@ -1102,21 +1103,21 @@ class LeavingOnlineSelectsAShownSection(unittest.TestCase):
         panel = self.panel
         panel.section_tabs.setChecked("cop")
         QtWidgets.QApplication.processEvents()
-        self.assertEqual("cop", panel.current_section, "premise: on Node")
-        panel.enter_online_mode()
-        self.assertTrue(panel._is_online(), "premise: online")
+        self.assertEqual("cop", panel.pane.current_section, "premise: on Node")
+        panel.pane.enter_online()
+        self.assertTrue(panel.pane.is_online(), "premise: online")
 
         self._close_preferences_hiding("cop")
-        panel.leave_online_mode()
+        panel.pane.leave_online()
         QtWidgets.QApplication.processEvents()
 
         landed = panel.section_tabs._checked_key
-        self.assertIn(landed, panel.prefs.enabled_sections,
+        self.assertIn(landed, panel.pane.prefs.enabled_sections,
                       "leaving Online selected a hidden tab")
-        self.assertEqual(landed, panel.current_section,
+        self.assertEqual(landed, panel.pane.current_section,
                          "the tab shown and the section behind it disagree")
         self.assertIs(
-            panel.sections[landed].stack().proxy, panel.thumblist.model(),
+            panel.pane.sections[landed].stack().proxy, panel.thumblist.model(),
             "the %s tab shows another section's tiles" % landed)
 
 
@@ -1127,7 +1128,7 @@ class ClosingPreferencesRescansTheFileFolderOnce(unittest.TestCase):
         self.panel = test_support.fixture_panel(self)
         self.panel.section_tabs.setChecked("file")
         QtWidgets.QApplication.processEvents()
-        self.files = self.panel.file_files_model
+        self.files = self.panel.pane.file_files_model
 
     def _scans_while(self, action):
         from unittest import mock
@@ -1141,11 +1142,11 @@ class ClosingPreferencesRescansTheFileFolderOnce(unittest.TestCase):
         theirs = test_support.fresh_files_folder(self)
         library = test_support.with_fixture_user(test_support.fresh_library(self))
         test_support.with_fixture_location(library, theirs)
-        settings = os.path.join(self.panel.prefs.path, "settings.json")
+        settings = os.path.join(self.panel.pane.prefs.path, "settings.json")
         with open(settings, encoding="utf-8") as handle:
             data = json.load(handle)
         data.update(directory=library)
-        data["users"][self.panel.prefs.library_user].update(file_folders=[theirs],
+        data["users"][self.panel.pane.prefs.library_user].update(file_folders=[theirs],
                                                             last_file_folder=theirs)
         with open(settings, "w", encoding="utf-8") as handle:
             json.dump(data, handle)
@@ -1382,7 +1383,7 @@ class AStaleVersionsBadgeOpensNothing(unittest.TestCase):
     def test_an_index_with_no_row_opens_no_versions_window(self):
         from amaze.dialogs import versions_dialog
         panel = test_support.fixture_panel(self)
-        model, opened = panel.material_model, []
+        model, opened = panel.pane.material_model, []
         self.assertTrue(model.assets, "premise: the fixture library holds materials")
 
         def dialog(name, *_args, **_kwargs):
@@ -1391,7 +1392,7 @@ class AStaleVersionsBadgeOpensNothing(unittest.TestCase):
 
         with mock.patch.object(versions_dialog, "VersionsDialog", dialog), \
                 mock.patch.object(model, "version_list", lambda row: (["v1", "v2"], "v1")):
-            panel.open_versions_dialog(QtCore.QModelIndex(), panel.material_sorted_model,
+            panel.pane.assets.open_versions(QtCore.QModelIndex(), panel.pane.material_sorted_model,
                                        model)
         self.assertEqual([], opened, "a stale badge opened another material's versions")
 

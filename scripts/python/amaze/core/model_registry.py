@@ -6,7 +6,7 @@ from amaze.core import (category, code_library, cop_library, debug, file_library
                         gradient_library, library, library_db, library_files, locations,
                         sidebar_model)
 
-SOURCE_MODELS = (    # attribute on the panel -> the class that builds it, every one taking `preferences` alone
+SOURCE_MODELS = (    # attribute on the pane engine -> the class that builds it, each taking `preferences` alone
     ("category_model", category.Categories),
     ("material_model", library.MaterialLibrary),
     ("file_folders_model", file_library.FileFolders),

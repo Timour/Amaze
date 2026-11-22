@@ -21,7 +21,7 @@ from amaze.core import gradient_library                  # noqa: E402
 from amaze.core import library_db                        # noqa: E402
 from amaze.core import library_files                     # noqa: E402
 from amaze.core import tile_icons                        # noqa: E402
-from amaze.panel import sections                         # noqa: E402
+from amaze.sections import color as color_section  # noqa: E402
 from amaze.prefs import prefs                            # noqa: E402
 from amaze.tests import test_support                     # noqa: E402
 
@@ -1139,8 +1139,10 @@ class EveryCallThePanelMakesOnTheColorsSidebarResolves(unittest.TestCase):
         """{method name: [file:line]} for `*.<attribute>.<method>(...)`."""
         import ast
         found = {}
-        panel_dir = os.path.join(self._package_root(), "panel")
-        for name in sorted(os.listdir(panel_dir)):
+        for panel_dir, name in sorted((os.path.join(self._package_root(), folder), name)
+                                      for folder in ("panel", "pane", "sections")
+                                      for name in os.listdir(
+                                          os.path.join(self._package_root(), folder))):
             if not name.endswith(".py"):
                 continue
             path = os.path.join(panel_dir, name)
@@ -1221,7 +1223,7 @@ class TheGradientEntryIsResolvedOnce(unittest.TestCase):
     def test_no_method_walks_the_proxy_for_itself(self):
         import ast
         import inspect
-        tree = ast.parse(inspect.getsource(sections))
+        tree = ast.parse(inspect.getsource(color_section))
         funcs = [scope for klass in ast.walk(tree)
                  if isinstance(klass, ast.ClassDef) and klass.name == "GradientSection"
                  for scope in klass.body if isinstance(scope, ast.FunctionDef)]
@@ -1233,8 +1235,8 @@ class TheGradientEntryIsResolvedOnce(unittest.TestCase):
 
     def test_an_index_the_proxy_has_dropped_returns_no_entry(self):
         """`_entry_at` checks for every method: an unmappable index gives no entry, not row -1's."""
-        section = sections.GradientSection.__new__(sections.GradientSection)
-        self.assertIsNone(sections.GradientSection._entry_at(section, None))
+        section = color_section.GradientSection.__new__(color_section.GradientSection)
+        self.assertIsNone(color_section.GradientSection._entry_at(section, None))
 
 
 class ARampHelperIsTotal(unittest.TestCase):

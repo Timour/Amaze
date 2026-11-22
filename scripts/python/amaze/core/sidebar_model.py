@@ -7,6 +7,14 @@ COLOR_COLUMN = 1    # the cell beside the name whose background is the row's col
 MOVE_MIME = "application/x-amaze-sidebar-row"    # a top row dragged to another place in its own list
 
 
+
+def top_level(index):
+    """The top-level row above an index; a top-level index returns itself."""
+    while index.isValid() and index.parent().isValid():
+        index = index.parent()
+    return index
+
+
 class RowMoves:
     """Qt's own drag and drop for reordering top rows; the list answers `movable` and `move_row`."""
 

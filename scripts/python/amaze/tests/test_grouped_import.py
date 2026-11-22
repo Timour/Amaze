@@ -2,6 +2,7 @@
 
 import os
 import sys
+import types
 import unittest
 from unittest import mock
 
@@ -13,7 +14,7 @@ import hou
 
 from amaze.actions import materials as material_actions
 from amaze.core import debug
-from amaze.panel import panel as panel_module
+from amaze.pane import loading as pane_loading
 from amaze.tests import test_support                      # noqa: F401
 
 
@@ -42,20 +43,20 @@ class TheGroupedImportStopsAtTheFirstFailureTest(unittest.TestCase):
     """The `break` keeps it to one dialog: N failed assets must not open N dialogs."""
 
     def setUp(self):
-        self.panel = panel_module.AmazePanel.__new__(
-            panel_module.AmazePanel)
+        self.panel = types.SimpleNamespace(pane=types.SimpleNamespace())    # no widget: the import is the pane's
+        self.panel.pane.loading = pane_loading.Loading(self.panel.pane)
         self.context = hou.node("/obj").createNode("geo", "dest")
         self.addCleanup(self.context.destroy)
 
     def _run(self, answers, ids):
-        self.panel.material_model = _Model(answers)
+        self.panel.pane.material_model = _Model(answers)
         with mock.patch.object(debug, "refuse") as refused, \
                 mock.patch.object(material_actions, "import_asset_to_scene",
                                   lambda model, idx, target, context_node=None:
                                   model.import_asset_to_scene(idx, target, context_node)):
-            self.panel.import_materials_into_context_grouped(
+            self.panel.pane.loading.import_materials_into_context_grouped(
                 self.context, ids)
-        return self.panel.material_model, refused
+        return self.panel.pane.material_model, refused
 
     def test_a_failure_stops_the_loop(self):
         model, refused = self._run(

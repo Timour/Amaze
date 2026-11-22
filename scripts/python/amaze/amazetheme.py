@@ -211,14 +211,14 @@ EMPTY_CODE = {
     "nothing-yet": (
         "No code saved yet",
         "Right-click a wrangle and choose Amaze ▸ Save.",
-        BTN_NEW_FILE, "new_code_snippet"),
+        BTN_NEW_FILE, "pane.saving.new_code_snippet"),
 }
 
 EMPTY_FILE = {
     "nothing-yet": (
         "No locations added yet",
         "Add folders of images, geometry or .hip files.",
-        BTN_ADD_FOLDER, "add_file_folder_user"),
+        BTN_ADD_FOLDER, "pane.files.add_location"),
 }
 
 

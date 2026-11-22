@@ -53,7 +53,7 @@ class _Tab(unittest.TestCase):
         patcher = mock.patch.object(updater, "install_root", lambda: self.root)
         patcher.start()
         self.addCleanup(patcher.stop)
-        self.state = prefs_window.AmazePrefsState(test_support.fixture_prefs(self), panel=None)
+        self.state = prefs_window.AmazePrefsState(test_support.fixture_prefs(self), pane=None)
 
     def _install(self):
         source = os.path.join(self.dir, "source")

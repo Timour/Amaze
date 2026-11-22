@@ -68,14 +68,14 @@ class AFixturePanelScansNothingOfTheUsers(unittest.TestCase):
 
         registered = []
         self.assertTrue(    # a check that passes only because the list is empty checks nothing
-            list(panel.prefs.file_folders),
+            list(panel.pane.prefs.file_folders),
             "the fixture panel registers no file location, so this "
             "check passes for the wrong reason")
         # By name, never `getattr(..., ())` - a default weakens this check.
-        for folder in panel.prefs.file_folders or ():
+        for folder in panel.pane.prefs.file_folders or ():
             registered.append(("file_folders", str(folder)))
-        registered.append(("library", panel.prefs.dir))
-        registered.append(("settings", panel.prefs.path))
+        registered.append(("library", panel.pane.prefs.dir))
+        registered.append(("settings", panel.pane.prefs.path))
 
         outside = [(k, p) for k, p in registered
                    if not os.path.realpath(p).startswith(temp)]

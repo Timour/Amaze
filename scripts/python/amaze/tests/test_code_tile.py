@@ -214,11 +214,11 @@ class ThePanelWiresTheCodeButtons(unittest.TestCase):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
     def _proxy_index(self, code, language="Python"):
-        model = self.panel.code_model
+        model = self.panel.pane.code_model
         name = "probe_%d" % model.rowCount()
         model.add_asset(code, name, language, "", "", False)
         row = next(r for r in range(model.rowCount()) if model.assets[r].name == name)
-        index = self.panel.code_sorted_model.mapFromSource(model.index(row, 0))
+        index = self.panel.pane.code_sorted_model.mapFromSource(model.index(row, 0))
         if not index.isValid():
             self.skipTest("the code grid filters the probe out")
         return index, row
@@ -230,12 +230,12 @@ class ThePanelWiresTheCodeButtons(unittest.TestCase):
         self.assertNotIn("edit", delegates.BADGE, "a code tile has no Edit badge; Edit is in its menu")
 
     def _click(self, badge, index):
-        with mock.patch.object(self.panel, "current_section", "code"):
+        with mock.patch.object(self.panel.pane, "current_section", "code"):
             self.panel.code_delegate._badge_clicks[badge](index)
 
     def test_a_failing_run_calls_debug_refuse_with_the_snippets_name(self):
         index, row = self._proxy_index("1 / 0")
-        name = self.panel.code_model.assets[row].name
+        name = self.panel.pane.code_model.assets[row].name
         with mock.patch("amaze.core.debug.refuse") as refuse:
             self._click("execute", index)
         refuse.assert_called_once()
@@ -245,7 +245,7 @@ class ThePanelWiresTheCodeButtons(unittest.TestCase):
     def test_generic_shows_the_generic_image_and_preview_the_painted_code(self):
         from amaze.core import tile_icons
         _index, row = self._proxy_index("print(1)")
-        model = self.panel.code_model
+        model = self.panel.pane.code_model
         self.addCleanup(model.set_tile_icon, row, {})
         generic = tile_icons.generic_image(code_library.CodeLibrary.TILE_FACE)
 

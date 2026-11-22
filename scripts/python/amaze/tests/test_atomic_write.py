@@ -845,7 +845,7 @@ class TheUserIsAUidWithANameTest(unittest.TestCase):
         from amaze.dialogs import prefs_window, user_dialog
         p = self._prefs()
         users.create(p, "Plum")
-        state = prefs_window.AmazePrefsState(p, panel=None)
+        state = prefs_window.AmazePrefsState(p, pane=None)
         asked, shown = [], []
         state.userNameRequested.connect(lambda title, name: asked.append((title, name)))
         ui = types.SimpleNamespace(displayMessage=lambda text, **_k: shown.append(text))

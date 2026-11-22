@@ -13,6 +13,7 @@ from amaze.core import (debug, library_check, library_db, library_settings, mode
                         renderers, repair, section_list, texture_library, tile_icons, users)
 from amaze.dialogs import library_dialog, user_dialog
 from amaze.helpers import hostos, ui_helpers
+from amaze.pane import files as pane_files
 from amaze.prefs import prefs as prefs_mod
 from hutil.qt.common import qmlviews    # Houdini's own QML windows' base ▸r/qml-widget-blackout
 from hutil.qt.prefs import mainprefs    # Houdini's Preferences window: its state is the base here
@@ -301,10 +302,10 @@ class AmazePrefsState(mainprefs.PrefsState):
 
     userNameRequested = QtCore.Signal(str, str)    # the name dialog opens: its title, its field's name
 
-    def __init__(self, prefs, panel=None, **kwargs) -> None:
+    def __init__(self, prefs, pane=None, **kwargs) -> None:
         super().__init__(**kwargs)
         self._prefs = prefs
-        self._panel = panel    # None in tests; it holds the models a setting changes
+        self._pane = pane    # the pane engine; None in tests; it holds the models a setting changes
         self.libraryRows = LibraryRows(self)
         self._creating = False    # the name dialog was opened by the create row, not by Rename
         self._last_update = None    # what the last Check for Updates found
@@ -434,7 +435,7 @@ class AmazePrefsState(mainprefs.PrefsState):
 
     def _relist_files(self, names) -> None:
         """The File model's own Prefs takes the switches, then its folder relists. ▸p/one-model-set"""
-        files = getattr(self._panel, "file_files_model", None)
+        files = getattr(self._pane, "file_files_model", None)
         if files is None:
             return
         shown = getattr(files, "preferences", None)
@@ -446,15 +447,15 @@ class AmazePrefsState(mainprefs.PrefsState):
     def _recompose_tile_icons(self) -> None:
         """Line weight changed: forget composed pictures, then every tile-icon model redraws."""
         tile_icons.forget_composed()
-        if self._panel is None:
+        if self._pane is None:
             return
-        for model in self._panel.tile_icon_models():
+        for model in self._pane.tile_icon_models():
             model.rerender_tile_icons()
 
     def _is_open(self, folder: str) -> bool:
         """Whether the pane has `folder` open; with no pane, whether it is the library Prefs names."""
-        if self._panel is not None:
-            return self._panel.serves(folder)
+        if self._pane is not None:
+            return self._pane.library.serves(folder)
         return _same_folder(folder, self._prefs.dir)
 
     def _known_users(self, folder: str) -> dict:
@@ -553,7 +554,7 @@ class AmazePrefsState(mainprefs.PrefsState):
 
     def _switch_library(self, folder: str, uid: str) -> bool:
         """Open `folder` with the picked user; both are restored when it does not open."""
-        if self._panel is not None and not self._panel.takes_library(folder):
+        if self._pane is not None and not self._pane.library.takes_library(folder):
             return False    # checked before anything is written to it
         before, before_dir = str(self._prefs.library_user or ""), self._prefs.dir
         library_db.flush()    # the open library's pending changes, saved as the user who made them
@@ -561,7 +562,7 @@ class AmazePrefsState(mainprefs.PrefsState):
             self._prefs.library_user = uid    # before the models switch, so they read this user's favourites
         self._prefs.dir = folder
         self._prefs.save()    # the models' switch re-reads settings.json
-        opened = self._panel is None or self._panel.open_library()
+        opened = self._pane is None or self._pane.library.open_library()
         if not opened:    # the settings name the library that is open, or none
             self._prefs.library_user = before
             self._prefs.dir = before_dir
@@ -641,13 +642,13 @@ class AmazePrefsState(mainprefs.PrefsState):
 
     @QtCore.Slot()
     def reloadLibrary(self) -> None:
-        if self._panel is not None:
-            self._panel.open()
+        if self._pane is not None:
+            self._pane.library.reload()
 
     @QtCore.Slot()
     def showLibraryFolder(self) -> None:
-        if self._panel is not None:
-            self._panel.open_usdlib_folder()
+        if self._pane is not None:
+            self._pane.library.open_folder()
 
     def _name_taken(self, name: str, besides: str = "") -> bool:
         """Whether the picked library has another user called `name`."""
@@ -762,9 +763,9 @@ class AmazePrefsState(mainprefs.PrefsState):
         self._show_check_line(found["info"], bool(found["lines"]))
 
     def _survey_open_library(self) -> dict:
-        """One survey of the open library on disk, the panel's pending changes saved first."""
-        if self._panel is not None:
-            check_actions.save_before_check(self._panel)
+        """One survey of the open library on disk, the pane's pending changes saved first."""
+        if self._pane is not None:
+            check_actions.save_before_check(self._pane)
         findings = repair.survey(self._prefs)
         debug.event("repair", "surveyed", complete=findings["complete"],
                     unaccounted=repair.unaccounted_total(findings),
@@ -783,10 +784,10 @@ class AmazePrefsState(mainprefs.PrefsState):
         from amaze.dialogs import repair_dialog
         findings = self._survey_open_library()
         if library_check.summary(findings)["lines"]:
-            panel = self._panel
+            pane = self._pane
             repair_dialog.repair_found(
                 findings, guard=False,
-                changed=None if panel is None else lambda: check_actions.reload_after_check(panel))
+                changed=None if pane is None else lambda: check_actions.reload_after_check(pane))
             findings = self._survey_open_library()
         self._show_check(findings)
 
@@ -812,7 +813,7 @@ class AmazePrefsState(mainprefs.PrefsState):
                 messages.CONFIRM_CLEAR_THUMBNAIL_CACHE,
                 suppress=hou.confirmType.NoConfirmType):    # not `OverwriteFile`, Houdini's global flag
             return
-        files = getattr(self._panel, "file_files_model", None)
+        files = getattr(self._pane, "file_files_model", None)
         if files is not None:
             files.clear_cache()
         else:
@@ -998,9 +999,9 @@ class AmazePrefsState(mainprefs.PrefsState):
     @QtCore.Slot()
     @debug.guarded("prefs.convert_old_library")
     def convertOldLibrary(self) -> None:
-        """About ▸ Convert pre-1.40: the panel's converter, on a folder picked there."""
-        if self._panel is not None:
-            self._panel.convert_old_library()
+        """About ▸ Convert pre-1.40: the pane's converter, on a folder picked there."""
+        if self._pane is not None:
+            self._pane.library.convert_old_library()
 
     @QtCore.Slot()
     def openLog(self) -> None:
@@ -1040,7 +1041,7 @@ class AmazePrefsState(mainprefs.PrefsState):
                 messages.LOG_SAVED_AS % os.path.basename(target), help=messages.HELP_LOG_SAVED,
                 buttons=messages.BUTTONS_SHOW_IN_FOLDER, default_choice=1, close_choice=1,
                 title=messages.TITLE_LOG_SAVED, severity=hou.severityType.Message) == 0:
-            ui_helpers.reveal(target)
+            pane_files.reveal(target)
 
     @QtCore.Slot()
     def clearLog(self) -> None:
@@ -1083,8 +1084,8 @@ class AmazePrefsWindow(qmlviews.BaseQmlView):
 
     closed = QtCore.Signal()    # at every close, Apply or not: a library chosen behind it is opened then
 
-    def __init__(self, prefs, panel=None, *, parent_window: QtGui.QWindow = None) -> None:
-        super().__init__(state=AmazePrefsState(prefs, panel), parent_window=parent_window)
+    def __init__(self, prefs, pane=None, *, parent_window: QtGui.QWindow = None) -> None:
+        super().__init__(state=AmazePrefsState(prefs, pane), parent_window=parent_window)
         self.setTitle(branding.APP_NAME + " Preferences")
 
     def setupEngine(self) -> None:

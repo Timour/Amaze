@@ -1,4 +1,4 @@
-"""The tile capture: the Scene View as a tile's picture, for one panel."""
+"""The tile capture: the Scene View as a tile's picture, for one pane."""
 
 import hou
 
@@ -7,14 +7,14 @@ from amaze.core import debug, scene_captures
 
 
 class TileCapture:
-    """One panel's Capture commands; the panel holds it as `tile_capture`."""
+    """One pane's Capture commands; the pane holds it as `tile_capture`."""
 
-    def __init__(self, panel) -> None:
-        self.panel = panel
+    def __init__(self, pane) -> None:
+        self.pane = pane
 
     def from_toolbar(self) -> None:
         """Toolbar Capture: the one selected tile; in File with nothing selected, the open scene."""
-        context = self.panel.active_section()
+        context = self.pane.active_section()
         indexes = context.grid_selection() if context is not None else []
         if len(indexes) == 1 and getattr(context, "takes_capture", False):
             self.onto_tile(context, indexes[0])
@@ -30,7 +30,7 @@ class TileCapture:
             return
         source = proxy.mapToSource(proxy_index) if proxy is not None else proxy_index
         row = source.row()
-        scene = self.panel.hip_path_for(proxy_index) if getattr(context, "key", "") == "file" else ""
+        scene = self.pane.files.hip_path_for(proxy_index) if getattr(context, "key", "") == "file" else ""
         if scene:
             captured = self.capture_and_report(scene)    # raises CaptureRefused unless `scene` is open
         else:
@@ -38,12 +38,12 @@ class TileCapture:
                 lambda: scene_captures.capture_tile(model.capture_path(row), model.tile_key(row)),
                 model.tile_key(row))
         if captured:
-            self.panel.apply_icon_spec(model, [row], {"face": "image"})
+            self.pane.assets.apply_icon_spec(model, [row], {"face": "image"})
 
     def capture_and_report(self, target: str = "") -> bool:
         """Capture the open scene onto its File tile; `""` means the open one. True if it worked."""
         return self.run(
-            lambda: scene_captures.capture_open_scene(self.panel.prefs, target), target)
+            lambda: scene_captures.capture_open_scene(self.pane.prefs, target), target)
 
     def run(self, capture, label: str) -> bool:
         """Run one capture and show why it failed: a silent failure looks like a bug."""

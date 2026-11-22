@@ -8,7 +8,8 @@ from amaze import messages
 from amaze.core import debug, library_check, repair
 from amaze.core import guard as guard_mod
 from amaze.core import library_files as naming
-from amaze.helpers import ui_helpers, wording
+from amaze.helpers import wording
+from amaze.pane import files as pane_files
 
 MOST_BUTTONS = 5    # actions one report shows before Choose an Action lists them instead
 FIX_FAILED = (ValueError, OSError, guard_mod.Refused)    # what a fix raises when it fails
@@ -250,7 +251,7 @@ def _every_choice(findings: dict, may_change: bool):
 def act(findings: dict, action: str, guard: bool = True, changed=None) -> bool:
     """Confirm, run and report one action; `changed` is called if it succeeds; True if it did."""
     if action == "holding":
-        ui_helpers.reveal(findings["holding"]["path"])
+        pane_files.reveal(findings["holding"]["path"])
         return False
     done = {"recover": _do_recover, "restore": _do_restore, "rebuild": _do_rebuild,
             "trash": _do_move_aside, "unknown": _do_move_unknown,

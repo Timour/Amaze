@@ -217,16 +217,16 @@ class TheCommentBadgeOpensThePane(unittest.TestCase):
 
     def test_the_badge_clicks_the_toolbar_button(self):
         panel = self.panel
-        panel._on_tab_toggled("material", True)
-        index = panel.material_sorted_model.index(0, 0)
+        panel.pane.choose_tab("material")
+        index = panel.pane.material_sorted_model.index(0, 0)
         with mock.patch.object(panel.btn_notes, "click") as click:
             panel._badge_click_handler("menu_comments")(index)
         self.assertEqual(1, click.call_count, "the badge runs code of its own")
 
     def test_the_badge_opens_and_closes_the_pane(self):
         panel = self.panel
-        panel._on_tab_toggled("material", True)
-        index = panel.material_sorted_model.index(0, 0)
+        panel.pane.choose_tab("material")
+        index = panel.pane.material_sorted_model.index(0, 0)
         panel.btn_notes.setChecked(False)
         panel._badge_click_handler("menu_comments")(index)
         self.assertTrue(panel.btn_notes.isChecked(), "the badge click did not open the pane")
@@ -244,7 +244,7 @@ class AQuickSecondClickOnABadgeIsAClick(unittest.TestCase):
     def _double_click(self, at):
         """The five events the Qt manual says a double-click delivers; returns (imports, heart clicks)."""
         panel = self.panel
-        panel._on_tab_toggled("material", True)
+        panel.pane.choose_tab("material")
         view = panel.thumblist
         window = view.window()
         window.resize(1200, 800)
@@ -266,7 +266,7 @@ class AQuickSecondClickOnABadgeIsAClick(unittest.TestCase):
                  (QtCore.QEvent.Type.MouseButtonPress, left),
                  (QtCore.QEvent.Type.MouseButtonDblClick, left),
                  (QtCore.QEvent.Type.MouseButtonRelease, none))
-        with mock.patch.object(panel.active_section(), "double_click"), \
+        with mock.patch.object(panel.pane.active_section(), "double_click"), \
                 mock.patch.dict(delegate._badge_clicks, {"favourite": clicks.append}):
             for kind, buttons in steps:
                 QtWidgets.QApplication.sendEvent(view.viewport(), QtGui.QMouseEvent(

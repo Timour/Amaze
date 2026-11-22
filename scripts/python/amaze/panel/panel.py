@@ -6,12 +6,7 @@ _BODY_T0 = time.perf_counter()    #: when this module body began, before the imp
 
 import os
 import importlib
-import contextlib
-import functools
 import sys
-import threading
-import types
-import uuid
 
 from PySide6 import QtWidgets, QtGui, QtCore
 import hou
@@ -23,7 +18,11 @@ from amaze.actions import materials as material_actions
 from amaze.actions import nodes as node_actions
 from amaze.core import grid_columns, grid_engine
 from amaze.panel import (dragdrop_widgets, empty_state, grid, info_panel, notes_panel, side_pane,
-                         sections, sidebar)
+                         sidebar)
+from amaze import sections
+from amaze.sections import (base as section_base, code as code_section, color as color_section,
+                            file as file_section, material as material_section,
+                            node as node_section, online as online_section)
 from amaze.core import debug, documents, library_db, library_files, locations, section_list
 from amaze.core import versions
 from amaze.core import notes
@@ -55,8 +54,11 @@ from amaze.helpers import helpers, hostos, theme, ui_helpers, wording
 from amaze.utils import rc_calls
 from amaze.core import renderers, tile_icons, users
 from amaze.render import cop_nodes, husk_job, nodes
-from amaze.panel import online_import, package_import
-from amaze.panel import drop_placement, tile_capture
+from amaze.pane import asks
+from amaze.pane import files as pane_files
+from amaze.pane import (assets as pane_assets, drop_placement, library as pane_library,
+                        loading as pane_loading, online_import, package_import, pane as pane_mod,
+                        saving as pane_saving, sidebar as pane_sidebar, tile_capture)
 
 _DEV_RELOAD = bool(os.environ.get("AMAZE_DEV_RELOAD"))    # the reload chain below is off by default ▸r/module-reload
 
@@ -65,12 +67,6 @@ def _reload(module):
     """importlib.reload, unless the dev switch is off."""
     if _DEV_RELOAD:
         importlib.reload(module)
-
-
-def _flush_saves_on_close(schedule, *_destroyed) -> None:
-    """On panel close: drop its save timer and save every pending change now."""
-    library_db.drop_scheduler(schedule)
-    library_db.flush()
 
 
 def _reload_loaded(name):
@@ -150,9 +146,18 @@ _reload_loaded("amaze.dialogs.gradient_dialog")
 _reload_loaded("amaze.dialogs.code_dialog")
 _reload_loaded("amaze.dialogs.user_dialog")
 _reload(dragdrop_widgets)
-_reload(grid)    # before sections, which imports it
+_reload(grid)
 _reload(sidebar)
-_reload(sections)
+_reload(asks)    # before sections, which build their questions with it
+_reload(pane_files)    # before sections, which call its clipboard and file browser
+_reload(section_base)    # before every section, which builds on it
+_reload(material_section)
+_reload(node_section)
+_reload(code_section)
+_reload(color_section)
+_reload(file_section)
+_reload(online_section)
+_reload(sections)    # the registry, after the sections it lists
 _reload(empty_state)    # after grid AND sections: it imports the first and reads the second's EMPTY declarations
 _reload(side_pane)
 _reload(notes_panel)
@@ -170,6 +175,12 @@ _reload(online_import)    # after matx_sources, nodes and material_actions, whic
 _reload(package_import)    # after sections, whose SECTION_CLASSES it reads
 _reload(drop_placement)    # after geo_library, helpers and wording, which it calls
 _reload(tile_capture)    # after scene_captures, which it calls
+_reload(pane_library)    # after sections: it builds them
+_reload(pane_sidebar)
+_reload(pane_assets)
+_reload(pane_loading)    # after sections, whose drop rules it reads
+_reload(pane_saving)
+_reload(pane_mod)    # last of the engine: it holds every part above
 
 
 
@@ -177,32 +188,9 @@ from amaze.panel import delegates            # noqa: E402
 
 _reload(delegates)
 
-FILTER_DEBOUNCE_MS = 180    #: the search box's pause before it filters ▸p/filter-pass-cost
 SIDEBAR_KEY_PAUSE_MS = 180    #: the arrow keys' pause before the sidebar row they stop on is shown: a File step lists a folder
 
 MIN_PANEL_WIDTH = 500    #: design px through `theme.ui_px` at use; the grid pane has none ▸r/qt-windows-macos
-_FOLDERS_GIVEN_ICONS = globals().get("_FOLDERS_GIVEN_ICONS", set())    # library folders given their icon this session
-
-
-def _give_folder_icons(library_dir: str) -> None:
-    """The library folder and its `matX` folder each shown with their own icon."""
-    hostos.give_folder_icon(library_dir, amaze.package_file("ui", "library_folder"))
-    hostos.give_folder_icon(os.path.join(library_dir, library_files.PACKAGE_FOLDER),
-                            amaze.package_file("ui", "matx_folder"))
-
-
-class _LibraryAt:
-    """The preferences, read as if `folder` were the library and `user` its user."""
-
-    def __init__(self, preferences, folder: str, user: str) -> None:
-        self._preferences = preferences
-        self.dir = folder if folder.endswith(("/", os.sep)) else folder + "/"
-        self.library_user = user
-
-    def __getattr__(self, name):
-        return getattr(self._preferences, name)
-
-
 
 
 class _AfterFirstPaint(QtCore.QObject):
@@ -227,8 +215,8 @@ class _AfterFirstPaint(QtCore.QObject):
         return True    # already painted above: the original event goes no further
 
 
-class AmazePanel(QtWidgets.QWidget):
-    """The panel widget: shell, sections and the views onto their models."""
+class AmazePanel(QtWidgets.QWidget, asks.Asks):
+    """The panel widget: the widgets that show one pane engine, and the dialogs it asks for."""
 
     def __init__(self) -> None:
         super(AmazePanel, self).__init__()
@@ -236,10 +224,6 @@ class AmazePanel(QtWidgets.QWidget):
         self._first_show_logged = False
         rc_calls.start()    # before the log writes anything, so its header knows the Houdini
         debug.install()    # first, so a construction failure is logged even with Debug Mode off
-        self.online_import = online_import.OnlineImport(self)    # before _build, which connects a menu action to one
-        self.package_import = package_import.PackageImport(self)
-        self.drop_placement = drop_placement.DropPlacement(self)
-        self.tile_capture = tile_capture.TileCapture(self)    # before _build too: the Capture button is wired to it
         try:
             self._build()
         except Exception as exc:
@@ -249,22 +233,10 @@ class AmazePanel(QtWidgets.QWidget):
     def _build(self) -> None:
         from amaze.helpers import vex_syntax
         vex_syntax.use_syntax_colors(theme.syntax_colors())    # Houdini's syntax colours, tiles and editor alike
-        self.prefs = prefs.Prefs()
-
-        loaded = self.prefs.load()    # False when nothing usable is on disk; the prefs are populated either way
-        debug.configure(self.prefs.debug_mode)    # before setup(), so a crash there is logged
-        debug.prefs_snapshot(self.prefs)
-        hostos.set_cache_override(self.prefs.cache_dir)    # set before any cache is touched
-        if loaded:
-            self.init_ui()
-            if (library_actions.index_unreadable(self.prefs.dir)
-                    or library_actions.folder_not_empty_without_library(self.prefs.dir)):
-                self._defer_open_library()    # a dialog opened during the build blocks the pane
-                opened = False    # the pane opens without a library; its dialog comes later
-            else:
-                opened = self._open_at_start()
-            if not opened:
-                self._open_libraryless()    # still a finished construction, so `panel ready` is logged
+        self.pane = pane_mod.Pane(self, self)    # reads the settings; the library opens below, after the widgets
+        self.init_ui()
+        self._follow_pane()
+        if self.pane.library.start():
             debug.event(    # a header without 'panel ready' means logging died during construction
                 "session", "panel ready",
                 module_body_ms=round(    # the imports and the reload chain, before construction
@@ -272,69 +244,287 @@ class AmazePanel(QtWidgets.QWidget):
                 construction_ms=round(
                     (time.perf_counter() - self._construct_t0) * 1000, 1),
                 **debug.probe())
-        else:
-            self.init_ui()
-            self._open_libraryless()
 
-    def _open_libraryless(self) -> None:
-        """The no-library shape: every model attribute present and None, so the gear still works."""
-        self.material_model = None
-        self.category_model = None
-        self.cop_model = None    # a right-click save reads every model before one is built
-        self.cop_category_model = None
-        self.code_model = None
-        self.code_category_model = None
-        self.file_files_model = None    # Preferences reads it through the panel, and takes None
-        self.file_folders_model = None
-        self.matx_online_model = None    # setup() builds the online world; `enter_online_mode` refuses without it
+    def _follow_pane(self) -> None:
+        """Every engine signal to the widget that shows it."""
+        pane = self.pane
+        pane.models_built.connect(self._on_models_built)
+        pane.library_shown.connect(self._on_library_shown)
+        pane.library_switching.connect(self._on_library_switching)
+        pane.library_switched.connect(self._on_library_switched)
+        pane.library_updated.connect(self._refresh_open_prefs)
+        pane.context_leaving.connect(self._on_context_leaving)
+        pane.context_bound.connect(self._on_context_bound)
+        pane.context_shown.connect(self._on_context_shown)
+        pane.tabs_changed.connect(self._build_section_tabs)
+        pane.online_changed.connect(self._on_online_changed)
+        pane.filter_changed.connect(self.build_filter_menu)
+        pane.sidebar_highlight.connect(self.cat_list.highlight)
+        pane.sidebar_reveal.connect(self.cat_list.reveal)
+        pane.sidebar_changed.connect(self._on_sidebar_changed)
+        pane.grid_reordered.connect(self._follow_sort_arrow)
+        pane.grid_to_top.connect(self._on_grid_to_top)
+        pane.progress_shown.connect(self.set_conversion_bar_visible)
+        pane.progress.connect(self.texture_progress.set_progress)
+
+    def _on_models_built(self) -> None:
+        """A library's models exist: the tile delegates, and the side panes follow the selections."""
+        pane = self.pane
+        self.thumb_delegate = delegates.AssetItemDelegate(
+            pane.material_model.TileSubtitleRole,
+            self.thumblist,
+            renderer_role=pane.material_model.RendererRole,
+            category_role=pane.material_model.CategoryRole,
+            tag_role=pane.material_model.TagRole,
+            licence_role=pane.material_model.LicenceRole,
+            category_color_role=pane.material_model.CategoryColorRole,
+            active_version_role=pane.material_model.ActiveVersionRole,
+            date_role=pane.material_model.DateRole,
+            id_role=pane.material_model.IdRole,
+            crop_role=pane.material_model.CropRole,
+            tile_badges=material_section.MaterialSection.tile_badges,
+            tile_model=library.MaterialLibrary,
+            on_badge=self._badge_click_handler,
+        )
+
+        node_roles = dict(
+            category_role=pane.material_model.CategoryRole,
+            tag_role=pane.material_model.TagRole,
+            licence_role=pane.material_model.LicenceRole,
+            category_color_role=pane.material_model.CategoryColorRole,
+            date_role=pane.material_model.DateRole,
+            id_role=pane.material_model.IdRole,
+            crop_role=pane.material_model.CropRole,
+            on_badge=self._badge_click_handler,
+        )
+        self.asset_delegate = delegates.AssetItemDelegate(    # Node and Code: their own delegate, without the version roles
+            pane.material_model.RendererLabelRole, self.thumblist,
+            tile_badges=node_section.CopSection.tile_badges,
+            tile_model=cop_library.CopLibrary, **node_roles)
+        self.code_delegate = delegates.AssetItemDelegate(
+            pane.material_model.RendererLabelRole, self.thumblist,
+            tile_badges=code_section.CodeSection.tile_badges,
+            tile_model=code_library.CodeLibrary, **node_roles)
+
+        self.file_delegate = delegates.AssetItemDelegate(
+            pane.file_files_model.FormatRole,
+            self.thumblist,
+            category_role=pane.file_files_model.FolderRole,
+            category_color_role=pane.file_files_model.CategoryColorRole,
+            crop_role=pane.file_files_model.CropRole,
+            tile_badges=file_section.FileSection.tile_badges,
+            tile_model=file_library.FileFiles,
+            on_badge=self._badge_click_handler,
+        )
+
+        self.gradient_delegate = delegates.AssetItemDelegate(
+            pane.gradient_model.RendererLabelRole,
+            self.thumblist,
+            category_role=pane.gradient_model.CategoryLabelRole,
+            category_color_role=pane.gradient_model.CategoryColorRole,
+            crop_role=pane.gradient_model.CropRole,
+            tile_badges=color_section.GradientSection.tile_badges,
+            tile_model=gradient_library.GradientLibrary,
+            on_badge=self._badge_click_handler,
+        )
+
+        self.matx_delegate = delegates.AssetItemDelegate(    # the online section's own delegate, with only the roles its model has
+            pane.matx_online_model.RendererLabelRole,
+            self.thumblist,
+            category_role=pane.matx_online_model.CategoryRole,
+            tag_role=pane.matx_online_model.TagRole,
+            tile_badges=online_section.OnlineContext.tile_badges,
+            tile_model=matx_library.MatxOnlineLibrary,
+        )
+        self._sync_notes_button_pixmaps()
+        self._sync_info_button_pixmaps()
+        self.sidebar_delegate.show_counts = pane.prefs.sidebar_counts
+        for selection in (    # keyboard selection changes update the side panes too
+            pane.material_selection_model,
+            pane.cop_selection_model,
+            pane.code_selection_model,
+            pane.file_selection_model,
+            pane.gradient_selection_model,
+        ):
+            selection.selectionChanged.connect(self._refresh_notes_subject)
+            selection.selectionChanged.connect(self._refresh_info_subject)
+
+    def _on_library_shown(self) -> None:
+        """A newly opened library's first section shows: the tile size, view mode and colours."""
+        self.click_slider.setValue(grid.active_thumbsize(self))
+        self.slide()
+        self.apply_view_state()
+        self._apply_theme_colours()
+
+    def _on_library_switching(self) -> None:
+        """Another library is about to be read: a pending comment is saved to its own library."""
+        pane = getattr(self, "notes_panel", None)
+        if pane is not None:
+            pane.clear_subject()    # the switch selects nothing
+        info = getattr(self, "info_panel", None)
+        if info is not None:
+            info.clear_subject()
+
+    def _on_library_switched(self) -> None:
+        self.click_slider.setValue(grid.active_thumbsize(self))
+
+    def _on_context_leaving(self) -> None:
+        """Remember the grid's scroll for the section being left; the pane keeps its sidebar row."""
+        self._section_scroll[self.pane.current_section] = (
+            grid.visible_view(self).verticalScrollBar().value())
+
+    def _engine_model(self, attr: str):
+        return getattr(self.pane, attr, None) if attr else None
+
+    def _on_context_bound(self, section) -> None:
+        """The sidebar and both grid views show `section`'s models, with its own delegate."""
+        listed = self._engine_model(section.sidebar_attr)
+        if self.cat_list and listed is not None:
+            self.cat_list.setModel(listed)    # a fresh selection, made after the view's own connections
+            self.pane.sidebar.use_selection(self.cat_list.selectionModel())
+        self.bind_grid_views(self._engine_model(section.proxy_attr),
+                             self._engine_model(section.selection_attr),
+                             getattr(self, section.delegate_attr, None) if section.delegate_attr else None)
+        self.sync_list_columns()    # another section, other column names
+
+    def _on_context_shown(self, context) -> None:
+        """The shown context's tab, toolbar, Filter menu, scroll, side panes and empty state."""
+        self.section_tabs.setChecked(self.pane.current_tab(), emit=False)
+        self._sync_toolbar(context)    # EVERY toolbar control, from the one table - Capture included
+        self.build_filter_menu()
+        scroll = self._section_scroll.get(context.key)
+        if scroll:
+            QtCore.QTimer.singleShot(    # after the relayout, which would clamp it
+                0, lambda: grid.visible_view(self).verticalScrollBar().setValue(scroll))
+        self._refresh_notes_subject()
+        self._refresh_info_subject()
+        empty_state.track(self)    # the empty-state overlay follows the new model
+
+    def _on_online_changed(self) -> None:
+        """The Online chip follows the pane; out of online, Material Library is the checked source."""
         self._sync_online_chip()
+        action = getattr(self, "action_material_library", None)
+        if action is not None and not self.pane.is_online():
+            action.setChecked(True)    # exclusive group, so checking this unchecks any source
 
-    def _defer_open_library(self) -> None:
-        """Open the library once Qt is idle, so its dialog can draw. ▸r/modal-in-pane-build"""
-        timer = self._open_library_timer = QtCore.QTimer(self)    # owned, so it is deleted with the panel
-        timer.setSingleShot(True)
-        timer.setInterval(0)
-        timer.timeout.connect(self._open_at_start)
-        timer.start()
+    def _on_sidebar_changed(self) -> None:
+        if self.cat_list is not None:
+            self.cat_list.viewport().update()
 
-    def _open_at_start(self) -> bool:
-        """Open the library only once this computer's user is set; `ensure_library_user` prompts."""
-        return self.open_library(needs_user=True)
+    def _on_grid_to_top(self) -> None:
+        grid.visible_view(self).scrollToTop()
 
-    def serves(self, folder: str) -> bool:
-        """Whether the models are open on `folder`."""
-        return (getattr(self, "material_model", None) is not None
-                and hostos.comparable_path(str(getattr(self, "_models_dir", "") or ""))
-                == hostos.comparable_path(str(folder or "")))
+    def ask_name(self, title: str, default: str, then) -> None:
+        """The name dialog, modal: `then` gets the name, "" for a cleared field, None for Cancel."""
+        from amaze.dialogs import gradient_dialog
+        dialog = gradient_dialog.CategoryDialog(title, default, parent=self)
+        dialog.exec()
+        then(None if dialog.canceled else (dialog.name or ""))    # a cleared Rename restores the folder's name
 
-    def _repaired(self, folder: str) -> bool:
-        """Offer a repair of `folder`'s unreadable index; True once the chosen fix makes it read."""
-        from amaze.dialogs import repair_dialog
-        switching = getattr(self, "material_model", None) is not None    # a library is open
-        debug.event("session", "library index unreadable", dir=folder, switching=switching)
-        ui = getattr(hou, "ui", None)
-        if ui is None:
-            return False
-        choice = ui.displayMessage(
-            messages.LIBRARY_INDEX_UNREADABLE_SWITCHING if switching
-            else messages.LIBRARY_INDEX_UNREADABLE,
-            buttons=messages.BUTTONS_REPAIR_OR_CANCEL if switching
-            else messages.BUTTONS_REPAIR_OR_OPEN_WITHOUT,
-            severity=hou.severityType.Warning,
-            default_choice=0, close_choice=1,
-            title=messages.TITLE_AMAZE)
-        if choice != 0:
-            debug.event("session", "index repair declined")
-            return False
-        repair_dialog.check_failed_library(folder, self.prefs)    # the user picks the fix there
-        if library_actions.index_unreadable(folder):
-            debug.event("session", "index still unreadable after Check Library", dir=folder)
-            ui.displayMessage(messages.DATABASE_STILL_UNREADABLE_SWITCHING if switching
-                              else messages.DATABASE_STILL_UNREADABLE,
-                              severity=hou.severityType.Warning, title=messages.TITLE_AMAZE)
-            return False
-        debug.event("session", "index repaired", dir=folder)
-        return True
+    def ask_colour(self, start: str, title: str, then) -> None:
+        """The colour picker, modal: `then` gets "#rrggbb", None for Cancel."""
+        chosen = ui_helpers.pick_color(start, self, title)
+        then(chosen.name() if chosen is not None else None)
+
+    def ask_drop_choice(self, labels: list, then) -> None:
+        """A menu at the cursor, modal: `then` gets the picked row's place in `labels`, None if dismissed."""
+        menu = QtWidgets.QMenu(self)
+        places = {}
+        for place, label in enumerate(labels):
+            if label:
+                places[menu.addAction(label)] = place
+            else:
+                menu.addSeparator()
+        chosen = menu.exec(QtGui.QCursor.pos())    # screen coordinates
+        menu.deleteLater()    # parented to the panel, so deleted; `places` keeps its keys until then
+        then(places.get(chosen))
+
+    def open_versions(self, name: str, listed: list, active: int, then) -> None:
+        """The Versions dialog, modal: `then` gets the picked version on Select, None on Cancel."""
+        from amaze.dialogs import versions_dialog
+        dialog = versions_dialog.VersionsDialog(name, listed, active, parent=self)
+        accepted = dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted
+        then(dialog.chosen if accepted else None)
+
+    def open_save(self, question, then) -> None:
+        """D09, modal: `then` gets a SaveAnswer, None on Cancel."""
+        from amaze.dialogs import save_dialog
+        dialog = save_dialog.SaveDialog(
+            question.categories, question.current, name=question.name,
+            name_enabled=question.name_enabled, parent=self,
+            sections=question.sections, section=question.section,
+            categories_for=question.categories_for, language=question.language,
+            language_sections=question.language_sections)
+        accepted = dialog.exec()
+        if dialog.canceled or not accepted:
+            then(None)
+            return
+        then(asks.SaveAnswer(section=getattr(dialog, "section", ""), name=dialog.name,
+                             categories=dialog.categories, tags=dialog.tags, fav=dialog.fav,
+                             language=dialog.language))
+
+    def open_code(self, question, apply) -> None:
+        """D11, modal: each Apply hands the fields to `apply`, and shows the versions it returns."""
+        from amaze.dialogs import code_dialog
+        fields = {name: value for name, value in question._asdict().items() if value is not None}
+        dialog = code_dialog.CodeDialog(fields.pop("categories"), parent=self, **fields)
+
+        def applied():
+            versions = apply(asks.CodeAnswer(
+                version=dialog.version, code=dialog.code, name=dialog.name,
+                language=dialog.language, category=dialog.category, tags=dialog.tags))
+            if versions:
+                dialog.versions_saved(*versions)
+
+        dialog.applied.connect(applied)
+        dialog.exec()
+
+    def open_customize(self, question, apply) -> None:
+        """D02, one at a time and not modal: Apply and Accept hand `apply` the edits."""
+        from amaze.dialogs import icon_dialog
+        existing = getattr(self, "_icon_dialog", None)
+        if existing is not None:
+            try:
+                existing.raise_()
+                existing.activateWindow()
+                return
+            except RuntimeError:
+                pass                      # already deleted underneath
+        dialog = icon_dialog.IconDialog(
+            question.icon, question.stroke, self,
+            tile_name=question.tile_name,
+            tile_name_enabled=question.tile_name_enabled,
+            tile_tags=question.tile_tags,
+            categories=question.categories,
+            tile_category=question.tile_category,
+            face=question.face,
+            faces=question.faces,
+            can_preview=question.can_preview,
+        )
+        self._icon_dialog = dialog
+
+        def edits():
+            return asks.CustomizeAnswer(
+                spec=dialog.spec, name=getattr(dialog, "new_tile_name", None),
+                tags=getattr(dialog, "new_tags", None), category=getattr(dialog, "new_category", None))
+
+        def finished(_result=0):
+            self._icon_dialog = None
+            try:
+                if not dialog.canceled:
+                    apply(edits())
+            finally:
+                dialog.deleteLater()    # the panel parents it, so it must be deleted
+
+        dialog.applied.connect(lambda: apply(edits()))    # Apply commits and stays open; Accept commits at the close
+        dialog.finished.connect(finished)
+        dialog.show()
+
+    def show_comments(self) -> None:
+        """The Comments pane, through its toolbar button's own click, so the two never differ."""
+        self.btn_notes.click()
+
+    os_file_icon = staticmethod(delegates.os_file_icon)    # held by the shared File model, never by the panel
 
     MENU_ICON_FILES = {    # menu title -> icon asset with a baked-in "opens a menu" triangle
         "View": "icon_renderer.svg",
@@ -355,442 +545,8 @@ class AmazePanel(QtWidgets.QWidget):
         name = "btn_menu_" + "".join(c for c in menu.title().lower() if c.isalnum())
         return ui_helpers.IconMenuButton(menu, icon_path, name=name)    # stable: B01 and the snapshots key on it
 
-    def _grid_proxy(self, proxy, model) -> tuple:
-        """`proxy` set up over `model` the one way grid proxies are, and its selection model."""
-        proxy.setSourceModel(model)
-        proxy.setFilterCaseSensitivity(QtCore.Qt.CaseSensitivity.CaseInsensitive)
-        proxy.setDynamicSortFilter(False)    # the base class re-filters ▸r/proxy-invariant
-        proxy.layoutChanged.connect(self._follow_sort_arrow)    # another panel may sort the model
-        return proxy, QtCore.QItemSelectionModel(proxy, self)
-
     def _follow_sort_arrow(self, *_args) -> None:
         grid.sync_sort_indicator(self)
-
-    def _sidebar_proxy(self, model):
-        """A sidebar proxy over `model`: never sorted, as the stored order is the sidebar's."""
-        proxy = category.CategoriesSidebarProxy(self)
-        proxy.setSourceModel(model)
-        proxy.hide_empty = self.prefs.hide_empty_categories
-        return proxy
-
-    def _start_save_timer(self) -> None:
-        """This panel's save timer: a burst of changes is one save, written when it fires or at close."""
-        if getattr(self, "_save_timer", None) is not None:
-            return
-        timer = self._save_timer = QtCore.QTimer(self)    # owned, so it is deleted with the panel ▸r/model-parent
-        timer.setSingleShot(True)
-        timer.setInterval(documents.SAVE_DELAY_MS)
-        timer.timeout.connect(library_db.flush)
-        schedule = timer.start
-        library_db.set_scheduler(schedule)
-        self.destroyed.connect(functools.partial(_flush_saves_on_close, schedule))
-        app = QtCore.QCoreApplication.instance()
-        if app is not None and not getattr(app, "_amaze_flush_at_quit", False):
-            app.aboutToQuit.connect(library_db.flush)
-            app._amaze_flush_at_quit = True
-
-    def setup(self):
-        self._start_save_timer()
-        for attr, model in model_registry.models_for(self.prefs).items():
-            setattr(self, attr, model)    # shared with every panel on this library; the proxies below are this panel's
-        files_actions.connect(self.file_files_model, self.file_folders_model,
-                              os_icon=delegates.os_file_icon)
-        if getattr(self, "_scene_watch", None) is None:    # one callback per panel, however often setup runs
-            self._scene_watch = files_actions.watch_scene(self.file_folders_model)
-            self.destroyed.connect(    # holds the callback, never the panel
-                functools.partial(files_actions.unwatch_scene, self._scene_watch))
-        material_actions.connect(self.material_model)
-        self._note_models_library()
-
-        self.category_sorted_model = self._sidebar_proxy(self.category_model)
-        self.material_sorted_model, self.material_selection_model = self._grid_proxy(
-            multifilterproxy_model.MultiFilterProxyModel(self), self.material_model)
-        self.thumb_delegate = delegates.AssetItemDelegate(
-            self.material_model.TileSubtitleRole,
-            self.thumblist,
-            renderer_role=self.material_model.RendererRole,
-            category_role=self.material_model.CategoryRole,
-            tag_role=self.material_model.TagRole,
-            licence_role=self.material_model.LicenceRole,
-            category_color_role=self.material_model.CategoryColorRole,
-            active_version_role=self.material_model.ActiveVersionRole,
-            date_role=self.material_model.DateRole,
-            id_role=self.material_model.IdRole,
-            crop_role=self.material_model.CropRole,
-            tile_badges=sections.MaterialSection.tile_badges,
-            tile_model=library.MaterialLibrary,
-            on_badge=self._badge_click_handler,
-        )
-
-        node_roles = dict(
-            category_role=self.material_model.CategoryRole,
-            tag_role=self.material_model.TagRole,
-            licence_role=self.material_model.LicenceRole,
-            category_color_role=self.material_model.CategoryColorRole,
-            date_role=self.material_model.DateRole,
-            id_role=self.material_model.IdRole,
-            crop_role=self.material_model.CropRole,
-            on_badge=self._badge_click_handler,
-        )
-        self.asset_delegate = delegates.AssetItemDelegate(    # Node and Code: their own delegate, without the version roles
-            self.material_model.RendererLabelRole, self.thumblist,
-            tile_badges=sections.CopSection.tile_badges,
-            tile_model=cop_library.CopLibrary, **node_roles)
-        self.code_delegate = delegates.AssetItemDelegate(
-            self.material_model.RendererLabelRole, self.thumblist,
-            tile_badges=sections.CodeSection.tile_badges,
-            tile_model=code_library.CodeLibrary, **node_roles)
-
-        self.file_sorted_model, self.file_selection_model = self._grid_proxy(
-            texture_library.TextureFilterProxyModel(self), self.file_files_model)
-        self.file_delegate = delegates.AssetItemDelegate(
-            self.file_files_model.FormatRole,
-            self.thumblist,
-            category_role=self.file_files_model.FolderRole,
-            category_color_role=self.file_files_model.CategoryColorRole,
-            crop_role=self.file_files_model.CropRole,
-            tile_badges=sections.FileSection.tile_badges,
-            tile_model=file_library.FileFiles,
-            on_badge=self._badge_click_handler,
-        )
-        self._sync_notes_button_pixmaps()
-        self._sync_info_button_pixmaps()
-        self.sidebar_delegate.show_counts = self.prefs.sidebar_counts
-        thumbnails.engine.set_budget_mb(self.prefs.ram_cache_mb)
-        self.file_files_model.progress_changed.connect(
-            self._on_file_folder_progress)    # a bound method, never a lambda: the model outlives a closed pane tab
-
-        self.gradient_category_sorted_model = self._sidebar_proxy(
-            self.gradient_categories_model)
-        self.gradient_sorted_model, self.gradient_selection_model = self._grid_proxy(
-            gradient_library.GradientFilterProxyModel(self), self.gradient_model)
-        self.gradient_delegate = delegates.AssetItemDelegate(
-            self.gradient_model.RendererLabelRole,
-            self.thumblist,
-            category_role=self.gradient_model.CategoryLabelRole,
-            category_color_role=self.gradient_model.CategoryColorRole,
-            crop_role=self.gradient_model.CropRole,
-            tile_badges=sections.GradientSection.tile_badges,
-            tile_model=gradient_library.GradientLibrary,
-            on_badge=self._badge_click_handler,
-        )
-
-        self.cop_category_sorted_model = self._sidebar_proxy(self.cop_category_model)
-        self.cop_sorted_model, self.cop_selection_model = self._grid_proxy(
-            multifilterproxy_model.MultiFilterProxyModel(self), self.cop_model)
-        self.code_category_sorted_model = self._sidebar_proxy(self.code_category_model)
-        self.code_sorted_model, self.code_selection_model = self._grid_proxy(
-            multifilterproxy_model.MultiFilterProxyModel(self), self.code_model)
-
-        for _model in (self.material_model, self.cop_model, self.code_model):    # every asset keeps its first category only; idempotent
-            try:
-                _model.collapse_multicategory()
-            except Exception as exc:
-                debug.event("session", "category collapse failed",
-                            error=str(exc))
-
-        self.matx_online_model = matx_library.MatxOnlineLibrary(    # the online MaterialX browser, with MaterialLibrary's role numbers
-            preferences=self.prefs
-        )
-        self.matx_sorted_model, self.matx_selection_model = self._grid_proxy(
-            multifilterproxy_model.MultiFilterProxyModel(self), self.matx_online_model)
-        self.matx_source_model = matx_library.MatxSidebarModel(
-            self.matx_online_model
-        )
-        self.matx_delegate = delegates.AssetItemDelegate(    # the online section's own delegate, with only the roles its model has
-            self.matx_online_model.RendererLabelRole,
-            self.thumblist,
-            category_role=self.matx_online_model.CategoryRole,
-            tag_role=self.matx_online_model.TagRole,
-            tile_badges=sections.OnlineContext.tile_badges,
-            tile_model=matx_library.MatxOnlineLibrary,
-        )
-        self.matx_online_model.progress_changed.connect(    # preview downloads update the same thin progress bar as texture/geo thumbs
-            self._on_online_preview_progress
-        )
-        self.online_mode = False
-        self.online_source = None
-        self.online_context = sections.OnlineContext(self)    # a Section's interface, not in `sections`; `active_section()` returns it
-
-        for _notes_selection in (    # keyboard selection changes update the Notes pane too
-            self.material_selection_model,
-            self.cop_selection_model,
-            self.code_selection_model,
-            self.file_selection_model,
-            self.gradient_selection_model,
-        ):
-            _notes_selection.selectionChanged.connect(
-                self._refresh_notes_subject)
-            _notes_selection.selectionChanged.connect(
-                self._refresh_info_subject)
-
-        self.sections = sections.build_sections(self)    # one object per tab; shared handlers dispatch through self.active_section()
-
-
-        first_key = next(    # the first enabled section
-            (k for k, _ in self.ALL_SECTIONS if k in self.prefs.enabled_sections),
-            "material",
-        )
-        self.current_section = first_key
-        self._apply_context(self.sections[first_key], first_key)    # the path a tab click takes
-        self.section_tabs.setChecked(first_key, emit=False)
-        self.click_slider.setValue(grid.active_thumbsize(self))
-        self.slide()
-        self.apply_view_state()
-        self._apply_theme_colours()
-        self._sync_online_chip()    # the online models exist from here on
-
-    def open(self) -> None:
-        """Open the currently in preferences specified library"""
-        if not self.material_model or not self.category_model:
-            return
-        self.material_model.save()
-        self.prefs.load()
-        self.open_library()
-
-        debug.event("session", "library reloaded")
-
-    def set_library(self) -> None:
-        """Open Preferences on its Library page, where a library is picked with its user."""
-        self.show_prefs(page="Library")
-
-    def takes_library(self, folder: str) -> bool:
-        """Accept a picked folder only once its index reads: Repair first, or nothing is written."""
-        if library_actions.folder_not_empty_without_library(folder):
-            debug.event("session", "library not opened - the folder is not empty and holds no library", dir=folder)
-            ui = getattr(hou, "ui", None)
-            if ui is not None:
-                ui.displayMessage(
-                    messages.LIBRARY_FOLDER_NOT_EMPTY,
-                    severity=hou.severityType.Warning,
-                    title=messages.TITLE_AMAZE)
-            return False
-        return not library_actions.index_unreadable(folder) or self._repaired(folder)
-
-    def open_library(self, needs_user: bool = False) -> bool:
-        """Every library opening runs these steps in this order; False when it stays closed."""
-        refused = library_actions.index_unopenable(self.prefs.dir)
-        if refused:    # first: every later step reads the library's database
-            return self._stay_closed(refused)
-        if self._library_too_new():
-            return self._stay_closed()    # the update is offered once Qt is idle
-        if (library_actions.index_unreadable(self.prefs.dir)
-                and not self._repaired(self.prefs.dir)):
-            return self._stay_closed()
-        library_actions.prepare(self.prefs)
-        if not library_actions.index_present(self.prefs.dir):    # prepare could not set one up
-            return self._stay_closed()
-        if needs_user and users.current(self.prefs) is None:
-            debug.event("session", "library not opened - no user picked", dir=self.prefs.dir)
-            return self._stay_closed()    # it is opened from Preferences, where its user is picked
-        why = self._open_models()
-        if why:
-            return self._stay_closed(why)
-        texstore.publish_env(self.prefs)    # $AMAZELIB is set to the library the models now use
-        self._update_library()    # before any tile paints
-        self._seed_curated_content()    # once per library, marker-guarded
-        if self.prefs.note_library_opened(self.prefs.dir):
-            self.prefs.save()    # the Library list, the most recently opened first
-        if hou.isUIAvailable() and self.prefs.dir not in _FOLDERS_GIVEN_ICONS:    # once a session, off the UI thread
-            _FOLDERS_GIVEN_ICONS.add(self.prefs.dir)
-            threading.Thread(target=_give_folder_icons, daemon=True, args=(self.prefs.dir,)).start()
-        return True
-
-    def convert_old_library(self) -> bool:
-        """Preferences ▸ About: pick a folder holding an older library and convert it to 2.0."""
-        from amaze.core import library_conversion
-        ui = getattr(hou, "ui", None)
-        if ui is None:
-            return False
-        picked = ui.selectFile(title=messages.CONVERT_OLD_LIBRARY_PICK,
-                               file_type=hou.fileType.Directory,
-                               chooser_mode=hou.fileChooserMode.Read)
-        folder = hou.text.expandString(picked or "").strip()
-        if not folder:
-            return False
-        if not library_conversion.needs_conversion(folder):
-            ui.displayMessage(messages.CONVERT_OLD_LIBRARY_NONE,
-                              severity=hou.severityType.Message, title=messages.TITLE_AMAZE)
-            return False
-        known = library_conversion.old_users(folder)
-        user = self.prefs.library_user if self.prefs.library_user in known else ""
-        if not user and len(known) == 1:
-            user = next(iter(known))
-        elif not user and known:    # the user who gets the favourites and locations saved before users
-            ids = sorted(known, key=lambda uid: known[uid].lower())
-            chosen = ui.selectFromList([known[uid] for uid in ids], exclusive=True,
-                                       title=messages.CONVERT_OLD_LIBRARY_AS,
-                                       column_header=messages.CONVERT_OLD_LIBRARY_AS)
-            if not chosen:
-                return False
-            user = ids[chosen[0]]
-        name = ""
-        if not known:    # a library from before users: its favourites and locations need one
-            picked, name = ui.readInput(messages.CONVERT_OLD_LIBRARY_NAME,
-                                        buttons=messages.BUTTONS_CONVERT_OLD_LIBRARY_NAME,
-                                        default_choice=0, close_choice=1,
-                                        title=messages.TITLE_AMAZE)
-            name = str(name or "").strip()
-            if picked != 0 or not name:
-                return False
-            user = uuid.uuid4().hex
-        return self._convert(folder, user, name)
-
-    def _convert(self, folder: str, user: str, user_name: str = "") -> bool:
-        """Convert an older library whole, after a confirmation, with progress; True if done."""
-        from amaze.core import library_conversion, library_policy
-        ui = hou.ui
-        at = _LibraryAt(self.prefs, folder, user)
-
-        def confirm():
-            return ui.displayMessage(
-                messages.CONFIRM_CONVERT_LIBRARY % library_policy.LIBRARY_VERSION_SINCE,
-                buttons=messages.BUTTONS_CONVERT_LIBRARY, default_choice=0, close_choice=1,
-                severity=hou.severityType.Message, title=messages.TITLE_AMAZE) == 0    # closing: Cancel
-
-        def trash_classic(count, renderer):
-            return ui.displayMessage(
-                messages.CONVERT_CLASSIC_NEEDS_RENDERER % (
-                    "%d %s" % (count, library_files.section_noun(library_files.MATERIALS, count)),
-                    renderer.label, renderer.label),
-                buttons=messages.BUTTONS_CLASSIC_NEEDS_RENDERER, default_choice=1, close_choice=1,
-                severity=hou.severityType.Warning, title=messages.TITLE_AMAZE) == 0
-
-        from amaze.render import classic_rebuild
-        with contextlib.ExitStack() as shown:    # the progress dialog opens after the confirmation, at the first asset
-            operation = []
-
-            def progress(done, total):
-                if not operation:
-                    operation.append(shown.enter_context(hou.InterruptableOperation(
-                        messages.CONVERT_LIBRARY_PROGRESS, open_interrupt_dialog=True)))
-                try:
-                    operation[0].updateProgress(float(done) / max(total, 1))
-                except hou.OperationInterrupted:    # the button is Houdini's own: a press is ignored
-                    pass
-            outcome = library_conversion.convert(
-                folder, confirm, progress, user=user,
-                machine_stars=library_conversion.machine_stars(self.prefs),
-                classic=classic_rebuild.Rebuilder(at, trash_classic), user_name=user_name)
-        library_db.release(at)    # the data read during the conversion no longer matches the disk
-        if outcome.status == library_conversion.STOPPED:
-            ui.displayMessage(messages.CONVERT_LIBRARY_STOPPED % outcome.why,
-                              severity=hou.severityType.Warning, title=messages.TITLE_AMAZE)
-            return False
-        if outcome.status == library_conversion.BLOCKED:
-            ui.displayMessage(messages.CONVERT_LIBRARY_BLOCKED % outcome.why,
-                              severity=hou.severityType.Warning, title=messages.TITLE_AMAZE)
-            return False
-        if outcome.status != library_conversion.DONE:
-            return False    # cancelled: nothing touched
-        left = outcome.set_aside
-        if not left:
-            ui.displayMessage(messages.CONVERT_LIBRARY_DONE, severity=hou.severityType.Message,
-                              title=messages.TITLE_AMAZE)
-        else:
-            counted = wording.and_list([
-                "%d %s" % (count, library_files.section_noun(section, count))
-                for section, count in ((section, sum(1 for one in left if one.section == section))
-                                       for section in library_files.ASSET_SECTIONS) if count])
-            choice = ui.displayMessage(
-                messages.CONVERT_LIBRARY_DONE_SOME_LEFT % counted,
-                details="\n".join(one.name for one in left),    # every name, one a line
-                buttons=messages.BUTTONS_UNCONVERTED, default_choice=0, close_choice=0,
-                severity=hou.severityType.Warning, title=messages.TITLE_AMAZE)
-            if choice == 1:    # Move to Trash: the user's own choice, so through the trash
-                library_conversion.trash_set_aside(folder, left)
-        self._offer_old_trash(ui, outcome.old_trash)
-        return True
-
-    def _offer_old_trash(self, ui, old_trash: str) -> None:
-        """Offer once to delete this computer's old trash for the library; the user decides."""
-        from amaze.core import library_conversion
-        if not old_trash:
-            return
-        files, size = library_conversion.old_trash_size(old_trash)
-        choice = ui.displayMessage(
-            messages.OLD_TRASH_QUESTION % (files, library_conversion.size_text(size)),
-            buttons=messages.BUTTONS_OLD_TRASH, default_choice=1, close_choice=1,
-            severity=hou.severityType.Message, title=messages.TITLE_AMAZE)
-        if choice == 0:
-            library_conversion.delete_old_trash(old_trash)
-
-    def _open_models(self) -> str:
-        """The models' step of `open_library`: "" once they use `prefs.dir`, else the reason."""
-        try:
-            if getattr(self, "material_model", None) is None:
-                self.setup()    # with no library open there are no models to switch
-            else:
-                self.switch_all_models()
-        except (OSError, ValueError, KeyError) as exc:    # an index that exists but cannot be opened
-            debug.exception("library open", exc, dir=self.prefs.dir)
-            return (library_actions.index_unopenable(self.prefs.dir)
-                    or messages.LIBRARY_LIST_NOT_LOADED % exc)
-        return ""
-
-    def _stay_closed(self, why: str = "") -> bool:
-        """False; an open library stays open, its Library Path restored, `why` shown."""
-        switching = getattr(self, "material_model", None) is not None
-        if library_db.key_of(self.prefs) != library_db.key_of(
-                types.SimpleNamespace(dir=getattr(self, "_models_dir", ""))):
-            library_db.release(self.prefs)    # read during the checks, never opened: released
-        if switching:
-            self.prefs.dir = self._models_dir
-            self.prefs.save()
-            debug.event("session", "previous library left open", dir=self.prefs.dir)
-        if why:    # `debug.refuse` defers it: a modal in the pane's build draws black ▸r/modal-in-pane-build
-            debug.refuse(debug.Damage(messages.LIBRARY_NOT_OPENED_SWITCHING % why if switching
-                                      else messages.LIBRARY_NOT_OPENED % why))
-        return False
-
-    def _note_models_library(self) -> None:
-        """Record the library the models now use, for closing Preferences and for a Cancel."""
-        self._models_dir = self.prefs.dir
-
-    def library_models(self) -> tuple:
-        """Every library-backed model that exists now, from each section's `library_model_attrs`."""
-        found = []
-        for section in getattr(self, "sections", {}).values():
-            for attr in getattr(section, "library_model_attrs", ()):
-                model = getattr(self, attr, None)
-                if model is not None and model not in found:
-                    found.append(model)
-        return tuple(found)
-
-    def switch_all_models(self) -> None:
-        """The models' step of `open_library`: every library-backed model re-pointed at `prefs.dir`."""
-        pane = getattr(self, "notes_panel", None)
-        if pane is not None:
-            pane.clear_subject()    # a pending edit is saved to its own library; the switch selects nothing
-        info = getattr(self, "info_panel", None)
-        if info is not None:
-            info.clear_subject()
-        library_db.flush()    # pending saves are written to the library they were made in
-        library_db.refresh()    # a switch reads every database as it is on disk now
-        locations.forget()
-        models = self.library_models()
-        if not models:
-            return
-        self.prefs.load()    # the switch's one read of the settings; every model takes this Prefs
-        with ui_helpers.relayout(*models):
-            for m in models:
-                m.preferences = self.prefs    # a shared model may hold another panel's ▸p/one-model-set
-                m.switch_model_data()
-            model_registry.rebind(self.prefs, self.material_model)    # the shared set, re-registered under the library it now uses
-            self.click_slider.setValue(grid.active_thumbsize(self))
-        self._note_models_library()
-        debug.event("session", "library switched", dir=self._models_dir)
-        section = self.active_section()
-        if section is not None:
-            section.library_switched()
-
-    def _update_library(self) -> None:
-        """Update the library to this Amaze's version before any tile paints, with no prompt."""
-        try:
-            if library_actions.update(self.prefs):
-                self._refresh_open_prefs()
-        except Exception as exc:                          # noqa: BLE001 - never blocks the panel
-            debug.exception("library update", exc)
 
     def _refresh_open_prefs(self) -> None:
         """An open Preferences window shows the library's new version."""
@@ -802,59 +558,11 @@ class AmazePanel(QtWidgets.QWidget):
         except RuntimeError:    # closed and deleted
             self._prefs_window = None
 
-    def _library_too_new(self) -> bool:
-        """A library a newer Amaze updated is not opened; the update is offered once Qt is idle."""
-        from amaze.core import library_policy
-        found = library_actions.newer_version(self.prefs)
-        if not found:
-            return False
-        debug.event("session", "library is newer than this Amaze - not opened",
-                    found=found, known=library_policy.LIBRARY_VERSION)
-        timer = getattr(self, "_update_offer_timer", None)
-        if timer is None:    # owned, so it is deleted with the panel ▸r/model-parent
-            timer = self._update_offer_timer = QtCore.QTimer(self)
-            timer.setSingleShot(True)
-            timer.setInterval(0)    # a modal inside onCreateInterface draws black
-            timer.timeout.connect(self._offer_amaze_update)
-        timer.start()
-        return True
-
-    def _offer_amaze_update(self) -> None:
-        """Update Amaze or Cancel, for the library left closed; headless, no dialog is shown."""
-        from amaze.core import library_settings, updater
-        from amaze.dialogs import update_dialog
-        ui = getattr(hou, "ui", None)
-        if ui is None:
-            return
-        library_dir = str(self.prefs.dir or "")
-        if ui.displayMessage(
-                messages.LIBRARY_NEEDS_NEWER_AMAZE % library_settings.version_label(
-                    library_settings.library_formats(library_dir)),
-                buttons=messages.BUTTONS_UPDATE_AMAZE, default_choice=0, close_choice=1,
-                severity=hou.severityType.Warning, title=messages.TITLE_AMAZE) != 0:
-            return
-        found = updater.check()
-        if not found:
-            ui.displayMessage(found.sentence, title=messages.TITLE_AMAZE,
-                              severity=(hou.severityType.Warning
-                                        if found.verdict == updater.UNREACHABLE
-                                        else hou.severityType.Message))
-        elif update_dialog.confirmed(found, library_dir):
-            update_dialog.install_and_report(found)
-
-    def _seed_curated_content(self) -> None:
-        """Add the shipped starters, on construction and on a switch. ▸archive/actions/library.py"""
-        code_model = getattr(self, "code_model", None)    # with no library open the models are None
-        gradient_model = getattr(self, "gradient_model", None)
-        library_actions.seed_starters(
-            code_model, self.code_category_model if code_model is not None else None,
-            gradient_model, self.gradient_categories_model if gradient_model is not None else None)
-
     def toggle_catview(self) -> None:
         """Show and Hide the Category View via Menu"""
         self.cat_wrapper.setVisible(self.action_catview.isChecked())
-        self.prefs.show_categories = self.action_catview.isChecked()    # remembered across sessions
-        self.prefs.save()
+        self.pane.prefs.show_categories = self.action_catview.isChecked()    # remembered across sessions
+        self.pane.prefs.save()
         button = getattr(self, "btn_categories", None)    # the toolbar button, kept in sync whichever changed
         if button is not None and button.isChecked() != (
                 self.action_catview.isChecked()):
@@ -870,19 +578,19 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _on_online_button(self, checked: bool) -> None:
         if checked:
-            self.enter_online_mode()
+            self.pane.enter_online()
         else:
-            self.leave_online_mode()
+            self.pane.leave_online()
 
     def _sync_online_chip(self) -> None:
         """Enabled only where the online section can open, and checked only while it is open."""
         button = getattr(self, "btn_online", None)
         if button is None:
             return
-        button.setEnabled(getattr(self, "matx_online_model", None) is not None)
-        if button.isChecked() != self._is_online():
+        button.setEnabled(getattr(self.pane, "matx_online_model", None) is not None)
+        if button.isChecked() != self.pane.is_online():
             was = button.blockSignals(True)
-            button.setChecked(self._is_online())
+            button.setChecked(self.pane.is_online())
             button.blockSignals(was)
 
     def _sync_online_button_pixmaps(self) -> None:
@@ -905,8 +613,8 @@ class AmazePanel(QtWidgets.QWidget):
 
     def apply_view_state(self) -> None:
         """Apply the persisted category/details visibility from preferences"""
-        self.action_catview.setChecked(self.prefs.show_categories)
-        self.cat_wrapper.setVisible(self.prefs.show_categories)
+        self.action_catview.setChecked(self.pane.prefs.show_categories)
+        self.cat_wrapper.setVisible(self.pane.prefs.show_categories)
         self.apply_view_mode()
 
     def bind_grid_views(self, proxy, selection, delegate) -> None:
@@ -945,7 +653,7 @@ class AmazePanel(QtWidgets.QWidget):
         if self._first_show_logged:
             return
         self._first_show_logged = True
-        QtCore.QTimer.singleShot(0, self.ensure_library_user)    # after the first paint: a modal from a half-built panel blocks its paint
+        QtCore.QTimer.singleShot(0, self.pane.library.ensure_library_user)    # after the first paint: a modal blocks a half-built paint
         t0 = getattr(self, "_construct_t0", None)
         if t0 is None:
             return
@@ -957,21 +665,6 @@ class AmazePanel(QtWidgets.QWidget):
                     (time.perf_counter() - t0) * 1000, 1))
 
         _AfterFirstPaint(grid.visible_view(self).viewport(), _record)
-
-    def ensure_library_user(self) -> str:
-        """After the first paint: this computer's user, or a prompt to open Preferences."""
-        preferences = self.prefs
-        uid = users.current(preferences)
-        if uid or not library_actions.index_present(preferences.dir):
-            return uid or ""    # no library: the pane's empty state shows where to set one
-        debug.event("users", "no user picked for this library", dir=preferences.dir)
-        ui = getattr(hou, "ui", None)
-        if ui is not None and ui.displayMessage(
-                messages.NO_USER_PICKED, buttons=messages.BUTTONS_OPEN_PREFERENCES,
-                default_choice=0, close_choice=1,
-                title=messages.TITLE_AMAZE, severity=hou.severityType.Warning) == 0:
-            self.set_library()
-        return ""
 
     def event(self, event):
         """DeferredDelete flushes the panes and size save; a theme switch re-colours. ▸r/theme-switch"""
@@ -987,7 +680,7 @@ class AmazePanel(QtWidgets.QWidget):
             timer = getattr(self, "_thumbsize_save_timer", None)
             if timer is not None and timer.isActive():    # the debounce timer is deleted with the panel, so save now
                 timer.stop()
-                self.prefs.save()
+                self.pane.prefs.save()
         return super(AmazePanel, self).event(event)
 
     def eventFilter(self, watched, event):
@@ -1037,7 +730,7 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _sync_slider_for_mode(self) -> None:
         """The slider sizes grid tiles only; in list it is disabled and set to its minimum."""
-        grid = self.prefs.view_mode != "list"
+        grid = self.pane.prefs.view_mode != "list"
         self.click_slider.setEnabled(grid)
         self.click_slider.setToolTip(ui_helpers.tooltip_text(
             tooltips.PANEL_TILE_SIZE if grid else
@@ -1049,8 +742,8 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _set_view_mode(self, mode: str) -> None:
         """Central entry: persist and apply a view mode ('grid' or 'list')."""
-        self.prefs.view_mode = mode
-        self.prefs.save()
+        self.pane.prefs.view_mode = mode
+        self.pane.prefs.save()
         self.click_slider.setValue(grid.active_thumbsize(self))    # the new mode's remembered size; fires slide() only on a change
         self.apply_view_mode()
 
@@ -1069,7 +762,7 @@ class AmazePanel(QtWidgets.QWidget):
         self._thumbsize_save_timer = QtCore.QTimer(self)    # debounces saving the per-mode icon size during a drag
         self._thumbsize_save_timer.setSingleShot(True)
         self._thumbsize_save_timer.setInterval(500)
-        self._thumbsize_save_timer.timeout.connect(self.prefs.save)
+        self._thumbsize_save_timer.timeout.connect(self.pane.prefs.save)
         self.click_slider.valueChanged.connect(self.slide)
 
         self._lay_out_toolbar()    # after every builder made its controls
@@ -1092,14 +785,14 @@ class AmazePanel(QtWidgets.QWidget):
             self.btn_notes.setToolTip(ui_helpers.tooltip_text(
                 tooltips.PANEL_COMMENTS))
             self._sync_notes_button_pixmaps()
-            self.btn_notes.setChecked(bool(self.prefs.show_notes))
+            self.btn_notes.setChecked(bool(self.pane.prefs.show_notes))
             self.btn_notes.toggled.connect(self._on_notes_toggled)    # after the initial state, so restoring it saves nothing
             self._toolbar_controls.append(self.btn_notes)
             self.btn_online = ui_helpers.ChipToggleButton(name="btn_online")    # colour shows its state: no hover highlight
             self.btn_online.setToolTip(ui_helpers.tooltip_text(
                 tooltips.PANEL_ONLINE))
             self._sync_online_button_pixmaps()
-            self.btn_online.setChecked(self._is_online())
+            self.btn_online.setChecked(self.pane.is_online())
             self.btn_online.toggled.connect(self._on_online_button)
             self._toolbar_controls.append(self.btn_online)
             self.btn_filter = self._make_menu_button(self.menu_filter)    # on self: disabled online, its tooltip per section
@@ -1122,7 +815,7 @@ class AmazePanel(QtWidgets.QWidget):
                     kind_group.addAction(act)
                     act.triggered.connect(
                         lambda _c=False, s=section:
-                        self.matx_online_model.set_kind_filter(s))
+                        self.pane.matx_online_model.set_kind_filter(s))
                 self.online_view_menu.actions()[0].setChecked(True)
             btn_prefs = ui_helpers.IconMenuButton(    # held by the layout alone, never on self
                 None,
@@ -1138,7 +831,7 @@ class AmazePanel(QtWidgets.QWidget):
             self.btn_info.setToolTip(ui_helpers.tooltip_text(
                 tooltips.PANEL_INFO))
             self._sync_info_button_pixmaps()
-            self.btn_info.setChecked(bool(self.prefs.show_info))
+            self.btn_info.setChecked(bool(self.pane.prefs.show_info))
             self.btn_info.toggled.connect(self._on_info_toggled)    # after the initial state
             self._toolbar_controls.append(self.btn_info)
             self.btn_categories = ui_helpers.ChipToggleButton(name="btn_categories")    # toggles action_catview
@@ -1146,14 +839,14 @@ class AmazePanel(QtWidgets.QWidget):
                 tooltips.PANEL_CATEGORIES))
             self._sync_categories_button_pixmaps()
             self.btn_categories.setChecked(
-                bool(self.prefs.show_categories))
+                bool(self.pane.prefs.show_categories))
             self.btn_categories.toggled.connect(
                 self._on_categories_button)
             self._toolbar_controls.append(self.btn_categories)
             self.btn_hip_capture = ui_helpers.IconMenuButton(    # every section: captures onto the selected tile
                 None,
                 self._ui_icon_path("icon_screenshot.svg"),
-                on_click=self.tile_capture.from_toolbar,
+                on_click=self.pane.tile_capture.from_toolbar,
                 fallback_label="Capture",
                 name="btn_hip_capture",
             )
@@ -1162,7 +855,6 @@ class AmazePanel(QtWidgets.QWidget):
             self._toolbar_controls.append(self.btn_hip_capture)
         self.filter_action_group = None    # build_filter_menu fills the Filter menu on every section change
         self.filter_actions = {}
-        self.filter_values = {}
 
         self.view_actions = {}    # stays empty: grid.sync_view_mode_controls keeps whatever is in it
         menu_view = self.ui.findChild(QtWidgets.QMenu, "menuView")
@@ -1187,64 +879,38 @@ class AmazePanel(QtWidgets.QWidget):
             self.online_source_group.addAction(self.action_material_library)    # not in the menu; the group's default, "the local library"
 
             self.online_menu = menu_view    # no submenu: the importers below
-            self.online_source_actions = {}    # stays empty: open_online_source finds no row to check
             self.action_generate = self.online_menu.addAction("Generate Material")
-            self.action_generate.triggered.connect(self.generate_random_material)
+            self.action_generate.triggered.connect(self.pane.loading.generate_random_material)
             self.action_gallery_import = self.online_menu.addAction(
                 "Gallery Import (.gal)"
             )
             self.action_gallery_import.triggered.connect(
-                self.import_galleries
+                self.pane.saving.import_galleries
             )
             self.action_package_import = self.online_menu.addAction(
                 "Import Package (.amazepkg)"
             )
             self.action_package_import.triggered.connect(
-                self.package_import.import_package
+                self.pane.package_import.import_package
             )
             self.action_package_export = self.online_menu.addAction(
                 "Export Asset (.amazepkg)"
             )
-            self.action_package_export.triggered.connect(self.export_package)
+            self.action_package_export.triggered.connect(self.pane.assets.export_package)
             self.action_category_export = self.online_menu.addAction(
                 "Export Category (.amazepkg)"
             )
-            self.action_category_export.triggered.connect(self.export_category)
+            self.action_category_export.triggered.connect(self.pane.assets.export_category)
             menu_view.aboutToShow.connect(self.sync_package_export)    # each enabled only when it has something to export
             menu_view.removeAction(self.action_catview)    # the action stays, toggled by the toolbar button; only its menu row is removed
             self.online_source_group.triggered.connect(self._on_online_source)
 
 
-    def _exportable_selection(self) -> tuple:
-        """(the shown context, its grid selection) when that selection can be exported."""
-        section = self.active_section()
-        if section is None or not section.exports_selection:
-            return section, []
-        return section, section.grid_selection()
-
-    def _exports_category(self):
-        """The shown context when its sidebar holds categories and at most one row is selected, else None."""
-        section = self.active_section()
-        if section is None or not section.exports_categories or len(section.sidebar_selection()) > 1:
-            return None
-        return section
-
     def sync_package_export(self) -> None:
         """Disable the View menu's two exports unless the shown context has what each writes."""
-        self.action_package_export.setEnabled(bool(self._exportable_selection()[1]))
-        self.action_category_export.setEnabled(self._exports_category() is not None)
-
-    def export_package(self) -> None:
-        """View ▸ Export Asset: the shown grid's selected tiles are exported as one `.amazepkg`."""
-        section, indexes = self._exportable_selection()
-        if indexes:
-            section.export_selection(indexes)
-
-    def export_category(self) -> None:
-        """View ▸ Export Category: the sidebar's selected category, or the whole section on All."""
-        section = self._exports_category()
-        if section is not None:
-            section.export_category(section.selected_category())
+        assets = self.pane.assets
+        self.action_package_export.setEnabled(bool(assets.exportable_selection()[1]))
+        self.action_category_export.setEnabled(assets.exportable_category() is not None)
 
     def _build_view_toggles(self) -> None:
         """The favorites chip and the grid/list toggle."""
@@ -1259,7 +925,7 @@ class AmazePanel(QtWidgets.QWidget):
             )
         except (TypeError, AttributeError):
             pass
-        self.cb_favsonly.toggled.connect(self.filter_favs)
+        self.cb_favsonly.toggled.connect(self.pane.show_favourites_only)
         if self.toolbar_layout is not None:
             self._toolbar_controls.append(self.cb_favsonly)
 
@@ -1277,31 +943,31 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _build_splitter_and_sidebar(self) -> None:
         """The splitter proportions and the category sidebar's palette."""
-        self._section_view_state = {}    # per-section sidebar choice and grid scroll, in memory only
+        self._section_scroll = {}    # per-section grid scroll, in memory only; the pane keeps the sidebar row
         splitter = self.cat_list.parentWidget()
         cat_index = -1
         if isinstance(splitter, QtWidgets.QSplitter):
             cat_index = splitter.indexOf(self.cat_list)
-            if self.prefs.show_notes and self.prefs.show_info:
-                self.prefs.show_info = False    # one side pane at a time: the comments pane stays
+            if self.pane.prefs.show_notes and self.pane.prefs.show_info:
+                self.pane.prefs.show_info = False    # one side pane at a time: the comments pane stays
             self.side_pane = side_pane.Pane(    # the splitter's rightmost pane: sidebar | grid | side pane
-                self.prefs, "notes_panel_width", theme.ui_px(amazetheme.drawn_comments()["width"]))
+                self.pane.prefs, "notes_panel_width", theme.ui_px(amazetheme.drawn_comments()["width"]))
             self.side_pane.setMinimumWidth(theme.ui_px(side_pane.MIN_WIDTH))
             self.side_pane.hide()
             splitter.addWidget(self.side_pane)
             splitter.splitterMoved.connect(self._on_splitter_moved)
-            self.notes_panel = notes_panel.NotesPanel(self.prefs)    # its two pages: one shows at a time
+            self.notes_panel = notes_panel.NotesPanel(self.pane.prefs)    # its two pages: one shows at a time
             self.side_pane.add_page(self.notes_panel)
             self.notes_panel.copy_font_and_text_color(self.cat_list)
             self.notes_panel.changed.connect(self._on_note_saved)
-            self.info_panel = info_panel.InfoPanel(self.prefs)
+            self.info_panel = info_panel.InfoPanel(self.pane.prefs)
             self.side_pane.add_page(self.info_panel)
             self.info_panel.copy_font(self.cat_list)
             self.info_panel.shown.connect(self._refresh_info_subject)    # hiding forgot the subject
             self._show_side_page()
             splitter.setHandleWidth(theme.ui_px(self._SIDEBAR["handle"]))    # width only; Houdini draws the grip ▸r/sidebar-from-frame
         width = theme.ui_px(self._SIDEBAR["width"])    # the last dragged width, never wider ▸r/sidebar-from-frame
-        self.cat_wrapper = side_pane.Pane(self.prefs, "sidebar_width", width, width)
+        self.cat_wrapper = side_pane.Pane(self.pane.prefs, "sidebar_width", width, width)
         self.cat_list.setMaximumWidth(width)    # and the list's, at UI scale
         categories = side_pane.SidePage(side_pane.Page(    # no header; the category tree is its body
             None, None, (side_pane.Widget("tree", lambda: self.cat_list),)))
@@ -1413,10 +1079,8 @@ class AmazePanel(QtWidgets.QWidget):
         self.thumblist.clicked.connect(self._refresh_info_subject)
 
         self.texture_progress = ui_helpers.ThinProgressBar()    # the thin bar above thumbview, hidden until there is work
-        self.texture_progress.set_accent_color(theme.accent(self.prefs.accent_color))
+        self.texture_progress.set_accent_color(theme.accent(self.pane.prefs.accent_color))
         self.set_conversion_bar_visible(False)
-        husk_job.jobs.progressed.connect(self._on_render_progress)    # bound: jobs outlive the pane
-        husk_job.jobs.activeChanged.connect(self._on_render_active)
         thumb_layout = self.ui.findChild(QtWidgets.QVBoxLayout, "verticalLayout_7")
         if thumb_layout is not None:
             thumb_layout.insertWidget(0, self.texture_progress)
@@ -1438,7 +1102,7 @@ class AmazePanel(QtWidgets.QWidget):
 
         self._build_sidebar_palette()
         self.sidebar_delegate.set_drag_color(
-            theme.accent(self.prefs.accent_color)
+            theme.accent(self.pane.prefs.accent_color)
         )
         self.cat_list.setItemDelegate(self.sidebar_delegate)
         self.cat_list.row_chosen.connect(self._on_category_chosen)    # mouse, keyboard or the view: one way in
@@ -1449,13 +1113,8 @@ class AmazePanel(QtWidgets.QWidget):
         self._key_choice_timer.timeout.connect(self._show_key_choice)
 
         self.line_filter = self.ui.line_filter  # type: ignore
-        self._filter_timer = QtCore.QTimer(self)    # only `textEdited` starts it, never setText ▸p/filter-pass-cost
-        self._filter_timer.setSingleShot(True)
-        self._filter_timer.setInterval(FILTER_DEBOUNCE_MS)
-        self._filter_timer.timeout.connect(self.filter_thumb_view)
-        self.line_filter.textEdited.connect(
-            lambda _text: self._filter_timer.start())
-        self.line_filter.setPlaceholderText(sections.Section.search_hint)    # every hint is ""
+        self.line_filter.textEdited.connect(self.pane.type_search)    # only typing, never setText ▸p/filter-pass-cost
+        self.line_filter.setPlaceholderText(section_base.Section.search_hint)    # every hint is ""
         self.line_filter.setToolTip(ui_helpers.tooltip_text(
             tooltips.PANEL_SEARCH))
         self.line_filter.setFixedHeight(theme.ui_px(self._TOOLBAR["field_h"]))    # ▸r/toolbar-from-frame
@@ -1489,7 +1148,6 @@ class AmazePanel(QtWidgets.QWidget):
             self.filter_label.setObjectName("filter_label")
             self._toolbar_controls += [self.filter_label, self.line_filter]
 
-        self.current_section = "material"
         self._build_splitter_and_sidebar()    # catview moves into a new wrapper, in its old place
         self.section_tabs = None
         self._build_section_tabs()    # the strip below the toolbar, rebuilt when enabled_sections changes
@@ -1513,9 +1171,9 @@ class AmazePanel(QtWidgets.QWidget):
         self.click_slider.setValue(ui_helpers.ClickSlider.DEFAULT_VALUE)
         self.click_slider.setSingleStep(50)
         self.click_slider.setPageStep(50)
-        self.click_slider.set_accent_color(theme.accent(self.prefs.accent_color))
+        self.click_slider.set_accent_color(theme.accent(self.pane.prefs.accent_color))
         self.click_slider.setMinimumWidth(theme.ui_px(38))    # same sizing rule as the filter box: 400px rendered max, 75px min
-        self.click_slider.stepped = self.prefs.step_size
+        self.click_slider.stepped = self.pane.prefs.step_size
         self._build_slider_and_layout()
 
     def _lay_out_toolbar(self) -> None:
@@ -1549,59 +1207,6 @@ class AmazePanel(QtWidgets.QWidget):
         layout.addStretch()
         buttons(drawn["right"])    # pinned to the right edge by the stretch
 
-    @staticmethod
-    def category_names_from(model) -> list[str]:
-        """Every STORED category name, empty ones in and All out, sorted by the label a row shows."""
-        names = []
-        if not model:
-            return names
-        for elem in range(model.rowCount()):    # the source model, never the proxy, which hides empty ones
-            cidx = model.index(elem, 0)
-            name = model.data(cidx, category.SIDEBAR_KEY_ROLE)    # STORED: "_WIP" displays as WIP
-            if name and not category.is_all(name):
-                names.append(str(name))
-        return sorted(names, key=lambda name: category.display_name(name).lower())
-
-    def assign_category_active(self, category: str) -> None:
-        """Replace the category of the active section's selected assets; a drop on the sidebar."""
-        category = (category or "").strip()
-        if not category:
-            return
-        if self.current_section == "gradient":
-            self._assign_gradient_category(category)
-            return
-        stack = self._active_asset_stack()
-        if stack is None:
-            return
-        model, proxy, selmodel, catmodel = stack
-        ids = [model.tile_key(proxy.mapToSource(index).row())
-               for index in grid_columns.selected_rows(selmodel)]
-        if not ids:
-            return
-        catmodel.check_add_category(category)    # outside the pair (it inserts), and its save can move rows
-        with ui_helpers.relayout(model):
-            for row in (model.find_asset_row_by_id(mat_id) for mat_id in ids):
-                if row < 0:
-                    continue    # deleted on another machine meanwhile
-                asset = model.assets[row]
-                model.set_assetdata(
-                    model.index(row, 0), asset.name, category,
-                    ", ".join(asset.tags),
-                    None, save=False    # fav=None: never the per-user favourite; save=False: one write below
-                )
-        model.save()    # AFTER the pair: a save merges rows another Houdini wrote, and an insert inside segfaults H21
-        self.refresh_sidebar_categories()
-
-    def _assign_gradient_category(self, category: str) -> None:
-        """Move the selected gradients to a category, the seeded palettes included."""
-        rows = [
-            self.gradient_sorted_model.mapToSource(i).row()
-            for i in grid_columns.selected_rows(self.gradient_selection_model)
-        ]
-        moved = self.gradient_model.set_user_category(rows, category)
-        if moved:
-            self.refresh_sidebar_categories()
-
     def _grid_geometry(self) -> dict:
         """The numbers that change when the grid moves: viewport, scroll range, grid step, size hint."""
         view = self.thumblist
@@ -1619,7 +1224,7 @@ class AmazePanel(QtWidgets.QWidget):
         """Grid right-click - the active section builds its own menu."""
         watch = self._grid_geometry() if debug.is_on() else None    # debug only: logs a right-click that moved the grid
         try:
-            self._thumblist_rc_menu()
+            grid.open_grid_menu(self, self.pane.active_section())    # the online section too
         finally:
             if watch is not None:
                 after = self._grid_geometry()
@@ -1627,162 +1232,19 @@ class AmazePanel(QtWidgets.QWidget):
                     debug.event("grid", "geometry changed by right-click",
                                 before=watch, after=after)
 
-    def _thumblist_rc_menu(self) -> None:
-        """The menu itself, from the active context's `GRID_MENU`."""
-        context = self.active_section()    # the online section too
-        if context is not None:
-            context.rc_menu()
-
-    def open_versions_dialog(self, index, proxy, model) -> None:
-        """The Versions dialog over `model`'s row at `index`: Select makes the picked one active."""
-        from amaze.dialogs import versions_dialog
-        row = proxy.mapToSource(index).row()    # `index` is the proxy's
-        if not 0 <= row < len(model.assets):    # -1 would index the LAST asset ▸r/model-contracts
-            return
-        mat = model.assets[row]
-        listed, active = model.version_list(row)
-        if len(listed) < 2:
-            return
-        dialog = versions_dialog.VersionsDialog(mat.name, listed, active, parent=self)
-        if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
-            return
-        row = model.find_asset_row_by_id(mat.mat_id)    # the rows may have changed while the dialog was open
-        if dialog.chosen != active and row >= 0:
-            model.switch_version(row, dialog.chosen)
-
-
-
-    def copy_file_paths(self, proxy_indexes) -> None:
-        """Copy the selection's paths to the clipboard as Houdini paths, one per line."""
-        paths = []
-        for proxy_index in proxy_indexes:
-            path = proxy_index.data(self.file_files_model.PathRole) or ""
-            if path:
-                paths.append(self.drop_placement.scene_path(path))    # written as the session writes parm paths
-        if not paths:
-            return
-        QtWidgets.QApplication.clipboard().setText("\n".join(paths))    # no dialog - the changed clipboard IS the feedback
-        debug.event("file", "paths copied", count=len(paths))
-
     def catlist_rc_menu(self) -> None:
         """Sidebar right-click - the active context builds its own menu."""
-        section = self.active_section()    # the online section has no SIDEBAR_MENU
-        if section is not None:
-            section.catlist_menu()
-
-
-    def locate_folder_user(self, folders_model) -> None:
-        """Sidebar "Locate Folder...": re-point the selected registered folder at a new location."""
-        ui = getattr(hou, "ui", None)
-        indexes = self.cat_list.selected_rows()
-        row = indexes[0].row() if indexes and not indexes[0].parent().isValid() else -1    # top rows
-        if row <= 0 or not folders_model.registered_at(row):    # nothing selected, All or the scene row: no location
-            if ui is not None:
-                ui.displayMessage(
-                    messages.NO_FOLDER_SELECTED_TO_RELOCATE,
-                    title=messages.TITLE_AMAZE, severity=hou.severityType.Warning
-                )
-            return
-        path = ui.selectFile(file_type=hou.fileType.Directory) if ui else ""
-        if not path:
-            return
-        rewritten = folders_model.relocate_folder(
-            row, hou.text.expandString(path))    # favorites moved; negative: not a folder
-        if rewritten < 0:
-            if ui is not None:
-                ui.displayMessage(
-                    messages.LOCATION_ALREADY_ADDED if rewritten == folders.ALREADY_A_LOCATION
-                    else messages.RELOCATE_TARGET_NOT_A_FOLDER,
-                    title=messages.TITLE_AMAZE, severity=hou.severityType.Warning
-                )
-            return
-        if rewritten:
-            debug.event("folders", "relocated", favorites=rewritten)
-        self.update_selected_cat()    # rescan under the new path
+        grid.open_catlist_menu(self, self.pane.active_section())    # the online section has no SIDEBAR_MENU
 
 
     def locate_unreadable_folder(self) -> None:
-        """Locate in the unreachable-folder empty state: select the named folder, re-point it."""
-        model = getattr(self, "file_folders_model", None)
-        path = empty_state.unreadable_folder(self)
-        if model is None or not path:
-            return
-        row = model.row_of(path)
-        view_model = self.cat_list.model() if self.cat_list else None
-        if row is None or view_model is None:
-            return
-        self.cat_list.highlight(view_model.index(row, 0))
-        self.locate_folder_user(model)
-        context = self.active_section()
-        if context is not None:
-            context.reselect_sidebar_row()    # a cancelled or failed Locate moved only the highlight
-
-    def hip_path_for(self, index):
-        """The scene path behind a File-grid index, or '' for a row that is not a scene."""
-        if index is None or not index.isValid():
-            return ""
-        if index.data(self.file_files_model.KindRole) != \
-                locations.KIND_HIP:
-            return ""
-        return index.data(self.file_files_model.PathRole) or ""
-
-    def raw_category_name(self, index) -> str:
-        """The stored name behind a sidebar row, not the displayed one, "" on All; key every action on it."""
-        if index is None or not index.isValid():
-            return ""
-        return str(index.data(category.SIDEBAR_KEY_ROLE) or "")    # DisplayRole drops a leading "_"
-
-    def selected_category_name(self) -> str:
-        """The sidebar's category, "" for All: selection, then current index; no section check."""
-        if self.cat_list is None:
-            return ""
-        indexes = self.cat_list.selected_rows()
-        index = indexes[0] if indexes else ui_helpers.live_current_index(    # current but not selected after a restore
-            self.cat_list)
-        name = self.raw_category_name(index)
-        return "" if category.is_all(name) else name
-
-    DEFAULT_SIDEBAR_COLOUR = amazetheme.SIDEBAR_PICKER_START
-
-    def ask_category_name(self, title: str, default: str = ""):
-        """The category-name dialog: None when cancelled, "" when the field was cleared."""
-        from amaze.dialogs import gradient_dialog
-        dialog = gradient_dialog.CategoryDialog(title, default, parent=self)
-        dialog.exec()
-        if dialog.canceled:
-            return None
-        return dialog.name or ""    # `""` is a valid result: a cleared Rename restores the folder's name
-
-    def sidebar_set_colour(self, pick: bool, preset: str = "") -> None:
-        """Label ▸ on the sidebar selection: `preset`, or "" for none; `pick` opens a picker."""
-        context = self.active_section()
-        if context is None or self.cat_list is None:
-            return
-        names = [context.colour_key(index)    # stored name, or a location's path in File
-                 for index in self.cat_list.selected_rows()]
-        names = [name for name in names    # All is skipped
-                 if name and not category.is_all(name)]
-        if not names:
-            return
-
-        colour = preset
-        if pick:
-            chosen = ui_helpers.pick_color(
-                context.sidebar_colour(names[0])
-                or self.DEFAULT_SIDEBAR_COLOUR,
-                self, context.colour_title)
-            if chosen is None:
-                return
-            colour = chosen.name()
-
-        for name in names:
-            context.set_sidebar_colour(name, colour)    # the context decides the store and the repaint
-
+        """Locate in the unreachable-folder empty state: the folder it names is re-pointed."""
+        self.pane.files.locate_unreadable(empty_state.unreadable_folder(self))
 
     def _badge_click_handler(self, handler):
         """A badge click runs the section's `handler` method: on the selection if the tile is in it."""
         def click(index):
-            context = self.active_section()
+            context = self.pane.active_section()
             if context is None or not hasattr(context, handler):
                 return
             selmodel = self.thumblist.selectionModel()
@@ -1790,75 +1252,11 @@ class AmazePanel(QtWidgets.QWidget):
             getattr(context, handler)(rows if index in rows else [index], index)
         return click
 
-    def grid_toggle_favourite(self, indexes) -> None:
-        """Toggle the favourite on the grid's selection, via the section's `toggle_favourite`."""
-        context = self.active_section()
-        if context is None:
-            return
-        context.toggle_favourite(list(indexes))
-
-    def convert_selected(self, target: str) -> None:
-        """`Convert to`: a converted copy of each selected material with a route to `target`."""
-        from amaze.render.material_conversion import engine as conversion_engine
-        if not self.material_model or target not in conversion_engine.targets():
-            return
-        indexes = grid_columns.selected_rows(self.material_selection_model)
-        if not indexes:
-            return
-        model = self.material_model
-        ids = [model.tile_key(self.material_sorted_model.mapToSource(index).row())
-               for index in indexes]    # by ID, with no layout pair: each converted copy inserts and saves
-        lines, converted, eligible, sources, unlisted = [], 0, 0, set(), []
-        before = {str(mat.mat_id) for mat in model.assets}    # the converted copies are the rows added after this
-        for row in (model.find_asset_row_by_id(mat_id) for mat_id in ids):
-            if row < 0:
-                continue
-            mat = model.assets[row]
-            if not conversion_engine.has_route(mat.renderer, target):
-                continue
-            eligible += 1
-            sources.add(renderers.normalized(mat.renderer))
-            try:
-                ok, report = material_actions.convert(model, model.index(row, 0), target,
-                                                      render=False)
-            except Exception as exc:                          # noqa: BLE001
-                lines.append(messages.CONVERSION_CRASHED_LINE % (mat.name, exc))
-                continue
-            converted += 1 if ok else 0
-            if isinstance(ok, library.ListNotSaved):
-                unlisted.append(mat.name)    # the copy keeps its source's name
-            lines.extend(report.summary_lines())
-        self.render_new_thumbnails(before)
-        shown = " and ".join(renderers.label(source)
-                             for source in conversion_engine.targets() if source in sources)
-        ui = getattr(hou, "ui", None)
-        if ui is not None and eligible:
-            ui.displayMessage(
-                messages.CONVERSION_SUMMARY % (converted, eligible, shown, renderers.label(target)),
-                details="\n".join(lines), title=messages.TITLE_AMAZE,
-                severity=(hou.severityType.Message if converted == eligible
-                          else hou.severityType.Warning))
-        library.report_unlisted(unlisted)    # the status line, last, so nothing after it overwrites the line
-
-    def render_new_thumbnails(self, before: set) -> None:
-        """ONE render batch for the materials saved since `before` that have no thumbnail yet."""
-        model = self.material_model
-        if not model.preferences.render_on_import:    # the setting each save checked when it rendered alone
-            return
-        rows = []
-        for row, mat in enumerate(model.assets):
-            if str(mat.mat_id) in before:
-                continue
-            path = tile_icons.tile_read_path(model.preferences, str(mat.mat_id), model.DB_FILENAME)
-            if path and not os.path.exists(path):    # a hosted image is already the thumbnail
-                rows.append(row)
-        material_actions.render_thumbnails(model, rows)    # one husk per renderer ▸r/husk-startup
-
     def show_prefs(self, page: str = "") -> None:
         """Show Preferences, made as Houdini's own: one window per panel, a second open raises it."""
         if self._thumbsize_save_timer.isActive():    # flush a pending size save first
             self._thumbsize_save_timer.stop()
-            self.prefs.save()
+            self.pane.prefs.save()
         from amaze.dialogs import prefs_window
         window = getattr(self, "_prefs_window", None)
         try:
@@ -1866,7 +1264,7 @@ class AmazePanel(QtWidgets.QWidget):
         except RuntimeError:    # closed: the window deleted itself, as Houdini's does
             open_now = False
         if not open_now:
-            window = self._prefs_window = prefs_window.AmazePrefsWindow(self.prefs, panel=self)
+            window = self._prefs_window = prefs_window.AmazePrefsWindow(self.pane.prefs, pane=self.pane)
             window.sharedState().applied.connect(self._apply_preferences)    # Apply, and Accept
             window.closed.connect(self._apply_preferences)    # any close: a library chosen behind it opens
             self.destroyed.connect(window.close)    # the window must not outlive the panel it applies to
@@ -1883,301 +1281,42 @@ class AmazePanel(QtWidgets.QWidget):
         except RuntimeError:
             return
 
-        if not self.material_model or not self.category_model:    # still no library after the dialog - nothing below applies
+        if not self.pane.material_model or not self.pane.category_model:    # still no library after the dialog - nothing below applies
             return
 
         self.apply_view_mode()    # mode-aware: respects grid vs list
-        self.update_renderer_toggles()
-        self.prefs.load()
-        debug.configure(self.prefs.debug_mode)
-        hostos.set_cache_override(self.prefs.cache_dir)
-        switched = self.prefs.dir != self._models_dir
-        if switched:    # only a library the models do not hold yet gets a full re-read
-            self.open_library()
-        accent = theme.accent(self.prefs.accent_color)
+        self.pane.refresh_filter()    # a renderer may have been enabled or disabled
+        switched = self.pane.library.reread_settings()
+        accent = theme.accent(self.pane.prefs.accent_color)
         self.click_slider.set_accent_color(accent)
-        self.click_slider.stepped = self.prefs.step_size
-        if self.prefs.view_mode != "list":
+        self.click_slider.stepped = self.pane.prefs.step_size
+        if self.pane.prefs.view_mode != "list":
             self.click_slider.setValue(grid.active_thumbsize(self))    # with Step Size on, snapped to the nearest step
         self.texture_progress.set_accent_color(accent)
         self._sync_notes_button_pixmaps()
         self._sync_info_button_pixmaps()
         self.sidebar_delegate.set_drag_color(accent)
-        self.sidebar_delegate.show_counts = self.prefs.sidebar_counts
-        thumbnails.engine.set_budget_mb(self.prefs.ram_cache_mb)
-        for _sidebar_proxy in self.sidebar_proxies():    # every sidebar proxy
-            _sidebar_proxy.hide_empty = self.prefs.hide_empty_categories
-        self.refresh_sidebar_categories()    # selects All if hiding empty categories hid the selected row
-        self.cat_list.viewport().update()
+        self.sidebar_delegate.show_counts = self.pane.prefs.sidebar_counts
+        self.pane.settings_applied(switched)
         grid.visible_view(self).viewport().update()
-        section = self.active_section()
-        if section is not None and not switched:    # a switch has just refreshed it
-            section.prefs_changed()
-        self._apply_enabled_sections()    # visible section tabs may have changed in Preferences
-
-    def update_renderer_toggles(self):
-        """A renderer was enabled or disabled: the Filter menu is rebuilt whole."""
-        if getattr(self, "menu_filter", None) is None:
-            return
-        self.build_filter_menu()
-
-    def import_galleries(self) -> None:
-        """Every material preset in a .gal file saved as a material; ONE render batch after it."""
-        from amaze.core import gallery_import
-        ui = getattr(hou, "ui", None)
-        if not self.material_model:
-            if ui is not None:
-                ui.displayMessage(messages.NO_LIBRARY_CONFIGURED,
-                                  title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
-            return
-        picked = ui.selectFile(
-            start_directory=gallery_import.default_gallery_dir(),    # opens where Houdini keeps its galleries
-            title="Import Gallery (.gal)",
-            file_type=hou.fileType.Any,
-            pattern="*.gal",
-            chooser_mode=hou.fileChooserMode.Read,
-        ) if ui is not None else ""
-        picked = (picked or "").strip()
-        if not picked:
-            return
-        picked = hou.text.expandString(picked)
-        entries = gallery_import.entries_from_file(picked)
-        if not entries:
-            if ui is not None:
-                ui.displayMessage(
-                    messages.MATERIAL_PRESETS_FOUND % picked,
-                    title=messages.TITLE_AMAZE, severity=hou.severityType.Warning
-                )
-            return
-        types = {}
-        for _entry, type_name, _cat in entries:
-            types[type_name] = types.get(type_name, 0) + 1
-        listing = "\n".join(
-            "  %d x %s" % (count, name)
-            for name, count in sorted(types.items(), key=lambda x: -x[1])
-        )
-        renders = self.material_model.preferences.render_on_import    # what import_entries checks
-        if renders:
-            question = messages.IMPORT_MATERIAL_PRESETS_FROM_RENDERING % (
-                len(entries), os.path.basename(picked), listing)
-        else:
-            question = messages.IMPORT_MATERIAL_PRESETS_FROM % (
-                len(entries), os.path.basename(picked), listing)
-        choice = ui.displayMessage(
-            question, buttons=messages.BUTTONS_IMPORT,
-            default_choice=0, close_choice=1,
-            title=messages.TITLE_AMAZE, severity=hou.severityType.Message,
-        ) if ui is not None else 1    # no UI to prompt, so the result is the close_choice - Cancel
-        if choice != 0:
-            return
-        summary, interrupted, unlisted = {}, False, []    # import_entries fills OUR dict: Esc keeps the counts so far
-        try:
-            with hou.InterruptableOperation(  # type: ignore
-                "Importing gallery presets", open_interrupt_dialog=True
-            ) as op:
-                def progress(index, total, name):
-                    op.updateLongProgress(
-                        float(index) / max(total, 1),
-                        "%d/%d  %s" % (index + 1, total, name),
-                    )
-                gallery_import.import_entries(
-                    material_actions.adding_into(self.material_model, unlisted),
-                    entries, progress=progress, summary=summary,
-                    library=self.material_model)    # each save skips its render; ONE batch follows
-        except hou.OperationInterrupted:
-            interrupted = True
-            debug.event("gallery", "import interrupted", **summary)
-        for name in sorted(summary.get("categories", {})):
-            self.category_model.check_add_category(name)
-        self.refresh_sidebar_categories()
-        imported, skipped, failed = (summary.get(key, 0) for key in ("imported", "skipped", "failed"))
-        if interrupted:
-            text = messages.GALLERY_IMPORT_INTERRUPTED % (imported, skipped, failed)
-        elif renders:
-            text = messages.GALLERY_IMPORT_FINISHED_RENDERING % (imported, skipped, failed)
-        else:
-            text = messages.GALLERY_IMPORT_FINISHED_IMPORTED_SKIPPED % (imported, skipped, failed)
-        if ui is not None:
-            ui.displayMessage(text, title=messages.TITLE_AMAZE,
-                              severity=hou.severityType.Warning if failed else hou.severityType.Message)
-        library.report_unlisted(unlisted)    # the status line, last
-
-    def reselect_sidebar_row(self) -> None:
-        """Re-highlight the shown grid's sidebar row, after the rows were re-read."""
-        context = self.active_section()
-        if context is not None:
-            context.reselect_sidebar_row()
-
-    def open_usdlib_folder(self) -> None:
-        """Open the Library Folder in the System explorer"""
-        if not self.material_model:
-            ui = getattr(hou, "ui", None)
-            if ui is not None:
-                ui.displayMessage(messages.NO_LIBRARY_OPEN,
-                                  title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
-            return
-        lib_dir = self.prefs.dir
-        hostos.open_path(lib_dir)
-
-    def add_file_folder_user(self) -> None:
-        """Register a folder for the File section; stores the path only, nothing is scanned."""
-        ui = getattr(hou, "ui", None)
-        path = ui.selectFile(file_type=hou.fileType.Directory) if ui else ""
-        if not path:
-            return
-        path = hou.text.expandString(path)
-        if self.file_folders_model.is_location(path):
-            ui.displayMessage(messages.LOCATION_ALREADY_ADDED, title=messages.TITLE_AMAZE,
-                              severity=hou.severityType.Warning)
-            return
-        self.file_folders_model.add_folder(path)
-
-    def unwatch_scene(self) -> None:
-        """The scene row stops tracking the open scene; a second call does nothing."""
-        watch, self._scene_watch = getattr(self, "_scene_watch", None), None
-        if watch is not None:
-            files_actions.unwatch_scene(watch)
-
-    def remove_file_folder_user(self) -> list:
-        """Unregister the selected location(s), returning the removed paths; disk is untouched."""
-        folders = self.file_folders_model
-        rows = sorted(    # top rows only: a subfolder's row number is not a location's
-            (i.row() for i in self.cat_list.selected_rows() if not i.parent().isValid()),
-            reverse=True
-        )
-        removed = []
-        for row in rows:
-            path = folders.data(folders.index(row, 0), folders.PathRole)
-            if folders.remove_folder(row):
-                removed.append(path)
-        return removed
-
-    ALL_SECTIONS = section_list.SECTIONS    # (key, label) in order; keys are stored, never rename one
-
-    def _online_segments(self) -> list:
-        """The online strip: one tab per source, in source order; enabled_sections does not apply."""
-        return [(source.name, source.name)
-                for source in matx_sources.all_sources()]
 
     def _build_section_tabs(self) -> None:
         """(Re)build the one tab strip: the enabled sections, or the online sources while online."""
-        if self._is_online():
-            segments = self._online_segments()
-        else:
-            enabled = self.prefs.enabled_sections
-            segments = [(k, lbl) for (k, lbl) in self.ALL_SECTIONS
-                        if k in enabled]
-        if not segments:
-            segments = [("material", "Material")]
+        segments = self.pane.tabs()
         if getattr(self, "section_tabs", None) is not None:    # replaces the strip at layout index 1
             if self._central_layout is not None:
                 self._central_layout.removeWidget(self.section_tabs)
             self.section_tabs.deleteLater()
         self.section_tabs = ui_helpers.SectionTabBar(segments)
-        self.section_tabs.segmentClicked.connect(
-            lambda key: self._on_tab_toggled(key, True)
-        )
-        self.section_tabs.cancelClicked.connect(self._on_cancel_conversions)
+        self.section_tabs.segmentClicked.connect(self.pane.choose_tab)
+        self.section_tabs.cancelClicked.connect(self.pane.cancel_work)
         bar = getattr(self, "texture_progress", None)
         self.section_tabs.set_cancel_visible(    # read from the bar, so a rebuild during a batch matches it
             bar is not None and not bar.isHidden())
         if self._central_layout is not None:
             self._central_layout.insertWidget(1, self.section_tabs)
-        keys = [k for k, _ in segments]
-        current = (getattr(self, "online_source", None) if self._is_online()
-                   else getattr(self, "current_section", "material"))
-        self.section_tabs.setChecked(
-            current if current in keys else keys[0], emit=False    # setup() activates; models may not exist yet
-        )
+        self.section_tabs.setChecked(self.pane.current_tab(), emit=False)    # setup() activates; models may not exist yet
 
-
-    def _apply_enabled_sections(self) -> None:
-        """Rebuild tabs for enabled_sections; a hidden current section is swapped for the first."""
-        enabled = self.prefs.enabled_sections
-        self._build_section_tabs()
-        if self.current_section not in enabled and self.material_model:
-            keys = [k for k, _ in self.ALL_SECTIONS if k in enabled] or [
-                "material"
-            ]
-            if self._is_online():
-                self.current_section = keys[0]    # a tab here is a SOURCE; leaving Online shows this one
-            else:
-                self._on_tab_toggled(keys[0], True)
-
-    def _on_tab_toggled(self, key: str, checked: bool) -> None:
-        """A tab was clicked: a source online, else a section; an unbuilt section changes nothing."""
-        if not checked:
-            return
-        if self._is_online():
-            self.open_online_source(key)
-            return
-        if self.material_model is None:    # no library yet
-            return
-        self._capture_section_state()    # the outgoing section's, before anything changes
-        self.current_section = key
-        debug.event("section", "switched", to=key, online=self._is_online())
-        section = self.sections.get(key)
-        if section is None:
-            debug.event("section", "section not built yet - the view "
-                        "below will not change", section=key)
-            return
-        self._apply_context(section, key)
-
-    def _apply_context(self, context, key: str) -> None:
-        """Activate a context and all that follows; the only path, for every section and online."""
-        proxy = context.tile_models()[1]
-        with proxy.one_pass() if proxy is not None else contextlib.nullcontext():    # every filter set below shares one pass ▸p/filter-pass-cost
-            context.activate()
-            self._sync_toolbar(context)    # EVERY toolbar control, from the one table - Capture included
-            self._sync_filters_to_section(context)
-            self._restore_section_state(key)
-        self._refresh_notes_subject()
-        self._refresh_info_subject()
-        empty_state.track(self)    # the empty-state overlay follows the new model
-
-    def _sync_filters_to_section(self, section) -> None:
-        """Apply the shared filter box and favourites button to the incoming section's proxy."""
-        text = self.line_filter.text() if self.line_filter else ""
-        favourites = bool(self.cb_favsonly and self.cb_favsonly.isChecked())
-        section.filter_text(text)
-        section.filter_favorites(favourites)
-        self.build_filter_menu()    # each section keeps its own menu choice
-
-    def _capture_section_state(self) -> None:
-        """Remember the current section's sidebar choice and grid scroll for _restore_section_state."""
-        state = {}
-        current = ui_helpers.live_current_index(self.cat_list)    # a fresh index, safe for `.data()`
-        if current is not None:
-            state["cat_text"] = current.data()
-        state["scroll"] = grid.visible_view(self).verticalScrollBar().value()
-        self._section_view_state[self.current_section] = state
-
-    def _restore_section_state(self, key: str) -> None:
-        """Re-select the section's last sidebar entry by display text, and bring its scroll back."""
-        state = self._section_view_state.get(key)
-        if not state:
-            return
-        cat_text = state.get("cat_text")
-        if (
-            cat_text
-            and key not in ("file",)    # File restores its folder in activate()
-            and self.cat_list is not None
-        ):
-            model = self.cat_list.model()
-            if model is not None:
-                for row in range(model.rowCount()):
-                    idx = model.index(row, 0)
-                    if idx.data() == cat_text:
-                        self.cat_list.highlight(idx)
-                        self.update_selected_cat(idx)    # what a row the user chose runs
-                        break
-        scroll = state.get("scroll")
-        if scroll:
-            QtCore.QTimer.singleShot(    # after the relayout, which would clamp it
-                0,
-                lambda: grid.visible_view(self)
-                .verticalScrollBar().setValue(scroll),
-            )
 
     TOOLBAR_CONTROLS = (    # (control, context fact, "enabled" or "shown")
         ("cb_favsonly", "takes_favourites", "enabled"),
@@ -2214,19 +1353,13 @@ class AmazePanel(QtWidgets.QWidget):
         if self.line_filter is None:
             return
         self.line_filter.setPlaceholderText(
-            getattr(self.active_section(), "search_hint",
-                    sections.Section.search_hint))
-
-    def active_section(self):
-        """The active context: a Section, or the online section while it is shown."""
-        if getattr(self, "online_mode", False):
-            return getattr(self, "online_context", None)
-        return getattr(self, "sections", {}).get(self.current_section)
+            getattr(self.pane.active_section(), "search_hint",
+                    section_base.Section.search_hint))
 
     def tile_delegates(self) -> tuple:
         """EVERY tile delegate, once, from the sections; the tests use it to reach them all."""
         found = []
-        for section in getattr(self, "sections", {}).values():
+        for section in self.pane.sections.values():
             name = getattr(section, "delegate_attr", "")
             delegate = getattr(self, name, None) if name else None
             if delegate is not None and delegate not in found:
@@ -2236,459 +1369,20 @@ class AmazePanel(QtWidgets.QWidget):
             found.append(online)
         return tuple(found)
 
-    def tile_icon_models(self) -> tuple:
-        """Every model whose tiles can show an icon, once, from each section's `tile_models()`."""
-        found = []
-        for section in getattr(self, "sections", {}).values():
-            model = section.tile_models()[0]
-            if model is not None and model not in found:
-                found.append(model)
-        return tuple(found)
-
-    def _is_online(self) -> bool:
-        """Whether the online section is shown; the one check every handler uses."""
-        return bool(getattr(self, "online_mode", False))    # `current_section` still names the local section underneath
-
     def _on_online_source(self, action) -> None:
         """A source entry: Material Library leaves online, an online source opens its browser."""
         if action is self.action_material_library:
-            self.leave_online_mode()
-            if self.current_section != "material":
+            self.pane.leave_online()
+            if self.pane.current_section != "material":
                 self.section_tabs.setChecked("material")
         elif action.isChecked():    # the entries share one exclusive group, so Qt keeps exactly one checked
-            self.open_online_source(action.text())
-
-    def enter_online_mode(self, source: str = "") -> None:
-        """Switch to the online tab strip; leaving returns to the section shown before."""
-        if self._is_online():
-            return
-        if getattr(self, "matx_online_model", None) is None:    # no online model: online cannot open
-            self._sync_online_chip()
-            return
-        self._capture_section_state()    # what leaving restores
-        self.online_mode = True
-        first = source or self._online_segments()[0][0]
-        self._build_section_tabs()
-        self.open_online_source(first)
-        self._sync_online_chip()
-
-    def leave_online_mode(self) -> None:
-        """Return to the local sections: the one left, or the first shown if it was hidden."""
-        if not self._is_online():
-            return
-        self.exit_online_materials()
-        self._build_section_tabs()    # checks the tab of `current_section`, emitting nothing
-        section = self.active_section()    # the section underneath: no tab click re-points the widgets here
-        if section is not None:
-            self._apply_context(section, section.key)    # the same path entering uses
-
-    def open_online_source(self, source_name: str) -> None:
-        """Show one source in the online section; a tab click, as the tabs are the sources."""
-        if not self._is_online():
-            self.enter_online_mode(source_name)    # `enter_online_mode` does the entering, for any caller
-            return
-        self.online_source = source_name
-        act = self.online_source_actions.get(source_name)
-        if act is not None and not act.isChecked():
-            act.setChecked(True)
-        debug.event("online", "source opened", source=source_name)
-        if self.section_tabs is not None:    # the source's own tab
-            self.section_tabs.setChecked(source_name, emit=False)
-        self.matx_online_model.set_source(source_name)
-        self.enter_online()
-        self._select_online_all()    # a source pick starts on "All"
-
-    def _select_online_all(self) -> None:
-        """Select the online sidebar's "All" row and clear any category filter."""
-        if not self.cat_list or self.matx_source_model.rowCount() == 0:
-            return
-        idx = self.matx_source_model.index(0, 0)
-        if self.cat_list.selectionModel() is not None:
-            self.cat_list.highlight(idx)
-        self.update_selected_cat()
-
-    def exit_online_materials(self) -> None:
-        """Leave the online browser, back to the local library (Material Library)."""
-        self.online_mode = False
-        self._sync_online_chip()
-        if getattr(self, "action_material_library", None) is not None:
-            self.action_material_library.setChecked(True)    # exclusive group, so checking this unchecks any source
-        debug.event("online", "exited")    # the caller decides which section shows next
-
-    def enter_online(self) -> None:
-        """Enter the online section through `_apply_context`, the path every section takes."""
-        self._apply_context(self.online_context, self.online_context.key)
-
-    def select_default_sidebar_row(self, sidebar_proxy):
-        """Select the sidebar's All row and return its key, ""; the caller applies the filter."""
-        if self.cat_list is None or sidebar_proxy is None:
-            return None
-        target = sidebar_proxy.index_of("")
-        if not target.isValid():
-            return None
-        if self.cat_list.selectionModel() is None:
-            return None
-        self.cat_list.highlight(target)    # a `setModel()` leaves nothing selected
-        return self.raw_category_name(target)
-
-    def edit_tile_icon(self, model, proxy, proxy_indexes,
-                       categories=()) -> None:
-        """Customize on any tile: one handler for every section, applied to the WHOLE selection."""
-        from amaze.dialogs import icon_dialog
-        if model is None or not proxy_indexes:
-            return
-        tile_keys = []    # tile keys, never rows: rows can change while the dialog is open
-        rows = []
-        for proxy_index in proxy_indexes:
-            source = proxy.mapToSource(proxy_index) if proxy is not None \
-                else proxy_index
-            if not source.isValid() or source.row() in rows:
-                continue
-            key = model.tile_key(source.row())
-            if key:
-                rows.append(source.row())
-                tile_keys.append(key)
-        if not tile_keys:
-            return
-
-        existing = getattr(self, "_icon_dialog", None)    # non-modal, one at a time
-        if existing is not None:
-            try:
-                existing.raise_()
-                existing.activateWindow()
-                return
-            except RuntimeError:
-                pass                      # already deleted underneath
-        single = len(rows) == 1    # Name only where the model renames, disabled on a multi-selection
-        tile_name = None
-        if "name" in model.TILE_FIELDS:
-            tile_name = model.tile_name(rows[0]) if single else ""
-        tile_tags = None    # no field without tags; a multi-selection opens empty
-        if "tags" in model.TILE_FIELDS:
-            tile_tags = model.tile_tags(rows[0]) if single else ""
-        offered = None    # no field at all where the model cannot hold a category
-        tile_category = ""
-        if "category" in model.TILE_FIELDS:
-            offered = list(categories)    # the OWNING section's list, passed in by its menu
-            shared = {model.tile_category(row) for row in rows}
-            tile_category = shared.pop() if len(shared) == 1 else ""    # mixed: the field starts empty
-        capture = getattr(model, "capture_image", None)    # a File row's capture is its image
-        faces = {"image": (capture and capture(rows[0])) or model.preview_image(rows[0]),
-                 "generic": tile_icons.generic_image(model.tile_face_art(rows[0]))}
-        dialog = icon_dialog.IconDialog(
-            model.tile_icon(rows[0]),
-            tile_icons.stroke_for(self.prefs),
-            self,
-            tile_name=tile_name,
-            tile_name_enabled=single,
-            tile_tags=tile_tags,
-            categories=offered,
-            tile_category=tile_category,
-            face=tile_icons.face_for(model, rows[0]),
-            faces=faces,
-            can_preview=any(model.can_preview(row) for row in rows),
-        )
-        self._icon_dialog = dialog
-
-        def _apply_edits(dialog=dialog, tile_keys=frozenset(tile_keys), model=model):
-            rows = [row for row in range(model.rowCount())    # resolved on commit; a tile deleted meanwhile is skipped
-                    if model.tile_key(row) in tile_keys]
-            if not rows:
-                return
-            self.apply_icon_spec(model, rows, dialog.spec)
-            edited = set()    # keys of the records changed below - nothing saves until the one commit
-            new_name = getattr(dialog, "new_tile_name", None)
-            if new_name and len(rows) == 1 and \
-                    "name" in model.TILE_FIELDS:
-                if model.set_tile_name(rows[0], new_name, save=False):
-                    edited.add(model.tile_key(rows[0]))
-            new_tags = getattr(dialog, "new_tags", None)
-            if new_tags is not None and "tags" in model.TILE_FIELDS:
-                if len(rows) == 1:
-                    if model.set_tile_tags(rows[0], new_tags, save=False):    # "" CLEARS the tags
-                        edited.add(model.tile_key(rows[0]))
-                else:
-                    for row in rows:    # ADDS across a selection: each tile keeps its own tags
-                        if model.add_tile_tags(row, new_tags, save=False):
-                            edited.add(model.tile_key(row))
-            new_category = getattr(dialog, "new_category", None)
-            if new_category and "category" in model.TILE_FIELDS:
-                for row in rows:    # EVERY selected tile, unlike the name and the tags
-                    if model.set_tile_category(row, new_category, save=False):
-                        edited.add(model.tile_key(row))
-            if edited:
-                model.commit_tile_edits(edited)
-
-        def _finished(_result=0, dialog=dialog):
-            self._icon_dialog = None
-            try:
-                if not dialog.canceled:
-                    _apply_edits()
-            finally:
-                dialog.deleteLater()    # the panel parents it, so it must be deleted
-
-        dialog.applied.connect(_apply_edits)    # Apply commits and stays open; Accept closes and commits through _finished
-        dialog.finished.connect(_finished)
-        dialog.show()
-        return
-
-    def apply_icon_spec(self, model, rows, spec) -> None:
-
-        failed = model.set_tile_icons(rows, spec)    # one icon-store write for the whole selection
-        model.commit_tile_icons(rows)    # once per selection, never per row
-        ui = getattr(hou, "ui", None)
-        if failed and ui is not None:
-            ui.displayMessage(
-                messages.TILE_ICON_SAVE_FAILED
-                % (failed, "" if failed == 1 else "s"),
-                title=messages.TITLE_AMAZE, severity=hou.severityType.Warning    # a real plural
-            )
-
-
-    def import_cop_assets(self) -> None:
-        """Import every selected Node tile; failures are listed in one dialog."""
-        self._import_selection(
-            self.cop_sorted_model, self.cop_model, node_actions.import_asset_to_scene,
-            "Amaze Import Nodes Asset", messages.NAMELESS_NODE_ASSET,
-            messages.NODE_ASSETS_IMPORT_FAILURES)
-
-    def _import_selection(self, proxy, model, import_asset, label: str, noun: str, summary: str) -> None:
-        """Each selected tile through `import_asset(model, source_index)`: ONE undo entry, one dialog."""
-        failures = []
-        with hou.undos.group(label):    # the containers and what loads into them revert as one step
-            for index in grid_columns.selected_rows(self.thumblist.selectionModel()):
-                source_index = proxy.mapToSource(index)
-                try:
-                    ok, reason, _created = import_asset(model, source_index)
-                except Exception as e:    # a failing tile is added to the report; the rest still import
-                    try:
-                        name = model.assets[source_index.row()].name
-                    except Exception:
-                        name = noun
-                    failures.append(messages.ASSET_FAILED_TO_IMPORT_LINE % (name, e))
-                    continue
-                if not ok and reason:
-                    failures.append(reason)
-        ui = getattr(hou, "ui", None)
-        if failures and ui is not None:
-            ui.displayMessage(summary, details="\n".join(failures),
-                              title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
-
-
-    def get_code_category_names(self) -> list[str]:
-        return self.category_names_from(self.code_category_model)
-
-    def _current_code_category(self) -> str:
-        """The sidebar's category while Code shows, "" for All; the code dialog's default."""
-        if self.current_section != "code":
-            return ""
-        return self.selected_category_name()
-
-    def _add_code_snippet(
-        self, code: str, language: str, default_name: str
-    ) -> None:
-        """New Snippet and a node's code: the code dialog, prefilled; each Apply saves the snippet."""
-        from amaze.core import library_settings
-        from amaze.dialogs import code_dialog
-        if not self.code_model:
-            ui = getattr(hou, "ui", None)
-            if ui is not None:
-                ui.displayMessage(
-                    messages.NO_LIBRARY_CONFIGURED_2,
-                    title=messages.TITLE_AMAZE, severity=hou.severityType.Warning
-                )
-            return
-        dialog = code_dialog.CodeDialog(
-            self.get_code_category_names(),
-            name=default_name,
-            language=language or "VEX",
-            category=self._current_code_category(),
-            code=code,
-            versions_on=library_settings.allow_overwrite(self.prefs),    # Preferences ▸ Versions
-            parent=self,
-        )
-        self.sections["code"].run_code_dialog(dialog, "")    # the first Apply adds the snippet
-
-    def new_code_snippet(self) -> None:
-        """Create a snippet by typing/pasting into an empty editor."""
-        self._add_code_snippet("", "VEX", "")
-
-    def click_on_row(self, section, index, payload=None) -> None:
-        """A double-click or its menu entry on `index`, applied per `section`'s rule."""
-        if index is None or not index.isValid():
-            return
-        rule = sections.drop_rule(section, self, index)    # the same rule lookup a drag uses
-        if rule is None:
-            self._cannot_load_here()
-            return
-        try:
-            applied = self._apply_click_rule(section, rule, index,
-                                             payload)    # the menu entry's extra argument
-        except hou.PermissionError as refusal:    # only this class; anything else still raises
-            debug.exception("click failed - permission error", refusal,
-                            section=getattr(section, "key", ""))
-            debug.refuse(str(refusal),    # ▸p/refuse-vs-alert
-                         section=getattr(section, "key", ""))
-            return
-        if not applied:
-            self._cannot_load_here()
-
-    def _apply_click_rule(self, section, rule, index, payload=None) -> bool:
-        """One selected node gets the payload first; if it cannot use it, a node is created."""
-        extra = {"basis": payload} if payload else {}    # only when there is one
-        sel = self._visible_selected_nodes()
-        if rule.click_on_node and len(sel) == 1:
-            hint = sections.drop_handler(section, rule.click_on_node)    # the handlers a rule names resolve on the SECTION, never on the panel
-            if bool(hint(index, sel[0], **extra)):
-                return True
-            debug.event("interact", "the selected node did not accept the payload - "
-                        "trying the network",
-                        handler=rule.click_on_node, node=sel[0].path())
-        if rule.click_resolve:
-            handler = sections.drop_handler(section, rule.click_resolve)
-            return bool(handler(index, **extra))
-        if rule.on_space:
-            create = sections.drop_handler(section, rule.on_space)
-            for network in self._view_create_networks():
-                if create(index, network, **extra):
-                    return True
-        return False
-
-    def _active_network_pwd(self) -> hou.Node | None:
-        """The pwd of the network editor the user most likely looks at, or None."""
-        editors = nodes.NodeHandler.network_editors()
-        try:
-            return editors[0].pwd() if editors else None
-        except AttributeError:
-            return None
-
-    @staticmethod
-    def create_loader_inside(container: hou.Node, loader_type: str):
-        """Create the loader in the deepest SOP network under the container, else a higher one."""
-        candidates = []
-
-        def walk(node, depth):
-            try:
-                category = node.childTypeCategory()
-            except (AttributeError, hou.OperationFailed):
-                category = None
-            if category is not None and category.name() == "Sop":
-                candidates.append((depth, node))
-            if depth < 3:
-                for child in node.children():
-                    walk(child, depth + 1)
-
-        walk(container, 0)
-        last_error = None
-        for _depth, net in sorted(candidates, key=lambda c: -c[0]):    # deepest first; a locked level raises
-            try:
-                return net.createNode(loader_type)
-            except hou.Error as exc:
-                last_error = exc
-        raise last_error or hou.OperationFailed("no SOP network found")
-
-    def import_geo_asset(self, index: QtCore.QModelIndex) -> None:
-        """Import a geometry file into the network editor's current network, per its kind."""
-        path = index.data(self.file_files_model.PathRole)
-        if not path:
-            return
-        self.drop_placement.import_geo_in_context(path, self._active_network_pwd())
-
-    def _import_material_builder(self, asset_id, target, context_node=None):
-        """Import a library material by id on a drop; the builder VOP, or None once reported."""
-        if not self.material_model:
-            return None
-        row = self.material_model.find_asset_row_by_id(str(asset_id))
-        if row < 0:
-            return None
-        mat = self.material_model.assets[row]
-        handler = nodes.NodeHandler(self.prefs)
-        ok, reason, _created = handler.import_asset_to_scene(
-            mat, target, context_node=context_node
-        )
-        if not ok:
-            debug.event("import", "import failed",    # always a named reason
-                        material=mat.name, target=target,
-                        reason=reason or "(no reason reported)")
-            if reason:
-                debug.refuse(reason)    # the import marks library damage, which shows the dialog ▸p/refuse-vs-alert
-            return None
-        return handler.builder_node
-
-    def import_material_into_container(self, asset_id, container):
-        """For a drop in a LOP viewport: import into the given materiallibrary."""
-        return self._import_material_builder(
-            asset_id, "lop", context_node=container
-        )
-
-    def assign_material_to_obj(self, asset_ids, obj_node) -> bool:
-        """Drop in an OBJ viewport: import to /mat, assigning the first material to `obj_node`."""
-        if not self.material_model or not asset_ids:
-            return False
-        builder = None
-        for i, aid in enumerate(asset_ids):
-            vop = self._import_material_builder(aid, "mat")
-            if i == 0 and vop is not None:
-                builder = vop
-        if builder is None:
-            return False
-        parm = obj_node.parm("shop_materialpath")
-        if parm is None:
-            debug.refuse(messages.OBJECT_HAS_NO_MATERIAL_PARM % obj_node.name())
-            return False
-        parm.set(builder.path())
-        return True
-
-    def selected_material_ids(self, index) -> list:
-        """Asset ids of the selection, the pressed tile first."""
-        row = self.material_sorted_model.mapToSource(index).row()    # may be -1 for a stale index ▸r/model-contracts
-        if not 0 <= row < len(self.material_model.assets):
-            return []
-        pressed_id = self.material_model.assets[row].mat_id
-        ids = [pressed_id]
-        try:
-            for sel in grid_columns.selected_rows(
-                    self.material_selection_model):
-                src_row = self.material_sorted_model.mapToSource(sel).row()
-                if not 0 <= src_row < len(self.material_model.assets):
-                    continue      # same stale-row check, per selected row
-                aid = self.material_model.assets[src_row].mat_id
-                if aid != pressed_id:
-                    ids.append(aid)
-        except Exception:
-            pass
-        return ids
-
-    def import_materials_into_context_grouped(self, context, ids,
-                                               position=None) -> None:
-        from amaze.helpers import helpers
-        for offset, aid in enumerate(ids):
-            row = self.material_model.find_asset_row_by_id(aid)
-            if row < 0:
-                continue
-            idx = self.material_model.index(row, 0)
-            ok, reason, created = material_actions.import_asset_to_scene(
-                self.material_model, idx, "auto", context_node=context
-            )
-            if not ok and reason:
-                debug.refuse(reason, net=context.path())    # library damage shows the dialog ▸p/refuse-vs-alert
-                break    # ONE failure message per multi-drop, never one per asset ▸p/dialogs-interrupt
-            if position is not None:
-                helpers.place_nodes(created, hou.Vector2(
-                    position.x() + offset * 0.6,
-                    position.y() - offset * 0.9))
+            self.pane.open_online_source(action.text())
 
     def _category_under_cursor(self):
         return sidebar.category_under_cursor(self)
 
     def _folder_under_cursor(self):
         return sidebar.folder_under_cursor(self)
-
-    def move_files_active(self, folder: str) -> bool:
-        """Move the ACTIVE section's selected files into `folder`; True when a move started."""
-        context = self.active_section()
-        return bool(context is not None and context.takes_file_drops
-                    and context.move_files_to(folder))
 
     def _set_drag_hover_row(self, row) -> None:
         """Highlight a sidebar row by its index, or clear with -1. Logic in panel/sidebar.py."""
@@ -2699,59 +1393,6 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _update_category_drag_hover_global(self) -> None:
         sidebar.update_hover_global(self)
-
-    def _network_items_at_cursor(self, editor):
-        """Droppable items under the cursor in a network editor, as (item, ...) tuples."""
-        try:
-            if not editor.isUnderCursor():    # isUnderCursor() excludes the pane's own toolbars and controls
-                return ()
-            p = editor.posToScreen(editor.cursorPosition())
-            r = theme.ui_px(2)
-            return editor.networkItemsInBox(
-                hou.Vector2(p.x() - r, p.y() - r),
-                hou.Vector2(p.x() + r, p.y() + r),
-                for_drop=True,
-            )
-        except (AttributeError, TypeError, hou.OperationFailed):
-            return ()
-
-    def pane_and_kind_under_cursor(self):
-        """The pane tab under the cursor and its type, or (None, None); the caller compares the type."""
-        from amaze.core import dragengine
-        pane_tab = dragengine.pane_tab_under_cursor()
-        if pane_tab is None:
-            return None, None
-        try:
-            return pane_tab, pane_tab.type()
-        except AttributeError:
-            return None, None
-
-    def _node_under_cursor(self, pane_tab=None,
-                           pane_type=None) -> hou.Node | None:
-        """The node under the cursor, or a Parameter Editor's node; pass the pane ▸p/drag-move-cost"""
-        if pane_tab is None:
-            pane_tab, pane_type = self.pane_and_kind_under_cursor()
-        if pane_tab is None:
-            return None
-        if pane_type == hou.paneTabType.Parm:    # the node that pane shows
-            try:
-                return pane_tab.currentNode()
-            except (AttributeError, hou.OperationFailed):
-                return None
-        if pane_type != hou.paneTabType.NetworkEditor:
-            return None
-        return self.first_node_at_cursor(pane_tab)
-
-    def first_node_at_cursor(self, pane_tab) -> hou.Node | None:
-        """The first hou.Node under the cursor, or None; the drop and click resolvers share it."""
-        for item in self._network_items_at_cursor(pane_tab):
-            candidates = (
-                item if isinstance(item, (tuple, list)) else (item,)
-            )
-            for candidate in candidates:
-                if isinstance(candidate, hou.Node):
-                    return candidate
-        return None
 
     def _on_splitter_moved(self, _pos: int, _index: int) -> None:
         """A splitter drag records both side panes' widths; the debounced save writes them."""
@@ -2776,9 +1417,9 @@ class AmazePanel(QtWidgets.QWidget):
         """Show or hide the pane and remember it; the grid takes up the width."""
         if getattr(self, "notes_panel", None) is None:
             return
-        self.prefs.show_notes = bool(checked)
+        self.pane.prefs.show_notes = bool(checked)
         self._show_side_page(self.notes_panel if checked else None)
-        self.prefs.save()
+        self.pane.prefs.save()
         if checked:
             self._close_other_pane("btn_info")
             self._refresh_notes_subject()
@@ -2793,9 +1434,9 @@ class AmazePanel(QtWidgets.QWidget):
         """Show or hide the info pane and remember it; opening it closes the comments pane."""
         if getattr(self, "info_panel", None) is None:
             return
-        self.prefs.show_info = bool(checked)
+        self.pane.prefs.show_info = bool(checked)
         self._show_side_page(self.info_panel if checked else None)
-        self.prefs.save()
+        self.pane.prefs.save()
         if checked:
             self._close_other_pane("btn_notes")
             self._refresh_info_subject()
@@ -2803,9 +1444,9 @@ class AmazePanel(QtWidgets.QWidget):
     def _show_side_page(self, opened=None) -> None:
         """Show the side pane's page: the one just `opened`, else the one the settings have on."""
         page = opened
-        if page is None and self.prefs.show_notes:
+        if page is None and self.pane.prefs.show_notes:
             page = self.notes_panel
-        if page is None and self.prefs.show_info:
+        if page is None and self.pane.prefs.show_info:
             page = self.info_panel
         self.side_pane.show_page(page)
 
@@ -2841,7 +1482,7 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _notes_subject(self):
         """What the Comments pane points at, or None; the section returns its selected tile's."""
-        context = self.active_section()
+        context = self.pane.active_section()
         if context is None or not context.takes_comments:    # the context decides
             return None
         index = grid.selected_current_in(    # a SELECTED row: Qt keeps the current one after a deselect
@@ -2863,7 +1504,7 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _info_subject(self):
         """What the info pane shows, or None: one selected row's, or several rows' together."""
-        context = self.active_section()
+        context = self.pane.active_section()
         if context is None or not context.takes_info:    # the context decides
             return None
         indexes = grid_columns.selected_rows(    # grid and list share this selection
@@ -2885,12 +1526,6 @@ class AmazePanel(QtWidgets.QWidget):
         else:
             panel.set_subject(subject)
 
-    def _on_file_folder_progress(self, done: int, total: int) -> None:
-        """The File model's progress: the bar shows only while File is shown, not online."""
-        if self._is_online() or self.current_section != "file":    # online, it can still be File
-            return
-        self._on_texture_progress(done, total)
-
     def set_conversion_bar_visible(self, visible: bool) -> None:
         """The only setter of the conversion bar's visibility, and the Cancel button's with it."""
         self.texture_progress.setVisible(visible)
@@ -2898,72 +1533,16 @@ class AmazePanel(QtWidgets.QWidget):
         if tabs is not None:
             tabs.set_cancel_visible(visible)
 
-    def _on_cancel_conversions(self) -> None:
-        """The Cancel button: stop a background render, else the File batch's conversions."""
-        if husk_job.jobs.busy():    # a background thumbnail render is using the bar
-            husk_job.jobs.cancel()
-            return
-        model = self.file_files_model
-        if model is not None:
-            model.cancel_conversions()    # the model owns the pair and its order
-
-    def _on_render_progress(self, done: int, total: int) -> None:
-        """A background thumbnail render's progress, on the bar whichever tab shows."""
-        self.set_conversion_bar_visible(True)
-        self.texture_progress.set_progress(done, total)
-
-    def _on_render_active(self, active: bool) -> None:
-        """The bar is shown when a background render starts and hidden when the last one ends."""
-        self.set_conversion_bar_visible(active)
-        if active:
-            self.texture_progress.set_progress(0, 100)
-
-    def _on_texture_progress(self, done: int, total: int) -> None:
-        """The thin bar over the grid while thumbnails generate; hidden with nothing left to do."""
-        if husk_job.jobs.busy():    # a background thumbnail render is using the bar
-            return
-        if total <= 0 or done >= total:
-            self.set_conversion_bar_visible(False)
-            return
-        self.set_conversion_bar_visible(True)
-        self.texture_progress.set_progress(done, total)
-
-    def _on_online_preview_progress(self, done: int, total: int) -> None:
-        """The same bar for the online preview pool, only while the online browser shows."""
-        if not self._is_online():
-            return
-        if getattr(self, "_online_download_active", False):
-            return  # a download import is using the bar right now
-        self._on_texture_progress(done, total)
-
-    def _active_asset_stack(self):
-        """The showing asset section's stack (model, proxy, selection, categories), or None."""
-        section = self.active_section()
-        return section.stack() if section is not None else None
-
-    def filter_thumb_view(self) -> None:
-        """Search box changed - the active context applies it."""
-        section = self.active_section()
-        if section is not None:
-            section.filter_text(self.line_filter.text())    # online, the source's API searches
-
-    def filter_favs(self) -> None:
-        """Favourites star toggled - the active context applies it."""
-        section = self.active_section()
-        if section is not None:
-            section.filter_favorites(self.cb_favsonly.isChecked())
-
     def build_filter_menu(self) -> None:
-        """Fill the Filter menu from the active section's `filter_entries`, and apply the remembered one."""
-        section = self.active_section()
-        entries = tuple(section.filter_entries()) if section is not None else ()
+        """Fill the Filter menu from the pane's entries and check the one in force."""
+        section = self.pane.active_section()
+        entries = self.pane.filter_entries()
         self.menu_filter.clear()    # deletes the menu's actions, emptying the group, never the group itself
         if self.filter_action_group is None:
             self.filter_action_group = QtGui.QActionGroup(self.menu_filter)    # ONE, for the session
             self.filter_action_group.setExclusive(True)
             self.filter_action_group.triggered.connect(self.filter_menu_changed)
         self.filter_actions = {}
-        self.filter_values = {}
         button = getattr(self, "btn_filter", None)
         if button is not None:
             if (section is not None
@@ -2977,7 +1556,7 @@ class AmazePanel(QtWidgets.QWidget):
                     section.filter_tooltip))
         if not entries:
             return
-        for entry_id, label, value, icon in entries:
+        for entry_id, label, _value, icon in entries:
             act = self.menu_filter.addAction(label)
             if icon:
                 act.setIcon(ui_helpers.menu_icon(icon, self))
@@ -2985,98 +1564,13 @@ class AmazePanel(QtWidgets.QWidget):
             act.setData(entry_id)
             self.filter_action_group.addAction(act)
             self.filter_actions[entry_id] = act
-            self.filter_values[entry_id] = value
             if icon and entry_id == entries[0].id:
                 self.menu_filter.addSeparator()    # a menu with icons separates the everything-entry
-        remembered = self.prefs.section_filter(self.current_section)
-        act = self.filter_actions.get(remembered) or self.filter_actions[
-            entries[0][0]]    # a choice no longer offered falls back to the first
-        act.setChecked(True)
-        self.apply_section_filter()
+        self.filter_actions[self.pane.filter_choice()].setChecked(True)
 
     def filter_menu_changed(self, action) -> None:
-        """An entry was picked: apply it and remember it for this tab."""
-        self.apply_section_filter()
-        self.prefs.set_section_filter(self.current_section, action.data())
-        self.prefs.save()
-
-    def apply_section_filter(self) -> None:
-        """Apply the menu's checked entry to the active section."""
-        section = self.active_section()
-        if section is None or not self.filter_actions:
-            return
-        checked = (self.filter_action_group.checkedAction()
-                   if self.filter_action_group is not None else None)
-        entry_id = checked.data() if checked is not None else ""
-        value = self.filter_values.get(entry_id)
-        section.apply_filter(value)
-        debug.event(
-            "filter", "section filter applied",
-            section=self.current_section, entry=entry_id, value=str(value),
-            visible=self.thumblist.model().rowCount()
-            if self.thumblist.model() is not None else -1,
-        )
-
-    def refresh_sidebar_categories(self) -> None:
-        """Re-evaluate empty-category hiding and counts, for changes that emit no layoutChanged."""
-        for proxy in self.sidebar_proxies():
-            proxy.refresh()
-        if self.cat_list is not None:
-            self.cat_list.viewport().update()
-        self._ensure_sidebar_selection(self.current_section)    # the refilter may hide the grid's row
-
-    SIDEBAR_PROXY_ATTRS = {    # section key -> its sidebar proxy attribute
-        "material": "category_sorted_model",
-        "cop": "cop_category_sorted_model",
-        "code": "code_category_sorted_model",
-        "gradient": "gradient_category_sorted_model",    # Colors
-    }
-
-    def sidebar_proxies(self) -> tuple:
-        """Every asset section's sidebar proxy that exists right now."""
-        found = []
-        for attr in self.SIDEBAR_PROXY_ATTRS.values():
-            proxy = getattr(self, attr, None)
-            if proxy is not None:
-                found.append(proxy)
-        return tuple(found)
-
-    def _ensure_sidebar_selection(self, section_key: str) -> None:
-        """Select All when the filter hid the grid's category in section `section_key`."""
-        if self.current_section != section_key:
-            return
-        proxy = getattr(
-            self, self.SIDEBAR_PROXY_ATTRS.get(section_key, ""), None)
-        if proxy is None:
-            return
-        if self.cat_list is None or self.cat_list.model() is not proxy:
-            return
-        section = self.active_section()
-        stack = section.stack() if section is not None else None
-        if stack is None:
-            return
-        shown = stack.proxy.filter_value(stack.model.CategoryRole)    # the grid's filter, never the selection
-        if not shown:
-            return    # All: every category is a row, and All is always one
-        row = proxy.index_of(shown)
-        if not row.isValid():
-            self._select_category("")    # the grid's category is hidden: All
-            return
-        current = ui_helpers.live_current_index(self.cat_list)
-        if current is None or current.row() != row.row():
-            self._select_category(shown)    # the row is still there and the selection moved off it
-
-    def _select_category(self, key: str) -> bool:
-        """Point the sidebar at the row keyed `key`, "" for All, and refilter; whether it is shown."""
-        view = getattr(self, "cat_list", None)
-        model = view.model() if view is not None else None
-        if model is None:
-            return False
-        index = model.index_of(key)
-        if index.isValid() and view.selectionModel() is not None:
-            view.highlight(index)
-        self.update_selected_cat()
-        return index.isValid()
+        """An entry was picked: the pane applies it and remembers it for this tab."""
+        self.pane.choose_filter(action.data())
 
     def clear_favourites_filter(self) -> None:
         """Favourites empty state's Show All: unchecks `cb_favsonly`; `toggled` does the rest."""
@@ -3090,7 +1584,7 @@ class AmazePanel(QtWidgets.QWidget):
         if box is None or not box.text():
             return
         box.clear()
-        self.filter_thumb_view()    # by hand: clear() emits no `textEdited`
+        self.pane.search("")    # by hand: clear() emits no `textEdited`
 
     def _on_category_chosen(self, index) -> None:
         """The user made another sidebar row current; a right press only moves the highlight."""
@@ -3103,400 +1597,30 @@ class AmazePanel(QtWidgets.QWidget):
             self._key_choice_timer.start()
             return
         self._key_choice = None
-        self.update_selected_cat(index)
+        self.pane.sidebar.show_row(index)
 
     def _show_key_choice(self) -> None:
         """The arrow keys paused: show the row they stopped on, if it is still there."""
         index, self._key_choice = self._key_choice, None
         if index is not None and index.isValid() and index.model() is self.cat_list.model():
-            self.update_selected_cat(QtCore.QModelIndex(index))
-
-    def update_selected_cat(self, index=None) -> None:
-        """The active section shows the category or folder of `index`, else of the selected row."""
-        if index is None:
-            rows = self.cat_list.selected_rows()
-            index = rows[0] if rows else None
-        section = self.active_section()
-        if index is not None and section is not None:
-            section.select_category(index)
-
-    def grid_update_preview(self, indexes) -> None:
-        """Re-render the grid selection's thumbnails, through the active context."""
-        context = self.active_section()
-        if context is None:
-            return
-        context.update_preview(list(indexes))
-
-    def grid_delete(self, indexes) -> None:
-        """Delete the grid selection after the context's prompt; not where `deletes_rows` is off."""
-        context = self.active_section()
-        if context is None or not context.deletes_rows:
-            return
-        proxy = self.thumblist.model()
-        sources = []
-        seen = set()
-        for index in indexes:
-            source = proxy.mapToSource(index) if proxy is not None else index
-            if source.isValid() and source.row() not in seen:
-                seen.add(source.row())
-                sources.append(source)
-        if not sources:
-            return
-        name = sources[0].data(QtCore.Qt.ItemDataRole.DisplayRole) or ""    # for a prompt that quotes it
-        ui = getattr(hou, "ui", None)
-        if ui is None or ui.displayMessage(
-            context.delete_prompt(len(sources), name),
-            buttons=messages.BUTTONS_DELETE,
-            default_choice=1, close_choice=1,
-            title=messages.TITLE_AMAZE, severity=hou.severityType.Warning,
-        ) != 0:
-            return
-        context.delete_rows(sources)
-
-    def generate_random_material(self) -> None:
-        """One random plausible material, built in the scene's material network, not the library."""
-        from amaze.helpers import helpers
-        from amaze.render import generator
-        builder = None
-        destination = None
-        ui = getattr(hou, "ui", None)
-        with hou.undos.group("Amaze Generate Material"):    # ONE undo step with the library it may create; a move out of staging undoes cleanly ▸r/node-items
-            destination = nodes.karma_destination(self.prefs)
-            if destination is None:
-                if ui is not None:
-                    ui.displayMessage(
-                        messages.NO_MATERIAL_DESTINATION_NETWORK,
-                        title=messages.TITLE_AMAZE, severity=hou.severityType.Warning
-                    )
-                return
-            staging = hou.node("/obj").createNode("matnet")    # built in staging, moved in one step ▸r/matlib-entries
-            try:
-                builder, spec = generator.generate_random_material(staging)
-                if builder is None:
-                    if ui is not None:
-                        ui.displayMessage(
-                            messages.MATERIAL_GENERATION_FAILED,
-                            title=messages.TITLE_AMAZE, severity=hou.severityType.Warning
-                        )
-                    return
-                moved = hou.moveNodesTo((builder,), destination)
-                if not moved:
-                    builder = None
-                    debug.event("generate", "move failed",
-                                destination=destination.path())
-                    if ui is not None:
-                        ui.displayMessage(
-                            messages.GENERATED_MATERIAL_MOVE_FAILED % destination.path(),
-                            title=messages.TITLE_AMAZE, severity=hou.severityType.Warning
-                        )
-                    return
-                builder = moved[0]
-                helpers.auto_place(builder)
-                registered = True
-                if destination.type().name() == "materiallibrary":    # registered as an import is
-                    registered = nodes.register_in_materiallibrary(
-                        destination, builder
-                    )
-                builder.setCurrent(True, True)    # current and selected, as a node from the Tab menu is
-                debug.event("generate", "random material",
-                            name=builder.name(),
-                            destination=destination.path(),
-                            registered=registered,
-                            spec={
-                                k: ([round(c, 3) for c in v]
-                                    if isinstance(v, (list, tuple))
-                                    else round(v, 3))
-                                for k, v in spec.items()
-                            },
-                            provenance=builder.comment())
-                if not registered and ui is not None:
-                    ui.displayMessage(
-                        messages.GENERATED_MATERIAL_NOT_REGISTERED % (builder.name(), destination.path()),
-                        title=messages.TITLE_AMAZE, severity=hou.severityType.Warning
-                    )
-            except hou.Error as exc:
-                builder = None
-                debug.event("generate", "failed", error=str(exc))
-                if ui is not None:
-                    ui.displayMessage(
-                        messages.MATERIAL_GENERATION_ERROR % exc,
-                        title=messages.TITLE_AMAZE, severity=hou.severityType.Warning
-                    )
-            finally:
-                staging.destroy()
-        if builder is not None and ui is not None:
-            ui.setStatusMessage(
-                "Amaze: generated %s in %s"
-                % (builder.name(), destination.path())
-            )
-
-    def save_from_node(self, node: hou.Node | None = None,
-                       prefer: str = "") -> None:
-        """THE function a scene node is saved through: right-click and drop. ▸p/save-section-row"""
-        ui = getattr(hou, "ui", None)
-        selected = hou.selectedNodes()
-        node = node or (selected[0] if selected else None)
-        if node is None:
-            if ui is not None:
-                ui.displayMessage(messages.NO_NODE_TO_SAVE,
-                                  title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
-            return
-        nodes = selected if node in selected else [node]
-        keys = self._save_targets(nodes)
-        debug.event("save", "save_from_node", node=node.path(), offered=keys,
-                    prefer=prefer)
-        if not keys:
-            if ui is not None:
-                ui.displayMessage(messages.NODE_CANNOT_BE_SAVED % node.name(),
-                                  title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
-            return
-        key = sections.save_guess(keys, nodes, prefer)
-        if key == "material":
-            self.save_asset()    # the already-in-the-library prompt comes first
-            return
-        self._save_new(nodes, key, node)
-
-    def _save_targets(self, nodes: list) -> list:
-        """The keys of the sections, in tab order, that can save these nodes."""
-        able = [key for key, _ in self.ALL_SECTIONS
-                if key in self.sections
-                and getattr(self, getattr(self.sections[key], "model_attr", ""),
-                            None) is not None
-                and self.sections[key].can_save(nodes)]
-        shown = [key for key in able if key in self.prefs.enabled_sections]
-        return shown or able    # a hidden tab is still a place to save
-
-    def _save_new(self, nodes: list, key: str,
-                  node: hou.Node | None = None) -> None:
-        """D09 for these nodes, opened on section `key`, then that section's save."""
-        from amaze.dialogs import save_dialog
-        from amaze.helpers import helpers
-        node = node or nodes[0]
-        keys = self._save_targets(nodes) or [key]
-        cats, current = self.sections[key].save_categories()
-        one = nodes[0] if len(nodes) == 1 else None
-        code_parm = helpers.find_code_parm(one) if one is not None else None
-        dialog = save_dialog.SaveDialog(
-            cats, current, name=one.name() if one is not None else "",
-            name_enabled=one is not None, parent=self,
-            sections=[(k, self.sections[k].label) for k in keys],
-            section=key,
-            categories_for=lambda k: self.sections[k].save_categories(),
-            language=(helpers.code_parm_language(code_parm)
-                      if code_parm is not None else ""),
-            language_sections=[k for k in keys
-                               if self.sections[k].takes_language])
-        r = dialog.exec()
-        chosen = getattr(dialog, "section", "") or key
-        debug.event(
-            "save", "save dialog closed",
-            accepted=bool(r and not dialog.canceled), section=chosen,
-            category=dialog.categories, preselected=current,
-        )
-        if dialog.canceled or not r:
-            return
-        self.sections[chosen].commit_save(nodes, node, dialog)
-
-    def save_asset(self) -> None:
-        """Save the selected nodes; ones in the library get one save-over/new/cancel prompt."""
-        from amaze.core import library_settings
-        ui = getattr(hou, "ui", None)
-        sel = hou.selectedNodes()
-        debug.event("save", "save_asset entry", selected=len(sel))
-        if not sel:
-            if ui is not None:
-                ui.displayMessage(messages.NO_MATERIAL_SELECTED,
-                                  title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
-            return
-        if not self.material_model:
-            if ui is not None:
-                ui.displayMessage(
-                    messages.NO_LIBRARY_CONFIGURED_2,
-                    title=messages.TITLE_AMAZE, severity=hou.severityType.Warning
-                )
-            return
-        existing = []    # (asset id, node) per node in the library: ONE choice for all; ids, as saves move rows
-        new_nodes = []
-        for node in sel:
-            row = self._find_existing_asset_row(node)
-            if row >= 0:
-                existing.append((self.material_model.tile_key(row), node))
-            else:
-                new_nodes.append(node)
-        debug.event("save", "overwrite check",
-                    existing=len(existing), new=len(new_nodes))
-        if existing:
-            if len(sel) == 1:
-                name = self.material_model.data(
-                    self.material_model.index(
-                        self.material_model.find_asset_row_by_id(existing[0][0]), 0),
-                    QtCore.Qt.ItemDataRole.DisplayRole,
-                )
-                message = messages.MATERIAL_ALREADY_IN_LIBRARY % name
-            else:
-                message = messages.MATERIALS_ALREADY_IN_LIBRARY % (len(existing), len(sel))
-            may_overwrite = library_settings.allow_overwrite(
-                self.material_model.preferences)    # the library decides; the UI calls it Material Versions
-            if may_overwrite:
-                buttons = messages.BUTTONS_SAVE_VERSION_OR_NEW
-                cancel_at, overwrite_at = 2, 0
-            else:
-                message += messages.VERSIONS_OFF_SAVES_NEW
-                buttons = messages.BUTTONS_SAVE_NEW    # Versions off: no save-over, an option that would always fail
-                cancel_at, overwrite_at = 1, -1
-            choice = ui.displayMessage(
-                message,
-                buttons=buttons,
-                default_choice=0,
-                close_choice=cancel_at,
-                title=messages.TITLE_SAVE_TO % branding.APP_NAME, severity=hou.severityType.Message,
-            ) if ui is not None else cancel_at    # no UI to prompt, so the result is the close_choice - Cancel
-            if choice == cancel_at:
-                return
-            if choice == overwrite_at:
-                self._update_existing_assets(existing)
-                if new_nodes:
-                    self.get_material_info_user(new_nodes)
-                return
-        self.get_material_info_user(sel)    # Save as New falls through to here with the FULL selection
-
-    def _find_existing_asset_row(self, node: hou.Node) -> int:
-        """The source row of the material this node came from, by its stored id alone; or -1."""
-        mat_id = node.userData("assetlib_id")
-        return self.material_model.find_asset_row_by_id(mat_id) if mat_id else -1
-
-    def _update_existing_assets(self, existing: list) -> None:
-        """Save Version over each (id, node); failures are shown once, after the batch."""
-        ui = getattr(hou, "ui", None)
-        if not nodes.ocio_set():    # every material would fail the same way, so it is shown once
-            if ui is not None:
-                ui.displayMessage(messages.OCIO_NOT_SET,
-                                  title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
-            return
-        model = self.material_model
-        total, done, unlisted, refused = len(existing), 0, [], []
-        try:
-            with hou.InterruptableOperation(    # type: ignore
-                messages.UPDATING_MATERIALS, open_interrupt_dialog=True
-            ) as op:
-                for mat_id, node in existing:
-                    op.updateLongProgress(
-                        done / total, "%d/%d  %s" % (done + 1, total, node.name()))
-                    row = model.find_asset_row_by_id(mat_id)
-                    name = model.assets[row].name if row >= 0 else node.name()    # read first: a save can remove the row
-                    try:
-                        if not self._update_existing_asset(mat_id, node):
-                            unlisted.append(name)
-                    except hou.OperationInterrupted:
-                        raise
-                    except material_actions.UpdateRefused as refusal:
-                        refused.append((name, str(refusal)))
-                    except Exception as exc:                        # noqa: BLE001 - an error becomes that material's line
-                        debug.exception("save version", exc, node=node.path())
-                        refused.append((name, str(exc)))
-                    done += 1
-        except hou.OperationInterrupted:
-            debug.status(messages.SAVE_STOPPED % (done, total))
-        self.refresh_sidebar_categories()    # a re-detected renderer can shift counts and hiding
-        if refused and ui is not None:    # once the progress window is gone
-            if len(refused) == 1:
-                name, reason = refused[0]
-                ui.displayMessage(messages.MATERIAL_NOT_UPDATED % (name, reason),
-                                  title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
-            else:
-                ui.displayMessage(messages.MATERIALS_NOT_UPDATED, details="\n".join(
-                    messages.MATERIAL_NOT_UPDATED_LINE % (name, reason) for name, reason in refused),
-                    title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
-        library.report_unlisted(unlisted, updated=True)    # the status line, last, so nothing overwrites it
-
-    def _update_existing_asset(self, mat_id: str, node: hou.Node) -> bool:
-        """Overwrite asset `mat_id`'s files from the scene node: False if the list was not saved."""
-        model = self.material_model
-        renderer = material_actions.update_asset_content(    # NO layout pair: it saves, which merges rows from disk
-            model, model.find_asset_row_by_id(mat_id), node)
-        if not renderer:    # the save failed and showed its own message
-            return True
-        model.row_changed(model.find_asset_row_by_id(mat_id))    # renderer and date changed IN PLACE
-        self.enable_renderer_on_add(renderer)
-        self.prefs.save()
-        self.update_renderer_toggles()
-        return not isinstance(renderer, library.ListNotSaved)
-
-    def get_material_info_user(self, sel: list[hou.Node]) -> None:
-        """The new-material save: D09 opened on Material, any section still choosable."""
-        if not self.material_model or not self.category_model or not sel:
-            return
-        self._save_new(sel, "material")
-
-    def enable_renderer_on_add(self, renderer: str) -> None:
-        """Switch a renderer on when its first material is saved, so the save shows in its own tab."""
-        found = renderers.get(renderer)
-        if found is not None:
-            setattr(self.prefs, found.switch, True)
-        self.prefs.save()
-
-    def import_asset(self, target: str = "auto"):
-        """Import the selected materials: `target` "auto" follows the network, "mat"/"lop" force one."""
-        if not self.material_model or not self.category_model:
-            return
-        self._import_selection(
-            self.material_sorted_model, self.material_model,
-            lambda model, index: material_actions.import_asset_to_scene(model, index, target),
-            "Amaze Import Materials", messages.NAMELESS_MATERIAL,
-            messages.MATERIALS_IMPORT_FAILURES)
+            self.pane.sidebar.show_row(QtCore.QModelIndex(index))
 
     def import_asset_auto(self, index: QtCore.QModelIndex | None = None):
         """The grid's double-click, handled by the active section's `double_click`."""
         if index is not None and index.isValid():
             index = index.siblingAtColumn(0)    # the row, not the clicked cell ▸r/row-selection
-        section = self.active_section()
+        section = self.pane.active_section()
         if section is not None:
             section.double_click(index)
 
-    def _cannot_load_here(self) -> None:
-        ui = getattr(hou, "ui", None)
-        if ui is not None:
-            ui.displayMessage(messages.CANNOT_LOAD_HERE,
-                              title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)  # type: ignore
-
-    def _visible_selected_nodes(self) -> list:
-        """Selected nodes in a visible editor's network, for the click actions ▸r/matlib-entries"""
-        networks = self._view_create_networks()
-        every = hou.selectedNodes()
-        sel = [node for node in every if node.parent() in networks]
-        debug.event("interact", "click_on_row selection",
-                    visible=len(sel), total=len(every),
-                    networks=len(networks))
-        return sel
-
-    def _view_create_networks(self) -> list:
-        """Every visible network editor's pwd, current tabs first; create in the first that can hold it."""
-        networks = []
-        for editor in nodes.NodeHandler.network_editors():
-            try:
-                pwd = editor.pwd()
-            except AttributeError:
-                continue
-            if pwd is not None and pwd not in networks:
-                networks.append(pwd)
-        return networks
-
-    def import_asset_to_mat(self):
-        """Explicitly import the selected materials into /mat."""
-        self.import_asset("mat")
-
-    def import_asset_to_lop(self):
-        """Explicitly import the selected materials into a LOP materiallibrary."""
-        self.import_asset("lop")
-
     def slide(self) -> None:
         """The slider's value as the grid's persisted tile size; list mode ignores it."""
-        if not self.material_model or not self.category_model:
+        if not self.pane.material_model or not self.pane.category_model:
             return
-        if self.prefs.view_mode == "list":
+        if self.pane.prefs.view_mode == "list":
             return    # list has one size
         value = self.click_slider.value()
-        self.prefs.thumbsize = value
+        self.pane.prefs.thumbsize = value
         self._thumbsize_save_timer.start()    # saved once the drag stops
         self.apply_view_mode()    # sizing for the active mode - grid grows icons, list grows rows
 

@@ -522,7 +522,7 @@ def with_fixture_user(library) -> str:
 def repair_from_preferences(testcase, panel):
     """Preferences on `panel`, its Databases button pressed twice: Check, then Repair."""
     from amaze.dialogs import prefs_window
-    state = prefs_window.AmazePrefsState(panel.prefs, panel=panel)
+    state = prefs_window.AmazePrefsState(panel.pane.prefs, pane=panel.pane)
     state.checkOrRepair()
     state.checkOrRepair()
     return state
@@ -629,12 +629,12 @@ def fixture_panel(testcase, render_geometry=False):
     testcase.addCleanup(dispose_panel, panel)
     testcase.addCleanup(stop_panel_workers, panel)    # after deleteLater, so it runs first: hython never emits aboutToQuit
 
-    checked = [("settings", panel.prefs.path),
-               ("library", panel.prefs.dir),
+    checked = [("settings", panel.pane.prefs.path),
+               ("library", panel.pane.prefs.dir),
                ("catalogue cache", matx_library.catalogue_cache()),
                ("preview cache", matx_library.preview_cache()),
                ("scene folder", scene)]
-    for folder in panel.prefs.file_folders or ():    # NAMED field, not a defaulting getattr - a default would narrow this check silently
+    for folder in panel.pane.prefs.file_folders or ():    # NAMED field, not a defaulting getattr - a default would narrow this check silently
         checked.append(("file_folders", str(folder)))
     for label, path in checked:
         if not os.path.realpath(path).startswith(
@@ -643,12 +643,12 @@ def fixture_panel(testcase, render_geometry=False):
                 "fixture panel isolation failed - %s is %s, outside the "
                 "temp directory" % (label, path)
             )
-    if panel.material_model is None:
+    if panel.pane.material_model is None:
         raise RuntimeError(
             "the fixture panel did not load its library, so setup() never "
             "ran - this fixture is not building the panel tests need"
         )
-    _keep_seeded(panel.prefs.dir)
+    _keep_seeded(panel.pane.prefs.dir)
     return panel
 
 
@@ -684,7 +684,7 @@ def apply_library(testcase, panel, folder, user: str = "", state=None) -> bool:
     from amaze.dialogs import prefs_window
     from amaze.prefs import persistence
     if state is None:
-        state = prefs_window.AmazePrefsState(panel.prefs, panel=panel)
+        state = prefs_window.AmazePrefsState(panel.pane.prefs, pane=panel.pane)
     state.pick_library(folder)
     if user and any(row["text"] == user for row in state.userOptions):
         pick_user(state, user)
@@ -736,11 +736,11 @@ def fixture_unconfigured_panel(testcase):
     panel = panel_mod.AmazePanel()
     testcase.addCleanup(dispose_panel, panel)
     testcase.addCleanup(stop_panel_workers, panel)
-    if panel.prefs.dir:
+    if panel.pane.prefs.dir:
         raise RuntimeError(
             "the unconfigured fixture found a library (%s) - the "
             "isolation failed and this panel is not first-run"
-            % panel.prefs.dir)
+            % panel.pane.prefs.dir)
     return panel
 
 
@@ -757,7 +757,7 @@ def stop_panel_workers(panel) -> None:
     from amaze.core import thumbnails
 
     try:
-        model = getattr(panel, "matx_online_model", None)
+        model = getattr(panel.pane, "matx_online_model", None)
     except RuntimeError:
         model = None             # the panel is already deleted
     if model is not None:
@@ -766,7 +766,7 @@ def stop_panel_workers(panel) -> None:
         except Exception:                                # noqa: BLE001
             pass
     try:
-        panel.unwatch_scene()    # `destroyed` is never emitted here after deleteLater
+        panel.pane.files.unwatch_scene()    # `destroyed` is never emitted here after deleteLater
     except Exception:                                    # noqa: BLE001
         pass
     try:
@@ -802,6 +802,25 @@ def toolbar_row(panel) -> list:
             row.append("gap")
     return row
 
+
+def section_files() -> list:
+    """Every section file's path relative to the package, `sections/base.py` first."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    names = sorted(name for name in os.listdir(os.path.join(root, "sections"))
+                   if name.endswith(".py") and name != "__init__.py")
+    return ["sections/" + name for name in sorted(names, key=lambda name: name != "base.py")]
+
+def section_classes() -> dict:
+    """{class name: class} for every Section class, base classes included, across the section files."""
+    from amaze.sections import base, code, color, file, material, node, online
+    return {name: value for module in (base, material, node, code, color, file, online)
+            for name, value in vars(module).items()
+            if isinstance(value, type) and issubclass(value, base.Section)}
+
+
+def section_class(name: str):
+    """The Section class called `name`, from whichever section file holds it."""
+    return section_classes()[name]
 
 BADGE_FAMILY = ("badge_open", "badge_favourite", "badge_versions",
                 "badge_comment")    # the tile badges, by SVG name, in corner order

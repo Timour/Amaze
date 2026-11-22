@@ -6,7 +6,8 @@ import hou
 from amaze.core import debug
 from amaze.helpers import helpers, theme
 from amaze.helpers import ui_helpers
-from amaze.panel import sections
+from amaze import sections
+from amaze.sections import base as section_base
 from amaze.render import cop_nodes
 
 
@@ -14,7 +15,7 @@ def _find_panel(widget: QtWidgets.QWidget):
     """The panel above `widget`, or None; found by capability, never by a fixed parent depth."""
     w = widget.parentWidget()
     while w is not None:
-        if hasattr(w, "import_asset"):
+        if hasattr(w, "import_asset_auto"):    # the tile double-click every panel handles
             return w
         w = w.parentWidget()
     return None
@@ -23,7 +24,7 @@ def _find_panel(widget: QtWidgets.QWidget):
 class GridGestureMixin:
     """The self-managed drag gesture, mixed into both views. ▸r/pick-boundary ▸r/native-drag-paint"""
 
-    DRAG_SECTIONS = ("material", "gradient", "cop", "code", "file")    #: every section whose rows can start a drag; drop behaviour is per section (sections.DropRule)
+    DRAG_SECTIONS = ("material", "gradient", "cop", "code", "file")    #: every section whose rows can start a drag; drop behaviour is per section (section_base.DropRule)
 
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
         self._drag_start = None    # None whenever no left-button press is in progress
@@ -57,7 +58,7 @@ class GridGestureMixin:
         if panel is None:
             panel = _find_panel(self)
             self._wheel_panel = panel
-        prefs = getattr(panel, "prefs", None) if panel is not None else None
+        prefs = panel.pane.prefs if panel is not None else None
         speed = getattr(prefs, "scroll_speed", None) or self.SCROLL_SPEED
         bar = (self.horizontalScrollBar() if horizontal
                else self.verticalScrollBar())
@@ -72,8 +73,7 @@ class GridGestureMixin:
         """Log the geometry a scroll sees, in Debug Mode, at most SCROLL_DIAG_LIMIT times a session."""
         if not debug.is_on():
             return
-        if getattr(panel, "prefs", None) is None or \
-                panel.prefs.view_mode != "list":
+        if panel is None or panel.pane.prefs.view_mode != "list":
             return
         seen = getattr(self, "_scroll_diag_count", 0)
         if seen >= self.SCROLL_DIAG_LIMIT:
@@ -109,9 +109,9 @@ class GridGestureMixin:
         self._ended_early = False
         panel = _find_panel(self)
         section = (
-            getattr(panel, "current_section", None) if panel is not None else None
+            panel.pane.current_section if panel is not None else None
         )
-        online = bool(panel is not None and panel._is_online())    # an online row is a catalogue entry with no node and no file
+        online = bool(panel is not None and panel.pane.is_online())    # an online row is a catalogue entry with no node and no file
         point = event.position().toPoint()    # whole pixels, converted once: everything downstream is integer geometry
         if (
             event.button() == QtCore.Qt.MouseButton.LeftButton
@@ -350,7 +350,7 @@ class GridGestureMixin:
         """File-path drag mime: the path per Write Paths As as text, no URL. ▸r/drag-file-url"""
         mime_data = QtCore.QMimeData()
         mime_data.setText(helpers.houdini_path(
-            path, getattr(panel.prefs, "path_style", "home")))
+            path, getattr(panel.pane.prefs, "path_style", "home")))
         return mime_data
 
     def _run_file_path_drag(self) -> None:
@@ -361,7 +361,7 @@ class GridGestureMixin:
         panel = _find_panel(self)
         if panel is None:
             return
-        path = index.data(panel.file_files_model.PathRole)
+        path = index.data(panel.pane.file_files_model.PathRole)
         if not path:
             return
         drag = QtGui.QDrag(self)
@@ -402,16 +402,15 @@ class GridGestureMixin:
                     category = panel._category_under_cursor()    # the sidebar comes before a node target; None for folder sections and the All row
                     folder = None if category is not None else panel._folder_under_cursor()
                     if category is not None:
-                        panel.assign_category_active(category)
+                        panel.pane.sidebar.assign_category(category)
                         outcome = True
                     elif folder is not None:    # File: the tiles' files move into that folder, on disk
-                        outcome = panel.move_files_active(folder)
+                        outcome = panel.pane.files.move_files(folder)
                     else:    # apply the section's DropRule; no rule or no target shows only the red X
                         rule = self._drop_rule(panel, section, idx)
                         if rule is not None:
                             helpers.forget_placed()
-                            live = getattr(panel, "sections",
-                                           {}).get(section)
+                            live = panel.pane.sections.get(section)
                             with dragengine.holding_drop_group():    # one undo group: the handler, its placement and the wire insert
                                 outcome = self._apply_drop_rule(
                                     rule, panel, live, idx, event)
@@ -434,8 +433,8 @@ class GridGestureMixin:
         handler = getattr(cls, "holder_node_type_method", "")
         if not name and handler and index is not None:
             try:
-                live = getattr(panel, "sections", {}).get(section)
-                name = sections.drop_handler(live, handler)(index, dest)
+                live = panel.pane.sections.get(section)
+                name = section_base.drop_handler(live, handler)(index, dest)
             except (AttributeError, hou.OperationFailed):
                 name = ""
         return name or ""
@@ -470,7 +469,7 @@ class GridGestureMixin:
             if dragengine.ghost_tick(pane_tab):
                 blocked = bool(
                     rule.on_node
-                    and panel._node_under_cursor(pane_tab, pane_type)
+                    and panel.pane.drop_placement.node_under_cursor(pane_tab, pane_type)
                     is not None)
                 target = (None, "", -1)    # a wire under the cursor means an insert, checked only where the node can join a chain
                 type_name = ""
@@ -493,27 +492,27 @@ class GridGestureMixin:
 
     @staticmethod
     def _drop_rule(panel, section, idx):
-        """This row's declared drop behaviour by section key, resolved by `sections.drop_rule`."""
-        return sections.drop_rule(
-            sections.SECTION_INDEX.get(section), panel, idx)
+        """This row's declared drop behaviour by section key, resolved by `section_base.drop_rule`."""
+        return section_base.drop_rule(
+            sections.SECTION_INDEX.get(section), panel.pane, idx)
 
     @staticmethod
     def _apply_drop_rule(rule, panel, section, idx, event) -> bool:
         """One order for every DropRule: on_node (result final), resolve, on_space ▸o/section-api"""
         if rule.on_node is not None:
-            node = panel._node_under_cursor()
+            node = panel.pane.drop_placement.node_under_cursor()
             if node is not None:
-                apply_to_node = sections.drop_handler(section, rule.on_node)
+                apply_to_node = section_base.drop_handler(section, rule.on_node)
                 return bool(apply_to_node(idx, node))
         if rule.resolve is not None:
-            resolve = sections.drop_handler(section, rule.resolve)
+            resolve = section_base.drop_handler(section, rule.resolve)
             return bool(resolve(idx))
         if rule.on_space is not None:
-            net = panel.drop_placement.network_under_release()
+            net = panel.pane.drop_placement.network_under_release()
             if net is None:
                 return section.reject_drop()
-            create = sections.drop_handler(section, rule.on_space)    # the position is used only when the editor under the cursor shows that network
-            return bool(create(idx, net, panel.drop_placement.release_position_in(net)))
+            create = section_base.drop_handler(section, rule.on_space)    # the position is used only when the editor under the cursor shows that network
+            return bool(create(idx, net, panel.pane.drop_placement.release_position_in(net)))
         return section.reject_drop()
 
     @staticmethod
@@ -525,8 +524,8 @@ class GridGestureMixin:
         if not placed:
             return
         editor = dragengine.pane_tab_under_cursor()
-        net = panel.drop_placement.network_under_release()
-        spot = panel.drop_placement.release_position_in(net) if net is not None else None
+        net = panel.pane.drop_placement.network_under_release()
+        spot = panel.pane.drop_placement.release_position_in(net) if net is not None else None
         wire, _name, _index = dragengine.wire_under_cursor(    # the placed nodes are excluded: they are already under the cursor
             editor, spot, exclude=placed)
         if wire is not None:
@@ -594,13 +593,13 @@ class DragDropCentralWidget(QtWidgets.QWidget):
         panel = _find_panel(self)
         if panel is None:
             return
-        section = panel.active_section()    # deferred out of the drop, so no modal opens mid-gesture ▸r/qt-windows-macos
+        section = panel.pane.active_section()    # deferred out of the drop, so no modal opens mid-gesture ▸r/qt-windows-macos
 
         @debug.guarded("dropEvent.deferred_save")
         def _route(panel=panel, section=section, node=nodes[0]):
             debug.event("save", "drop save routed",
                         node=node.path(), section=getattr(section, "key", None))
-            panel.save_from_node(node, prefer=getattr(section, "key", ""))
+            panel.pane.saving.save_from_node(node, prefer=getattr(section, "key", ""))
 
         helpers.run_at_top_of_loop(_route, "drop save")    # a bare timer can fire during a builder's processEvents call
 

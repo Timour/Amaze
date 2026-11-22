@@ -543,7 +543,7 @@ class TheOtherFixesTest(_Library):
         findings = self.survey()
         labels, keys = repair_dialog._every_choice(findings, True)
         self.assertIn("holding", keys)
-        with mock.patch.object(repair_dialog.ui_helpers, "reveal") as reveal:
+        with mock.patch.object(repair_dialog.pane_files, "reveal") as reveal:
             repair_dialog.act(findings, "holding")
         reveal.assert_called_once_with(findings["holding"]["path"])
 

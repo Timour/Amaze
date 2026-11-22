@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
+
 from PySide6 import QtCore, QtGui
 
 from amaze.core import debug, grid_columns
@@ -10,6 +12,19 @@ DISPLAY = QtCore.Qt.ItemDataRole.DisplayRole
 NAME = grid_columns.KEYS.index("name")
 ASCENDING = QtCore.Qt.SortOrder.AscendingOrder
 DESCENDING = QtCore.Qt.SortOrder.DescendingOrder
+
+
+@contextlib.contextmanager
+def relayout(*models):
+    """Wrap a wholesale change to models' contents; never a structural insert or removal (segfault)."""
+    live = [model for model in models if model is not None]
+    for model in live:
+        model.layoutAboutToBeChanged.emit()
+    try:
+        yield              # layoutChanged is emitted even when the body raises
+    finally:
+        for model in reversed(live):   # reverse order: the last model given layoutAboutToBeChanged gets layoutChanged first
+            model.layoutChanged.emit()
 
 
 def sort_key(value) -> tuple:

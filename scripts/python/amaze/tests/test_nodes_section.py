@@ -435,7 +435,7 @@ class NodesSectionTest(unittest.TestCase):
             self.assertEqual("current", stage.displayNode().name())
 
             before = set(stage.children())
-            panel.drop_placement.import_geo_in_context("/tmp/does_not_exist.bgeo", stage)
+            panel.pane.drop_placement.import_geo_in_context("/tmp/does_not_exist.bgeo", stage)
             made = [c for c in stage.children() if c not in before]
         finally:
             pass        # fixture_panel owns its own teardown
@@ -971,17 +971,17 @@ class UpdateRenderOnANodeTile(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
-        cls.panel.prefs.render_on_import = 0
+        cls.panel.pane.prefs.render_on_import = 0
 
     def _saved_tile(self, network, name):
         """`network` saved as a Node asset: the asset, and its index in the Node grid."""
-        model = self.panel.cop_model
+        model = self.panel.pane.cop_model
         held = test_support.asset_ids(model)
         node_actions.add_asset(model, network, "", "", False, name=name)
         network.destroy()
         asset, = test_support.arrived(model, held)
         source = model.index(model.find_asset_row_by_id(asset.mat_id), 0)
-        index = self.panel.cop_sorted_model.mapFromSource(source)
+        index = self.panel.pane.cop_sorted_model.mapFromSource(source)
         if not index.isValid():
             self.skipTest("the Node grid filters the probe out")
         return asset, index
@@ -990,7 +990,7 @@ class UpdateRenderOnANodeTile(unittest.TestCase):
         asset, index = self._saved_tile(_sop_network("preview_sop"), "preview_sop")
         with mock.patch.object(thumbs.ThumbNailRenderer, "render_network_thumbnail",
                                return_value=True) as rendered:
-            self.panel.sections["cop"].update_preview([index])
+            self.panel.pane.sections["cop"].update_preview([index])
         self.assertEqual([mock.call("SOP", str(asset.mat_id), mock.ANY)],
                          rendered.call_args_list)
 
@@ -1001,7 +1001,7 @@ class UpdateRenderOnANodeTile(unittest.TestCase):
         with mock.patch.object(thumbs.ThumbNailRenderer, "render_network_thumbnail",
                                return_value=None), \
                 mock.patch.object(node_actions.debug, "note") as debug_note:
-            self.panel.sections["cop"].update_preview([index])
+            self.panel.pane.sections["cop"].update_preview([index])
         self.assertEqual(1, debug_note.call_count)
         self.assertIn("no picture to render", debug_note.call_args.args[0])
 
@@ -1017,7 +1017,7 @@ class ASelectionImportsAsOneStep(unittest.TestCase):
     def setUp(self):
         import types
         self.panel = test_support.fixture_panel(self)
-        self.panel.prefs.render_on_import = 0
+        self.panel.pane.prefs.render_on_import = 0
         self.displayed = []
         ui = types.SimpleNamespace(
             displayMessage=lambda text, *a, **k: self.displayed.append(
@@ -1058,12 +1058,12 @@ class ASelectionImportsAsOneStep(unittest.TestCase):
 
     def test_node_tiles(self):
         from amaze import messages
-        bad = self._two_tiles("cop", self.panel.cop_model, node_actions.add_asset, _sop_network)
-        self.panel.import_cop_assets()
+        bad = self._two_tiles("cop", self.panel.pane.cop_model, node_actions.add_asset, _sop_network)
+        self.panel.pane.loading.import_cop_assets()
         self.assertEqual(("Amaze Import Nodes Asset",), hou.undos.undoLabels())
         self.assertTrue([node for node in hou.node("/obj").allSubChildren()
                          if node.name() == "the_box"], "the good tile was not imported")
-        _ok, reason, _created = node_actions.import_asset_to_scene(self.panel.cop_model, bad)
+        _ok, reason, _created = node_actions.import_asset_to_scene(self.panel.pane.cop_model, bad)
         self.assertEqual([(messages.NODE_ASSETS_IMPORT_FAILURES, reason)], self.displayed)
 
     def test_material_tiles(self):
@@ -1075,9 +1075,9 @@ class ASelectionImportsAsOneStep(unittest.TestCase):
             nodes.wire_builder_output(builder, builder.createNode("mtlxstandard_surface"))
             return builder
 
-        model = self.panel.material_model
+        model = self.panel.pane.material_model
         bad = self._two_tiles("material", model, material_actions.add_asset, network)
-        self.panel.import_asset("mat")
+        self.panel.pane.loading.import_materials("mat")
         self.assertEqual(("Amaze Import Materials",), hou.undos.undoLabels())
         self.assertIsNotNone(hou.node("/mat/one_step_good"), "the good tile was not imported")
         _ok, reason, _created = material_actions.import_asset_to_scene(model, bad, "mat")

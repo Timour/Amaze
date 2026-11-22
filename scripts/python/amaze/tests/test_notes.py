@@ -20,7 +20,8 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.panel import sections  # noqa: E402
+from amaze import sections  # noqa: E402
+from amaze.sections import base as section_base  # noqa: E402
 from amaze.core import library_db, library_files, notes  # noqa: E402
 from amaze.tests import test_support  # noqa: E402 - redirects the log
 
@@ -182,7 +183,7 @@ class PanelWidgetTest(unittest.TestCase):
 
     def _subject(self, ident="5"):
         key = notes.note_key("material", ident)
-        self.widget.set_subject(sections.CommentSubject(key, "X", ""))
+        self.widget.set_subject(section_base.CommentSubject(key, "X", ""))
         return key
 
     def _press_return(self):
@@ -201,7 +202,7 @@ class PanelWidgetTest(unittest.TestCase):
         ]
         notes.set_note(self.prefs, key, flow)
         self.widget.clear_subject()
-        self.widget.set_subject(sections.CommentSubject(key, "X", ""))
+        self.widget.set_subject(section_base.CommentSubject(key, "X", ""))
         self.assertEqual(flow, self.widget.text_edit.serialize(),
                          "the document does not keep the flow's order")
 
@@ -230,7 +231,7 @@ class PanelWidgetTest(unittest.TestCase):
                           for label in labels]
                 notes.set_note(self.prefs, key, frames)
                 self.widget.clear_subject()
-                self.widget.set_subject(sections.CommentSubject(key, "X", ""))
+                self.widget.set_subject(section_base.CommentSubject(key, "X", ""))
                 edit = self.widget.text_edit
                 cursor = edit.textCursor()
                 cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
@@ -250,7 +251,7 @@ class PanelWidgetTest(unittest.TestCase):
         notes.set_note(self.prefs, key,
                        [{"t": "todo", "label": "doomed", "done": False}])
         self.widget.clear_subject()
-        self.widget.set_subject(sections.CommentSubject(key, "X", ""))
+        self.widget.set_subject(section_base.CommentSubject(key, "X", ""))
         edit = self.widget.text_edit
         cursor = edit.textCursor()
         cursor.movePosition(QtGui.QTextCursor.MoveOperation.Start)
@@ -270,7 +271,7 @@ class PanelWidgetTest(unittest.TestCase):
                        [{"t": "todo", "label": "keepme", "done": True},
                         {"t": "text", "text": "x"}])
         self.widget.clear_subject()
-        self.widget.set_subject(sections.CommentSubject(key, "X", ""))
+        self.widget.set_subject(section_base.CommentSubject(key, "X", ""))
         edit = self.widget.text_edit
         cursor = edit.textCursor()
         cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
@@ -293,7 +294,7 @@ class PanelWidgetTest(unittest.TestCase):
                        [{"t": "todo", "label": "top", "done": False},
                         {"t": "text", "text": "tail"}])
         self.widget.clear_subject()
-        self.widget.set_subject(sections.CommentSubject(key, "X", ""))
+        self.widget.set_subject(section_base.CommentSubject(key, "X", ""))
         edit = self.widget.text_edit
         cursor = edit.textCursor()
         cursor.movePosition(QtGui.QTextCursor.MoveOperation.Start)
@@ -386,7 +387,7 @@ class PanelWidgetTest(unittest.TestCase):
                         {"t": "todo", "label": "on the line",
                          "done": False}])
         self.widget.clear_subject()
-        self.widget.set_subject(sections.CommentSubject(key, "X", ""))
+        self.widget.set_subject(section_base.CommentSubject(key, "X", ""))
         edit = self.widget.text_edit
         edit.resize(300, 160)
         edit.document().setTextWidth(280)
@@ -421,7 +422,7 @@ class PanelWidgetTest(unittest.TestCase):
                        [{"t": "todo", "label": "hover me",
                          "done": False}])
         self.widget.clear_subject()
-        self.widget.set_subject(sections.CommentSubject(key, "X", ""))
+        self.widget.set_subject(section_base.CommentSubject(key, "X", ""))
         edit = self.widget.text_edit
         edit.resize(300, 120)
         edit.document().setTextWidth(280)
@@ -455,7 +456,7 @@ class PanelWidgetTest(unittest.TestCase):
             {"t": "text", "text": "words"},
             {"t": "todo", "label": "item", "done": True}])
         self.widget.clear_subject()
-        self.widget.set_subject(sections.CommentSubject(key, "X", ""))
+        self.widget.set_subject(section_base.CommentSubject(key, "X", ""))
         edit = self.widget.text_edit
         block = edit.document().begin()
         while block.isValid():
@@ -470,7 +471,7 @@ class PanelWidgetTest(unittest.TestCase):
                        [{"t": "todo", "label": "flip me",
                          "done": False}])
         self.widget.clear_subject()
-        self.widget.set_subject(sections.CommentSubject(key, "X", ""))
+        self.widget.set_subject(section_base.CommentSubject(key, "X", ""))
         edit = self.widget.text_edit
         block = edit.document().begin()
         self.assertTrue(edit.toggle_block(block))
@@ -500,7 +501,7 @@ class PanelWidgetTest(unittest.TestCase):
         first = self._subject("11")
         cursor = self.widget.text_edit.textCursor()
         cursor.insertText("typed then switched")
-        self.widget.set_subject(sections.CommentSubject(
+        self.widget.set_subject(section_base.CommentSubject(
                 notes.note_key("material", "12"), "B", ""))
         self.assertEqual(
             "typed then switched",
@@ -523,7 +524,7 @@ class PanelWidgetTest(unittest.TestCase):
                         "selecting again did not enable the page")
 
     def test_the_header_is_the_name_then_the_type(self):
-        self.widget.set_subject(sections.CommentSubject(
+        self.widget.set_subject(section_base.CommentSubject(
             notes.note_key("material", "c1"), "brushed_steel", "USD Karma"))
         self.assertEqual(("brushed_steel", "USD Karma"),
                          (self.widget.name_label.text(), self.widget.type_label.text()))
@@ -642,7 +643,8 @@ class ModelRoleTest(unittest.TestCase):
 
     def test_every_section_tile_shows_the_comment_badge(self):
         """Every section takes comments, so every section's tile lists the comment badge."""
-        from amaze.panel import sections
+        from amaze import sections
+        from amaze.sections import base as section_base
         for cls in sections.SECTION_CLASSES:
             self.assertIn("comment", cls.tile_badges,
                           "%s's tile lost the comment badge" % cls.__name__)
@@ -773,16 +775,16 @@ class PanelWiringTest(unittest.TestCase):
                         "pressed")
         panel.toggle_notes_panel()
         self.assertFalse(panel.notes_panel.isHidden())
-        self.assertTrue(panel.prefs.show_notes,
+        self.assertTrue(panel.pane.prefs.show_notes,
                         "visibility does not persist")
         panel.toggle_notes_panel()
         self.assertTrue(panel.notes_panel.isHidden())
-        self.assertFalse(panel.prefs.show_notes)
+        self.assertFalse(panel.pane.prefs.show_notes)
 
     def test_the_chip_and_pane_agree_and_the_lit_colour_is_COMMENT_ICON_COLOR(self):
         """The button is checked while the pane is open, and checked it shows COMMENT_ICON_COLOR."""
         panel = self.panel
-        self.assertEqual(panel.prefs.show_notes,
+        self.assertEqual(panel.pane.prefs.show_notes,
                          panel.btn_notes.isChecked())
         panel.toggle_notes_panel()
         self.addCleanup(panel.toggle_notes_panel)
@@ -843,9 +845,9 @@ class PanelWiringTest(unittest.TestCase):
         """450 is the launch width sizeHint asks for, never a maximum."""
         from amaze.helpers import theme
         self.addCleanup(  # the hint prefers a REMEMBERED width; test the never-dragged default with the pref at 0
-            setattr, self.panel.prefs, "notes_panel_width",
-            self.panel.prefs.notes_panel_width)
-        self.panel.prefs.notes_panel_width = 0
+            setattr, self.panel.pane.prefs, "notes_panel_width",
+            self.panel.pane.prefs.notes_panel_width)
+        self.panel.pane.prefs.notes_panel_width = 0
         hint = self.panel.side_pane.sizeHint().width()
         self.assertEqual(theme.ui_px(450), hint)
         self.assertGreater(
@@ -858,8 +860,8 @@ class PanelWiringTest(unittest.TestCase):
         panel.toggle_notes_panel()
         self.addCleanup(panel.toggle_notes_panel)
         self.addCleanup(  # shared fixture pref - restore it, or the launch-width test reads this test's value
-            setattr, panel.prefs, "notes_panel_width",
-            panel.prefs.notes_panel_width)
+            setattr, panel.pane.prefs, "notes_panel_width",
+            panel.pane.prefs.notes_panel_width)
         pane = panel.side_pane
         splitter = pane.parentWidget()
         index = splitter.indexOf(pane)
@@ -872,9 +874,9 @@ class PanelWiringTest(unittest.TestCase):
                         "the splitter still has no geometry - this "
                         "test checks nothing")
         panel._on_splitter_moved(0, 0)
-        self.assertEqual(sizes[index], panel.prefs.notes_panel_width,
+        self.assertEqual(sizes[index], panel.pane.prefs.notes_panel_width,
                          "the drag was not recorded")
-        panel.prefs.notes_panel_width = 333  # a stretch-0 pane is given exactly what its sizeHint requests
+        panel.pane.prefs.notes_panel_width = 333  # a stretch-0 pane is given exactly what its sizeHint requests
         self.assertEqual(333, pane.sizeHint().width(),
                          "the pane's sizeHint is not the width it was "
                          "dragged to, so it opens at another "
@@ -885,14 +887,14 @@ class PanelWiringTest(unittest.TestCase):
         from amaze.helpers import theme
         panel = self.panel
         self.addCleanup(
-            setattr, panel.prefs, "sidebar_width",
-            panel.prefs.sidebar_width)
-        panel.prefs.sidebar_width = 0
+            setattr, panel.pane.prefs, "sidebar_width",
+            panel.pane.prefs.sidebar_width)
+        panel.pane.prefs.sidebar_width = 0
         self.assertEqual(theme.ui_px(220),
                          panel.cat_wrapper.sizeHint().width(),
                          "the never-dragged sidebar's sizeHint is not "
                          "its design width")
-        panel.prefs.sidebar_width = 187
+        panel.pane.prefs.sidebar_width = 187
         self.assertEqual(187, panel.cat_wrapper.sizeHint().width(),
                          "a remembered drag does not set the "
                          "sidebar's launch width")
@@ -913,11 +915,11 @@ class PanelWiringTest(unittest.TestCase):
                            "the splitter has no geometry - this test "
                            "checks nothing")
         self.addCleanup(
-            setattr, panel.prefs, "sidebar_width",
-            panel.prefs.sidebar_width)
-        panel.prefs.sidebar_width = 0
+            setattr, panel.pane.prefs, "sidebar_width",
+            panel.pane.prefs.sidebar_width)
+        panel.pane.prefs.sidebar_width = 0
         panel._on_splitter_moved(0, 0)
-        self.assertEqual(real, panel.prefs.sidebar_width,
+        self.assertEqual(real, panel.pane.prefs.sidebar_width,
                          "the sidebar drag was not recorded")
 
     def test_one_flexible_pane_is_the_construction(self):
@@ -941,11 +943,11 @@ class PanelWiringTest(unittest.TestCase):
     def test_the_gradient_section_reaches_the_pane(self):
         """A selected gradient yields a real gradient:<uid> subject."""
         panel = self.panel
-        model = panel.gradient_sorted_model
+        model = panel.pane.gradient_sorted_model
         if not model.rowCount():
             self.skipTest("no gradients in the fixture library")
-        panel._on_tab_toggled("gradient", True)
-        self.addCleanup(panel._on_tab_toggled, "material", True)
+        panel.pane.choose_tab("gradient")
+        self.addCleanup(panel.pane.choose_tab, "material")
         index = model.index(0, 0)
         panel.thumblist.setCurrentIndex(index)
         subject = panel._notes_subject()
@@ -956,15 +958,15 @@ class PanelWiringTest(unittest.TestCase):
 
     def test_the_pane_follows_a_material_selection(self):
         panel = self.panel
-        model = panel.material_sorted_model
+        model = panel.pane.material_sorted_model
         if not model.rowCount():
             self.skipTest("no materials in the fixture library")
-        panel._on_tab_toggled("material", True)
+        panel.pane.choose_tab("material")
         panel.toggle_notes_panel()
         self.addCleanup(panel.toggle_notes_panel)
         index = model.index(0, 0)
         panel.thumblist.setCurrentIndex(index)
-        panel.material_selection_model.select(
+        panel.pane.material_selection_model.select(
             index, QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
         panel._refresh_notes_subject()
         shown = panel.notes_panel.name_label.text()
@@ -1288,7 +1290,7 @@ class ThePictureButtonIsActuallyRun(unittest.TestCase):
         self.widget = notes_panel.NotesPanel(self.prefs)
         self.addCleanup(self.widget.deleteLater)
         self.widget.set_subject(
-            sections.CommentSubject(notes_mod.note_key("material", "7"), "X", ""))
+            section_base.CommentSubject(notes_mod.note_key("material", "7"), "X", ""))
         self.outside = test_support.scratch_dir("amaze_test_btn_")
         self.addCleanup(shutil.rmtree, self.outside, True)
 
@@ -1658,7 +1660,7 @@ class TheEmptyPaneMatchesN01B(unittest.TestCase):
         self.pane.resize(450, 210)
 
     def _select_a_subject(self):
-        self.pane.set_subject(sections.CommentSubject(
+        self.pane.set_subject(section_base.CommentSubject(
             notes.note_key("material", "n01b"), "brushed_steel", "USD Karma"))
 
     def test_N01B_moves_nothing_N01_draws(self):

@@ -24,27 +24,37 @@ from amaze.panel import dragdrop_widgets  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401 - import redirects the debug log
 
 
+class _StubPane:
+    """The engine side the gesture reads: the section, online or not, File's roles, the placement."""
+
+    def __init__(self, panel, section):
+        from amaze.core import file_library
+        self.current_section = section
+        self.sections = {}
+        self.file_files_model = file_library.FileFiles
+        self.drop_placement = _StubPlacement(panel)
+        self.sidebar = types.SimpleNamespace(
+            assign_category=lambda category: panel.calls.append("category:%s" % category))
+
+    def is_online(self):
+        return False
+
+
 class _StubPanel(QtWidgets.QWidget):
-    """Records the panel calls the gesture makes; `_find_panel` duck-types on `import_asset`."""
+    """Records the calls the gesture makes; `_find_panel` duck-types on `import_asset_auto`."""
 
     def __init__(self, section="material"):
         super().__init__()
-        self.current_section = section
         self.calls = []
         self.hover_rows = []
         self._category = None
         self._node = None
         self._network = None    # None = released over nothing; empty network space is a sentinel
         self._file_path_outcome = True
-        from amaze.core import file_library
-        self.file_files_model = file_library.FileFiles
-        self.drop_placement = _StubPlacement(self)
+        self.pane = _StubPane(self, section)
 
-    def import_asset(self, *args, **kwargs):
+    def import_asset_auto(self, *args, **kwargs):
         self.calls.append("import_asset")
-
-    def _is_online(self):
-        return False
 
     def _set_drag_hover_row(self, row):
         self.hover_rows.append(row)
@@ -59,16 +69,10 @@ class _StubPanel(QtWidgets.QWidget):
     def _update_category_drag_hover_global(self):
         """Every drag runs the move code that updates the sidebar hover highlight."""
 
-    def _node_under_cursor(self):
-        return self._node
-
     def _ui_icon_path(self, filename):
         """The miss indicator reads its icon folder from the panel."""
         import amaze
         return os.path.join(os.path.dirname(amaze.__file__), "ui", filename)
-
-    def assign_category_active(self, category):
-        self.calls.append("category:%s" % category)
 
     def _release_position(self):
         return None
@@ -82,6 +86,9 @@ class _StubPlacement:
 
     def network_under_release(self):
         return self.panel._network
+
+    def node_under_cursor(self, pane_tab=None, pane_type=None):
+        return self.panel._node
 
     def release_position_in(self, net):
         """The release-position function the engine passes to the node-creation functions."""
@@ -124,9 +131,9 @@ class _Harness:
         self.panel = _StubPanel(section)
         testcase.addCleanup(self.panel.deleteLater)
         # Real section over the stub panel, its drop methods stubbed on the INSTANCE.
-        from amaze.panel import sections
-        self.section = sections.SECTION_INDEX[section](self.panel)
-        self.panel.sections = {section: self.section}
+        from amaze import sections
+        self.section = sections.SECTION_INDEX[section](self.panel.pane)
+        self.panel.pane.sections = {section: self.section}
         calls = self.panel.calls
         if section == "material":
             def _material(idx):
@@ -269,7 +276,7 @@ class TestGestureRelease(unittest.TestCase):
             "move starts a drag nobody began" % sorted(still_set))
 
         h.panel.calls.clear()
-        h.panel.current_section = "file"
+        h.panel.pane.current_section = "file"
         h.move(QtCore.QPoint(h.item_pos().x() + 200,
                              h.item_pos().y() + 200))
         self.assertFalse(
@@ -417,13 +424,13 @@ class ADropOnAWireIsOneUndoStep(unittest.TestCase):
         with mock.patch.dict(sys.modules, {"nodegraphutils": host}), \
                 mock.patch.object(self.panel, "_category_under_cursor",
                                   return_value=None), \
-                mock.patch.object(self.panel, "_node_under_cursor",
+                mock.patch.object(self.panel.pane.drop_placement, "node_under_cursor",
                                   return_value=None), \
-                mock.patch.object(self.panel.drop_placement, "context_under_cursor",
+                mock.patch.object(self.panel.pane.drop_placement, "context_under_cursor",
                                   return_value=self.geo), \
-                mock.patch.object(self.panel.drop_placement, "network_under_release",
+                mock.patch.object(self.panel.pane.drop_placement, "network_under_release",
                                   return_value=self.geo), \
-                mock.patch.object(self.panel.drop_placement, "release_position_in",
+                mock.patch.object(self.panel.pane.drop_placement, "release_position_in",
                                   return_value=spot), \
                 mock.patch.object(dragengine, "pane_tab_under_cursor",
                                   return_value=object()), \
@@ -585,7 +592,7 @@ class TheResolversReportTheirMisses(unittest.TestCase):
 
     def _refuse_reasons(self, call, target=None):
         from amaze.core import dragengine
-        from amaze.panel import drop_placement
+        from amaze.pane import drop_placement
         shown = []
         with mock.patch.object(debug, "refuse", lambda reason, **_data: shown.append(reason)), \
                 mock.patch.object(dragengine, "viewport_release_target", return_value=target), \
@@ -596,12 +603,12 @@ class TheResolversReportTheirMisses(unittest.TestCase):
 
     def test_a_material_released_over_nothing(self):
         panel = self.panel
-        index = panel.material_sorted_model.index(0, 0)
+        index = panel.pane.material_sorted_model.index(0, 0)
         for target in (None, ("lop", None, None), ("obj", None, None)):
             with self.subTest(target=target):
                 self.assertEqual(
                     [messages.DROP_CANCELED],
-                    self._refuse_reasons(lambda: panel.sections["material"].drop_material_at_release(
+                    self._refuse_reasons(lambda: panel.pane.sections["material"].drop_material_at_release(
                         index), target))
 
     def test_a_node_asset_released_over_nothing(self):
@@ -610,7 +617,7 @@ class TheResolversReportTheirMisses(unittest.TestCase):
         rows.appendRow(QtGui.QStandardItem("node asset"))
         index = rows.index(0, 0)
         self.assertEqual([messages.DROP_CANCELED],
-                         self._refuse_reasons(lambda: panel.sections["cop"].drop_cop_at_release(index)))
+                         self._refuse_reasons(lambda: panel.pane.sections["cop"].drop_cop_at_release(index)))
 
 
 class TheParameterPaneHandOff(unittest.TestCase):

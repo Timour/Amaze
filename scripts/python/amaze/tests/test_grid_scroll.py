@@ -141,11 +141,11 @@ class SelectingNeverScrollsTheGridTest(unittest.TestCase):
 
     def test_the_scrollbar_does_not_move_when_the_view_mode_switches(self):
         """`setViewMode()` re-applies view state, so both modes must keep the view from self-scrolling."""
-        kept = self.panel.prefs.view_mode
-        self.addCleanup(setattr, self.panel.prefs, "view_mode", kept)
+        kept = self.panel.pane.prefs.view_mode
+        self.addCleanup(setattr, self.panel.pane.prefs, "view_mode", kept)
         self.addCleanup(self.panel.apply_view_mode)
         for mode in ("grid", "list"):
-            self.panel.prefs.view_mode = mode
+            self.panel.pane.prefs.view_mode = mode
             self.panel.apply_view_mode()
             view = grid.visible_view(self.panel)  # the visible view; `thumblist` is hidden in list mode
             self.assertFalse(

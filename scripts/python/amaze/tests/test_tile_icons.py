@@ -4,6 +4,7 @@ import ast
 import contextlib
 import inspect
 import json
+import glob
 import os
 import sys
 import textwrap
@@ -26,7 +27,7 @@ from amaze.actions import nodes as node_actions  # noqa: E402
 from amaze.core import cop_library, guard, library_db, library_files, tile_icons  # noqa: E402
 from amaze.dialogs import icon_dialog  # noqa: E402
 from amaze.helpers import theme  # noqa: E402
-from amaze.panel import panel as panel_mod  # noqa: E402
+from amaze.pane import assets as pane_assets  # noqa: E402
 from amaze.tests import test_support  # noqa: E402 - redirects the log
 
 
@@ -730,10 +731,10 @@ class MenuWiringTest(unittest.TestCase):
 
     def test_every_section_RETURNS_models_it_actually_has(self):
         """Each section's `tile_models()` returns real models on the live panel."""
-        from amaze.panel import sections as sections_mod
-
-        calls = [node for node in ast.walk(ast.parse(
-                     inspect.getsource(sections_mod)))
+        import amaze
+        source = "\n".join(open(path, encoding="utf-8").read() for path in sorted(glob.glob(
+            os.path.join(os.path.dirname(amaze.__file__), "sections", "*.py"))))
+        calls = [node for node in ast.walk(ast.parse(source))
                  if isinstance(node, ast.Call)
                  and isinstance(node.func, ast.Attribute)
                  and node.func.attr == "edit_tile_icon"]
@@ -744,7 +745,7 @@ class MenuWiringTest(unittest.TestCase):
 
         for key in ("material", "cop", "code", "file", "gradient"):
             with self.subTest(section=key):
-                model, proxy = self.panel.sections[key].tile_models()
+                model, proxy = self.panel.pane.sections[key].tile_models()
                 self.assertIsNotNone(model, "%s names no model" % key)
                 self.assertIsNotNone(proxy, "%s names no proxy" % key)
                 self.assertIs(model, proxy.sourceModel(),  # the section's own pair, not the models the shared grid last showed
@@ -752,16 +753,16 @@ class MenuWiringTest(unittest.TestCase):
 
     def test_customize_offers_exactly_the_fields_its_model_edits(self):
         """Material opens with Name, Category and Tags; File, though offered categories, with none."""
-        self.addCleanup(self.panel.section_tabs.setChecked, self.panel.current_section)
+        self.addCleanup(self.panel.section_tabs.setChecked, self.panel.pane.current_section)
         for key, shown in (("material", True), ("file", False)):
             with self.subTest(section=key):
                 self.panel.section_tabs.setChecked(key)
                 QtWidgets.QApplication.processEvents()
-                model, proxy = self.panel.sections[key].tile_models()
+                model, proxy = self.panel.pane.sections[key].tile_models()
                 self.assertTrue(test_support.pump_until(lambda: proxy.rowCount() > 0),
                                 "premise: the %s grid shows no tile" % key)
                 self.panel._icon_dialog = None
-                self.panel.edit_tile_icon(model, proxy, [proxy.index(0, 0)],
+                self.panel.pane.assets.edit_tile_icon(model, proxy, [proxy.index(0, 0)],
                                           categories=("Probe Shelf",))
                 dialog, self.panel._icon_dialog = self.panel._icon_dialog, None
                 self.assertIsNotNone(dialog, "Customize did not open on a %s tile" % key)
@@ -785,7 +786,7 @@ class MenuWiringTest(unittest.TestCase):
         }
         checked = 0
         for model_attr, _proxy in self.SECTIONS:
-            model = getattr(self.panel, model_attr, None)
+            model = getattr(self.panel.pane, model_attr, None)
             self.assertIsNotNone(model, "the panel has no %s" % model_attr)
             for method, args in calls.items():
                 fn = getattr(model, method, None)
@@ -832,15 +833,15 @@ class MenuWiringTest(unittest.TestCase):
                 pass
 
         for model_attr, proxy_attr in self.SECTIONS:
-            model = getattr(self.panel, model_attr)
-            proxy = getattr(self.panel, proxy_attr)
+            model = getattr(self.panel.pane, model_attr)
+            proxy = getattr(self.panel.pane, proxy_attr)
             if not model.rowCount():
                 continue        # nothing selected-able in this library
             with mock.patch.object(icon_dialog, "IconDialog", _Dialog), \
                     mock.patch.object(type(model), "commit_tile_icons"), \
                     mock.patch.object(type(model), "set_tile_icons") as applied:
                 applied.return_value = 0  # commit_tile_icons is patched too: it calls save(), and nothing here may touch real data
-                self.panel.edit_tile_icon(
+                self.panel.pane.assets.edit_tile_icon(
                     model, proxy, [proxy.index(0, 0)])
             self.assertTrue(
                 applied.called,
@@ -861,15 +862,15 @@ class MenuWiringTest(unittest.TestCase):
 
         checked = 0
         for model_attr, proxy_attr in self.SECTIONS:
-            model = getattr(self.panel, model_attr)
-            proxy = getattr(self.panel, proxy_attr)
+            model = getattr(self.panel.pane, model_attr)
+            proxy = getattr(self.panel.pane, proxy_attr)
             if not model.rowCount():
                 continue
             row = proxy.mapToSource(proxy.index(0, 0)).row()
             opened.clear()
             self.panel._icon_dialog = None
             with mock.patch.object(icon_dialog, "IconDialog", _Dialog):
-                self.panel.edit_tile_icon(model, proxy, [proxy.index(0, 0)])
+                self.panel.pane.assets.edit_tile_icon(model, proxy, [proxy.index(0, 0)])
             self.panel._icon_dialog = None
             self.assertEqual(1, len(opened), model_attr)
             given = opened[0]
@@ -1287,7 +1288,7 @@ class TileTagsTest(unittest.TestCase):
 
     def test_the_panel_applies_a_cleared_field(self):
         """A cleared field gives an empty `new_tags`, so the apply code tests `is not None`."""
-        source = inspect.getsource(panel_mod.AmazePanel.edit_tile_icon)
+        source = inspect.getsource(pane_assets.Assets.edit_tile_icon)
         tree = ast.parse(textwrap.dedent(source))
         calls = [node for node in ast.walk(tree)
                  if isinstance(node, ast.Call)
@@ -1296,13 +1297,13 @@ class TileTagsTest(unittest.TestCase):
         self.assertTrue(calls, "the dialog's tags never reach the model")
         guards = [node for node in ast.walk(tree)
                   if isinstance(node, ast.Compare)
-                  and isinstance(node.left, ast.Name)
-                  and node.left.id == "new_tags"
+                  and isinstance(node.left, ast.Attribute)
+                  and node.left.attr == "tags"
                   and any(isinstance(op, ast.IsNot) for op in node.ops)
                   and any(isinstance(c, ast.Constant) and c.value is None
                           for c in node.comparators)]
         self.assertTrue(guards,
-                        "the tags apply is not guarded by `new_tags is "
+                        "the tags apply is not guarded by `answer.tags is "
                         "not None` - an empty field will never clear "
                         "the tags")
 
@@ -1459,21 +1460,21 @@ class TheLineWeightRedrawsEverySection(unittest.TestCase):
 
     def setUp(self):
         from amaze.dialogs import prefs_window
-        prefs = self.panel.prefs
+        prefs = self.panel.pane.prefs
         self.addCleanup(setattr, prefs, "icon_line_weight",
                         prefs.icon_line_weight)
         prefs.icon_line_weight = "template"
-        self.state = prefs_window.AmazePrefsState(prefs, panel=self.panel)
+        self.state = prefs_window.AmazePrefsState(prefs, pane=self.panel.pane)
 
     def set_weight(self, token):
         self.state.setPref("icon_line_weight", token)    # what the row's menu sends
         self.state.apply()
-        self.assertEqual(token, self.panel.prefs.icon_line_weight)
+        self.assertEqual(token, self.panel.pane.prefs.icon_line_weight)
 
     def test_every_section_with_tile_icons_is_redrawn(self):
         asked = []
         models = {key: section.tile_models()[0]
-                  for key, section in self.panel.sections.items()}
+                  for key, section in self.panel.pane.sections.items()}
         self.assertNotIn(None, models.values(), "premise: every section has tiles")
         with contextlib.ExitStack() as stack:
             for key, model in models.items():
@@ -1485,7 +1486,7 @@ class TheLineWeightRedrawsEverySection(unittest.TestCase):
                          "a section's tile icons kept the old line weight")
 
     def test_a_colour_tile_with_an_icon_repaints_at_the_new_weight(self):
-        model = self.panel.gradient_model
+        model = self.panel.pane.gradient_model
         self.assertTrue(model.rowCount(), "premise: the fixture has palettes")
         self.assertTrue(model.set_tile_icon(0, {"name": "layers",
                                                 "bg": "#4af2a1"}))
@@ -1525,7 +1526,7 @@ class AnIconOverASelectionWritesOnce(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
         checked = []
         for attr, _proxy in MenuWiringTest.SECTIONS:
-            model = getattr(self.panel, attr)
+            model = getattr(self.panel.pane, attr)
             rows = list(range(model.rowCount()))
             if len(rows) < 2:
                 continue
@@ -1544,7 +1545,7 @@ class AnIconOverASelectionWritesOnce(unittest.TestCase):
                     return real(disk, path, data)
 
                 with mock.patch.object(guard.Disk, "write", counted):
-                    self.panel.apply_icon_spec(model, rows, self.SPEC)
+                    self.panel.pane.assets.apply_icon_spec(model, rows, self.SPEC)
                     QtWidgets.QApplication.processEvents()
                     library_db.flush()
                 self.assertEqual(1, len(writes), "%s wrote %s %d times for "
@@ -1558,11 +1559,11 @@ class AnIconOverASelectionWritesOnce(unittest.TestCase):
 
     def test_an_icon_and_a_category_in_one_gesture_are_one_write(self):
         """Customize sets the icon and the category: with the panel timer, one save of both."""
-        model = self.panel.material_model
+        model = self.panel.pane.material_model
         rows = list(range(min(model.rowCount(), 3)))
         self.assertGreater(len(rows), 1, "premise: two material tiles")
         library_db.flush()
-        library_db.set_scheduler(self.panel._save_timer.start)    # the timer the harness took off
+        library_db.set_scheduler(self.panel.pane.library._save_timer.start)    # the timer the harness took off
         self.addCleanup(library_db.drop_scheduler)
         writes = []
         real = guard.Disk.write
@@ -1574,7 +1575,7 @@ class AnIconOverASelectionWritesOnce(unittest.TestCase):
             return real(disk, path, data)
 
         with mock.patch.object(guard.Disk, "write", counted):
-            self.panel.apply_icon_spec(model, rows, self.SPEC)
+            self.panel.pane.assets.apply_icon_spec(model, rows, self.SPEC)
             edited = {model.tile_key(row) for row in rows
                       if model.set_tile_category(row, "Customized", save=False)}    # as Customize
             model.commit_tile_edits(edited)

@@ -1,25 +1,24 @@
-"""The drop placement: where a drop or a click creates nodes in Houdini, for one panel."""
+"""The drop placement: where a drop or a click creates nodes in Houdini, for one pane."""
 
 import os
 
-from PySide6 import QtWidgets, QtGui
 import hou
 
 from amaze import messages
 from amaze.core import debug, geo_library
-from amaze.helpers import helpers, wording
+from amaze.helpers import helpers, theme, wording
 
 
 class DropPlacement:
-    """Where one panel's drops create nodes; the panel holds it as `drop_placement`."""
+    """Where one pane's drops create nodes; the pane holds it as `drop_placement`."""
 
-    def __init__(self, panel) -> None:
-        self.panel = panel
+    def __init__(self, pane) -> None:
+        self.pane = pane
 
     def scene_path(self, path: str) -> str:
         """A path Amaze writes into the scene, spelled per Write Paths As; never for loads."""
         return helpers.houdini_path(
-            path, getattr(self.panel.prefs, "path_style", "home"))
+            path, getattr(self.pane.prefs, "path_style", "home"))
 
     @staticmethod
     def is_sop_container(node: hou.Node) -> bool:
@@ -29,6 +28,85 @@ class DropPlacement:
         except (AttributeError, hou.OperationFailed):
             return False
         return category is not None and category.name() == "Sop"
+
+    @staticmethod
+    def create_loader_inside(container: hou.Node, loader_type: str):
+        """Create the loader in the deepest SOP network under the container, else a higher one."""
+        candidates = []
+
+        def walk(node, depth):
+            try:
+                category = node.childTypeCategory()
+            except (AttributeError, hou.OperationFailed):
+                category = None
+            if category is not None and category.name() == "Sop":
+                candidates.append((depth, node))
+            if depth < 3:
+                for child in node.children():
+                    walk(child, depth + 1)
+
+        walk(container, 0)
+        last_error = None
+        for _depth, net in sorted(candidates, key=lambda c: -c[0]):    # deepest first; a locked level raises
+            try:
+                return net.createNode(loader_type)
+            except hou.Error as exc:
+                last_error = exc
+        raise last_error or hou.OperationFailed("no SOP network found")
+
+    @staticmethod
+    def _network_items_at_cursor(editor):
+        """Droppable items under the cursor in a network editor, as (item, ...) tuples."""
+        try:
+            if not editor.isUnderCursor():    # isUnderCursor() excludes the pane's own toolbars and controls
+                return ()
+            p = editor.posToScreen(editor.cursorPosition())
+            r = theme.ui_px(2)
+            return editor.networkItemsInBox(
+                hou.Vector2(p.x() - r, p.y() - r),
+                hou.Vector2(p.x() + r, p.y() + r),
+                for_drop=True,
+            )
+        except (AttributeError, TypeError, hou.OperationFailed):
+            return ()
+
+    @staticmethod
+    def pane_and_kind_under_cursor():
+        """The pane tab under the cursor and its type, or (None, None); the caller compares the type."""
+        from amaze.core import dragengine
+        pane_tab = dragengine.pane_tab_under_cursor()
+        if pane_tab is None:
+            return None, None
+        try:
+            return pane_tab, pane_tab.type()
+        except AttributeError:
+            return None, None
+
+    def node_under_cursor(self, pane_tab=None, pane_type=None) -> hou.Node | None:
+        """The node under the cursor, or a Parameter Editor's node; pass the pane ▸p/drag-move-cost"""
+        if pane_tab is None:
+            pane_tab, pane_type = self.pane_and_kind_under_cursor()
+        if pane_tab is None:
+            return None
+        if pane_type == hou.paneTabType.Parm:    # the node that pane shows
+            try:
+                return pane_tab.currentNode()
+            except (AttributeError, hou.OperationFailed):
+                return None
+        if pane_type != hou.paneTabType.NetworkEditor:
+            return None
+        return self.first_node_at_cursor(pane_tab)
+
+    def first_node_at_cursor(self, pane_tab) -> hou.Node | None:
+        """The first hou.Node under the cursor, or None; the drop and click resolvers share it."""
+        for item in self._network_items_at_cursor(pane_tab):
+            candidates = (
+                item if isinstance(item, (tuple, list)) else (item,)
+            )
+            for candidate in candidates:
+                if isinstance(candidate, hou.Node):
+                    return candidate
+        return None
 
     def import_geo_in_context(
         self, path: str, dest: hou.Node | None
@@ -60,7 +138,7 @@ class DropPlacement:
                     container = anchor.createOutputNode("sopcreate", name)    # chained onto the display node
                 else:
                     container = dest.createNode("sopcreate", name)
-                loader = self.panel.create_loader_inside(container, loader_type)
+                loader = self.create_loader_inside(container, loader_type)
             elif category == "Object":    # a new geo named after the file
                 container = dest.createNode("geo", name)
                 loader = container.createNode(loader_type)
@@ -113,7 +191,7 @@ class DropPlacement:
         self, matcher, include_viewports: bool = False    # a type-name substring, or a callable(node) -> bool
     ) -> hou.Node | None:
         """Where a drag was released: the matching node under the cursor, else the pwd, else None."""
-        pane_tab, pane_type = self.panel.pane_and_kind_under_cursor()
+        pane_tab, pane_type = self.pane_and_kind_under_cursor()
         if pane_tab is None:
             return None
         if (
@@ -126,7 +204,7 @@ class DropPlacement:
                 return None
         if pane_type != hou.paneTabType.NetworkEditor:    # only a network editor takes node drops
             return None
-        node = self.panel.first_node_at_cursor(pane_tab)
+        node = self.first_node_at_cursor(pane_tab)
         if node is not None:
             hit = (
                 matcher(node)
@@ -143,7 +221,6 @@ class DropPlacement:
     def material_lop_viewport_drop(self, ids, viewer, primpath) -> bool:
         """LOP-viewport release: the prim menu, then import and assign through Houdini's stock helpers."""
         from amaze.core import dragengine, lop_assign
-        from amaze.helpers import helpers
         stock = dragengine.stock_lop()
         if stock is None:
             debug.refuse(messages.STOCK_LOP_HELPERS_UNAVAILABLE)    # ▸p/refuse-vs-alert
@@ -161,19 +238,24 @@ class DropPlacement:
         choices = lop_assign.drop_choices(stage, primpath)    # lop_assign decides what the menu offers
         if not choices:
             return False
-        cmenu = QtWidgets.QMenu(self.panel)
-        actions = {}
-        previous_kind = None
-        for kind, label, payload in choices:
+        labels, previous_kind = [], None
+        for kind, label, _payload in choices:
             if previous_kind == "swap" and kind != "swap":
-                cmenu.addSeparator()
-            actions[cmenu.addAction(label)] = (kind, payload)
+                labels.append("")    # a divider between the swaps and the rest
+            labels.append(label)
             previous_kind = kind
-        chosen = cmenu.exec(QtGui.QCursor.pos())    # screen coordinates
-        cmenu.deleteLater()    # parented to the panel, so deleted; `actions` keeps its keys until then
-        if chosen is None:
-            return False    # dismissed: nothing happens
-        kind, payload = actions[chosen]
+        picked = [index for index, label in enumerate(labels) if label]
+        done = []    # a modal host answers before the ask returns
+        self.pane.ui.ask_drop_choice(labels, lambda chosen: done.append(
+            False if chosen is None    # dismissed: nothing happens
+            else self._assign_dropped(stock, lopnet, target_lop, ids, choices[picked.index(chosen)])))
+        return done[0] if done else False
+
+    def _assign_dropped(self, stock, lopnet, target_lop, ids, choice) -> bool:
+        """The picked prim-menu row: import the materials into a library LOP, then assign or swap."""
+        from amaze.core import lop_assign
+        from amaze.helpers import helpers
+        kind, _label, payload = choice
         assign_path = payload if kind == "assign" else None
         swap_targets = payload if kind == "swap" else None
         undo_label = (
@@ -202,7 +284,7 @@ class DropPlacement:
             vops = []
             imported = []    # (asset id, vop) for the imports that succeeded
             for aid in ids:
-                vop = self.panel.import_material_into_container(aid, liblop)
+                vop = self.pane.loading.import_material_into_container(aid, liblop)
                 if vop is not None:
                     imported.append((aid, vop))
                     vops.append(vop)
@@ -215,7 +297,7 @@ class DropPlacement:
                         amaze=liblop.path(), assign=str(assign_path),
                         swap=bool(swap_targets))
             if pressed_vop is not None and swap_targets is not None:
-                reason = lop_assign.swap_assignments(    # lop_assign edits the USD and returns a reason; the panel shows it
+                reason = lop_assign.swap_assignments(    # lop_assign edits the USD and returns a reason; the pane shows it
                     stock, lopnet, liblop, node2, swap_targets,
                     pressed_vop
                 )
@@ -242,7 +324,7 @@ class DropPlacement:
         """Network-release material import, one undo step; a `position` cascades the copies from it."""
         from amaze.core import dragengine
         with dragengine.drop_group("Amaze Import Materials"):
-            self.panel.import_materials_into_context_grouped(
+            self.pane.loading.import_materials_into_context_grouped(
                 context, ids, position)
 
     def network_under_release(self) -> hou.Node | None:

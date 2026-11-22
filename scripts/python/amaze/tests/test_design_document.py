@@ -5,7 +5,8 @@ import re
 import unittest
 
 from amaze import amazetheme
-from amaze.panel import empty_state, sections
+from amaze.panel import empty_state
+from amaze.sections import code as code_section, color as color_section, file as file_section, material as material_section, node as node_section
 from amaze.tests import test_support  # noqa: F401
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -246,13 +247,13 @@ class TheDrawnWordsComeFromTheDocument(unittest.TestCase):
             "the shared empty-state texts are not the three drawn - an empty "
             "category shows its grid, never a text")
         for key, cls, expected in (
-                ("material", sections.MaterialSection,
+                ("material", material_section.MaterialSection,
                  amazetheme.EMPTY_MATERIAL),
-                ("gradient", sections.GradientSection,
+                ("gradient", color_section.GradientSection,
                  amazetheme.EMPTY_COLOR),
-                ("cop", sections.CopSection, amazetheme.EMPTY_NODE),
-                ("code", sections.CodeSection, amazetheme.EMPTY_CODE),
-                ("file", sections.FileSection, amazetheme.EMPTY_FILE)):
+                ("cop", node_section.CopSection, amazetheme.EMPTY_NODE),
+                ("code", code_section.CodeSection, amazetheme.EMPTY_CODE),
+                ("file", file_section.FileSection, amazetheme.EMPTY_FILE)):
             with self.subTest(section=key):
                 self.assertIs(expected, cls.EMPTY,
                               "%s defines its own empty-library text" % key)

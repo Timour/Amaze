@@ -135,7 +135,7 @@ class TheRealPanelInListMode(unittest.TestCase):
         pass  # class_scope stops the workers: one destroyed by Py_Finalize aborts hython
 
     def _mode(self, mode):
-        self.panel.prefs.view_mode = mode
+        self.panel.pane.prefs.view_mode = mode
         self.panel.apply_view_mode()
         QtWidgets.QApplication.processEvents()
 
@@ -362,7 +362,7 @@ class CategoriesIsAButtonNotAMenuItem(unittest.TestCase):
 
     def test_the_button_shows_and_hides_the_sidebar(self):
         panel = self.panel
-        before = bool(panel.prefs.show_categories)
+        before = bool(panel.pane.prefs.show_categories)
         self.addCleanup(panel.btn_categories.setChecked, before)
 
         panel.btn_categories.setChecked(not before)
@@ -371,7 +371,7 @@ class CategoriesIsAButtonNotAMenuItem(unittest.TestCase):
             not before, panel.cat_wrapper.isVisibleTo(panel),
             "the button did not show or hide the sidebar")
         self.assertEqual(
-            not before, bool(panel.prefs.show_categories),
+            not before, bool(panel.pane.prefs.show_categories),
             "the preference did not change with the button")
 
     def test_the_chip_follows_the_action_too(self):
@@ -440,31 +440,31 @@ class OnlineMode(unittest.TestCase):
         pass  # class_scope stops the workers: one destroyed by Py_Finalize aborts hython
 
     def setUp(self):
-        if self.panel._is_online():
-            self.panel.leave_online_mode()
+        if self.panel.pane.is_online():
+            self.panel.pane.leave_online()
 
     def test_the_section_tabs_become_the_online_sources(self):
         from amaze.core import matx_sources
-        self.panel.enter_online_mode()
-        self.addCleanup(self.panel.leave_online_mode)
+        self.panel.pane.enter_online()
+        self.addCleanup(self.panel.pane.leave_online)
         expected = [s.name for s in matx_sources.all_sources()]
         self.assertEqual(
-            expected, [k for k, _l in self.panel._online_segments()],
+            expected, [k for k, _l in self.panel.pane.online_tabs()],
             "the online strip is not the sources in source order")
         self.assertNotIn(
-            "file", [k for k, _l in self.panel._online_segments()],
+            "file", [k for k, _l in self.panel.pane.online_tabs()],
             "File is in the online world - it is a local section and "
             "has no place there")
 
     def test_a_tab_click_picks_a_SOURCE_not_a_section(self):
         from amaze.core import matx_sources
         names = [s.name for s in matx_sources.all_sources()]
-        self.panel.enter_online_mode()
-        self.addCleanup(self.panel.leave_online_mode)
-        self.panel._on_tab_toggled(names[1], True)
+        self.panel.pane.enter_online()
+        self.addCleanup(self.panel.pane.leave_online)
+        self.panel.pane.choose_tab(names[1])
         QtWidgets.QApplication.processEvents()
         self.assertEqual(
-            names[1], self.panel.online_source,
+            names[1], self.panel.pane.online_source,
             "clicking an online tab did not change the source")
 
     def test_leaving_returns_to_the_previous_section(self):
@@ -472,17 +472,17 @@ class OnlineMode(unittest.TestCase):
         panel = self.panel
         panel.section_tabs.setChecked("gradient")
         QtWidgets.QApplication.processEvents()
-        came_from = panel.current_section
+        came_from = panel.pane.current_section
 
-        panel.enter_online_mode()
+        panel.pane.enter_online()
         QtWidgets.QApplication.processEvents()
-        self.assertTrue(panel._is_online(), "did not enter the online world")
+        self.assertTrue(panel.pane.is_online(), "did not enter the online world")
 
-        panel.leave_online_mode()
+        panel.pane.leave_online()
         QtWidgets.QApplication.processEvents()
-        self.assertFalse(panel._is_online(), "did not leave")
+        self.assertFalse(panel.pane.is_online(), "did not leave")
         self.assertEqual(
-            came_from, panel.current_section,
+            came_from, panel.pane.current_section,
             "leaving online dropped you somewhere other than the "
             "section you left from")
 
@@ -504,9 +504,9 @@ class OnlineMode(unittest.TestCase):
 
         def _restore_the_panel():  # class-scoped panel: a grid left on the online model would fail every later test
 
-            if panel._is_online():
-                panel.leave_online_mode()
-            section = panel.active_section()
+            if panel.pane.is_online():
+                panel.pane.leave_online()
+            section = panel.pane.active_section()
             if section is not None:
                 section.activate()
         self.addCleanup(_restore_the_panel)
@@ -518,14 +518,14 @@ class OnlineMode(unittest.TestCase):
             "the Color tab is not on its own proxy, so this test cannot "
             "tell a restored grid from an online one")
 
-        panel.enter_online_mode()
+        panel.pane.enter_online()
         QtWidgets.QApplication.processEvents()
         self.assertIs(
-            panel.thumblist.model(), panel.matx_sorted_model,
+            panel.thumblist.model(), panel.pane.matx_sorted_model,
             "entering the online world did not put the online model in "
             "the grid, so this test proves nothing")
 
-        panel.leave_online_mode()
+        panel.pane.leave_online()
         QtWidgets.QApplication.processEvents()
         self.assertIs(
             panel.thumblist.model(), local_model,
@@ -556,8 +556,8 @@ class OnlineMode(unittest.TestCase):
         self.assertEqual(
             0.5, ui_helpers.ChipToggleButton.DISABLED_OPACITY)
         panel = self.panel
-        panel.enter_online_mode()
-        self.addCleanup(panel.leave_online_mode)
+        panel.pane.enter_online()
+        self.addCleanup(panel.pane.leave_online)
         QtWidgets.QApplication.processEvents()
         self.assertFalse(
             panel.cb_favsonly.isEnabled(),
@@ -568,7 +568,7 @@ class OnlineMode(unittest.TestCase):
             "Comments is still enabled online - a comment is written "
             "against a library asset, which an online result is not")
 
-        panel.leave_online_mode()
+        panel.pane.leave_online()
         QtWidgets.QApplication.processEvents()
         self.assertTrue(panel.cb_favsonly.isEnabled(),
                         "the star was not enabled again")

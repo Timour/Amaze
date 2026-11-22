@@ -1,0 +1,566 @@
+"""Opening the pane's library: the checks, the models built or switched, updates and old libraries."""
+
+import contextlib
+import functools
+import os
+import threading
+import types
+import uuid
+
+from PySide6 import QtCore
+import hou
+
+import amaze
+from amaze import messages
+from amaze.actions import files as files_actions
+from amaze.actions import library as library_actions
+from amaze.actions import materials as material_actions
+from amaze.core import (category, debug, documents, gradient_library, grid_engine, library_db,
+                        library_files, locations, matx_library, model_registry,
+                        multifilterproxy_model, texstore, texture_library, thumbnails, users)
+from amaze.helpers import hostos, wording
+from amaze import sections
+from amaze.sections import online as online_section
+_FOLDERS_GIVEN_ICONS = globals().get("_FOLDERS_GIVEN_ICONS", set())    # library folders given their icon this session
+
+
+def _give_folder_icons(library_dir: str) -> None:
+    """The library folder and its `matX` folder each shown with their own icon."""
+    hostos.give_folder_icon(library_dir, amaze.package_file("ui", "library_folder"))
+    hostos.give_folder_icon(os.path.join(library_dir, library_files.PACKAGE_FOLDER),
+                            amaze.package_file("ui", "matx_folder"))
+
+
+def _flush_saves_on_close(schedule, *_destroyed) -> None:
+    """On pane close: drop its save timer and save every pending change now."""
+    library_db.drop_scheduler(schedule)
+    library_db.flush()
+
+
+class _LibraryAt:
+    """The preferences, read as if `folder` were the library and `user` its user."""
+
+    def __init__(self, preferences, folder: str, user: str) -> None:
+        self._preferences = preferences
+        self.dir = folder if folder.endswith(("/", os.sep)) else folder + "/"
+        self.library_user = user
+
+    def __getattr__(self, name):
+        return getattr(self._preferences, name)
+
+
+class Library:
+    """Every way onto a library, one sequence; the pane holds it as `library`. ▸o/section-api"""
+
+    def __init__(self, pane) -> None:
+        self.pane = pane
+        self.models_dir = None    # the library the models use, for closing Preferences and for a Cancel
+        self._save_timer = None
+
+    def start(self) -> bool:
+        """The library at the pane's start, its dialogs deferred; False when no settings were read."""
+        prefs = self.pane.prefs
+        if not self.pane.prefs_loaded:
+            self._open_libraryless()
+            return False
+        if (library_actions.index_unreadable(prefs.dir)
+                or library_actions.folder_not_empty_without_library(prefs.dir)):
+            self._open_later()    # a dialog opened during the build blocks the pane
+            opened = False    # the pane opens without a library; its dialog comes later
+        else:
+            opened = self._open_at_start()
+        if not opened:
+            self._open_libraryless()    # still a finished construction, so `panel ready` is logged
+        return True
+
+    def _open_libraryless(self) -> None:
+        """The no-library shape: every model attribute present and None, so the gear still works."""
+        pane = self.pane
+        pane.material_model = None
+        pane.category_model = None
+        pane.cop_model = None    # a right-click save reads every model before one is built
+        pane.cop_category_model = None
+        pane.code_model = None
+        pane.code_category_model = None
+        pane.file_files_model = None    # Preferences reads it through the pane, and takes None
+        pane.file_folders_model = None
+        pane.matx_online_model = None    # setup() builds the online world; `enter_online` refuses without it
+        pane.online_changed.emit()
+
+    def _open_later(self) -> None:
+        """Open the library once Qt is idle, so its dialog can draw. ▸r/modal-in-pane-build"""
+        timer = self._open_library_timer = QtCore.QTimer(self.pane)    # owned, so it is deleted with the pane
+        timer.setSingleShot(True)
+        timer.setInterval(0)
+        timer.timeout.connect(self._open_at_start)
+        timer.start()
+
+    def _open_at_start(self) -> bool:
+        """Open the library only once this computer's user is set; `ensure_library_user` prompts."""
+        return self.open_library(needs_user=True)
+
+    def serves(self, folder: str) -> bool:
+        """Whether the models are open on `folder`."""
+        return (getattr(self.pane, "material_model", None) is not None
+                and hostos.comparable_path(str(self.models_dir or ""))
+                == hostos.comparable_path(str(folder or "")))
+
+    def _repaired(self, folder: str) -> bool:
+        """Offer a repair of `folder`'s unreadable index; True once the chosen fix makes it read."""
+        from amaze.dialogs import repair_dialog
+        switching = getattr(self.pane, "material_model", None) is not None    # a library is open
+        debug.event("session", "library index unreadable", dir=folder, switching=switching)
+        ui = getattr(hou, "ui", None)
+        if ui is None:
+            return False
+        choice = ui.displayMessage(
+            messages.LIBRARY_INDEX_UNREADABLE_SWITCHING if switching
+            else messages.LIBRARY_INDEX_UNREADABLE,
+            buttons=messages.BUTTONS_REPAIR_OR_CANCEL if switching
+            else messages.BUTTONS_REPAIR_OR_OPEN_WITHOUT,
+            severity=hou.severityType.Warning,
+            default_choice=0, close_choice=1,
+            title=messages.TITLE_AMAZE)
+        if choice != 0:
+            debug.event("session", "index repair declined")
+            return False
+        repair_dialog.check_failed_library(folder, self.pane.prefs)    # the user picks the fix there
+        if library_actions.index_unreadable(folder):
+            debug.event("session", "index still unreadable after Check Library", dir=folder)
+            ui.displayMessage(messages.DATABASE_STILL_UNREADABLE_SWITCHING if switching
+                              else messages.DATABASE_STILL_UNREADABLE,
+                              severity=hou.severityType.Warning, title=messages.TITLE_AMAZE)
+            return False
+        debug.event("session", "index repaired", dir=folder)
+        return True
+
+    def reload(self) -> None:
+        """Reload Library: save, re-read the settings, then open the library they name."""
+        pane = self.pane
+        if not pane.material_model or not pane.category_model:
+            return
+        pane.material_model.save()
+        pane.prefs.load()
+        self.open_library()
+
+        debug.event("session", "library reloaded")
+
+    def takes_library(self, folder: str) -> bool:
+        """Accept a picked folder only once its index reads: Repair first, or nothing is written."""
+        if library_actions.folder_not_empty_without_library(folder):
+            debug.event("session", "library not opened - the folder is not empty and holds no library", dir=folder)
+            ui = getattr(hou, "ui", None)
+            if ui is not None:
+                ui.displayMessage(
+                    messages.LIBRARY_FOLDER_NOT_EMPTY,
+                    severity=hou.severityType.Warning,
+                    title=messages.TITLE_AMAZE)
+            return False
+        return not library_actions.index_unreadable(folder) or self._repaired(folder)
+
+    def open_library(self, needs_user: bool = False) -> bool:
+        """Every library opening runs these steps in this order; False when it stays closed."""
+        prefs = self.pane.prefs
+        refused = library_actions.index_unopenable(prefs.dir)
+        if refused:    # first: every later step reads the library's database
+            return self._stay_closed(refused)
+        if self._library_too_new():
+            return self._stay_closed()    # the update is offered once Qt is idle
+        if (library_actions.index_unreadable(prefs.dir)
+                and not self._repaired(prefs.dir)):
+            return self._stay_closed()
+        library_actions.prepare(prefs)
+        if not library_actions.index_present(prefs.dir):    # prepare could not set one up
+            return self._stay_closed()
+        if needs_user and users.current(prefs) is None:
+            debug.event("session", "library not opened - no user picked", dir=prefs.dir)
+            return self._stay_closed()    # it is opened from Preferences, where its user is picked
+        why = self._open_models()
+        if why:
+            return self._stay_closed(why)
+        texstore.publish_env(prefs)    # $AMAZELIB is set to the library the models now use
+        self._update_library()    # before any tile paints
+        self._seed_curated_content()    # once per library, marker-guarded
+        if prefs.note_library_opened(prefs.dir):
+            prefs.save()    # the Library list, the most recently opened first
+        if hou.isUIAvailable() and prefs.dir not in _FOLDERS_GIVEN_ICONS:    # once a session, off the UI thread
+            _FOLDERS_GIVEN_ICONS.add(prefs.dir)
+            threading.Thread(target=_give_folder_icons, daemon=True, args=(prefs.dir,)).start()
+        return True
+
+    def reread_settings(self) -> bool:
+        """Preferences applied: read the settings again, and open the library if it is another."""
+        prefs = self.pane.prefs
+        prefs.load()
+        debug.configure(prefs.debug_mode)
+        hostos.set_cache_override(prefs.cache_dir)
+        switched = prefs.dir != self.models_dir
+        if switched:    # only a library the models do not hold yet gets a full re-read
+            self.open_library()
+        return switched
+
+    def convert_old_library(self) -> bool:
+        """Preferences ▸ About: pick a folder holding an older library and convert it to 2.0."""
+        from amaze.core import library_conversion
+        prefs = self.pane.prefs
+        ui = getattr(hou, "ui", None)
+        if ui is None:
+            return False
+        picked = ui.selectFile(title=messages.CONVERT_OLD_LIBRARY_PICK,
+                               file_type=hou.fileType.Directory,
+                               chooser_mode=hou.fileChooserMode.Read)
+        folder = hou.text.expandString(picked or "").strip()
+        if not folder:
+            return False
+        if not library_conversion.needs_conversion(folder):
+            ui.displayMessage(messages.CONVERT_OLD_LIBRARY_NONE,
+                              severity=hou.severityType.Message, title=messages.TITLE_AMAZE)
+            return False
+        known = library_conversion.old_users(folder)
+        user = prefs.library_user if prefs.library_user in known else ""
+        if not user and len(known) == 1:
+            user = next(iter(known))
+        elif not user and known:    # the user who gets the favourites and locations saved before users
+            ids = sorted(known, key=lambda uid: known[uid].lower())
+            chosen = ui.selectFromList([known[uid] for uid in ids], exclusive=True,
+                                       title=messages.CONVERT_OLD_LIBRARY_AS,
+                                       column_header=messages.CONVERT_OLD_LIBRARY_AS)
+            if not chosen:
+                return False
+            user = ids[chosen[0]]
+        name = ""
+        if not known:    # a library from before users: its favourites and locations need one
+            picked, name = ui.readInput(messages.CONVERT_OLD_LIBRARY_NAME,
+                                        buttons=messages.BUTTONS_CONVERT_OLD_LIBRARY_NAME,
+                                        default_choice=0, close_choice=1,
+                                        title=messages.TITLE_AMAZE)
+            name = str(name or "").strip()
+            if picked != 0 or not name:
+                return False
+            user = uuid.uuid4().hex
+        return self._convert(folder, user, name)
+
+    def _convert(self, folder: str, user: str, user_name: str = "") -> bool:
+        """Convert an older library whole, after a confirmation, with progress; True if done."""
+        from amaze.core import library_conversion, library_policy
+        prefs = self.pane.prefs
+        ui = hou.ui
+        at = _LibraryAt(prefs, folder, user)
+
+        def confirm():
+            return ui.displayMessage(
+                messages.CONFIRM_CONVERT_LIBRARY % library_policy.LIBRARY_VERSION_SINCE,
+                buttons=messages.BUTTONS_CONVERT_LIBRARY, default_choice=0, close_choice=1,
+                severity=hou.severityType.Message, title=messages.TITLE_AMAZE) == 0    # closing: Cancel
+
+        def trash_classic(count, renderer):
+            return ui.displayMessage(
+                messages.CONVERT_CLASSIC_NEEDS_RENDERER % (
+                    "%d %s" % (count, library_files.section_noun(library_files.MATERIALS, count)),
+                    renderer.label, renderer.label),
+                buttons=messages.BUTTONS_CLASSIC_NEEDS_RENDERER, default_choice=1, close_choice=1,
+                severity=hou.severityType.Warning, title=messages.TITLE_AMAZE) == 0
+
+        from amaze.render import classic_rebuild
+        with contextlib.ExitStack() as shown:    # the progress dialog opens after the confirmation, at the first asset
+            operation = []
+
+            def progress(done, total):
+                if not operation:
+                    operation.append(shown.enter_context(hou.InterruptableOperation(
+                        messages.CONVERT_LIBRARY_PROGRESS, open_interrupt_dialog=True)))
+                try:
+                    operation[0].updateProgress(float(done) / max(total, 1))
+                except hou.OperationInterrupted:    # the button is Houdini's own: a press is ignored
+                    pass
+            outcome = library_conversion.convert(
+                folder, confirm, progress, user=user,
+                machine_stars=library_conversion.machine_stars(prefs),
+                classic=classic_rebuild.Rebuilder(at, trash_classic), user_name=user_name)
+        library_db.release(at)    # the data read during the conversion no longer matches the disk
+        if outcome.status == library_conversion.STOPPED:
+            ui.displayMessage(messages.CONVERT_LIBRARY_STOPPED % outcome.why,
+                              severity=hou.severityType.Warning, title=messages.TITLE_AMAZE)
+            return False
+        if outcome.status == library_conversion.BLOCKED:
+            ui.displayMessage(messages.CONVERT_LIBRARY_BLOCKED % outcome.why,
+                              severity=hou.severityType.Warning, title=messages.TITLE_AMAZE)
+            return False
+        if outcome.status != library_conversion.DONE:
+            return False    # cancelled: nothing touched
+        left = outcome.set_aside
+        if not left:
+            ui.displayMessage(messages.CONVERT_LIBRARY_DONE, severity=hou.severityType.Message,
+                              title=messages.TITLE_AMAZE)
+        else:
+            counted = wording.and_list([
+                "%d %s" % (count, library_files.section_noun(section, count))
+                for section, count in ((section, sum(1 for one in left if one.section == section))
+                                       for section in library_files.ASSET_SECTIONS) if count])
+            choice = ui.displayMessage(
+                messages.CONVERT_LIBRARY_DONE_SOME_LEFT % counted,
+                details="\n".join(one.name for one in left),    # every name, one a line
+                buttons=messages.BUTTONS_UNCONVERTED, default_choice=0, close_choice=0,
+                severity=hou.severityType.Warning, title=messages.TITLE_AMAZE)
+            if choice == 1:    # Move to Trash: the user's own choice, so through the trash
+                library_conversion.trash_set_aside(folder, left)
+        self._offer_old_trash(ui, outcome.old_trash)
+        return True
+
+    def _offer_old_trash(self, ui, old_trash: str) -> None:
+        """Offer once to delete this computer's old trash for the library; the user decides."""
+        from amaze.core import library_conversion
+        if not old_trash:
+            return
+        files, size = library_conversion.old_trash_size(old_trash)
+        choice = ui.displayMessage(
+            messages.OLD_TRASH_QUESTION % (files, library_conversion.size_text(size)),
+            buttons=messages.BUTTONS_OLD_TRASH, default_choice=1, close_choice=1,
+            severity=hou.severityType.Message, title=messages.TITLE_AMAZE)
+        if choice == 0:
+            library_conversion.delete_old_trash(old_trash)
+
+    def _open_models(self) -> str:
+        """The models' step of `open_library`: "" once they use `prefs.dir`, else the reason."""
+        prefs = self.pane.prefs
+        try:
+            if getattr(self.pane, "material_model", None) is None:
+                self.setup()    # with no library open there are no models to switch
+            else:
+                self.switch_all_models()
+        except (OSError, ValueError, KeyError) as exc:    # an index that exists but cannot be opened
+            debug.exception("library open", exc, dir=prefs.dir)
+            return (library_actions.index_unopenable(prefs.dir)
+                    or messages.LIBRARY_LIST_NOT_LOADED % exc)
+        return ""
+
+    def _stay_closed(self, why: str = "") -> bool:
+        """False; an open library stays open, its Library Path restored, `why` shown."""
+        prefs = self.pane.prefs
+        switching = getattr(self.pane, "material_model", None) is not None
+        if library_db.key_of(prefs) != library_db.key_of(
+                types.SimpleNamespace(dir=self.models_dir or "")):
+            library_db.release(prefs)    # read during the checks, never opened: released
+        if switching:
+            prefs.dir = self.models_dir
+            prefs.save()
+            debug.event("session", "previous library left open", dir=prefs.dir)
+        if why:    # `debug.refuse` defers it: a modal in the pane's build draws black ▸r/modal-in-pane-build
+            debug.refuse(debug.Damage(messages.LIBRARY_NOT_OPENED_SWITCHING % why if switching
+                                      else messages.LIBRARY_NOT_OPENED % why))
+        return False
+
+    def _note_models_library(self) -> None:
+        """Record the library the models now use, for closing Preferences and for a Cancel."""
+        self.models_dir = self.pane.prefs.dir
+
+    def models(self) -> tuple:
+        """Every library-backed model that exists now, from each section's `library_model_attrs`."""
+        found = []
+        for section in self.pane.sections.values():
+            for attr in getattr(section, "library_model_attrs", ()):
+                model = getattr(self.pane, attr, None)
+                if model is not None and model not in found:
+                    found.append(model)
+        return tuple(found)
+
+    def switch_all_models(self) -> None:
+        """The models' step of `open_library`: every library-backed model re-pointed at `prefs.dir`."""
+        pane = self.pane
+        pane.library_switching.emit()    # a pending comment is saved to its own library first
+        library_db.flush()    # pending saves are written to the library they were made in
+        library_db.refresh()    # a switch reads every database as it is on disk now
+        locations.forget()
+        models = self.models()
+        if not models:
+            return
+        pane.prefs.load()    # the switch's one read of the settings; every model takes this Prefs
+        with grid_engine.relayout(*models):
+            for m in models:
+                m.preferences = pane.prefs    # a shared model may hold another pane's ▸p/one-model-set
+                m.switch_model_data()
+            model_registry.rebind(pane.prefs, pane.material_model)    # the shared set, re-registered under its library
+        pane.library_switched.emit()
+        self._note_models_library()
+        debug.event("session", "library switched", dir=self.models_dir)
+        section = pane.active_section()
+        if section is not None:
+            section.library_switched()
+
+    def _update_library(self) -> None:
+        """Update the library to this Amaze's version before any tile paints, with no prompt."""
+        try:
+            if library_actions.update(self.pane.prefs):
+                self.pane.library_updated.emit()
+        except Exception as exc:                          # noqa: BLE001 - never blocks the pane
+            debug.exception("library update", exc)
+
+    def _library_too_new(self) -> bool:
+        """A library a newer Amaze updated is not opened; the update is offered once Qt is idle."""
+        from amaze.core import library_policy
+        found = library_actions.newer_version(self.pane.prefs)
+        if not found:
+            return False
+        debug.event("session", "library is newer than this Amaze - not opened",
+                    found=found, known=library_policy.LIBRARY_VERSION)
+        timer = getattr(self, "_update_offer_timer", None)
+        if timer is None:    # owned, so it is deleted with the pane ▸r/model-parent
+            timer = self._update_offer_timer = QtCore.QTimer(self.pane)
+            timer.setSingleShot(True)
+            timer.setInterval(0)    # a modal inside onCreateInterface draws black
+            timer.timeout.connect(self._offer_amaze_update)
+        timer.start()
+        return True
+
+    def _offer_amaze_update(self) -> None:
+        """Update Amaze or Cancel, for the library left closed; headless, no dialog is shown."""
+        from amaze.core import library_settings, updater
+        from amaze.dialogs import update_dialog
+        ui = getattr(hou, "ui", None)
+        if ui is None:
+            return
+        library_dir = str(self.pane.prefs.dir or "")
+        if ui.displayMessage(
+                messages.LIBRARY_NEEDS_NEWER_AMAZE % library_settings.version_label(
+                    library_settings.library_formats(library_dir)),
+                buttons=messages.BUTTONS_UPDATE_AMAZE, default_choice=0, close_choice=1,
+                severity=hou.severityType.Warning, title=messages.TITLE_AMAZE) != 0:
+            return
+        found = updater.check()
+        if not found:
+            ui.displayMessage(found.sentence, title=messages.TITLE_AMAZE,
+                              severity=(hou.severityType.Warning
+                                        if found.verdict == updater.UNREACHABLE
+                                        else hou.severityType.Message))
+        elif update_dialog.confirmed(found, library_dir):
+            update_dialog.install_and_report(found)
+
+    def _seed_curated_content(self) -> None:
+        """Add the shipped starters, on construction and on a switch. ▸archive/actions/library.py"""
+        pane = self.pane
+        code_model = getattr(pane, "code_model", None)    # with no library open the models are None
+        gradient_model = getattr(pane, "gradient_model", None)
+        library_actions.seed_starters(
+            code_model, pane.code_category_model if code_model is not None else None,
+            gradient_model, pane.gradient_categories_model if gradient_model is not None else None)
+
+    def ensure_library_user(self) -> str:
+        """After the first paint: this computer's user, or a prompt to open Preferences."""
+        preferences = self.pane.prefs
+        uid = users.current(preferences)
+        if uid or not library_actions.index_present(preferences.dir):
+            return uid or ""    # no library: the pane's empty state shows where to set one
+        debug.event("users", "no user picked for this library", dir=preferences.dir)
+        ui = getattr(hou, "ui", None)
+        if ui is not None and ui.displayMessage(
+                messages.NO_USER_PICKED, buttons=messages.BUTTONS_OPEN_PREFERENCES,
+                default_choice=0, close_choice=1,
+                title=messages.TITLE_AMAZE, severity=hou.severityType.Warning) == 0:
+            self.pane.ui.show_prefs(page="Library")    # where a library is picked with its user
+        return ""
+
+    def open_folder(self) -> None:
+        """Open the Library Folder in the system's file browser."""
+        if not self.pane.material_model:
+            ui = getattr(hou, "ui", None)
+            if ui is not None:
+                ui.displayMessage(messages.NO_LIBRARY_OPEN,
+                                  title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
+            return
+        hostos.open_path(self.pane.prefs.dir)
+
+    def _start_save_timer(self) -> None:
+        """This pane's save timer: a burst of changes is one save, written when it fires or at close."""
+        if self._save_timer is not None:
+            return
+        timer = self._save_timer = QtCore.QTimer(self.pane)    # owned, so it is deleted with the pane ▸r/model-parent
+        timer.setSingleShot(True)
+        timer.setInterval(documents.SAVE_DELAY_MS)
+        timer.timeout.connect(library_db.flush)
+        schedule = timer.start
+        library_db.set_scheduler(schedule)
+        self.pane.destroyed.connect(functools.partial(_flush_saves_on_close, schedule))
+        app = QtCore.QCoreApplication.instance()
+        if app is not None and not getattr(app, "_amaze_flush_at_quit", False):
+            app.aboutToQuit.connect(library_db.flush)
+            app._amaze_flush_at_quit = True
+
+    def _grid_proxy(self, proxy, model) -> tuple:
+        """`proxy` set up over `model` the one way grid proxies are, and its selection model."""
+        proxy.setSourceModel(model)
+        proxy.setFilterCaseSensitivity(QtCore.Qt.CaseSensitivity.CaseInsensitive)
+        proxy.setDynamicSortFilter(False)    # the base class re-filters ▸r/proxy-invariant
+        proxy.layoutChanged.connect(self.pane.grid_reordered)    # another pane may sort the model
+        return proxy, QtCore.QItemSelectionModel(proxy, self.pane)
+
+    def _sidebar_proxy(self, model):
+        """A sidebar proxy over `model`: never sorted, as the stored order is the sidebar's."""
+        proxy = category.CategoriesSidebarProxy(self.pane)
+        proxy.setSourceModel(model)
+        proxy.hide_empty = self.pane.prefs.hide_empty_categories
+        return proxy
+
+    def setup(self) -> None:
+        """Build the models, this pane's proxies and selections, and the sections; show the first."""
+        pane = self.pane
+        self._start_save_timer()
+        for attr, model in model_registry.models_for(pane.prefs).items():
+            setattr(pane, attr, model)    # shared with every pane on this library; the proxies below are this pane's
+        files_actions.connect(pane.file_files_model, pane.file_folders_model,
+                              os_icon=pane.ui.os_file_icon)
+        if pane.files.scene_watch is None:    # one callback per pane, however often setup runs
+            pane.files.scene_watch = files_actions.watch_scene(pane.file_folders_model)
+            pane.destroyed.connect(    # holds the callback, never the pane
+                functools.partial(files_actions.unwatch_scene, pane.files.scene_watch))
+        material_actions.connect(pane.material_model)
+        self._note_models_library()
+
+        pane.category_sorted_model = self._sidebar_proxy(pane.category_model)
+        pane.material_sorted_model, pane.material_selection_model = self._grid_proxy(
+            multifilterproxy_model.MultiFilterProxyModel(pane), pane.material_model)
+        pane.file_sorted_model, pane.file_selection_model = self._grid_proxy(
+            texture_library.TextureFilterProxyModel(pane), pane.file_files_model)
+        thumbnails.engine.set_budget_mb(pane.prefs.ram_cache_mb)
+        pane.file_files_model.progress_changed.connect(
+            pane._on_file_folder_progress)    # a bound method, never a lambda: the model outlives a closed pane tab
+        pane.gradient_category_sorted_model = self._sidebar_proxy(pane.gradient_categories_model)
+        pane.gradient_sorted_model, pane.gradient_selection_model = self._grid_proxy(
+            gradient_library.GradientFilterProxyModel(pane), pane.gradient_model)
+        pane.cop_category_sorted_model = self._sidebar_proxy(pane.cop_category_model)
+        pane.cop_sorted_model, pane.cop_selection_model = self._grid_proxy(
+            multifilterproxy_model.MultiFilterProxyModel(pane), pane.cop_model)
+        pane.code_category_sorted_model = self._sidebar_proxy(pane.code_category_model)
+        pane.code_sorted_model, pane.code_selection_model = self._grid_proxy(
+            multifilterproxy_model.MultiFilterProxyModel(pane), pane.code_model)
+
+        for _model in (pane.material_model, pane.cop_model, pane.code_model):    # every asset keeps its first category only; idempotent
+            try:
+                _model.collapse_multicategory()
+            except Exception as exc:
+                debug.event("session", "category collapse failed",
+                            error=str(exc))
+
+        pane.matx_online_model = matx_library.MatxOnlineLibrary(    # the online MaterialX browser, with MaterialLibrary's role numbers
+            preferences=pane.prefs
+        )
+        pane.matx_sorted_model, pane.matx_selection_model = self._grid_proxy(
+            multifilterproxy_model.MultiFilterProxyModel(pane), pane.matx_online_model)
+        pane.matx_source_model = matx_library.MatxSidebarModel(
+            pane.matx_online_model
+        )
+        pane.matx_online_model.progress_changed.connect(    # preview downloads update the same bar as texture/geo thumbs
+            pane._on_online_preview_progress
+        )
+        pane.online_mode = False
+        pane.online_source = None
+        pane.online_context = online_section.OnlineContext(pane)
+        pane.sections = sections.build_sections(pane)    # one object per tab; shared handlers dispatch through active_section()
+        pane.models_built.emit()    # the host's delegates exist before the first section binds them
+
+        pane.current_section = next(    # the first enabled section
+            (k for k, _ in pane.ALL_SECTIONS if k in pane.prefs.enabled_sections),
+            "material",
+        )
+        pane.show_context(pane.sections[pane.current_section])    # the path a tab click takes
+        pane.library_shown.emit()
+        pane.online_changed.emit()    # the online models exist from here on

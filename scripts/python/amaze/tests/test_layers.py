@@ -23,7 +23,8 @@ ALLOWED = {    # layers each may use: all below it, except models and houdini, w
 }
 
 PACKAGE_LAYER = {    # every module under these packages
-    "panel": "interface", "dialogs": "interface", "utils": "interface",
+    "panel": "interface", "dialogs": "interface", "utils": "interface", "pane": "interface",
+    "sections": "interface",
     "render": "houdini", "preview": "houdini", "prefs": "library", "actions": "actions",
 }
 
@@ -149,6 +150,31 @@ def breaks(modules=None):
     return found
 
 
+ENGINE = ("pane", "sections")    # the pane engine and its sections: one for the widget panel and QML
+
+
+def imports_of(name, modules) -> set:
+    """The Amaze modules `name` imports, and `PySide6.QtWidgets` when it imports that."""
+    with open(modules[name], encoding="utf-8") as handle:
+        tree = ast.parse(handle.read(), filename=modules[name])
+    found = set()
+    for node in ast.walk(tree):
+        dotted = []
+        if isinstance(node, ast.Import):
+            dotted = [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            base = _base_of(node, name, modules)
+            dotted = [base] + [base + "." + alias.name for alias in node.names]
+        for one in dotted:
+            if one.startswith("PySide6.QtWidgets"):
+                found.add("PySide6.QtWidgets")
+            elif one.split(".")[0] == "amaze":
+                target = _target(one, modules)
+                if target and target != name:
+                    found.add(target)
+    return found
+
+
 def _external_ok(layer, top, dotted):
     if top in ("PySide6", "shiboken6"):
         if dotted.endswith(("QtWidgets", "QtUiTools")):
@@ -202,6 +228,21 @@ class EachLayerUsesOnlyTheLayersBelowIt(unittest.TestCase):
         stale = listed() - breaks()
         self.assertEqual([], lines(stale),
                          "these are fixed; delete their lines from layer_exceptions.txt")
+
+
+class ThePaneEngineHoldsNoWidget(unittest.TestCase):
+    """The engine is shared by the widget panel and the QML pane, so it reaches no widget code."""
+
+    def test_no_engine_module_imports_widgets_or_a_module_that_does(self):
+        modules = module_files()
+        widgets = {name for name in modules if "PySide6.QtWidgets" in imports_of(name, modules)}
+        engine = [name for name in modules
+                  if any(name == part or name.startswith(part + ".") for part in ENGINE)]
+        self.assertTrue(engine, "premise: no engine module was found")
+        found = sorted("%s imports %s" % (name, target) for name in engine
+                       for target in imports_of(name, modules)
+                       if target == "PySide6.QtWidgets" or target in widgets)
+        self.assertEqual([], found, "the engine reaches widget code; the host does that part")
 
 
 if __name__ == "__main__":

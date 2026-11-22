@@ -71,7 +71,7 @@ class TheRendererTableIsWrittenOnce(unittest.TestCase):
             def save(self):
                 pass
 
-        from amaze.panel import panel as panel_mod
+        from amaze.pane import saving as pane_saving
         fake = Panel()
         fake.prefs.save = lambda: None
         for renderer in renderers.ALL:
@@ -80,7 +80,7 @@ class TheRendererTableIsWrittenOnce(unittest.TestCase):
             for stored in (renderer.key,) + renderer.aliases:
                 with self.subTest(stored=stored):
                     setattr(fake.prefs, renderer.switch, False)
-                    panel_mod.AmazePanel.enable_renderer_on_add(fake, stored)
+                    pane_saving.Saving(fake).enable_renderer_on_add(stored)
                     self.assertTrue(getattr(fake.prefs, renderer.switch),
                                     "saving a %s material did not switch it on" % stored)
 
@@ -244,7 +244,7 @@ class LoadNeverRaisesAndAlwaysValidates(unittest.TestCase):
         self._write_invalid_settings(p.path, directory=p.dir,
                            library_user=test_support.FIXTURE_USER)
         p.load()
-        state = prefs_window.AmazePrefsState(p, panel=None)
+        state = prefs_window.AmazePrefsState(p, pane=None)
         self.assertEqual("256", state.getPref("rendersize"))
         self.assertEqual("256", state.getPref(renderers.REDSHIFT.samples))
         self.assertTrue(state.getBool("render_on_import"))
@@ -295,7 +295,7 @@ class LoadNeverRaisesAndAlwaysValidates(unittest.TestCase):
         p = test_support.fixture_prefs(self)
         for renderer in renderers.ALL:
             setattr(p, renderer.switch, renderer is not renderers.OCTANE)
-        state = prefs_window.AmazePrefsState(p, panel=None)
+        state = prefs_window.AmazePrefsState(p, pane=None)
         offered = lambda: set(state.offeredRenderers)    # noqa: E731 - the rows shown, read again
         self.assertNotIn(renderers.OCTANE.key, offered(), "a hidden renderer kept its samples row")
         self.assertLessEqual({renderers.KARMA.key, renderers.REDSHIFT.key}, offered())
@@ -1181,7 +1181,7 @@ class TheOsHandOffsNeverRaise(unittest.TestCase):
 
 
 class RevealUsesHoudinisRevealFile(unittest.TestCase):
-    """`ui_helpers.reveal` calls `fileutils.revealFile`, which Houdini ships, on every system."""
+    """`pane.files.reveal` calls `fileutils.revealFile`, which Houdini ships, on every system."""
 
     def setUp(self):
         self.ran, self.revealed = [], []
@@ -1205,7 +1205,7 @@ class RevealUsesHoudinisRevealFile(unittest.TestCase):
             platform=types.SimpleNamespace(system=lambda: system))
 
     def test_a_file_or_a_folder_is_shown_with_houdinis_command_for_each_system(self):
-        from amaze.helpers import ui_helpers
+        from amaze.pane import files as pane_files
         target = os.path.join(self.folder, "amaze_debug.jsonl")
         test_support.write_text(target, "")
         parent = os.path.dirname(self.folder)
@@ -1216,35 +1216,35 @@ class RevealUsesHoudinisRevealFile(unittest.TestCase):
                 ("Linux", [["xdg-open", self.folder], ["xdg-open", parent]])):
             with self.subTest(system=system), self._commands(system):
                 del self.ran[:]
-                ui_helpers.reveal(target)
-                ui_helpers.reveal(self.folder + "/")
+                pane_files.reveal(target)
+                pane_files.reveal(self.folder + "/")
                 self.assertEqual(expected, self.ran)
         self.assertEqual([], self.revealed, "Amaze's own reveal_path ran beside Houdini's")
         self.assertEqual([], self.said, "a file browser that opened was reported as a failure")
 
     def test_when_houdinis_function_raises_the_status_line_says_why(self):
         from amaze import messages
-        from amaze.helpers import ui_helpers
+        from amaze.pane import files as pane_files
         import fileutils
         with mock.patch.object(fileutils, "revealFile", side_effect=OSError("no open")):
-            ui_helpers.reveal(self.folder)
+            pane_files.reveal(self.folder)
         self.assertEqual([messages.REVEAL_FAILED % "no open"], self.said)
         self.assertEqual([], self.revealed, "a second way of opening the file browser was tried")
 
     def test_a_path_that_is_gone_is_named_and_houdinis_function_is_not_called(self):
         from amaze import messages
-        from amaze.helpers import ui_helpers
+        from amaze.pane import files as pane_files
         import fileutils
         gone = os.path.join(self.folder, "deleted.exr")
         with mock.patch.object(fileutils, "revealFile") as shipped:
-            ui_helpers.reveal(gone)
+            pane_files.reveal(gone)
         shipped.assert_not_called()    # `open -R` on a missing file fails without raising
         self.assertEqual([messages.REVEAL_MISSING % gone], self.said)
 
     def test_every_caller_inside_houdini_uses_houdinis_file_browser(self):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         callers = []
-        for folder in ("panel", "dialogs", "actions", "utils", "core", "render"):
+        for folder in ("panel", "pane", "sections", "dialogs", "actions", "utils", "core", "render"):
             for dirpath, _dirs, files in os.walk(os.path.join(root, folder)):
                 for name in files:
                     if not name.endswith(".py"):
@@ -1266,7 +1266,7 @@ class TheUserRowCreatesAndDeletes(unittest.TestCase):
         from amaze.tests import test_support
         p = test_support.fixture_prefs(self)
         p.library_user = users.create(p, "Cobalt")
-        state = prefs_window.AmazePrefsState(p, panel=None)
+        state = prefs_window.AmazePrefsState(p, pane=None)
         sentinel = user_dialog.CREATE
         rows = [row["value"] for row in state.userOptions]
         self.assertIn(sentinel, rows,
@@ -1284,7 +1284,7 @@ class TheUserRowCreatesAndDeletes(unittest.TestCase):
         p = test_support.fixture_prefs(self)
         for name in ("sienna", "Cobalt", "Fern"):
             p.library_user = users.create(p, name)
-        state = prefs_window.AmazePrefsState(p, panel=None)
+        state = prefs_window.AmazePrefsState(p, pane=None)
         self.assertEqual(["Cobalt", "Fern", "sienna"],
                          [row["text"] for row in state.userOptions[:-1]],
                          "the users are not listed by name, A to Z")
@@ -1302,7 +1302,7 @@ class TheUserRowCreatesAndDeletes(unittest.TestCase):
         from amaze.tests import test_support
         p = test_support.fixture_prefs(self)
         p.library_user = users.create(p, "Cobalt")
-        state = prefs_window.AmazePrefsState(p, panel=None)
+        state = prefs_window.AmazePrefsState(p, pane=None)
         state.create_user("  Fern  ")
         self.assertEqual({"Cobalt"}, set(users.all_users(p).values()),
                          "the user was made before Apply")
@@ -1323,7 +1323,7 @@ class TheUserRowCreatesAndDeletes(unittest.TestCase):
         users.create(p, "Sienna")
         users.create(p, "Fern")
         p.library_user = first
-        state = prefs_window.AmazePrefsState(p, panel=None)
+        state = prefs_window.AmazePrefsState(p, pane=None)
         state.delete_user(first)
         self.assertEqual({"Sienna", "Fern"}, set(users.all_users(p).values()))
         self.assertEqual("", str(p.library_user or ""))
@@ -1340,7 +1340,7 @@ class TheUserRowCreatesAndDeletes(unittest.TestCase):
         first = users.create(p, "Cobalt")
         users.create(p, "Sienna")
         p.library_user = first
-        state = prefs_window.AmazePrefsState(p, panel=None)
+        state = prefs_window.AmazePrefsState(p, pane=None)
         state.delete_user(first)
         self.assertIn("Sienna", [row["text"] for row in state.userOptions])
         self.assertEqual("", state.getPref(prefs_window.USER),
@@ -1357,7 +1357,7 @@ class TheOverwriteSwitchFollowsTheLibrary(unittest.TestCase):
         from amaze.tests import test_support
         p = test_support.fixture_prefs(self)
         library_settings.set_allow_overwrite(p, False)
-        state = prefs_window.AmazePrefsState(p, panel=None)
+        state = prefs_window.AmazePrefsState(p, pane=None)
         self.assertFalse(state.getBool(prefs_window.OVERWRITE),
                          "premise: the first library forbids overwrite")
         folder = test_support.scratch_dir("amaze_policy_switch_")
@@ -1393,7 +1393,7 @@ class TheCacheWipeCannotBeSuppressed(unittest.TestCase):
         from amaze.dialogs import prefs_window
         from amaze.tests import test_support
         p = test_support.fixture_prefs(self)
-        seen = self._asked_with(prefs_window.AmazePrefsState(p, panel=None))
+        seen = self._asked_with(prefs_window.AmazePrefsState(p, pane=None))
         self.assertIn("kwargs", seen, "the wipe never showed a confirmation")
         self.assertEqual(messages.CONFIRM_CLEAR_THUMBNAIL_CACHE,
                          seen.get("text"))
@@ -1411,7 +1411,7 @@ class PreferencesShowTheDrawnTexts(unittest.TestCase):
     def _state(self):
         from amaze.dialogs import prefs_window
         from amaze.tests import test_support
-        return prefs_window.AmazePrefsState(test_support.fixture_prefs(self), panel=None)
+        return prefs_window.AmazePrefsState(test_support.fixture_prefs(self), pane=None)
 
     def test_the_material_versions_help(self):
         from amaze import messages
@@ -1455,7 +1455,7 @@ class PreferencesShowTheDrawnTexts(unittest.TestCase):
                 mock.patch.object(QtWidgets.QMessageBox, "exec",
                                   side_effect=AssertionError("a Qt box")), \
                 mock.patch.object(debug, "export_log", **patches) as export, \
-                mock.patch("amaze.helpers.ui_helpers.reveal") as reveal:
+                mock.patch("amaze.pane.files.reveal") as reveal:
             state.saveLog()
         self.assertEqual([hou.fileType.Directory], [k.get("file_type") for k in asked])
         return folder, export, displayed, reveal
@@ -1572,7 +1572,7 @@ class ThePickersStartInAForwardSlashPath(unittest.TestCase):
         from amaze.tests import test_support
         p = test_support.fixture_prefs(self)
         p.cache_dir = ""   # unset: falls through to the machine's convention, built by `os.path.join`
-        state = prefs_window.AmazePrefsState(p, panel=None)
+        state = prefs_window.AmazePrefsState(p, pane=None)
         native = "C:\\scratch\\AppData\\Local\\Amaze\\Cache"
         with mock.patch.object(prefs_window.hostos, "cache_root",   # the window's own reference: a fixture panel reloads hostos
                                lambda: native):
@@ -1593,7 +1593,7 @@ class APickedRootKeepsItsSlash(unittest.TestCase):
         from amaze.tests import test_support
         p = test_support.fixture_prefs(self)
         p.cache_dir = "/start"    # so the picker does not ask for the machine's cache root
-        state = prefs_window.AmazePrefsState(p, panel=None)
+        state = prefs_window.AmazePrefsState(p, pane=None)
         ui = types.SimpleNamespace(selectFile=lambda *_a, **_k: answer,
                                    displayMessage=lambda *_a, **_k: 0)
         with contextlib.ExitStack() as stack:

@@ -5,6 +5,7 @@ import os
 import shutil
 import sys
 import tempfile
+import types
 import unittest
 from unittest import mock
 
@@ -243,7 +244,7 @@ class EveryRowFollowsAUserOrLibraryChange(SharedPrefsCase):
         self.assertNotEqual(self.SECOND["enabled_sections"],
                             self.prefs.enabled_sections,
                             "premise: the first user's state is not the second's")
-        self.state = prefs_window.AmazePrefsState(self.prefs, panel=None)
+        self.state = prefs_window.AmazePrefsState(self.prefs, pane=None)
         self.reread = []
         self.state.prefsUpdated.connect(lambda: self.reread.append(True))
 
@@ -282,14 +283,13 @@ class EveryRowFollowsAUserOrLibraryChange(SharedPrefsCase):
                 drawn.append(tile_icons.stroke_for(prefs))
                 return 0
 
-        class _Panel:
-            def serves(self, _folder):
-                return True
+        class _Pane:
+            library = types.SimpleNamespace(serves=lambda _folder: True)
 
             def tile_icon_models(self):
                 return (_Model(),)
 
-        self.state._panel = _Panel()
+        self.state._pane = _Pane()
         self.pick_second()
         self.assertEqual(
             [tile_icons.FEATHER_STROKE_UNITS], drawn,
@@ -421,7 +421,7 @@ class AMachineRunningBeforeAChangeReadsIt(SharedPrefsCase):
             a.rendersize = 512
             a.save()
         with self.on("B"):
-            state = prefs_window.AmazePrefsState(b, panel=None)    # the window re-reads the stores
+            state = prefs_window.AmazePrefsState(b, pane=None)    # the window re-reads the stores
         self.assertEqual("512", state.getPref("rendersize"),
                          "Preferences shows the value this machine started with")
 

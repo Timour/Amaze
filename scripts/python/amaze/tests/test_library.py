@@ -417,8 +417,8 @@ class TheLibraryKeepsNoTagList(unittest.TestCase):
 
     def test_new_tags_stay_on_the_asset_and_nowhere_else(self):
         panel = test_support.fixture_panel(self)
-        model = panel.material_model
-        path = os.path.join(panel.prefs.dir, library_files.MATERIALS)
+        model = panel.pane.material_model
+        path = os.path.join(panel.pane.prefs.dir, library_files.MATERIALS)
         index = model.index(1, 0)
         asset_id = str(model.assets[1].mat_id)
         model.set_assetdata(index, model.assets[1].name, "", "freshtag", None)

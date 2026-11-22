@@ -37,7 +37,7 @@ panel uses the shared widgets. Data is read/written through
 |---|---|---|
 | **Panel** | The whole window. One class, built once. | `panel/panel.py` → `AmazePanel` |
 | **Toolbar** | Top strip, laid out left to right in one place (`_lay_out_toolbar`, frame B01): Categories, Renderer + View menus, Online, Grid/List toggle, Favourites star, the Preferences gear and Capture (every section, greyed online), then the size slider and the Search box, and at the far right Comments and Info (every section, greyed online). The View menu holds Generate Material, the imports and the two package exports, each export greyed unless the shown context has what it writes. Categories and Online were moved out of the View menu (2026-08-01): a control that toggles state is a button, not a menu row, and having both lets the button and the menu row show different states. Every chip's four state pixmaps come from `ChipToggleButton.set_art` — the SVG as drawn at rest, hover lightens, and a chip whose ON state is shown by COLOUR (star amber, Online green, Comments purple, Info amber) does not lighten at all. Disabled chips paint at 50%. | built in `init_ui()`, states in `ui_helpers.ChipToggleButton.set_art` |
-| **Section Tab Strip** | The Material/Color/Node/Code/File tabs (singular since the 2026-07-31 merge; stored keys keep their historical names): Houdini's own QML tab bar (`houdini.pluto` TabBar and TabButton, in `ui/section_tabs.qml`, set up with Houdini's theme as its own QML views are), each tab with its section icon drawn at the size frame S01 draws it and 2 px from its name, and a 1 px line along the strip's bottom row over the tab bar. Carries a standard **Cancel button** at its right end: shown exactly while the conversion bar shows — `panel.set_conversion_bar_visible` is the only function that shows or hides the bar, and it shows or hides both — it stops a background thumbnail render while one runs (`husk_job.jobs`, which controls the bar meanwhile), otherwise the File section's image batch (flush first, then cancel). | `ui_helpers.SectionTabBar` |
+| **Section Tab Strip** | The Material/Color/Node/Code/File tabs (singular since the 2026-07-31 merge; stored keys keep their historical names): Houdini's own QML tab bar (`houdini.pluto` TabBar and TabButton, in `ui/section_tabs.qml`, set up with Houdini's theme as its own QML views are), each tab with its section icon drawn at the size frame S01 draws it and 2 px from its name, and a 1 px line along the strip's bottom row over the tab bar. Carries a standard **Cancel button** at its right end: shown exactly while the conversion bar shows — the pane engine's `show_progress` is the only way the bar shows or hides, and the panel's `set_conversion_bar_visible`, which follows it, shows or hides both — it stops a background thumbnail render while one runs (`husk_job.jobs`, which controls the bar meanwhile), otherwise the File section's image batch (flush first, then cancel). | `ui_helpers.SectionTabBar` |
 | **Sidebar** | Left list: categories (asset sections + Color) or folders (File). ONE view, `sidebar.SidebarTreeView`, which is the app's one table class (`ui_helpers.Table`, a tree view the host's style paints) over a model of two columns: the row's colour as a fixed-width cell shown first, then the name, with the style's own arrow in the name column (`setTreePosition`). In File each location unfolds to its subfolders. The view has no mouse code: Qt selects, opens and closes rows, and the panel shows a row's content on `Table.row_chosen`, emitted when the user moves the current row by mouse or keyboard. Rows are shown in the STORED order with "All" fixed at row 0 by the database (and, in File, `$HIP` fixed at row 1 by the model), and the ORDER IS THE USER'S: a row is dragged with Qt's own drag and drop (`InternalMove`) and the model's `RowMoves` mixin answers `canDropMimeData` and writes the order once in `dropMimeData`. A model that cannot be reordered (Online) gives no drag flag. Whether a dragged tile may be DROPPED on a row is decided by the context — `Section.takes_category_drops` and `accepts_category_drop`. | the `cat_list` widget, `panel/sidebar.py`, `core/sidebar_model.py` |
 | **Grid** | The main thumbnail area. GRID scales 64-512 and snaps to 128 when near it; LIST is a table fixed at its smallest size (the slider greys out) whose row is as wide as its COLUMNS need, scrolling sideways rather than squeezing or dropping any. LIST mode is a tree view over a real `QAbstractTableModel`, made by `ui_helpers.striped_rows` like every other row list with its header shown, so the host style paints its rows, the space under them and its headline ▸r/list-mode-is-a-tree (a `QTableView` from 2026-08-04 to 1.41.1); the painted header strip, `ListColumnHeader`, `ListColumns` and the delegate's list-painting branch are all removed. **The grid selection is read in ROWS** (2026-08-06): a SelectRows selection returns one index per CELL - ten per row, hidden thumb column included - so every caller reduces it to one index per row at column 0 through `grid_columns.selected_rows`, and the current, double-click and drag indexes are normalised to column 0 the same way (`live_current_index`, the panel's double-click entry, the drag press). The table carries the same context-menu and double-click wiring as the list view. The column ORDER is defined once, in `core/grid_columns.COLUMNS`; every grid model reads it, and sorts its own rows, through the **Grid Engine** (§4i). WIDTHS are fixed defaults the user can DRAG (`panel.COLUMN_DEFAULT_WIDTH`, derived from the real library), with the last column filling the remaining width — nothing is measured at runtime. Tile badges are grid-only: at list size a badge is 12px and its SVG rasterises to a dark smudge, so those four facts are columns there instead. | the `thumblist` and `thumbrows` widgets, `panel/grid.py`, `panel/delegates.py` |
 | **Tile** | One item in the Grid (thumbnail + name + subtitle). Painted by the **Tile Delegate**. | `AssetItemDelegate` |
@@ -48,17 +48,27 @@ panel uses the shared widgets. Data is read/written through
 
 ## 3. Sections — the node-types of the panel
 
-A **Section** is one tab. It is a small object that defines how the **Panel**
-uses the shared widgets for its kind of asset. The Panel holds the
-widgets and the data; a Section only defines *what to do with them*.
+A **Section** is one tab. It is a small object that defines what the
+pane shows for its kind of asset and what its rows do. The **Pane
+Engine** (`pane/pane.py`, held by the Panel as `panel.pane`) holds the
+data and the models and builds no widget; the Panel holds the widgets
+and follows the engine's signals; a Section only defines *what to do
+with the data*, and touches no widget. What the engine needs a window
+for (a name, a colour, the drop menu, Versions, Save, Code, Customize,
+Preferences) it asks its host through `pane.ui` (`pane/asks.py`), and
+each answer comes back through a callback, so a host that does not
+block can answer later.
 
-**File:** `panel/sections.py`. **Registry:** `SECTION_CLASSES`, built in
+**Files:** one per section in `sections/` (`material.py`, `node.py`,
+`code.py`, `color.py`, `file.py`, `online.py`), the shared base in
+`sections/base.py`. **Registry:** `SECTION_CLASSES` in
+`sections/__init__.py`, built in
 the order of `core/section_list.py`, the only `((key, label), ...)` list,
 which needs neither the panel nor Houdini to read. Adding a section = a
-new class in `sections.py` and its line in the list; a class takes its
+new file with its class, its line in the registry and in the list; a class takes its
 label from the list, and everything that lists the sections reads the
 list - the tab strip, the UI toggles, and the pref that persists
-them. `panel.ALL_SECTIONS` is the same tuple, not a second list to keep
+them. `Pane.ALL_SECTIONS` is the same tuple, not a second list to keep
 in step.
 
 Read a KEY as an identifier, never as a name: keys are stored in
@@ -78,13 +88,13 @@ The five sections, grouped by **Archetype** (they share machinery):
 Plus one *view mode*, not a section:
 
 - **Online Browser** — a separate context with a Section's interface:
-  `sections.OnlineContext`, returned by `panel.active_section()` like any
+  `online.OnlineContext`, returned by `pane.active_section()` like any
   section, so no code path has to check whether the panel is online. It is
   NOT in `SECTION_CLASSES` and never appears in `enabled_sections`,
   because it is not a section. Its delegate carries only the roles
   `matx_library` has — no version, licence, comments or category
   colour — so the online grid cannot paint a column no online record
-  can fill. Entering and leaving go through `_apply_context`, the
+  can fill. Entering and leaving go through `pane.show_context`, the
   same function a section switch uses, which fixed the Capture button,
   the search box and the Comments subject showing stale state when you
   went online. (2026-08-03; it was a view mode over Materials before.)
@@ -126,14 +136,14 @@ Plus one *view mode*, not a section:
 
 | Method | Called when | 
 |---|---|
-| `activate()` | its tab is selected — one implementation: point the widgets at its Models, then select its **Sidebar** row; what differs is a hook a section overrides (`before_sidebar_shown`, `before_columns_synced`, `restore_sidebar_selection`) |
-| `stack()` | returns the **Asset Stack** — `sections.AssetStack`, read by NAME — or None |
+| `activate()` | its tab is selected — one implementation: `pane.bind` shows its Models on the host's sidebar and grid views, then its **Sidebar** row is selected; what differs is a hook a section overrides (`before_sidebar_shown`, `after_views_bound`, `restore_sidebar_selection`) |
+| `stack()` | returns the **Asset Stack** — `base.AssetStack`, read by NAME — or None |
 | `filter_text(text)` | the **Filter Box** changes |
 | `filter_favorites(on)` | the **Favourites Star** toggles |
 | `filter_entries()` | the **Filter Menu** is rebuilt — `((label, value), …)`, everything-entry first |
 | `apply_filter(value)` | an entry is picked, or the section is entered — narrow the grid to it |
 | `select_category(index)` | a **Sidebar** row is clicked |
-| `comment_subject(index)` | the **Comments** pane re-points — a `sections.CommentSubject` for that row, or None |
+| `comment_subject(index)` | the **Comments** pane re-points — a `base.CommentSubject` for that row, or None |
 | `toggle_favourite(indexes)` | Favorite, on the **Grid** selection |
 | `update_preview(indexes)` | Update Render — offered only where `offers_preview_update` is True, i.e. where a preview is RENDERED rather than derived from the row's own content |
 | `delete_rows(indexes)` | Delete, highest row first — offered only where `deletes_rows` is True (File has no Delete: its rows are files on disk) |
@@ -141,15 +151,14 @@ Plus one *view mode*, not a section:
 | `sidebar_key(index)` | what a **Sidebar** row is keyed by, read from the row's `category.SIDEBAR_KEY_ROLE` — a stored category name, the folder a File row shows, an online category, `""` on All; File reads a registered location through `location_key(index)` |
 | `sidebar_colour(name)` / `set_sidebar_colour(name, colour)` | read and write that row's colour — one implementation, which asks the section's sidebar list (`color_of`, `set_color`); each list keeps it in its own store (a category's in the section's database, a File location's in its location record), and `repaint_grid_colours()` repaints the tiles after a change |
 | `takes_file_drops` + `accepts_file_drop` / `drop_folder` / `move_files_to` / `can_undo_move` / `menu_undo_move` | a **Grid** tile released on a **Sidebar** folder moves the selected files there on disk (File only; `core/file_moves.py`), and Undo Move puts the last move back |
-| `menu_copy` / `menu_paste` / `menu_paste_enabled` | File's **Grid** menu: Copy puts the selected files on the system clipboard (`ui_helpers.copy_files`); Paste copies the clipboard's files into the folder shown on the same worker (`file_moves.copy`), asking once about names in use |
-| `double_click(index)` | a **Tile** is double-clicked (the *primary action*) — calls `panel.click_on_row` (below) |
-| `rc_menu()` | right-click on the **Grid** — renders `GRID_MENU` (below) |
-| `catlist_menu()` | right-click on the **Sidebar** — renders `SIDEBAR_MENU` |
+| `menu_copy` / `menu_paste` / `menu_paste_enabled` | File's **Grid** menu: Copy puts the selected files on the system clipboard (`pane/files.copy_files`); Paste copies the clipboard's files into the folder shown on the same worker (`file_moves.copy`), asking once about names in use |
+| `double_click(index)` | a **Tile** is double-clicked (the *primary action*) — calls `pane.loading.click_on_row` (below) |
+| `GRID_MENU` / `SIDEBAR_MENU` | right-click on the **Grid** or the **Sidebar** — the host renders the table (`grid.open_grid_menu`, `grid.open_catlist_menu`) |
 | `edit_dialog()` | open the section's edit **Dialog** (see §6), if any |
-| `can_save(nodes)` / `save_categories()` / `takes_language` | `panel.save_from_node` (through `_save_targets`) calls every section to learn whether it can save these scene nodes, and what its Category row offers; `takes_language` lights the Language row (Code only). One right-click entry and the panel drop both go through `panel.save_from_node` |
+| `can_save(nodes)` / `save_categories()` / `takes_language` | `pane.saving.save_from_node` (through `_save_targets`) calls every section to learn whether it can save these scene nodes, and what its Category row offers; `takes_language` lights the Language row (Code only). One right-click entry and the panel drop both go through `pane.saving.save_from_node` |
 | `prefs_changed()` | Preferences closed — re-scan live filesystem/render state |
 
-The Panel's shared handlers dispatch to `panel.active_section().<method>()`
+The engine's shared handlers dispatch to `pane.active_section().<method>()`
 instead of branching on the section key.
 
 Plus one piece of DATA, alongside `key` and `label`: **`search_hint`** —
@@ -166,15 +175,15 @@ a named tuple, never a bare tuple read by position:
 
 | named tuple | fields | what to watch |
 |---|---|---|
-| `sections.AssetStack` | `model proxy selection categories` | the four models an Asset section works through; read by NAME |
-| `sections.CommentSubject` | `key name type` | `key` is the notes key (`notes.note_key`); `type` is the row's renderer label, or its file format in File |
-| `sections.FilterEntry` | `id label value icon` | `id` is what the remembered choice saves, so a label can change |
+| `base.AssetStack` | `model proxy selection categories` | the four models an Asset section works through; read by NAME |
+| `base.CommentSubject` | `key name type` | `key` is the notes key (`notes.note_key`); `type` is the row's renderer label, or its file format in File |
+| `base.FilterEntry` | `id label value icon` | `id` is what the remembered choice saves, so a label can change |
 
 **The two DECLARATIONS a section author writes.** Both are data — names
 of methods, never callables — and every field has a default, so a field
 can be left undeclared.
 
-`sections.DropRule`, the drag and click actions a row offers:
+`base.DropRule`, the drag and click actions a row offers:
 
 | field | used for | the method takes |
 |---|---|---|
@@ -186,7 +195,7 @@ can be left undeclared.
 | `holder_node_type` | — | name of the node type the `on_space` method CREATES, where that is a constant, so the drag preview draws its shape from the same declaration the creating method reads |
 | `context` | — | the `childTypeCategory` a network must have to accept this drop; empty for any network |
 
-`sections.MenuEntry`, one row of a menu table:
+`base.MenuEntry`, one row of a menu table:
 
 | field | what it declares |
 |---|---|
@@ -211,23 +220,23 @@ shared by every context and gated on facts it already declares, so
 adding a section adds no copy of them. Dispatch is a dict keyed by
 QAction, never `==` against an action that may be None.
 
-`panel.click_on_row` is the one function a double-click AND the menu entry
+`pane.loading.click_on_row` is the one function a double-click AND the menu entry
 labelled with the same verb both call — one
 order of precedence, read from the section's own `DROP` / `DROP_BY_KIND`
 declaration (2026-08-09).
 
-**One READER for that declaration**, `sections.drop_rule(section,
-panel, index)`, beside the declarations themselves (2026-08-10). A
+**One READER for that declaration**, `base.drop_rule(section,
+pane, index)`, beside the declarations themselves (2026-08-10). A
 section declares one `DROP` unless its rows are different THINGS — the
 File section — and then `DROP_BY_KIND`, with the row's `KindRole`
 choosing the rule. That lookup was written twice, once in the drag code and
 again inline in the click code, which is how a drag and a click end up
-doing different things to the same tile: the exact bug `panel.click_on_row` was built
+doing different things to the same tile: the exact bug `click_on_row` was built
 to end, reintroduced one level down. The drag code keeps only its
 key-to-class lookup, because a drag provides a section key and
 a click provides the section.
 
-**One RESOLVER for the handlers a rule names**, `sections.drop_handler(
+**One RESOLVER for the handlers a rule names**, `base.drop_handler(
 section, name)` (2026-08-13, ROADMAP line 24): every named handler — the
 release bodies, the click handlers, the creation rules, the holder node
 type — is a method of the declaring Section, and both drag and click
@@ -237,7 +246,7 @@ and `test_area_bindings` checks every declaration to keep it that way.
 The panel keeps the shared release plumbing the handlers call
 (`drop_placement.context_under_cursor`,
 `drop_placement.release_position_in`, `drop_placement.create_holder_node`,
-`drop_placement.scene_path`, `_node_under_cursor`) — shared because it
+`drop_placement.scene_path`, `drop_placement.node_under_cursor`) — shared because it
 has no per-type behaviour.
 
 **THE SELECTION IS A HINT, NOT A VETO.** One visible selected node is
@@ -248,7 +257,7 @@ is passed as a `payload`, and only to handlers that declare they take one.
 
 **WHICH MODELS A LIBRARY SWITCH REPOINTS is derived, not listed.**
 Each section declares `library_model_attrs` — the panel attributes
-holding data read from `prefs.dir` — and `panel.library_models()`
+holding data read from `prefs.dir` — and `pane.library.models()`
 collects them for `switch_all_models()`, the ONE function. It was three
 hand-written lists carrying seven models where there are eight, and
 the missing one was the Colors sidebar, so a library switch left it
@@ -256,7 +265,7 @@ showing the previous library's categories with the new library's
 counts (every row zero). A ninth model is included once declared;
 `test_area_bindings` fails a repointable model no section names.
 
-**EVERY WAY ONTO A LIBRARY IS ONE SEQUENCE**, `panel.open_library()`:
+**EVERY WAY ONTO A LIBRARY IS ONE SEQUENCE**, `pane.library.open_library()`:
 the newer-library check, `actions/library.py`'s `prepare`, the models
 built (`setup`) or switched (`switch_all_models`), `$AMAZELIB`, the
 version update, then the shipped starters. Opening the pane, Reload
@@ -698,7 +707,7 @@ model (§5, the one model set). It is in `core/grid_engine.py`.
 | **Categories Model** | The Sidebar list for an Asset section, a Sidebar Model with top rows only. | `core/category.py` → `Categories` |
 | **Sidebar Proxy** | Presents the STORED category order (no sort — the manual order, 2026-08-14) and hides empty categories (renderer-aware). All four category sidebars go through it, Color included; the save dialog's dropdown keeps its own alphabetical sort. | `category.CategoriesSidebarProxy` |
 | **Filter Proxy** | The Grid's search/renderer/favourite/tag filter (Asset sections). | `core/multifilterproxy_model.py` |
-| **Asset Stack** | The four models an Asset section works through — Library Model, Filter Proxy, selection model, Categories Model — as `sections.AssetStack`, whose fields are `model` / `proxy` / `selection` / `categories`. A bare 4-tuple until 2026-08-03: it was unpacked in nine places and read by NUMBER in three more (`st[0]`, `st[3]`), which is where a reorder would have gone unnoticed. | `section.stack()` |
+| **Asset Stack** | The four models an Asset section works through — Library Model, Filter Proxy, selection model, Categories Model — as `base.AssetStack`, whose fields are `model` / `proxy` / `selection` / `categories`. A bare 4-tuple until 2026-08-03: it was unpacked in nine places and read by NUMBER in three more (`st[0]`, `st[3]`), which is where a reorder would have gone unnoticed. | `section.stack()` |
 | **Folders Model / Files Model** | The Folder-archetype pair (registered dirs / files inside). Folders share ONE base — `core/folders.py` `FolderTreeModel` (counts, add/remove/relocate, the scene row, and each folder's subfolders, read with its count on the same worker once its row shows), a Sidebar Model whose keys are folder paths; each section only names its prefs surface + extension predicate. | `core/folders.py`, `texture_library.py`, `geo_library.py`, `scene_captures.py` |
 | **Online world** | A PARALLEL world, not a view mode over Materials (which is what it was until 2026-08-01). The toolbar's Online button enters it and turns green — the colour is the only indication — and the tab strip becomes the SOURCES in source order (Amaze first, then GPUOpen, PolyHaven, SimReady, PhysicallyBased, RGL) from `matx_sources.all_sources()`. The Amaze source browses the `AmazePackages` repository per TILE: folders under `packages/` are categories, every entry in every `.amazepkg` is one record read by ranged requests (a plain-file entry becomes a bare tile), and importing fetches only the chosen tiles' members. No File tab, and `enabled_sections` does not apply, because these are not sections. ONE strip, two lists: `_build_section_tabs` already rebuilt on an `enabled_sections` change, so switching worlds reuses that path. A tab click picks a source. Leaving returns you to the section you left from. `_is_online()` is now just the mode — it used to be `online_mode AND current_section == "material"` — and since 2026-08-15 six panel paths that branched on it call the CONTEXT instead: this world implements `search_hint`, `filter_text`, `filter_favorites`, `select_category`, `double_click` and an empty `SIDEBAR_MENU` like any section, so the eleven `_is_online()` reads left are all WORLD questions (which tab strip to build, which world a progress bar draws over) rather than section ones. Favourites and Comments are disabled here: an online record has no favourite state, and a comment is written against a library asset. | `panel.py` `enter_online_mode` / `leave_online_mode`, `core/matx_sources.py` |
 | **Designed dialogs** | Every dialog is built on `base_dialog.AssetDialog` and takes its sizes and places from its drawn frame in `amazetheme.DIALOG_LAYOUT`, read through `theme.ui_px` like every other chrome measurement. No sizing path reads a device ratio: Houdini's UI scale is one number fixed at startup and it never rescales when a window moves between monitors, so neither does a dialog. A dialog's list (D01, D15) is `library_dialog.DialogTable`: the app's one table class with two columns, a name and a second text, painted by the host's style. The first designed shell, `ui_helpers.DesignedDialog` (the Versions dialog, 2026-08-02), was removed on 2026-10-25 with D01's dropdown. | `dialogs/base_dialog.py`; `helpers/ui_helpers.py` places each widget at its drawn box (`fit_drawn`) |
@@ -1006,20 +1015,43 @@ moves only by its own button.
 ## 9. Where things live (quick map)
 
 ```
-panel/panel.py            The Panel (shell, widgets, shared handlers,
-                          shared release plumbing)
-panel/online_import.py    The online import: catalogue records into the
-                          library or the scene (`panel.online_import`)
-panel/package_import.py   The package import: .amazepkg files and store
-                          tiles into the library (`panel.package_import`)
-panel/drop_placement.py   Where a drop or a click creates nodes: the network,
-                          the position, the holder node (`panel.drop_placement`)
-panel/tile_capture.py     Capture: the Scene View onto one tile, or the
-                          open scene onto its File tile (`panel.tile_capture`)
-panel/sections.py         The Sections (node-types) + registry + the
-                          per-section GRID_MENU tables + every handler a
-                          DROP rule names (release bodies, click handlers,
-                          creation rules - line 24, 2026-08-13)
+panel/panel.py            The Panel: the widgets only - built, wired to the
+                          pane engine's signals, and the dialogs it asks for
+pane/pane.py              THE PANE ENGINE (`panel.pane`): no widget. Prefs, the
+                          models, the sections and the shown one, tabs and
+                          online, search, favourites, Filter choice, progress
+pane/asks.py              what the engine asks of its host window (`pane.ui`):
+                          names, colours, the drop menu, Versions, Save, Code,
+                          Customize, Preferences; answers come by callback
+pane/library.py           every way onto a library (`pane.library`): open,
+                          switch, reload, update, users, older libraries
+pane/sidebar.py           the sidebar's rows and selection (`pane.sidebar`)
+pane/assets.py            favourite, delete, render, convert, Versions,
+                          Customize, export (`pane.assets`)
+pane/loading.py           a click on a row and Load Asset into the scene
+                          (`pane.loading`)
+pane/saving.py            scene nodes saved through D09, versions, snippets,
+                          galleries (`pane.saving`)
+pane/files.py             File's locations, paths, clipboard, file browser
+                          (`pane.files`)
+pane/online_import.py     The online import: catalogue records into the
+                          library or the scene (`pane.online_import`)
+pane/package_import.py    The package import: .amazepkg files and store
+                          tiles into the library (`pane.package_import`)
+pane/drop_placement.py    Where a drop or a click creates nodes: the network,
+                          the position, the holder node (`pane.drop_placement`)
+pane/tile_capture.py      Capture: the Scene View onto one tile, or the
+                          open scene onto its File tile (`pane.tile_capture`)
+sections/__init__.py      The Section registry: SECTION_CLASSES in tab order,
+                          SECTION_INDEX, save_guess, build_sections
+sections/base.py          Section and AssetSection, the declarations
+                          (MenuEntry, DropRule, FilterEntry...), the shared
+                          GRID_MENU_TAIL, drop_rule and drop_handler
+sections/{material,node,code,color,file}.py  one Section each: its GRID_MENU and
+                          SIDEBAR_MENU tables, DROP rules and every handler they
+                          name, filters and empty texts; file.py holds
+                          FolderSection, File's archetype
+sections/online.py        The Online context, a Section's interface, no tab
 panel/grid.py             The GRID area - the one right-click menu
                           builder over those tables
 panel/sidebar.py          The SIDEBAR area - what a row means and what

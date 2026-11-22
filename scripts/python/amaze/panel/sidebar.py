@@ -9,13 +9,6 @@ from amaze.core import category, sidebar_model
 from amaze.helpers import theme, ui_helpers
 
 
-def top_level(index):
-    """The top-level row above an index; a top-level index returns itself."""
-    while index.isValid() and index.parent().isValid():
-        index = index.parent()
-    return index
-
-
 class SidebarTreeView(ui_helpers.Table):
     """The sidebar: the app's table with a colour cell, then the name and the style's own arrow."""
 
@@ -141,7 +134,7 @@ class SidebarTreeView(ui_helpers.Table):
 
 def droppable_index(panel, pos):
     """The only place the drop-target rules are defined; None if no tile may be dropped here."""
-    context = panel.active_section()
+    context = panel.pane.active_section()
     if context is None or not (context.takes_category_drops or context.takes_file_drops):
         return None
     if panel.cat_list is None:
@@ -151,7 +144,7 @@ def droppable_index(panel, pos):
         return None
     if context.takes_file_drops:    # a folder row: the tile's file moves there, on disk
         return index if context.accepts_file_drop(index) else None
-    name = panel.raw_category_name(index)
+    name = panel.pane.sidebar.raw_category_name(index)
     if not name or category.is_all(name):
         return None
     if not context.accepts_category_drop(index, name):
@@ -161,16 +154,16 @@ def droppable_index(panel, pos):
 
 def category_at_point(panel, pos):
     """The droppable category at a point, by its STORED name - the form the write needs."""
-    context = panel.active_section()
+    context = panel.pane.active_section()
     if context is None or not context.takes_category_drops:
         return None
     index = droppable_index(panel, pos)
-    return None if index is None else panel.raw_category_name(index)
+    return None if index is None else panel.pane.sidebar.raw_category_name(index)
 
 
 def folder_at_point(panel, pos):
     """The folder a tile dropped at a point moves into, or None."""
-    context = panel.active_section()
+    context = panel.pane.active_section()
     if context is None or not context.takes_file_drops:
         return None
     index = droppable_index(panel, pos)

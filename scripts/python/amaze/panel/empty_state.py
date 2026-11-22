@@ -40,7 +40,7 @@ def verdict(panel) -> tuple:
 
     source = proxy.sourceModel() if hasattr(proxy, "sourceModel") else None
     total = source.rowCount() if source is not None else 0
-    section = panel.active_section()
+    section = panel.pane.active_section()
     empty = section.shows_empty_state(source) if section is not None else not total
     if empty:
         return (EMPTY_SECTION, "")
@@ -81,13 +81,13 @@ def _any_favourite(source) -> bool:
 
 def unreadable_folder(panel) -> str:
     """The first still-registered folder the File model could not read, or ""."""
-    if getattr(panel, "current_section", "") != "file":
+    if getattr(panel.pane, "current_section", "") != "file":
         return ""
-    model = getattr(panel, "file_files_model", None)
+    model = getattr(panel.pane, "file_files_model", None)
     folders = getattr(model, "_unreadable_folders", None)
     if not folders:
         return ""
-    sidebar = getattr(panel, "file_folders_model", None)
+    sidebar = getattr(panel.pane, "file_folders_model", None)
     current = ("" if getattr(model, "_all_folders_mode", True)
                else getattr(model, "_folder", ""))
     for folder in sorted(folders):
@@ -98,11 +98,18 @@ def unreadable_folder(panel) -> str:
     return ""
 
 
+def _method(panel, path: str):
+    """The method `path` names from the panel, a dotted path such as `pane.files.add_location`."""
+    found = panel
+    for name in path.split("."):
+        found = getattr(found, name, None)
+    return found
+
 def quote_for(panel, blank: str) -> tuple:
     """(line, attribution) from the section's `QUOTE` for the first-run blank, else two empty strings."""
     if blank != EMPTY_SECTION:
         return ("", "")
-    section = panel.active_section()
+    section = panel.pane.active_section()
     quote = getattr(section, "QUOTE", None) or ()
     if len(quote) != 2:
         return ("", "")
@@ -111,7 +118,7 @@ def quote_for(panel, blank: str) -> tuple:
 
 def words_for(panel, blank: str, detail: str) -> tuple:
     """(headline, sentence, button label, handler) with %s filled in; no handler means no button."""
-    section = panel.active_section()
+    section = panel.pane.active_section()
     table = dict(SHARED)
     declared = getattr(section, "EMPTY", None) or {}
     table.update(declared)
@@ -173,7 +180,7 @@ class EmptyPage(QtWidgets.QWidget):
         return self._btn
 
     def say(self, panel, blank: str, detail: str) -> None:
-        """Show this empty state's texts and connect its button to the panel method."""
+        """Show this empty state's texts and connect its button to the method its path names."""
         headline, sentence, label, handler_name = words_for(panel, blank, detail)
         self._head.setText(headline)
         self._head.setVisible(bool(headline))
@@ -184,7 +191,7 @@ class EmptyPage(QtWidgets.QWidget):
         self._quote.setText("%s\n%s" % (line, attribution) if line else "")
         self._quote.setVisible(bool(line))
 
-        handler = getattr(panel, handler_name, None) if handler_name else None
+        handler = _method(panel, handler_name) if handler_name else None
         wanted = bool(label) and callable(handler)
         self._btn.setText(label if wanted else "")
         self._btn.setVisible(wanted)

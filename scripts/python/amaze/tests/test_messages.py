@@ -17,7 +17,7 @@ SINKS = {"alert", "refuse", "status", "note"}    # read as `debug.<sink>(sentenc
 BOX_STATICS = {"information", "warning", "critical", "question", "about"}
 BOX_SETTERS = {"setText", "setInformativeText", "setDetailedText", "setWindowTitle", "addButton"}
 WRAPPERS = {"str", "tuple", "list", "sorted", "Damage"}    # return their argument's text
-INTERFACE = ("panel", "dialogs", "utils")    # only here: text traced through calls, notes checked
+INTERFACE = ("panel", "pane", "sections", "dialogs", "utils")    # only here: text traced through calls, notes checked
 
 PLACEHOLDER = re.compile(r"%[sdif]")
 FIELD = re.compile(r"%[-+ #0-9.]*[sdifr%]")

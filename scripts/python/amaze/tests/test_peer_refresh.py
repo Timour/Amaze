@@ -65,7 +65,7 @@ class ThePreferencesWindowListsTheCurrentUsers(unittest.TestCase):
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
-        self.path = os.path.join(self.panel.prefs.dir, library_files.MASTER)
+        self.path = os.path.join(self.panel.pane.prefs.dir, library_files.MASTER)
 
     def _users_on_disk(self):
         with open(self.path, encoding="utf-8-sig") as handle:
@@ -74,9 +74,9 @@ class ThePreferencesWindowListsTheCurrentUsers(unittest.TestCase):
     def test_a_user_another_machine_made_is_in_the_picker(self):
         from amaze.dialogs import prefs_window
 
-        self.assertTrue(users.create(self.panel.prefs, "Me"),
+        self.assertTrue(users.create(self.panel.pane.prefs, "Me"),
                         "premise: the fixture could not create a user")
-        before = users.all_users(self.panel.prefs)
+        before = users.all_users(self.panel.pane.prefs)
         self.assertNotIn("Colleague", before.values(),
                          "premise: this user already exists")
 
@@ -86,7 +86,7 @@ class ThePreferencesWindowListsTheCurrentUsers(unittest.TestCase):
         with open(self.path, "w", encoding="utf-8") as handle:
             json.dump(document, handle)
 
-        state = prefs_window.AmazePrefsState(self.panel.prefs, panel=self.panel)
+        state = prefs_window.AmazePrefsState(self.panel.pane.prefs, pane=self.panel.pane)
 
         names = [row["text"] for row in state.userOptions]
         self.assertIn(
@@ -100,8 +100,8 @@ class AnAssetSavedElsewhereShowsUpWithoutARestart(unittest.TestCase):
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
-        self.model = self.panel.material_model
-        self.path = os.path.join(self.panel.prefs.dir, library_files.MATERIALS)
+        self.model = self.panel.pane.material_model
+        self.path = os.path.join(self.panel.pane.prefs.dir, library_files.MATERIALS)
 
     def _document(self):
         with open(self.path, encoding="utf-8-sig") as handle:
@@ -127,7 +127,7 @@ class AnAssetSavedElsewhereShowsUpWithoutARestart(unittest.TestCase):
     def test_a_category_another_machine_added_reaches_the_sidebar(self):
         """Another machine's material comes with a category the sidebar must also show."""
         self.assertTrue(self.model.save())
-        sidebar = self.panel.category_model
+        sidebar = self.panel.pane.category_model
         before = sidebar.rowCount()
 
         document = self._document()

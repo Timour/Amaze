@@ -675,18 +675,18 @@ class NothingChangesUnlessItRunsTest(_OldLibrary):
     def test_the_open_flow_names_no_conversion(self):
         import inspect
         from amaze.actions import library as library_actions
-        from amaze.panel import panel as panel_mod
-        for where in (panel_mod.AmazePanel._build, panel_mod.AmazePanel.open_library,
-                      panel_mod.AmazePanel._open_at_start,
-                      panel_mod.AmazePanel.ensure_library_user, library_actions):
+        from amaze.pane import library as pane_library
+        for where in (pane_library.Library.start, pane_library.Library.open_library,
+                      pane_library.Library._open_at_start,
+                      pane_library.Library.ensure_library_user, library_actions):
             self.assertNotIn("library_conversion", inspect.getsource(where), str(where))
 
 
 class TheBoxesTest(_OldLibrary):
-    """The converter's boxes, through the panel's `_convert` with a stand-in `hou.ui`."""
+    """The converter's boxes, through the pane's `_convert` with a stand-in `hou.ui`."""
 
     def run_panel(self, answers, pick=None, tool=False):
-        from amaze.panel import panel as panel_mod
+        from amaze.pane import library as pane_library
         shown = []
         answers = list(answers)
 
@@ -718,12 +718,10 @@ class TheBoxesTest(_OldLibrary):
             fileChooserMode=types.SimpleNamespace(Read="read"),
             InterruptableOperation=Operation, OperationInterrupted=RuntimeError,
             severityType=types.SimpleNamespace(Warning="warning", Message="message"))
-        holder = types.SimpleNamespace(prefs=self.prefs)
-        for name in ("_offer_old_trash", "_convert"):
-            setattr(holder, name, types.MethodType(getattr(panel_mod.AmazePanel, name), holder))
-        with mock.patch.object(panel_mod, "hou", fake):
+        holder = pane_library.Library(types.SimpleNamespace(prefs=self.prefs))
+        with mock.patch.object(pane_library, "hou", fake):
             if tool:
-                opened = panel_mod.AmazePanel.convert_old_library(holder)
+                opened = holder.convert_old_library()
             else:
                 opened = holder._convert(self.dir, self.prefs.library_user)
         return opened, shown

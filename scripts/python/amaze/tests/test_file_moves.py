@@ -21,11 +21,12 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 from amaze import messages  # noqa: E402
 from amaze.core import captures, debug, file_library, file_moves  # noqa: E402
+from amaze.pane import files as pane_files  # noqa: E402
 from amaze.core import guard, library_db, notes, texture_library, thumbnails, tile_icons  # noqa: E402
 from amaze.core import workers  # noqa: E402
 from amaze.core import locations as locations_mod  # noqa: E402
 import hou  # noqa: E402
-from amaze.helpers import hostos, ui_helpers  # noqa: E402
+from amaze.helpers import hostos  # noqa: E402
 from amaze.panel import sidebar  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 from amaze.tests.test_file_section import _Prefs  # noqa: E402
@@ -731,7 +732,7 @@ class _FileTabShowingA(unittest.TestCase):
         debug.set_ui(types.SimpleNamespace(status=self.shown.append,
                                            dialog=self.shown.append))
         self.addCleanup(debug.set_ui, previous)
-        self.folders = self.panel.file_folders_model
+        self.folders = self.panel.pane.file_folders_model
         self.loc = self.folders.registered_at(self.folders._offset())    # the first location
         self.a, self.b = _child(self.loc, "a"), _child(self.loc, "b")
         self.plate = os.path.join(self.a, "plate.exr")
@@ -740,7 +741,7 @@ class _FileTabShowingA(unittest.TestCase):
         os.makedirs(self.b)
         self.panel.section_tabs.setChecked("file")
         QtWidgets.QApplication.processEvents()
-        self.section = self.panel.sections["file"]
+        self.section = self.panel.pane.sections["file"]
         _shown(self.folders, self.loc)
         self.assertTrue(test_support.pump_until(
             lambda: self.folders.index_of(self.b).isValid()),
@@ -750,7 +751,7 @@ class _FileTabShowingA(unittest.TestCase):
                         "premise: plate.exr never listed")
 
     def _tile(self, name):
-        proxy = self.panel.file_sorted_model
+        proxy = self.panel.pane.file_sorted_model
         for row in range(proxy.rowCount()):
             index = proxy.index(row, 0)
             if index.data() == name:
@@ -827,7 +828,7 @@ class TheFileTabCopiesAndPastesTest(_FileTabShowingA):
         test_support.write_text(self.moved_to, "other")
         new = os.path.join(self.a, "new.exr")
         test_support.write_text(new, "new")
-        ui_helpers.copy_files([self.plate, new])
+        pane_files.copy_files([self.plate, new])
         self._show_b()
         del self.shown[:]
         with self._answering(choice):
@@ -862,7 +863,7 @@ class TheFileTabCopiesAndPastesTest(_FileTabShowingA):
         self.assertEqual("other", _read(self.moved_to))
 
     def test_a_folder_on_the_clipboard_is_named_and_not_pasted(self):
-        ui_helpers.copy_files([self.a, self.plate])
+        pane_files.copy_files([self.a, self.plate])
         self._show_b()
         self.section.menu_paste([], None)
         self._finish()
@@ -890,7 +891,7 @@ class TheFileTabMovesWhatIsDroppedOnAFolderTest(_FileTabShowingA):
 
     def _release_over(self, folder):
         tile = self._tile("plate.exr")
-        self.panel.file_selection_model.select(
+        self.panel.pane.file_selection_model.select(
             tile, QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
         view = self.panel.thumblist
         view._dragging = True
@@ -918,7 +919,7 @@ class TheFileTabMovesWhatIsDroppedOnAFolderTest(_FileTabShowingA):
         self.assertEqual(messages.MOVE_DONE % ("1 file", "b"), self.shown[-1])
 
     def test_the_release_moves_the_files_picture(self):
-        cache = self.panel.file_files_model._get_image_cache()
+        cache = self.panel.pane.file_files_model._get_image_cache()
         cache.put(self.plate, _picture("#d08040"))
         cache.save()
         self._release_over(self.b)
@@ -981,7 +982,7 @@ class TheFileTabMovesWhatIsDroppedOnAFolderTest(_FileTabShowingA):
         self.panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()
         self.assertIsNone(sidebar.folder_under_cursor(self.panel))
-        self.assertFalse(self.panel.sections["material"].takes_file_drops)
+        self.assertFalse(self.panel.pane.sections["material"].takes_file_drops)
 
 
 if __name__ == "__main__":

@@ -15,7 +15,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.panel import sections  # noqa: E402
+from amaze.sections import online as online_section, base as section_base  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
 
@@ -34,7 +34,7 @@ class TheToolbarIsATable(unittest.TestCase):
                     "%s follows its fact by %r, which is neither "
                     "enabled-ness nor visibility" % (control, effect))
                 self.assertTrue(
-                    hasattr(sections.Section, fact),
+                    hasattr(section_base.Section, fact),
                     "%s follows %r, which no context declares - so every "
                     "context returns the default and the control never "
                     "changes" % (control, fact))
@@ -62,7 +62,7 @@ class EveryContextDeclaresWhatItOffers(unittest.TestCase):
 
     def test_each_context_declares_every_fact(self):
         for name, facts in self.EXPECTED.items():
-            context = getattr(sections, name)
+            context = test_support.section_class(name)
             for fact, expected in facts.items():
                 with self.subTest(context=name, fact=fact):
                     self.assertEqual(
@@ -70,10 +70,8 @@ class EveryContextDeclaresWhatItOffers(unittest.TestCase):
                         "%s.%s is %r - the toolbar follows this, so the "
                         "control it governs is wrong in that context"
                         % (name, fact, getattr(context, fact)))
-        declining = [name for name in dir(sections)    # any library tile takes a capture
-                     if isinstance(getattr(sections, name), type)
-                     and issubclass(getattr(sections, name), sections.Section)
-                     and not getattr(sections, name).takes_capture]
+        declining = [name for name, cls in test_support.section_classes().items()    # any library tile takes a capture
+                     if not cls.takes_capture]
         self.assertEqual(["OnlineContext"], declining,
                          "Capture is disabled in %s" % declining)
 
@@ -98,7 +96,7 @@ class TheToolbarFollowsTheContextLive(unittest.TestCase):
         for key in ("material", "file"):
             panel.section_tabs.setChecked(key)
             QtWidgets.QApplication.processEvents()
-            context = panel.active_section()
+            context = panel.pane.active_section()
             for control, fact, effect in AmazePanel.TOOLBAR_CONTROLS:
                 with self.subTest(section=key, control=control):
                     self.assertEqual(
@@ -113,11 +111,11 @@ class TheToolbarFollowsTheContextLive(unittest.TestCase):
         self.addCleanup(self._restore)
         panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()
-        panel.enter_online_mode()
+        panel.pane.enter_online()
         QtWidgets.QApplication.processEvents()
 
-        context = panel.active_section()
-        self.assertIsInstance(context, sections.OnlineContext,
+        context = panel.pane.active_section()
+        self.assertIsInstance(context, online_section.OnlineContext,
                               "not in the online world, so this proves "
                               "nothing")
         for control, fact, effect in AmazePanel.TOOLBAR_CONTROLS:
@@ -144,8 +142,8 @@ class TheToolbarFollowsTheContextLive(unittest.TestCase):
 
     def _restore(self):
         panel = self.panel
-        if panel._is_online():
-            panel.leave_online_mode()
+        if panel.pane.is_online():
+            panel.pane.leave_online()
         QtWidgets.QApplication.processEvents()
 
 
@@ -180,10 +178,10 @@ class TheToolbarMatchesFrameB01(unittest.TestCase):
         from amaze.helpers import theme
         panel = self.panel
         panel.section_tabs.setChecked("material")
-        panel.prefs.view_mode = "list"
+        panel.pane.prefs.view_mode = "list"
         panel.apply_view_mode()
         self.addCleanup(panel.apply_view_mode)
-        self.addCleanup(setattr, panel.prefs, "view_mode", "grid")
+        self.addCleanup(setattr, panel.pane.prefs, "view_mode", "grid")
         self.px = theme.ui_px
         self.frame = amazetheme.DIALOG_LAYOUT["B01"]
         self.node = {tuple(amazetheme.drawn_name(n)[:2]): n for n in self.frame["nodes"]

@@ -22,7 +22,7 @@ import hou  # noqa: E402,F401
 from amaze.core import (code_library, cop_library, file_info, file_library,  # noqa: E402
                         gradient_library, library, library_files, material, texstore,
                         thumbnails, versions)
-from amaze.panel import sections  # noqa: E402
+from amaze.sections import code as code_section, color as color_section, file as file_section, material as material_section, node as node_section, online as online_section, base as section_base  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
 METAL = "139888336268658010"    # fixture materials, each with a .json, a .mat and a .png
@@ -46,7 +46,7 @@ def _section(cls, model, **attrs):
     proxy.setSourceModel(model)
     proxy.sort(0, QtCore.Qt.SortOrder.DescendingOrder)
     panel = types.SimpleNamespace(**attrs)
-    if issubclass(cls, sections.FolderSection):
+    if issubclass(cls, file_section.FolderSection):
         setattr(panel, cls.files_attr, model)
         setattr(panel, cls.proxy_attr, proxy)
     else:
@@ -76,7 +76,7 @@ class LibraryCase(unittest.TestCase):
 
     def _material_section(self):
         model = library.MaterialLibrary(self.prefs)
-        return model, _section(sections.MaterialSection, model)
+        return model, _section(material_section.MaterialSection, model)
 
     def _textures(self, folder: str, names) -> list:
         """Texture files in the library's store, as the tokens a record lists."""
@@ -150,7 +150,7 @@ class NodeRowsTest(LibraryCase):
 
     def test_a_node_reports_its_files_and_its_context(self):
         model = cop_library.CopLibrary(self.prefs)
-        section = _section(sections.CopSection, model)
+        section = _section(node_section.CopSection, model)
         asset = model._asset_from_row({"id": "nodeasset01", "name": "Blur Rig",
                                        "renderer": "Cop", "date": "2026-09-04 11:12:13",
                                        "license": "MIT"})
@@ -169,7 +169,7 @@ class CodeRowsTest(LibraryCase):
 
     def test_a_snippet_reports_its_language_and_its_lines(self):
         model = code_library.CodeLibrary(self.prefs)
-        section = _section(sections.CodeSection, model)
+        section = _section(code_section.CodeSection, model)
         mat_id = model.add_snippet("int a = 1;\nint b = 2;\n\nf@x = a + b;\n", "Sum",
                                    "VEX", "", "")
         row = model.find_asset_row_by_id(mat_id)
@@ -187,7 +187,7 @@ class ColorRowsTest(LibraryCase):
 
     def _subject(self, colors, ramp):
         model = gradient_library.GradientLibrary(self.prefs)
-        section = _section(sections.GradientSection, model)
+        section = _section(color_section.GradientSection, model)
         row = model._append_record(model._asset_from_row(
             {"name": "Dusk", "date": "2026-05-06 07:08:09", "license": "CC BY",
              "colors": colors, "ramp": ramp}))
@@ -216,7 +216,7 @@ class ColorRowsTest(LibraryCase):
 
     def test_a_palette_without_a_date_has_no_date_row(self):
         model = gradient_library.GradientLibrary(self.prefs)
-        section = _section(sections.GradientSection, model)
+        section = _section(color_section.GradientSection, model)
         row = model._append_record(model._asset_from_row(
             {"name": "Old", "colors": self.COLORS}))
         self.assertEqual(["Name", "Colors", "Values", "Interpolation"],
@@ -238,7 +238,7 @@ class FileRowsTest(unittest.TestCase):
         self.model = file_library.FileFiles(self.prefs)
         self.addCleanup(thumbnails.engine.cancel_pending_converts)
         self.model.set_folder(self.root)
-        self.section = _section(sections.FileSection, self.model)
+        self.section = _section(file_section.FileSection, self.model)
 
     def _row(self, name: str) -> int:
         names = [self.model.data(self.model.index(row, 0)) for row in range(self.model.rowCount())]
@@ -309,7 +309,7 @@ class KeysTest(LibraryCase):
         self.assertNotEqual(one, section.info_subject(_index(section, bricks)).key)
 
         cops = cop_library.CopLibrary(self.prefs)
-        cop_section = _section(sections.CopSection, cops)
+        cop_section = _section(node_section.CopSection, cops)
         row = cops._append_record(cops._asset_from_row({"id": METAL, "name": "Metal"}))
         self.assertNotEqual(one, cop_section.info_subject(_index(cop_section, row)).key,
                             "the same id in two sections has one key")
@@ -324,9 +324,9 @@ class KeysTest(LibraryCase):
 class OnlineTakesNoInfoTest(unittest.TestCase):
 
     def test_the_online_context_takes_no_info(self):
-        self.assertTrue(sections.Section.takes_info)
-        self.assertFalse(sections.OnlineContext.takes_info)
-        online = sections.OnlineContext.__new__(sections.OnlineContext)
+        self.assertTrue(section_base.Section.takes_info)
+        self.assertFalse(online_section.OnlineContext.takes_info)
+        online = online_section.OnlineContext.__new__(online_section.OnlineContext)
         self.assertIsNone(online.info_subject(QtCore.QModelIndex()))
         self.assertIsNone(online.info_subject_for([QtCore.QModelIndex()]))
 

@@ -20,7 +20,7 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 
 def _write_settings(panel, **changes):
-    path = os.path.join(panel.prefs.path, "settings.json")
+    path = os.path.join(panel.pane.prefs.path, "settings.json")
     with open(path, encoding="utf-8") as handle:
         data = json.load(handle)
     data.update(changes)
@@ -38,7 +38,7 @@ class SwitchRereadsCase(unittest.TestCase):
     def test_switch_rereads_stores_from_disk(self):
         """An edit written to disk outside the cache shows after the next `switch_all_models`."""
         panel = self.panel
-        prefs = panel.prefs
+        prefs = panel.pane.prefs
         self.addCleanup(test_support.reset_database_singletons)
         name = (tile_icons.icon_names() or ["feather"])[0]
         key = "switch-reread-probe"
@@ -55,7 +55,7 @@ class SwitchRereadsCase(unittest.TestCase):
                       "edit cannot be simulated on it")
         with open(path, "w", encoding="utf-8") as handle:
             handle.write(text.replace("#ef8878", "#4af2a1"))
-        panel.switch_all_models()
+        panel.pane.library.switch_all_models()
         QtWidgets.QApplication.processEvents()
         self.assertEqual(
             "#4af2a1",
@@ -74,7 +74,7 @@ class ASwitchReadsTheSettingsOnce(unittest.TestCase):
     def _switch_reads(self, folder) -> int:
         """Write `folder` to settings.json as Preferences does, switch, and count reads of it."""
         _write_settings(self.panel, directory=folder)    # the harness turns Prefs.save off
-        settings = os.path.abspath(os.path.join(self.panel.prefs.path, "settings.json"))
+        settings = os.path.abspath(os.path.join(self.panel.pane.prefs.path, "settings.json"))
         reads, real = [], open
 
         def counting(file, mode="r", *args, **kwargs):
@@ -83,7 +83,7 @@ class ASwitchReadsTheSettingsOnce(unittest.TestCase):
             return real(file, mode, *args, **kwargs)
 
         with mock.patch("builtins.open", counting):
-            self.panel.switch_all_models()
+            self.panel.pane.library.switch_all_models()
         return len(reads)
 
     def _real_path(self, folder) -> str:
@@ -93,23 +93,23 @@ class ASwitchReadsTheSettingsOnce(unittest.TestCase):
         other = test_support.fresh_library(self)
         self.assertEqual(1, self._switch_reads(other),
                          "each model re-read settings.json for itself")
-        self.assertEqual(self._real_path(other), self._real_path(self.panel.prefs.dir),
+        self.assertEqual(self._real_path(other), self._real_path(self.panel.pane.prefs.dir),
                          "the switch did not open the new library")
-        self.assertTrue(test_support.serves(library_files.MATERIALS, self.panel.prefs.dir),
+        self.assertTrue(test_support.serves(library_files.MATERIALS, self.panel.pane.prefs.dir),
                         "the models were not re-pointed at the new library")
 
     def test_shared_models_follow_the_panel_that_switched(self):
         """A second panel looked the shared models up last, so they held its Prefs."""
         second = test_support.reopened_panel(self)
-        self.assertIs(second.prefs, self.panel.material_model.preferences,
+        self.assertIs(second.pane.prefs, self.panel.pane.material_model.preferences,
                       "premise: the shared models hold the second panel's Prefs")
         other = test_support.fresh_library(self)
         self._switch_reads(other)
-        for model in self.panel.library_models():
+        for model in self.panel.pane.library.models():
             with self.subTest(model=type(model).__name__):
                 self.assertEqual(self._real_path(other), self._real_path(model.preferences.dir),
                                  "a shared model kept the library from another panel's Prefs")
-                self.assertEqual(self._real_path(other), self._real_path(self.panel.prefs.dir),
+                self.assertEqual(self._real_path(other), self._real_path(self.panel.pane.prefs.dir),
                                  "the panel that switched still points to the old library")
 
 
@@ -121,10 +121,10 @@ class TheRegisteredFoldersFollowTheLibrary(unittest.TestCase):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
     def test_the_file_section_declares_its_library_model(self):
-        from amaze.panel import sections
+        from amaze.sections import file as file_section
         self.assertIn(
             "file_folders_model",
-            sections.FileSection.library_model_attrs,
+            file_section.FileSection.library_model_attrs,
             "the File section's folders are not re-pointed on a library "
             "switch, so the pane keeps showing the previous library's")
 
@@ -132,7 +132,7 @@ class TheRegisteredFoldersFollowTheLibrary(unittest.TestCase):
         """`switch_all_models` calls `switch_model_data()` on each declared model, so each needs one."""
         panel = self.panel
         missing = []
-        for model in panel.library_models():
+        for model in panel.pane.library.models():
             if not hasattr(model, "switch_model_data"):
                 missing.append(type(model).__name__)
         self.assertEqual([], missing, "declared but cannot switch: %s"
@@ -141,7 +141,7 @@ class TheRegisteredFoldersFollowTheLibrary(unittest.TestCase):
     def test_the_folder_model_resets_so_the_view_repaints(self):
         """The folders read through to prefs; the switch must still reset the model so views update."""
         panel = self.panel
-        model = panel.file_folders_model
+        model = panel.pane.file_folders_model
         self.assertIsNotNone(model)
         seen = []
         model.modelReset.connect(lambda: seen.append(True))
@@ -155,8 +155,8 @@ class TheRegisteredFoldersFollowTheLibrary(unittest.TestCase):
         """End to end through `switch_all_models`, which is what the library toggle runs."""
         panel = self.panel
         seen = []
-        panel.file_folders_model.modelReset.connect(lambda: seen.append(True))
-        panel.switch_all_models()
+        panel.pane.file_folders_model.modelReset.connect(lambda: seen.append(True))
+        panel.pane.library.switch_all_models()
         QtWidgets.QApplication.processEvents()
         self.assertTrue(
             seen, "switch_all_models never reached the File section's "
@@ -170,21 +170,21 @@ class AfterASwitchFileShowsTheNewLibrarysLocation(unittest.TestCase):
         panel = test_support.fixture_panel(self)
         panel.section_tabs.setChecked("file")
         QtWidgets.QApplication.processEvents()
-        files, folders = panel.file_files_model, panel.file_folders_model
+        files, folders = panel.pane.file_files_model, panel.pane.file_folders_model
         old = files._folder
         self.assertTrue(old, "premise: File shows the fixture's location")
         theirs = test_support.fresh_files_folder(self)
-        settings = os.path.join(panel.prefs.path, "settings.json")
+        settings = os.path.join(panel.pane.prefs.path, "settings.json")
         with open(settings, encoding="utf-8") as handle:
             data = json.load(handle)
         other = test_support.seeded_library(self)
         test_support.with_fixture_location(other, theirs)    # the location is stored in its library
         data.update(directory=other)
-        data["users"][panel.prefs.library_user].update(file_folders=[theirs],
+        data["users"][panel.pane.prefs.library_user].update(file_folders=[theirs],
                                                        last_file_folder=theirs)
         with open(settings, "w", encoding="utf-8") as handle:
             json.dump(data, handle)
-        panel.switch_all_models()
+        panel.pane.library.switch_all_models()
         QtWidgets.QApplication.processEvents()
         self.assertNotEqual(old, files._folder,
                             "the grid still lists the previous library's location")
@@ -198,13 +198,13 @@ class AfterASwitchAnAssetGridFollowsItsSidebar(unittest.TestCase):
     """A switch reset an asset section's sidebar and left its grid filtered on the old category."""
 
     def _switch_to_a_fresh_library(self, panel):
-        settings = os.path.join(panel.prefs.path, "settings.json")
+        settings = os.path.join(panel.pane.prefs.path, "settings.json")
         with open(settings, encoding="utf-8") as handle:
             data = json.load(handle)
         data.update(directory=test_support.seeded_library(self))
         with open(settings, "w", encoding="utf-8") as handle:
             json.dump(data, handle)
-        panel.switch_all_models()
+        panel.pane.library.switch_all_models()
         QtWidgets.QApplication.processEvents()
 
     def test_the_grid_and_the_sidebar_select_one_category(self):
@@ -213,17 +213,17 @@ class AfterASwitchAnAssetGridFollowsItsSidebar(unittest.TestCase):
             with self.subTest(section=key):
                 panel.section_tabs.setChecked(key)
                 QtWidgets.QApplication.processEvents()
-                st = panel.active_section().stack()
+                st = panel.pane.active_section().stack()
                 st.categories.check_add_category("Probe")
                 sidebar = panel.cat_list.model()
                 sidebar.hide_empty = False
                 sidebar.invalidateFilter()
-                self.assertTrue(panel._select_category("Probe"), "premise: Probe is a row")
+                self.assertTrue(panel.pane.sidebar.select_key("Probe"), "premise: Probe is a row")
                 self.assertEqual("Probe", st.proxy.filter_value(st.model.CategoryRole),
                                  "premise: the grid is filtered on Probe")
                 self._switch_to_a_fresh_library(panel)
                 self.assertEqual(
-                    panel.selected_category_name(),
+                    panel.pane.sidebar.selected_category_name(),
                     st.proxy.filter_value(st.model.CategoryRole) or "",
                     "the grid keeps the previous library's category")
                 self.assertTrue(panel.cat_list.selectionModel().selectedIndexes(),
@@ -241,20 +241,20 @@ class AfterASwitchTheGridAndTheSidebarShareOneDocument(unittest.TestCase):
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
         other = test_support.seeded_library(self)
-        settings = os.path.join(self.panel.prefs.path, "settings.json")
+        settings = os.path.join(self.panel.pane.prefs.path, "settings.json")
         with open(settings, encoding="utf-8") as handle:
             data = json.load(handle)
         data["directory"] = other    # what Preferences saves before it switches
         with open(settings, "w", encoding="utf-8") as handle:
             json.dump(data, handle)
-        self.panel.switch_all_models()
+        self.panel.pane.library.switch_all_models()
         QtWidgets.QApplication.processEvents()
 
     def test_a_sidebar_recolour_reaches_the_grid(self):
-        grid = self.panel.material_model
+        grid = self.panel.pane.material_model
         row = next(index for index, asset in enumerate(grid.assets)
                    if list(asset.categories)[:1] == ["Karma_Mats"])
-        self.panel.category_model.set_color("Karma_Mats", "#4af2a1")
+        self.panel.pane.category_model.set_color("Karma_Mats", "#4af2a1")
         self.assertEqual(
             "#4af2a1", grid.category_color(row),
             "after a switch the grid reads colours from a copy the sidebar "
@@ -262,8 +262,8 @@ class AfterASwitchTheGridAndTheSidebarShareOneDocument(unittest.TestCase):
 
     def test_each_grid_reads_its_sidebars_document(self):
         apart = [grid for grid, sidebar in self.PAIRS
-                 if getattr(self.panel, grid)._doc()
-                 is not getattr(self.panel, sidebar)._doc()]
+                 if getattr(self.panel.pane, grid)._doc()
+                 is not getattr(self.panel.pane, sidebar)._doc()]
         self.assertEqual([], apart,
                          "these grids hold a document their sidebar does not")
 
@@ -277,7 +277,7 @@ class AnUnreadableNodeFileDoesNotStopTheSwitch(unittest.TestCase):
         with open(os.path.join(self.other, library_files.NODES), "w",
                   encoding="utf-8") as handle:
             handle.write('{"assets": [')    # cut off mid-sync
-        settings = os.path.join(self.panel.prefs.path, "settings.json")
+        settings = os.path.join(self.panel.pane.prefs.path, "settings.json")
         with open(settings, encoding="utf-8") as handle:
             data = json.load(handle)
         data["directory"] = self.other    # what Preferences saves before it switches
@@ -286,7 +286,7 @@ class AnUnreadableNodeFileDoesNotStopTheSwitch(unittest.TestCase):
 
     def test_every_model_reaches_the_new_library(self):
         try:
-            self.panel.switch_all_models()
+            self.panel.pane.library.switch_all_models()
         except (OSError, ValueError) as exc:
             self.fail("the switch stopped at the Node sidebar and left the "
                       "models after it on the previous library: %s" % exc)
@@ -294,17 +294,17 @@ class AnUnreadableNodeFileDoesNotStopTheSwitch(unittest.TestCase):
                     if not test_support.serves(name, self.other)]
         self.assertEqual([], stranded,
                          "still serving the previous library: %s" % stranded)
-        sidebar = self.panel.cop_category_model
+        sidebar = self.panel.pane.cop_category_model
         self.assertEqual(
             [""], [sidebar.data(sidebar.index(row, 0), category.SIDEBAR_KEY_ROLE)
                        for row in range(sidebar.rowCount())],
             "the Node sidebar shows categories from a file it could not read")
-        self.assertEqual(0, self.panel.cop_model.rowCount())
+        self.assertEqual(0, self.panel.pane.cop_model.rowCount())
 
     def test_a_node_save_returns_false_for_the_file_it_could_not_read(self):
         with test_support.captured_log() as log:
-            self.panel.switch_all_models()    # the function that reads the settings; a model reads none
-            self.assertFalse(self.panel.cop_model.save(),
+            self.panel.pane.library.switch_all_models()    # the function that reads the settings; a model reads none
+            self.assertFalse(self.panel.pane.cop_model.save(),
                              "premise: a save over an unread file went ahead")
         self.assertIn(
             messages.DATABASE_CORRUPT_READ_ONLY % "Nodes", log.messages("alert"),
@@ -318,7 +318,7 @@ class OneLibraryChangeIsOneSwitch(unittest.TestCase):
         self.panel = test_support.fixture_panel(self)
 
     def _switches_while_open(self, action):
-        model = self.panel.material_model
+        model = self.panel.pane.material_model
         with mock.patch.object(model, "switch_model_data",
                                wraps=model.switch_model_data) as switch:
             self.panel.show_prefs()
@@ -350,7 +350,7 @@ class OneLibraryChangeIsOneSwitch(unittest.TestCase):
 
     def test_a_switch_is_written_to_the_debug_log(self):
         with test_support.captured_log() as log:
-            self.panel.switch_all_models()
+            self.panel.pane.library.switch_all_models()
         self.assertEqual(1, log.messages("session").count("library switched"),
                          "a switch left no line in the debug log to count it by")
 
@@ -363,14 +363,14 @@ class EveryWayOntoALibraryRunsTheStepsInOneOrder(unittest.TestCase):
     def setUp(self):
         from amaze.actions import library as library_actions
         from amaze.core import texstore
-        from amaze.panel import panel as panel_mod
+        from amaze.pane import library as pane_library
         self.panel = test_support.fixture_panel(self)
         self.order = []
         for owner, name, step in (
                 (library_actions, "newer_version", "refusal"),
                 (library_actions, "prepare", "prepare"),
-                (panel_mod.AmazePanel, "setup", "models"),
-                (panel_mod.AmazePanel, "switch_all_models", "models"),
+                (pane_library.Library, "setup", "models"),
+                (pane_library.Library, "switch_all_models", "models"),
                 (texstore, "publish_env", "publish"),
                 (library_actions, "update", "update"),
                 (library_actions, "seed_starters", "seed")):
@@ -393,7 +393,7 @@ class EveryWayOntoALibraryRunsTheStepsInOneOrder(unittest.TestCase):
         self._assert_order("opening the pane")
 
     def test_reload_library(self):
-        self.panel.open()
+        self.panel.pane.library.reload()
         self._assert_order("Reload Library")
 
     def test_preferences_apply(self):
@@ -438,7 +438,7 @@ class AnUnreadableListIsAskedAboutBeforeTheSwitch(unittest.TestCase):
 
     def _preferences(self):
         from amaze.dialogs import prefs_window
-        return prefs_window.AmazePrefsState(self.panel.prefs, panel=self.panel)
+        return prefs_window.AmazePrefsState(self.panel.pane.prefs, pane=self.panel.pane)
 
     def _add_and_apply(self):
         """Add the folder the file chooser returns, create a user for it, then Apply."""
@@ -450,38 +450,38 @@ class AnUnreadableListIsAskedAboutBeforeTheSwitch(unittest.TestCase):
     def test_cancel_keeps_the_open_library_and_writes_nothing(self):
         from amaze.prefs import persistence
         from amaze.prefs import prefs as prefs_mod
-        before = self.panel.prefs.dir
+        before = self.panel.pane.prefs.dir
         files = sorted(os.listdir(self.broken))
         with mock.patch.object(prefs_mod.Prefs, "save", persistence._Persistence.save):    # a write must show
             asked = self._answering(1, self._add_and_apply)
         self.assertEqual([(messages.LIBRARY_INDEX_UNREADABLE_SWITCHING,
                            messages.BUTTONS_REPAIR_OR_CANCEL)], asked)
-        self.assertEqual(before, self.panel.prefs.dir, "Cancel moved the library")
-        self.assertEqual(before, self.panel._models_dir, "Cancel left the open library")
+        self.assertEqual(before, self.panel.pane.prefs.dir, "Cancel moved the library")
+        self.assertEqual(before, self.panel.pane.library.models_dir, "Cancel left the open library")
         self.assertEqual(files, sorted(os.listdir(self.broken)), "Cancel wrote into the folder")
 
     def test_a_folder_without_its_database_shows_folder_not_empty_and_saves_nothing(self):
         held = test_support.seeded_library(self)
         os.remove(os.path.join(held, library_files.MASTER))    # materials/ stays: it held a library
         saves = []
-        self.panel.prefs.save = lambda *a, **k: saves.append(True)
-        before = self.panel.prefs.dir
+        self.panel.pane.prefs.save = lambda *a, **k: saves.append(True)
+        before = self.panel.pane.prefs.dir
         asked = self._answering(0, lambda: self._preferences().addLibrary(), picked=held)
         self.assertEqual([(messages.LIBRARY_FOLDER_NOT_EMPTY, ())], asked)
         self.assertEqual([], saves, "the settings were saved, which writes into the picked folder")
-        self.assertEqual(before, self.panel.prefs.dir, "the library moved")
+        self.assertEqual(before, self.panel.pane.prefs.dir, "the library moved")
 
     def test_repair_restores_the_backup_picked_and_opens_the_library(self):
-        self.panel.prefs.save = lambda *a, **k: _write_settings(
-            self.panel, directory=self.panel.prefs.dir)    # the save the fixture panel switches off
+        self.panel.pane.prefs.save = lambda *a, **k: _write_settings(
+            self.panel, directory=self.panel.pane.prefs.dir)    # the save the fixture panel switches off
         self._answering_in_turn(["Repair", messages.BUTTON_REPAIR_PUT_COPY_BACK,
                                  messages.BUTTONS_PUT_COPY_BACK[0]], self._add_and_apply)
         self.assertEqual(os.path.normpath(self.broken),
-                         os.path.normpath(self.panel._models_dir),
+                         os.path.normpath(self.panel.pane.library.models_dir),
                          "Repair did not open the picked library")
 
     def test_repair_chooses_nothing_itself(self):
-        opened = self.panel.prefs.dir
+        opened = self.panel.pane.prefs.dir
         asked = self._answering_in_turn(["Repair"], self._add_and_apply)
         report, buttons = asked[1]
         self.assertIn(os.path.normpath(self.broken), report, "Check Library did not report on it")
@@ -490,7 +490,7 @@ class AnUnreadableListIsAskedAboutBeforeTheSwitch(unittest.TestCase):
         with open(os.path.join(self.broken, library_files.MATERIALS), "rb") as handle:
             self.assertEqual(b"{ this is not json", handle.read(), "Repair chose a fix itself")
         self.assertEqual((messages.DATABASE_STILL_UNREADABLE_SWITCHING, ()), asked[-1])
-        self.assertEqual(opened, self.panel._models_dir, "the panel left the open library")
+        self.assertEqual(opened, self.panel.pane.library.models_dir, "the panel left the open library")
 
     def _answering_in_turn(self, presses, action):
         """Press each dialog's button by label in turn; past the list, its last button."""
@@ -518,12 +518,12 @@ class AnUnreadableListIsAskedAboutBeforeTheSwitch(unittest.TestCase):
         return asked
 
     def test_repair_rebuilds_from_metadata_when_that_is_picked(self):
-        opened = self.panel.prefs.dir
+        opened = self.panel.pane.prefs.dir
         held = os.path.join(opened, library_files.MATERIALS)
         with open(held, "rb") as handle:
             held_bytes = handle.read()
-        self.panel.prefs.save = lambda *a, **k: _write_settings(
-            self.panel, directory=self.panel.prefs.dir)    # the save the fixture panel switches off
+        self.panel.pane.prefs.save = lambda *a, **k: _write_settings(
+            self.panel, directory=self.panel.pane.prefs.dir)    # the save the fixture panel switches off
         from amaze.core import asset_record
         folder = os.path.join(self.broken, "materials")
         for name in os.listdir(folder):
@@ -535,25 +535,25 @@ class AnUnreadableListIsAskedAboutBeforeTheSwitch(unittest.TestCase):
         with open(os.path.join(self.broken, library_files.MATERIALS), encoding="utf-8") as handle:
             self.assertTrue(json.load(handle)["assets"], "the rebuilt database holds nothing")
         self.assertEqual(os.path.normpath(self.broken),
-                         os.path.normpath(self.panel._models_dir),
+                         os.path.normpath(self.panel.pane.library.models_dir),
                          "the rebuilt library did not open")
         with open(held, "rb") as handle:
             self.assertEqual(held_bytes, handle.read(), "the open library's database was written")
 
     def test_check_library_offers_no_fix_on_a_library_this_houdini_holds(self):
         from amaze.dialogs import repair_dialog
-        opened = self.panel.prefs.dir
+        opened = self.panel.pane.prefs.dir
         test_support.backup_now(opened, library_files.MATERIALS)    # a backup Check Library offers
         asked = self._answering_in_turn(
             [messages.BUTTON_REPAIR_PUT_COPY_BACK],
-            lambda: repair_dialog.check_failed_library(opened, self.panel.prefs))
+            lambda: repair_dialog.check_failed_library(opened, self.panel.pane.prefs))
         text, buttons = asked[0]
         self.assertIn(messages.CHECK_LIBRARY_ONLY_A_REPORT, text)
         self.assertNotIn(messages.BUTTON_REPAIR_PUT_COPY_BACK, buttons)
 
     def test_only_the_open_library_is_held(self):
         from amaze.core import repair
-        self.assertTrue(repair.session_holds(self.panel.prefs.dir))
+        self.assertTrue(repair.session_holds(self.panel.pane.prefs.dir))
         self.assertFalse(repair.session_holds(self.broken))
 
 
@@ -585,17 +585,17 @@ class AListThatWillNotOpenIsNotSwitchedTo(unittest.TestCase):
         """The library named in settings.json, read the way the next pane reads it."""
         from amaze.prefs import prefs as prefs_mod
         reader = prefs_mod.Prefs()
-        reader.path = panel.prefs.path
+        reader.path = panel.pane.prefs.path
         reader.load()
         return reader.dir
 
     def test_the_open_library_and_its_settings_are_kept(self):
         panel = test_support.fixture_panel(self)
-        before, user = panel.prefs.dir, panel.prefs.library_user
+        before, user = panel.pane.prefs.dir, panel.pane.prefs.library_user
         opened, said, why = self._apply(panel)
         self.assertFalse(opened, "Apply returned open for a library that stayed closed")
-        self.assertEqual(before, panel._models_dir, "the open library was left")
-        self.assertEqual((before, user), (panel.prefs.dir, panel.prefs.library_user))
+        self.assertEqual(before, panel.pane.library.models_dir, "the open library was left")
+        self.assertEqual((before, user), (panel.pane.prefs.dir, panel.pane.prefs.library_user))
         self.assertEqual(before, self._next_start(panel),
                          "the next Houdini opens the library that would not open")
         self.assertTrue(test_support.serves(library_files.MATERIALS, before),
@@ -606,7 +606,7 @@ class AListThatWillNotOpenIsNotSwitchedTo(unittest.TestCase):
         panel = test_support.fixture_unconfigured_panel(self)
         opened, said, why = self._apply(panel)
         self.assertFalse(opened)
-        self.assertIsNone(panel.material_model, "a database that cannot be opened was opened")
+        self.assertIsNone(panel.pane.material_model, "a database that cannot be opened was opened")
         self.assertEqual("", self._next_start(panel),
                          "the next Houdini starts on the library that would not open")
         self.assertEqual([messages.LIBRARY_NOT_OPENED % why], said)
@@ -618,7 +618,7 @@ class AListThatWillNotOpenIsNotSwitchedTo(unittest.TestCase):
         panel = test_support.fixture_panel(self)
         opened, said, _why = self._apply(panel, refused=False)
         self.assertTrue(opened, "a list that parses was refused: %r" % said)
-        self.assertEqual(os.path.normpath(self.other), os.path.normpath(panel._models_dir))
+        self.assertEqual(os.path.normpath(self.other), os.path.normpath(panel.pane.library.models_dir))
         self.assertEqual([], said)
 
 

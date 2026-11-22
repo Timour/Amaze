@@ -15,8 +15,7 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 import hou  # noqa: E402
 
-from amaze.core import category, file_moves, matx_sources, model_registry  # noqa: E402
-from amaze.helpers import ui_helpers  # noqa: E402
+from amaze.core import category, file_moves, grid_columns, matx_sources, model_registry  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
 NOMOD = QtCore.Qt.KeyboardModifier.NoModifier
@@ -26,21 +25,21 @@ COUNT = category.SIDEBAR_COUNT_ROLE
 
 def _grid_key(panel) -> str:
     """The category the grid shows, read from the grid's own models: "" for all."""
-    if panel._is_online():
-        role = panel.matx_online_model.CategoryRole
-        return panel.matx_sorted_model.filter_value(role) or ""
-    if panel.current_section == "file":
-        return panel.file_files_model.browsing()
-    stack = panel.active_section().stack()
+    if panel.pane.is_online():
+        role = panel.pane.matx_online_model.CategoryRole
+        return panel.pane.matx_sorted_model.filter_value(role) or ""
+    if panel.pane.current_section == "file":
+        return panel.pane.file_files_model.browsing()
+    stack = panel.pane.active_section().stack()
     return stack.proxy.filter_value(stack.model.CategoryRole) or ""
 
 
 def _row_key(panel, index) -> str:
     """What a click on this sidebar row shows, read from the row: "" for All."""
-    if panel._is_online():
+    if panel.pane.is_online():
         return index.data(category.SIDEBAR_KEY_ROLE) or ""
     model = panel.cat_list.model()
-    if panel.current_section == "file":
+    if panel.pane.current_section == "file":
         return index.data(model.BrowseRole) or ""
     return str(index.data(category.SIDEBAR_KEY_ROLE) or "")
 
@@ -95,7 +94,7 @@ class _HighlightCase:
             if gesture is not None:
                 gesture()
             _pump()
-            current = ui_helpers.live_current_index(self.view)
+            current = grid_columns.live_current_index(self.view)
             self.assertIsNotNone(current, "the sidebar highlights no row")
             self.assertEqual([current], self.view.selected_rows(),
                              "the highlight is not the one current row")
@@ -184,32 +183,32 @@ class _AssetSidebarPaths(_HighlightCase):
 
     def setUp(self):
         super().setUp()
-        categories = self.panel.active_section().stack().categories
+        categories = self.panel.pane.active_section().stack().categories
         for name in ("Kept", "Other"):
             categories.check_add_category(name)
-        self.panel.refresh_sidebar_categories()
+        self.panel.pane.sidebar.refresh()
         _pump()
 
     def select_row(self, key="Kept"):
         self.click(self.row(key))
 
     def _category_name_entered(self, name):
-        return mock.patch.object(self.panel, "ask_category_name", lambda *_a, **_k: name)
+        return mock.patch.object(self.panel, "ask_name", lambda _title, _default, then: then(name))
 
     def _peer_adds(self, name):
         """Another machine adds category `name`; `model_registry.refresh_all` merges it in."""
-        categories = self.panel.active_section().stack().categories
-        path = os.path.join(self.panel.prefs.dir, categories.DB_FILENAME)
+        categories = self.panel.pane.active_section().stack().categories
+        path = os.path.join(self.panel.pane.prefs.dir, categories.DB_FILENAME)
         with open(path, encoding="utf-8-sig") as handle:
             document = json.load(handle)
         document.setdefault("categories", {})[name] = {"order": len(document["categories"])}
         with open(path, "w", encoding="utf-8") as handle:
             json.dump(document, handle, indent=4)
-        self.assertTrue(model_registry.refresh_all(self.panel.prefs),
+        self.assertTrue(model_registry.refresh_all(self.panel.pane.prefs),
                         "premise: the merge did not read the other machine's write")
 
     def test_every_path_leaves_the_highlight_on_the_grids_row(self):
-        panel, section = self.panel, self.panel.active_section()
+        panel, section = self.panel, self.panel.pane.active_section()
         self.check("activate", grid="")
         self.check("a click", self.select_row, grid="Kept")
 
@@ -264,7 +263,7 @@ class _AssetSidebarPaths(_HighlightCase):
 
         def clean_up():
             self.select_row()
-            panel.prefs.add_file_favorite(os.path.join(panel.prefs.file_folders[0], "gone.exr"))
+            panel.pane.prefs.add_file_favorite(os.path.join(panel.pane.prefs.file_folders[0], "gone.exr"))
             with mock.patch.object(hou, "ui", _check_ui("Fix Safe"), create=True):
                 test_support.repair_from_preferences(self, panel)
         self.check("Check Library", clean_up, grid="")    # a re-read selects the first row, as Reload does
@@ -278,22 +277,22 @@ class _AssetSidebarPaths(_HighlightCase):
 
         def online_and_back():
             self.select_row()
-            panel.enter_online_mode()
+            panel.pane.enter_online()
             _pump()
-            panel.leave_online_mode()
+            panel.pane.leave_online()
         self.check("entering and leaving Online", online_and_back, grid="Kept")
         self.check("a library switch", self.switch_library, grid="")
 
     def test_a_change_made_elsewhere_leaves_the_highlight_on_the_grids_row(self):
         """Another machine's and a second panel's edits reach this sidebar via the shared model."""
-        categories = self.panel.active_section().stack().categories
+        categories = self.panel.pane.active_section().stack().categories
 
         def peer_merge():
             self.select_row()
             self._peer_adds("Peer")
         self.check("a peer merge through the registry", peer_merge, grid="Kept")
         second = test_support.reopened_panel(self)
-        theirs = second.sections[self.KEY]
+        theirs = second.pane.sections[self.KEY]
 
         def second_panel_sorts():
             self.select_row()
@@ -303,7 +302,7 @@ class _AssetSidebarPaths(_HighlightCase):
 
         def second_panel_deletes_it():
             self.select_row()
-            row = getattr(second, theirs.sidebar_attr).index_of("Kept")
+            row = getattr(second.pane, theirs.sidebar_attr).index_of("Kept")
             self.assertTrue(row.isValid(), "premise: the second panel has no Kept row")
             theirs.menu_remove_category([row], row)
         self.check("a second panel deletes the row", second_panel_deletes_it, grid="")
@@ -317,7 +316,7 @@ class _AssetSidebarPaths(_HighlightCase):
 
     def test_a_burst_of_resets_reselects_the_row_once(self):
         """However many resets arrive in one event-loop turn, `reselect_sidebar_row` runs once."""
-        section = self.panel.active_section()
+        section = self.panel.pane.active_section()
         categories = section.stack().categories
         self.select_row()
         order, calls = list(categories._categories), []
@@ -335,16 +334,16 @@ class SidebarChoiceTest(_HighlightCase, unittest.TestCase):
 
     def setUp(self):
         super().setUp()
-        categories = self.panel.active_section().stack().categories
+        categories = self.panel.pane.active_section().stack().categories
         for name in ("Kept", "Other", "Third"):
             categories.check_add_category(name)
-        self.panel.refresh_sidebar_categories()
+        self.panel.pane.sidebar.refresh()
         _pump()
         self.click(self.row("Kept"))
 
     def _choices(self):
         """Every category the active section is asked to show from now on."""
-        section = self.panel.active_section()
+        section = self.panel.pane.active_section()
         patcher = mock.patch.object(section, "select_category")
         chosen = patcher.start()
         self.addCleanup(patcher.stop)
@@ -371,7 +370,7 @@ class SidebarChoiceTest(_HighlightCase, unittest.TestCase):
         self.assertEqual(0, chosen.call_count, "each arrow step showed its row at once")
         _pump(panel_mod.SIDEBAR_KEY_PAUSE_MS / 1000.0 + 0.15)
         self.assertEqual(1, chosen.call_count, "the row the keys stopped on was not shown once")
-        current = ui_helpers.live_current_index(self.view)
+        current = grid_columns.live_current_index(self.view)
         self.assertEqual(current.row(), chosen.call_args[0][0].row(), "another row than the highlighted one was shown")
 
     def test_a_click_after_the_arrow_keys_wins_over_their_pause(self):
@@ -408,7 +407,7 @@ class FileSidebarTest(_HighlightCase, unittest.TestCase):
 
     def setUp(self):
         super().setUp()
-        self.folders = self.panel.file_folders_model
+        self.folders = self.panel.pane.file_folders_model
         self.loc = self.folders.registered_at(self.folders._offset())    # the first location
         self.nested = self.loc + "nested"
         self.second = self.add(test_support.fresh_files_folder(self))
@@ -445,7 +444,7 @@ class FileSidebarTest(_HighlightCase, unittest.TestCase):
         proxy = self.panel.thumblist.model()
         selection = self.panel.thumblist.selectionModel()
         selection.select(proxy.index(0, 0), QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
-        self.assertTrue(self.panel.active_section().move_files_to(folder), "premise: no move started")
+        self.assertTrue(self.panel.pane.active_section().move_files_to(folder), "premise: no move started")
         self.assertTrue(test_support.pump_until(lambda: not file_moves.mover.busy()), "the move never finished")
 
     def remember_unread(self, name) -> str:
@@ -455,7 +454,7 @@ class FileSidebarTest(_HighlightCase, unittest.TestCase):
         self.addCleanup(shutil.rmtree, folder, ignore_errors=True)
         self.panel.section_tabs.setChecked("material")
         _pump()
-        self.panel.prefs.last_file_folder = folder
+        self.panel.pane.prefs.last_file_folder = folder
         self.panel.section_tabs.setChecked("file")
         self.assertFalse(self.folders.index_of(folder).isValid(), "premise: its row is already loaded")
         return folder
@@ -478,7 +477,7 @@ class FileSidebarTest(_HighlightCase, unittest.TestCase):
                 self.menu(self.row(second), *labels)
             return gesture
 
-        with mock.patch.object(panel, "ask_category_name", lambda *_a, **_k: "Named"):
+        with mock.patch.object(panel, "ask_name", lambda _title, _default, then: then("Named")):
             self.check("a right press, Rename", right_press_then("Rename", "Edit"), grid=loc)
         self.check("a right press, Label", right_press_then("Label", "Red"), grid=loc)
         picked = tempfile.mkdtemp(prefix="amaze_added_location_")
@@ -592,7 +591,7 @@ class OnlineSidebarTest(_HighlightCase, unittest.TestCase):
 
     def setUp(self):
         super().setUp()
-        self.online = self.panel.matx_online_model
+        self.online = self.panel.pane.matx_online_model
         self.addCleanup(setattr, self.online, "_all", self.online._all)
 
     def fetch_catalogue(self, *categories):
@@ -606,7 +605,7 @@ class OnlineSidebarTest(_HighlightCase, unittest.TestCase):
 
     def test_every_path_leaves_the_highlight_on_the_grids_row(self):
         panel = self.panel
-        self.check("entering Online", panel.enter_online_mode, grid="")
+        self.check("entering Online", panel.pane.enter_online, grid="")
         self.check("a catalogue landing", lambda: self.fetch_catalogue("Metal", "Wood"), grid="")
         self.check("a click on a category", lambda: self.click(self.row("Metal")), grid="Metal")
         self.check("a catalogue landing that keeps it",
@@ -621,7 +620,7 @@ class OnlineSidebarTest(_HighlightCase, unittest.TestCase):
         def search():
             self.click(self.row("Metal"))
             panel.line_filter.setText("Probe")
-            panel.filter_thumb_view()
+            panel.pane.search(panel.line_filter.text())
         self.check("the search box", search, grid="Metal")
 
         def fetch_without_it():
@@ -630,9 +629,9 @@ class OnlineSidebarTest(_HighlightCase, unittest.TestCase):
         self.check("a catalogue landing that drops it", fetch_without_it, grid="")
 
         def leave_and_return():
-            panel.leave_online_mode()
+            panel.pane.leave_online()
             _pump()
-            panel.enter_online_mode()
+            panel.pane.enter_online()
         self.check("leaving and entering again", leave_and_return, grid="")
         self.check("a library switch", self.switch_library, grid="")
 

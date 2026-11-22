@@ -102,7 +102,7 @@ def save(node=None) -> None:
     panel = _find_panel()   # first: a refused save must not change the selection
     if not panel:
         return
-    save_from_node = getattr(panel, "save_from_node", None)
+    save_from_node = getattr(getattr(getattr(panel, "pane", None), "saving", None), "save_from_node", None)
     if save_from_node is None:    # the menu is reloaded from disk, the panel is not: an update needs a restart
         ui = getattr(hou, "ui", None)
         if ui is not None:

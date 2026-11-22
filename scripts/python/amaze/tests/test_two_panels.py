@@ -20,7 +20,7 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])    # ▸p
 
 def _document(panel, filename="materials.json"):
     """The section database as it is ON DISK right now, read without the app."""
-    with open(os.path.join(panel.prefs.dir, filename),
+    with open(os.path.join(panel.pane.prefs.dir, filename),
               encoding="utf-8-sig") as handle:
         return json.load(handle)
 
@@ -44,7 +44,7 @@ class TwoPanelsShareOneLibraryTest(unittest.TestCase):
 
     def _named_asset(self, panel):
         """A row with a real name - the fixture's row 0 is an id -1 sentinel."""
-        model = panel.material_model
+        model = panel.pane.material_model
         for row in range(model.rowCount()):
             if model._assets[row].name:
                 return model.index(row, 0), model
@@ -58,7 +58,7 @@ class TwoPanelsShareOneLibraryTest(unittest.TestCase):
                             ", ".join(asset.categories),
                             ", ".join(asset.tags), None)
 
-        self.assertTrue(self.b.material_model.save(),
+        self.assertTrue(self.b.pane.material_model.save(),
                         "premise: the second panel's save failed")
 
         self.assertEqual(
@@ -72,7 +72,7 @@ class TwoPanelsShareOneLibraryTest(unittest.TestCase):
         self.assertNotIn(target, _rows(self.a),
                          "premise: the delete was never written to disk")
 
-        self.assertTrue(self.b.material_model.save(),
+        self.assertTrue(self.b.pane.material_model.save(),
                         "premise: the second panel's save failed")
 
         self.assertNotIn(
@@ -82,7 +82,7 @@ class TwoPanelsShareOneLibraryTest(unittest.TestCase):
 
     def test_both_panels_read_one_set_of_rows(self):
         self.assertIs(
-            self.a.material_model, self.b.material_model,
+            self.a.pane.material_model, self.b.pane.material_model,
             "each panel built its own library model over the same file, so "
             "one panel's save writes the other's copy of the rows")
 
@@ -93,7 +93,7 @@ class TwoPanelsShareOneLibraryTest(unittest.TestCase):
         model._unlist_row(index.row())
         self.assertIn(str(target), model._removed_ids, "premise: the mark was not made")
 
-        self.assertTrue(self.b.material_model.save(),
+        self.assertTrue(self.b.pane.material_model.save(),
                         "the other panel's save failed")
 
         self.assertNotIn(
@@ -102,29 +102,29 @@ class TwoPanelsShareOneLibraryTest(unittest.TestCase):
             "the row survived on disk")
 
     def test_h9_a_switch_and_back_leaves_both_panels_saving(self):
-        first = self.a.prefs.dir
+        first = self.a.pane.prefs.dir
         other = test_support.fresh_library(self)
 
-        self.a.prefs.dir = other
-        self.a.switch_all_models()
-        self.a.prefs.dir = first
-        self.a.switch_all_models()
+        self.a.pane.prefs.dir = other
+        self.a.pane.library.switch_all_models()
+        self.a.pane.prefs.dir = first
+        self.a.pane.library.switch_all_models()
 
-        self.assertTrue(self.a.material_model.save(),
+        self.assertTrue(self.a.pane.material_model.save(),
                         "the panel that switched cannot save after coming back")
-        self.assertTrue(self.b.material_model.save(),
+        self.assertTrue(self.b.pane.material_model.save(),
                         "the other panel was left detached by the switch")
 
     def test_h9_a_panel_opened_after_a_switch_joins_the_same_models(self):
         """Not re-registered, the models stay under the old path; the next panel builds a second set."""
         other = test_support.fresh_library(self)
-        self.a.prefs.dir = other
-        self.a.switch_all_models()
+        self.a.pane.prefs.dir = other
+        self.a.pane.library.switch_all_models()
 
-        joined = model_registry.models_for(self.a.prefs)
+        joined = model_registry.models_for(self.a.pane.prefs)
 
         self.assertIs(
-            self.a.material_model, joined["material_model"],
+            self.a.pane.material_model, joined["material_model"],
             "a panel opening on this library is handed a second, separate "
             "set of models - which is the divergence phase 1 removed")
 
@@ -132,10 +132,10 @@ class TwoPanelsShareOneLibraryTest(unittest.TestCase):
         """Qt deletes a parented proxy with its widget; unparented, a closed tab still gets signals."""
         import shiboken6
 
-        doomed = [self.b.material_sorted_model, self.b.material_selection_model,
-                  self.b.category_sorted_model, self.b.file_sorted_model,
-                  self.b.cop_sorted_model, self.b.code_sorted_model,
-                  self.b.gradient_sorted_model]
+        doomed = [self.b.pane.material_sorted_model, self.b.pane.material_selection_model,
+                  self.b.pane.category_sorted_model, self.b.pane.file_sorted_model,
+                  self.b.pane.cop_sorted_model, self.b.pane.code_sorted_model,
+                  self.b.pane.gradient_sorted_model]
         self.assertTrue(all(shiboken6.isValid(o) for o in doomed),
                         "premise: the second panel's proxies are not built")
 
@@ -146,14 +146,14 @@ class TwoPanelsShareOneLibraryTest(unittest.TestCase):
             [], alive,
             "%d of the closed panel's proxies outlived it, still connected to the "
             "shared models" % len(alive))
-        self.assertTrue(self.a.material_model.rowCount(),
+        self.assertTrue(self.a.pane.material_model.rowCount(),
                         "the surviving panel lost its rows when the other closed")
 
     def test_a_pending_resort_does_not_run_after_its_panel_is_deleted(self):
         """A re-sort is deferred to the next event loop pass; closing the panel must not leave it queued."""
         from PySide6 import QtCore
 
-        proxy = self.b.material_sorted_model
+        proxy = self.b.pane.material_sorted_model
         ran = []
         proxy._pass_now = lambda: ran.append(True)    # patched BEFORE scheduling, so this is the callable the timer holds
         proxy._schedule_pass()
@@ -172,26 +172,26 @@ class TwoPanelsShareOneLibraryTest(unittest.TestCase):
 
     def test_a_category_removed_in_one_panel_updates_the_other_sidebar(self):
         """Both sidebars share one list: the second panel loses a row with no signal. ▸p/one-model-set"""
-        categories = self.a.category_model
+        categories = self.a.pane.category_model
         before = categories.rowCount()
         self.assertTrue(before > 1,
                         "premise: the fixture has no category to remove")
-        self.assertIs(categories._categories, self.b.category_model._categories,
+        self.assertIs(categories._categories, self.b.pane.category_model._categories,
                       "premise: the two sidebars do not share a list, so this "
                       "is no longer the hazard the audit measured")
 
         heard = []
-        self.b.category_model.modelReset.connect(lambda: heard.append("reset"))
-        self.b.category_model.rowsRemoved.connect(
+        self.b.pane.category_model.modelReset.connect(lambda: heard.append("reset"))
+        self.b.pane.category_model.rowsRemoved.connect(
             lambda *a: heard.append("removed"))
-        self.b.category_model.layoutChanged.connect(
+        self.b.pane.category_model.layoutChanged.connect(
             lambda *a: heard.append("layout"))
 
         name = categories.data(categories.index(before - 1, 0),
                                category.SIDEBAR_KEY_ROLE)
         categories.remove_category(name)    # the SIDEBAR's method; the library model's same-named one only strips the category off assets
 
-        self.assertEqual(before - 1, self.b.category_model.rowCount(),
+        self.assertEqual(before - 1, self.b.pane.category_model.rowCount(),
                          "premise: the row was not removed from the shared list")
         self.assertTrue(
             heard,
@@ -200,10 +200,10 @@ class TwoPanelsShareOneLibraryTest(unittest.TestCase):
 
     def test_a_location_reorder_in_the_panel_opened_first_is_saved(self):
         """The shared folder list saves the settings its move staged the order in."""
-        folders = self.a.file_folders_model
-        self.assertIs(folders, self.b.file_folders_model,
+        folders = self.a.pane.file_folders_model
+        self.assertIs(folders, self.b.pane.file_folders_model,
                       "premise: the two panels do not share the folder list")
-        self.assertIs(folders.preferences, self.b.prefs,
+        self.assertIs(folders.preferences, self.b.pane.prefs,
                       "premise: the shared list does not hold the second panel's settings")
         with mock.patch.object(prefs.Prefs, "save", persistence._Persistence.save):    # the fixture saves nothing
             for name in ("one", "two"):
@@ -213,7 +213,7 @@ class TwoPanelsShareOneLibraryTest(unittest.TestCase):
                     folders.add_folder(hostos.canonical_path_key(folder).rstrip("/") + "/"),
                     "premise: the location was not added")
             before = list(folders._folders())
-            section = self.a.sections["file"]
+            section = self.a.pane.sections["file"]
             last = folders.index(folders.rowCount() - 1, 0)
             self.assertTrue(folders.move_row(last, folders._offset()),
                             "premise: the last location did not move to the first row")
@@ -234,17 +234,17 @@ class AFileTabSwitchReachesBothPanelsTest(unittest.TestCase):
 
     def test_a_switch_flipped_in_the_first_panel_changes_the_shared_file_tab(self):
         from amaze.dialogs import prefs_window
-        files = self.a.file_files_model
-        self.assertIs(files, self.b.file_files_model, "premise: the panels do not share the File model")
-        self.assertIsNot(self.a.prefs, files.preferences, "premise: the model reads the first panel's Prefs")
-        state = prefs_window.AmazePrefsState(self.a.prefs, panel=self.a)
+        files = self.a.pane.file_files_model
+        self.assertIs(files, self.b.pane.file_files_model, "premise: the panels do not share the File model")
+        self.assertIsNot(self.a.pane.prefs, files.preferences, "premise: the model reads the first panel's Prefs")
+        state = prefs_window.AmazePrefsState(self.a.pane.prefs, pane=self.a.pane)
         for name in ("system_file_icons", "render_rat_files"):
             for value in (not getattr(files.preferences, name), getattr(files.preferences, name)):
                 with self.subTest(switch=name, value=value), \
                         mock.patch.object(files, "refresh_current_folder") as refresh:
                     state.setPref(name, "1" if value else "0")    # what the row's switch sends
                     state.apply()
-                    self.assertIs(value, getattr(self.a.prefs, name))
+                    self.assertIs(value, getattr(self.a.pane.prefs, name))
                     self.assertIs(value, getattr(files.preferences, name),
                                   "the File tab still reads the other panel's value")
                     refresh.assert_called_once_with()

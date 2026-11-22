@@ -75,7 +75,7 @@ class TheReleaseResolvesToTheNetworkUnderThePointer(_ReleaseCase):
         net = hou.node("/obj").createNode("copnet", "resolve_cop")
         self._patch(_fake_editor(net))
         self.assertEqual(
-            net, self.panel.drop_placement.context_under_cursor(self.matcher),
+            net, self.panel.pane.drop_placement.context_under_cursor(self.matcher),
             "a release on blank canvas missed the network being shown")
 
     def test_a_container_under_the_pointer_receives_the_nodes(self):
@@ -83,7 +83,7 @@ class TheReleaseResolvesToTheNetworkUnderThePointer(_ReleaseCase):
         net = hou.node("/obj").createNode("copnet", "target_cop")
         self._patch(_fake_editor(hou.node("/obj"), items=[(net,)]))
         self.assertEqual(
-            net, self.panel.drop_placement.context_under_cursor(self.matcher),
+            net, self.panel.pane.drop_placement.context_under_cursor(self.matcher),
             "a release over a container placed the nodes beside it")
 
     def test_a_node_the_rule_rejects_falls_back_to_the_editor(self):
@@ -92,7 +92,7 @@ class TheReleaseResolvesToTheNetworkUnderThePointer(_ReleaseCase):
         geo = obj.createNode("geo", "not_a_target")
         self._patch(_fake_editor(obj, items=[(geo,)]))
         self.assertEqual(
-            obj, self.panel.drop_placement.context_under_cursor(lambda _node: False),
+            obj, self.panel.pane.drop_placement.context_under_cursor(lambda _node: False),
             "a rejected node was returned as the target")
 
     def test_a_bare_item_is_walked_like_a_tuple(self):
@@ -100,7 +100,7 @@ class TheReleaseResolvesToTheNetworkUnderThePointer(_ReleaseCase):
         net = hou.node("/obj").createNode("copnet", "bare_cop")
         self._patch(_fake_editor(hou.node("/obj"), items=[net]))
         self.assertEqual(
-            net, self.panel.drop_placement.context_under_cursor(self.matcher))
+            net, self.panel.pane.drop_placement.context_under_cursor(self.matcher))
 
     def test_a_pane_that_is_not_a_network_view_resolves_to_nothing(self):
         """A Parameter pane is a miss, and a miss is a normal drag outcome."""
@@ -108,20 +108,20 @@ class TheReleaseResolvesToTheNetworkUnderThePointer(_ReleaseCase):
             type=lambda: hou.paneTabType.Parm,
             pwd=lambda: hou.node("/obj")))
         self.assertIsNone(
-            self.panel.drop_placement.context_under_cursor(self.matcher))
+            self.panel.pane.drop_placement.context_under_cursor(self.matcher))
 
     def test_no_pane_under_the_pointer_resolves_to_nothing(self):
         """Released over the desktop, there is no pane, so None is returned."""
         self._patch(None)
         self.assertIsNone(
-            self.panel.drop_placement.context_under_cursor(self.matcher))
+            self.panel.pane.drop_placement.context_under_cursor(self.matcher))
 
     def test_the_chrome_of_a_pane_is_not_its_canvas(self):
         """Over a toolbar there are no items, so the shown network is returned."""
         net = hou.node("/obj").createNode("copnet", "chrome_cop")
         self._patch(_fake_editor(net, items=[(net,)], under_cursor=False))
         self.assertEqual(
-            net, self.panel.drop_placement.context_under_cursor(self.matcher))
+            net, self.panel.pane.drop_placement.context_under_cursor(self.matcher))
 
 
 class TheNodeDropIsCreatedWhereItWasReleased(_ReleaseCase):
@@ -129,18 +129,18 @@ class TheNodeDropIsCreatedWhereItWasReleased(_ReleaseCase):
 
     def setUp(self):
         super().setUp()
-        self.section = self.panel.sections["cop"]
+        self.section = self.panel.pane.sections["cop"]
 
     def _saved_cop_asset(self):
         """A real COP network registered in the panel's own library."""
         source = hou.node("/obj").createNode("copnet", "drop_source")
         source.createNode(_cop_node_type(), "the_pixel")
         self.assertEqual("COP", node_actions.add_asset(
-            self.panel.cop_model, source, "", "", False, name="dropped_network"))
+            self.panel.pane.cop_model, source, "", "", False, name="dropped_network"))
         source.destroy()
-        return self.panel.cop_sorted_model.mapFromSource(
-            self.panel.cop_model.index(
-                len(self.panel.cop_model.assets) - 1, 0))
+        return self.panel.pane.cop_sorted_model.mapFromSource(
+            self.panel.pane.cop_model.index(
+                len(self.panel.pane.cop_model.assets) - 1, 0))
 
     def test_the_network_is_created_in_the_editors_network_at_the_cursor(self):
         """The created nodes centre on the release point, as Houdini places new nodes."""
@@ -198,10 +198,10 @@ class MaterialDropOnlyIntoVopNetworksTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
-        cls.section = cls.panel.sections["material"]
+        cls.section = cls.panel.pane.sections["material"]
 
     def _sorted_index(self):
-        idx = self.panel.material_sorted_model.index(0, 0)
+        idx = self.panel.pane.material_sorted_model.index(0, 0)
         self.assertTrue(idx.isValid(), "premise: a material exists")
         return idx
 
@@ -225,7 +225,7 @@ class MaterialDropOnlyIntoVopNetworksTest(unittest.TestCase):
         before_mat = len(mat.children())
         with mock.patch.object(dragengine, "viewport_release_target",
                                return_value=None):
-            with mock.patch.object(self.panel.drop_placement,
+            with mock.patch.object(self.panel.pane.drop_placement,
                                    "context_under_cursor",
                                    return_value=obj):
                 ok = self.section.drop_material_at_release(index)
@@ -240,7 +240,7 @@ class MaterialDropOnlyIntoVopNetworksTest(unittest.TestCase):
 
     def test_a_matlib_release_builds_inside_it(self):
         from amaze.core import renderers
-        model = self.panel.material_model
+        model = self.panel.pane.material_model
         karma_row = next(
             (i for i, a in enumerate(model.assets)
              if renderers.is_karma(str(a.renderer))), None)
@@ -248,14 +248,14 @@ class MaterialDropOnlyIntoVopNetworksTest(unittest.TestCase):
                              "premise: a Karma material exists - a "
                              "Redshift one is rejected at a LOP library "
                              "by design")
-        index = self.panel.material_sorted_model.mapFromSource(
+        index = self.panel.pane.material_sorted_model.mapFromSource(
             model.index(karma_row, 0))
         lib = hou.node("/stage").createNode("materiallibrary")
         self.addCleanup(lib.destroy)
         before = len(lib.children())
         with mock.patch.object(dragengine, "viewport_release_target",
                                return_value=None):
-            with mock.patch.object(self.panel.drop_placement,
+            with mock.patch.object(self.panel.pane.drop_placement,
                                    "context_under_cursor",
                                    return_value=lib):
                 ok = self.section.drop_material_at_release(index)
@@ -264,9 +264,9 @@ class MaterialDropOnlyIntoVopNetworksTest(unittest.TestCase):
                            "the accepted release built nothing")
 
     def test_the_material_rule_declares_its_context(self):
-        from amaze.panel import sections
+        from amaze.sections import material as material_section
         self.assertEqual(
-            "Vop", sections.MaterialSection.DROP.context,
+            "Vop", material_section.MaterialSection.DROP.context,
             "the drop handler and the drag ghost both read `DROP.context` - "
             "an empty context blocks nothing")
 

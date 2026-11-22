@@ -13,7 +13,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
-from amaze.helpers import ui_helpers                      # noqa: E402
+from amaze.core import grid_columns                       # noqa: E402
 from amaze.tests import test_support                      # noqa: E402,F401
 
 
@@ -40,7 +40,7 @@ class LiveCurrentIndexTest(unittest.TestCase):
         """Tests the helper itself: one that always returned None would pass every None test."""
         view, proxy, _source = _proxied_view(["All", "Metal", "Fabric"])
         view.setCurrentIndex(view.model().index(1, 0))
-        live = ui_helpers.live_current_index(view)
+        live = grid_columns.live_current_index(view)
         self.assertIsNotNone(live, "a valid current index returned None")
         self.assertEqual("Metal", live.data())
         self.assertIs(live.model(), proxy)
@@ -51,7 +51,7 @@ class LiveCurrentIndexTest(unittest.TestCase):
         view = QtWidgets.QTableView()
         view.setModel(model)
         view.setCurrentIndex(model.index(1, 3))  # a click selects one cell; roles return data on the owning column only ▸r/row-selection
-        live = ui_helpers.live_current_index(view)
+        live = grid_columns.live_current_index(view)
         self.assertIsNotNone(live)
         self.assertEqual(1, live.row())
         self.assertEqual(
@@ -70,7 +70,7 @@ class LiveCurrentIndexTest(unittest.TestCase):
         view.setModel(other)  # a section switch replaces the model outright
         self.assertIsNot(stale.model(), view.model())
         self.assertIsNone(
-            ui_helpers.live_current_index(view),
+            grid_columns.live_current_index(view),
             "an index belonging to a model the view no longer shows was "
             "accepted")
 
@@ -80,7 +80,7 @@ class LiveCurrentIndexTest(unittest.TestCase):
                            ("no model", QtWidgets.QListView()),
                            ("no selection", unselected)):
             with self.subTest(case):
-                self.assertIsNone(ui_helpers.live_current_index(view))
+                self.assertIsNone(grid_columns.live_current_index(view))
 
 
 class NoStoredProxyIndexIsReadInThePanelTest(unittest.TestCase):
@@ -103,7 +103,7 @@ class NoStoredProxyIndexIsReadInThePanelTest(unittest.TestCase):
         self.assertEqual(
             [], offenders,
             "a stored index is read directly - route it through "
-            "ui_helpers.live_current_index, or mark the line "
+            "grid_columns.live_current_index, or mark the line "
             "'# not a proxy' if its model genuinely is not one:\n  "
             + "\n  ".join(offenders))
 
@@ -136,7 +136,7 @@ class WorksOnAPlainPythonModelTest(unittest.TestCase):
     def test_a_plain_python_model_does_not_raise(self):
         view = self._view(["All", "HDR", "IMG"])
         view.setCurrentIndex(view.model().index(1, 0))
-        live = ui_helpers.live_current_index(view)   # a bare columnCount() works on a C++ proxy, not a Python model ▸r/model-contracts
+        live = grid_columns.live_current_index(view)   # a bare columnCount() works on a C++ proxy, not a Python model ▸r/model-contracts
         self.assertIsNotNone(live, "a valid index on a plain list model "
                                    "returned None")
         self.assertEqual("HDR", live.data())

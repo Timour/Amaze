@@ -26,8 +26,8 @@ from amaze.tests import test_support  # noqa: E402
 LIBRARY, USER = prefs_window.LIBRARY, prefs_window.USER
 
 
-def _state(preferences, panel=None):
-    return prefs_window.AmazePrefsState(preferences, panel=panel)
+def _state(preferences, pane=None):
+    return prefs_window.AmazePrefsState(preferences, pane=pane)
 
 
 def _library_with(case, *names):
@@ -269,8 +269,8 @@ class NothingSwitchesBeforeApply(unittest.TestCase):
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
-        self.before_dir = self.panel.prefs.dir
-        self.before_user = self.panel.prefs.library_user
+        self.before_dir = self.panel.pane.prefs.dir
+        self.before_user = self.panel.pane.prefs.library_user
 
     def test_closing_preferences_with_a_pick_switches_nothing(self):
         other, _made = _library_with(self, "Sage")
@@ -279,32 +279,32 @@ class NothingSwitchesBeforeApply(unittest.TestCase):
         window.sharedState().pick_library(other)
         test_support.close_window(window)
         QtWidgets.QApplication.processEvents()
-        self.assertEqual(self.before_dir, self.panel.prefs.dir)
-        self.assertEqual(self.before_dir, self.panel._models_dir)
-        self.assertEqual(self.before_user, self.panel.prefs.library_user)
+        self.assertEqual(self.before_dir, self.panel.pane.prefs.dir)
+        self.assertEqual(self.before_dir, self.panel.pane.library.models_dir)
+        self.assertEqual(self.before_user, self.panel.pane.prefs.library_user)
 
     def test_apply_switches_the_library_and_the_user_together(self):
         other, made = _library_with(self, "Sage")
         self.assertTrue(test_support.apply_library(self, self.panel, other, user="Sage"))
-        self.assertEqual(other, self.panel._models_dir)
-        self.assertEqual(made["Sage"], self.panel.prefs.library_user)
-        self.assertEqual(other, self.panel.prefs.libraries[0],
+        self.assertEqual(other, self.panel.pane.library.models_dir)
+        self.assertEqual(made["Sage"], self.panel.pane.prefs.library_user)
+        self.assertEqual(other, self.panel.pane.prefs.libraries[0],
                          "the applied library is not first in the list")
 
     def test_a_library_that_stays_closed_keeps_the_user(self):
         other, _made = _library_with(self, "Sage")
-        with mock.patch.object(self.panel, "open_library", self.panel._stay_closed):
+        with mock.patch.object(self.panel.pane.library, "open_library", self.panel.pane.library._stay_closed):
             self.assertFalse(test_support.apply_library(self, self.panel, other))
-        self.assertEqual(self.before_dir, self.panel.prefs.dir)
-        self.assertEqual(self.before_user, self.panel.prefs.library_user,
+        self.assertEqual(self.before_dir, self.panel.pane.prefs.dir)
+        self.assertEqual(self.before_user, self.panel.pane.prefs.library_user,
                          "the user was switched to a library that did not open")
 
     def test_a_new_library_is_made_with_its_user_on_apply(self):
         folder = _empty_folder(self)
         self.assertTrue(test_support.apply_library(self, self.panel, folder, user="Fern"))
         self.assertTrue(os.path.isfile(os.path.join(folder, "DataBase.json")))
-        self.assertEqual({self.panel.prefs.library_user: "Fern"},
-                         users.all_users(self.panel.prefs))
+        self.assertEqual({self.panel.pane.prefs.library_user: "Fern"},
+                         users.all_users(self.panel.pane.prefs))
 
     def test_accept_applies_then_closes(self):
         other, made = _library_with(self, "Sage")
@@ -319,7 +319,7 @@ class NothingSwitchesBeforeApply(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
         self.assertFalse(shiboken6.isValid(window) and window.isVisible(),
                          "Accept left Preferences open")
-        self.assertEqual(made["Sage"], self.panel.prefs.library_user)
+        self.assertEqual(made["Sage"], self.panel.pane.prefs.library_user)
 
 
 class AStartWithoutAUserOpensNoLibrary(unittest.TestCase):
@@ -327,7 +327,7 @@ class AStartWithoutAUserOpensNoLibrary(unittest.TestCase):
 
     def _reopened_with(self, user):
         first = test_support.fixture_panel(self)
-        settings = os.path.join(first.prefs.path, "settings.json")
+        settings = os.path.join(first.pane.prefs.path, "settings.json")
         with open(settings, encoding="utf-8") as handle:
             data = json.load(handle)
         data["library_user"] = user
@@ -345,17 +345,17 @@ class AStartWithoutAUserOpensNoLibrary(unittest.TestCase):
         ui = mock.MagicMock()
         ui.displayMessage.side_effect = displayed
         with mock.patch.object(hou, "ui", ui, create=True):
-            panel.ensure_library_user()
+            panel.pane.library.ensure_library_user()
         return asked
 
     def test_with_its_user_the_library_opens_and_nothing_is_asked(self):
         panel = test_support.fixture_panel(self)
-        self.assertIsNotNone(panel.material_model)
+        self.assertIsNotNone(panel.pane.material_model)
         self.assertEqual([], self._asking(panel, 1))
 
     def test_without_a_user_no_library_opens_and_the_pane_asks(self):
         panel = self._reopened_with("")
-        self.assertIsNone(panel.material_model, "a library opened with nobody picked")
+        self.assertIsNone(panel.pane.material_model, "a library opened with nobody picked")
         self.assertEqual([(messages.NO_USER_PICKED, messages.BUTTONS_OPEN_PREFERENCES)],
                          self._asking(panel, 1))
         self.assertIsNone(getattr(panel, "_prefs_window", None), "Close opened Preferences")
@@ -367,21 +367,22 @@ class AStartWithoutAUserOpensNoLibrary(unittest.TestCase):
 
     def test_apply_with_the_user_opens_the_library(self):
         panel = self._reopened_with("")
-        self.assertTrue(test_support.apply_library(self, panel, panel.prefs.dir,
+        self.assertTrue(test_support.apply_library(self, panel, panel.pane.prefs.dir,
                                                    user=test_support.FIXTURE_USER_NAME))
-        self.assertIsNotNone(panel.material_model, "Apply left the library closed")
-        self.assertEqual(test_support.FIXTURE_USER, panel.prefs.library_user)
+        self.assertIsNotNone(panel.pane.material_model, "Apply left the library closed")
+        self.assertEqual(test_support.FIXTURE_USER, panel.pane.prefs.library_user)
 
 
-class SetLibraryOpensTheLibraryTab(unittest.TestCase):
+class AskingForTheLibraryPageShowsIt(unittest.TestCase):
 
-    def test_set_library_shows_preferences_on_library(self):
+    def test_preferences_asked_for_on_library_show_it(self):
+        """What the no-user prompt asks the host for: Preferences, open already, turns to Library."""
         panel = test_support.fixture_panel(self)
         panel.show_prefs(page="About")    # open on another page, so the switch to Library shows
         root = panel._prefs_window.rootObject()
         self.assertTrue(test_support.pump_until(
             lambda: str(root.property("currentUrl")).endswith("/AboutPage.qml"), timeout=5))
-        panel.set_library()
+        panel.pane.ui.show_prefs(page="Library")
         _assert_on_the_library_page(self, panel._prefs_window)
 
 

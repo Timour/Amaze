@@ -8,8 +8,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")   # the first QApplication
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from amaze import amazetheme
-from amaze.panel import dragdrop_widgets, empty_state, grid, sections
-from amaze.panel import panel as panel_module
+from amaze.panel import dragdrop_widgets, empty_state, grid
+from amaze import sections
 from amaze.tests import test_support
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])    # a subset run may have no earlier module that made one
@@ -69,7 +69,8 @@ class TheDeclarationsAreWellFormed(unittest.TestCase):
                           "shared one to use instead" % key)
 
     def test_every_declared_handler_is_a_method_on_the_panel(self):
-        """A handler that is not a panel method hides its button without an error."""
+        """A handler that names no method from the panel hides its button without an error."""
+        panel = test_support.fixture_panel(self)
         tables = [empty_state.SHARED]
         tables += [getattr(c, "EMPTY", {})
                    for c in sections.SECTION_INDEX.values()]
@@ -86,8 +87,8 @@ class TheDeclarationsAreWellFormed(unittest.TestCase):
                 if not handler:
                     continue
                 self.assertTrue(
-                    callable(getattr(panel_module.AmazePanel, handler, None)),
-                    "%s names the handler %r, which is not a panel method - "
+                    callable(empty_state._method(panel, handler)),
+                    "%s names the handler %r, which no path from the panel reaches - "
                     "its button would be hidden with no error"
                     % (blank, handler))
 
@@ -115,7 +116,7 @@ class TheEngineChoosesWhichBlank(unittest.TestCase):
                          "a library with rows in it returned an empty state")
         before = view.model().rowCount()
         self.panel.line_filter.setText("zzzz-no-such-asset")
-        self.panel.filter_thumb_view()
+        self.panel.pane.search(self.panel.line_filter.text())
         self.assertEqual(0, view.model().rowCount(),
                          "premise: the filter emptied the grid")
 
@@ -151,7 +152,7 @@ class TheFavouritesBlankIsItsOwnBlank(unittest.TestCase):
                    for r in range(self.proxy.rowCount())
                    if self.proxy.index(r, 0).data(self.role)]
         if starred:
-            self.panel.grid_toggle_favourite(starred)
+            self.panel.pane.assets.toggle_favourite(starred)
         QtWidgets.QApplication.processEvents()
 
     def _favourites_only(self, on):
@@ -184,7 +185,7 @@ class TheFavouritesBlankIsItsOwnBlank(unittest.TestCase):
         self._favourites_only(True)
         self.addCleanup(self._favourites_only, False)
         self.panel.line_filter.setText("zzzz-no-such-asset")
-        self.panel.filter_thumb_view()
+        self.panel.pane.search(self.panel.line_filter.text())
         self.addCleanup(self.panel.clear_filter_box)
 
         blank, _detail = empty_state.verdict(self.panel)
@@ -197,7 +198,7 @@ class TheFavouritesBlankIsItsOwnBlank(unittest.TestCase):
         """A star just set must show in `_any_favourite` at once - no cache may be in between."""
         self._unstar_everything()
         self.assertFalse(empty_state._any_favourite(self.source))
-        self.panel.grid_toggle_favourite([self.proxy.index(0, 0)])
+        self.panel.pane.assets.toggle_favourite([self.proxy.index(0, 0)])
         QtWidgets.QApplication.processEvents()
         self.assertTrue(
             empty_state._any_favourite(self.source),
@@ -207,14 +208,14 @@ class TheFavouritesBlankIsItsOwnBlank(unittest.TestCase):
     def test_unstarring_a_multi_selection_unstars_the_selected_rows(self):
         """Under favourites-only a flip drops its proxy row, so map every row to source before any flip."""
         self._unstar_everything()
-        self.panel.grid_toggle_favourite([self.proxy.index(0, 0),
+        self.panel.pane.assets.toggle_favourite([self.proxy.index(0, 0),
                                           self.proxy.index(1, 0)])
         QtWidgets.QApplication.processEvents()
         self._favourites_only(True)
         self.addCleanup(self._favourites_only, False)
         self.assertEqual(2, self.proxy.rowCount(),
                          "premise: two favourites showing")
-        self.panel.grid_toggle_favourite([self.proxy.index(0, 0),
+        self.panel.pane.assets.toggle_favourite([self.proxy.index(0, 0),
                                           self.proxy.index(1, 0)])
         QtWidgets.QApplication.processEvents()
         left = sum(1 for r in range(self.source.rowCount())
@@ -371,10 +372,10 @@ class AnEmptyCategoryIsThePlainGrid(unittest.TestCase):
         sidebar = panel.cat_list.model()
         sidebar.hide_empty = False    # on by default, which hides a row with no assets
         sidebar.invalidateFilter()
-        with mock.patch.object(panel, "ask_category_name",
-                               lambda _title, _default="": "Probe"):
-            panel.active_section().menu_add_category([], None)
-        self.assertTrue(panel._select_category("Probe"),
+        with mock.patch.object(panel, "ask_name",
+                               lambda _title, _default, then: then("Probe")):
+            panel.pane.active_section().menu_add_category([], None)
+        self.assertTrue(panel.pane.sidebar.select_key("Probe"),
                         "premise: Probe is a sidebar row")
         QtWidgets.QApplication.processEvents()
         proxy = grid.visible_view(panel).model()
@@ -436,7 +437,7 @@ class AnEmptyCategoryIsThePlainGrid(unittest.TestCase):
         proxy = grid.visible_view(panel).model()
         source = proxy.sourceModel()
         if not empty_state._any_favourite(source):
-            panel.grid_toggle_favourite([proxy.index(0, 0)])
+            panel.pane.assets.toggle_favourite([proxy.index(0, 0)])
             QtWidgets.QApplication.processEvents()
         self.assertTrue(empty_state._any_favourite(source), "premise: one star")
         self._select_a_new_category("material")
@@ -449,7 +450,7 @@ class AnEmptyCategoryIsThePlainGrid(unittest.TestCase):
     def test_a_search_in_it_still_shows_the_no_match_blank(self):
         self._select_a_new_category("code")
         self.panel.line_filter.setText("zzzz-no-such-asset")
-        self.panel.filter_thumb_view()
+        self.panel.pane.search(self.panel.line_filter.text())
         self.addCleanup(self.panel.clear_filter_box)
         QtWidgets.QApplication.processEvents()
         self.assertEqual(empty_state.NO_MATCH,
@@ -475,11 +476,11 @@ class AnEmptyCategoryIsThePlainGrid(unittest.TestCase):
         gone = test_support.posix_path(
             test_support.scratch_dir("amaze_gone_")) + "/"
         self.addCleanup(shutil.rmtree, gone, True)
-        self.assertTrue(panel.file_folders_model.add_folder(gone),
+        self.assertTrue(panel.pane.file_folders_model.add_folder(gone),
                         "premise: the location registered")
         shutil.rmtree(gone)    # what an unmounted share looks like
         self.assertTrue(
-            panel._select_category(gone),
+            panel.pane.sidebar.select_key(gone),
             "premise: the location is a sidebar row")
         QtWidgets.QApplication.processEvents()
         self.assertEqual((empty_state.UNREACHABLE, gone),
@@ -494,8 +495,8 @@ class AnEmptyLocationIsThePlainGrid(unittest.TestCase):
         self.panel = test_support.fixture_panel(self)
         self.panel.section_tabs.setChecked("file")
         QtWidgets.QApplication.processEvents()
-        self.folders = self.panel.file_folders_model
-        self.files = self.panel.file_files_model
+        self.folders = self.panel.pane.file_folders_model
+        self.files = self.panel.pane.file_files_model
         self.fixture = list(self.folders._folders())
         self.assertTrue(self.fixture, "premise: the fixture registers a location")
 
@@ -516,7 +517,7 @@ class AnEmptyLocationIsThePlainGrid(unittest.TestCase):
         view.selectionModel().setCurrentIndex(
             view.model().index(row, 0),
             QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
-        self.panel.update_selected_cat()
+        self.panel.pane.sidebar.show_row()
         QtWidgets.QApplication.processEvents()
         self.assertEqual(0, self.files.rowCount(), "premise: the grid lists no file")
 
@@ -545,7 +546,7 @@ class AnEmptyLocationIsThePlainGrid(unittest.TestCase):
 
     def test_a_right_click_on_an_empty_location_opens_the_grid_menu(self):
         self._click_row(self.folders.row_of(self._register_empty()))
-        section = self.panel.active_section()
+        section = self.panel.pane.active_section()
         menu, _handlers = grid.build_grid_menu(self.panel, section, [], None)
         self.addCleanup(menu.deleteLater)
         expected = [(action.text(), action.isEnabled()) for action in menu.actions()
@@ -570,8 +571,8 @@ class TheUnreachableBlankNamesARegisteredFolder(unittest.TestCase):
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
-        self.panel.current_section = "file"
-        self.model = self.panel.file_files_model
+        self.panel.pane.current_section = "file"
+        self.model = self.panel.pane.file_files_model
 
     def test_a_folder_no_longer_registered_is_not_named(self):
         self.model._unreadable_folders.add("/no/such/folder/")
@@ -580,7 +581,7 @@ class TheUnreachableBlankNamesARegisteredFolder(unittest.TestCase):
         self.assertEqual("", empty_state.unreadable_folder(self.panel),
                          "a folder that is not in the sidebar at all "
                          "was still named as the cause of the empty grid")
-        folders = self.panel.file_folders_model
+        folders = self.panel.pane.file_folders_model
         registered = folders._folders()
         if not registered:
             self.skipTest("the fixture registers no file folders")
@@ -593,7 +594,7 @@ class TheUnreachableBlankNamesARegisteredFolder(unittest.TestCase):
 
     def test_an_unreadable_folder_does_not_change_another_folders_blank(self):
         """The empty state describes the selected folder, never an unreadable folder elsewhere."""
-        folders = self.panel.file_folders_model
+        folders = self.panel.pane.file_folders_model
         registered = folders._folders()
         if not registered:
             self.skipTest("the fixture registers no file folders")
@@ -611,7 +612,7 @@ class TheUnreachableBlankNamesARegisteredFolder(unittest.TestCase):
 
     def test_the_locate_button_moves_the_folder_the_message_names(self):
         """With the sidebar on All, the handler selects the named folder before the shared picker runs."""
-        folders = self.panel.file_folders_model
+        folders = self.panel.pane.file_folders_model
         target = test_support.fresh_files_folder(self)    # a second folder, so using the current one is caught
         folders.add_folder(target)
         self.addCleanup(folders.remove_folder, folders.row_of(target))
@@ -619,7 +620,7 @@ class TheUnreachableBlankNamesARegisteredFolder(unittest.TestCase):
                              "premise: the second folder registered")
         self.panel.section_tabs.setChecked("file")    # the empty state shown is File's
         QtWidgets.QApplication.processEvents()
-        self.panel.sections["file"].select_sidebar_key("")    # the grid and the sidebar on All
+        self.panel.pane.sections["file"].select_sidebar_key("")    # the grid and the sidebar on All
         self.model._unreadable_folders.add(target)    # after the scans, which would clear it
         self.addCleanup(self.model._unreadable_folders.discard, target)
         self.panel.cat_list.setCurrentIndex(
@@ -631,8 +632,8 @@ class TheUnreachableBlankNamesARegisteredFolder(unittest.TestCase):
             rows = panel.cat_list.selectedIndexes()
             seen["row"] = rows[0].row() if rows else -1
 
-        original = self.panel.locate_folder_user
-        self.panel.locate_folder_user = _picker
+        original = self.panel.pane.files.locate_folder
+        self.panel.pane.files.locate_folder = _picker
         self.addCleanup(setattr, self.panel, "locate_folder_user",
                         original)
         self.panel.locate_unreadable_folder()
@@ -652,12 +653,12 @@ class EveryBoundProxyHasARefilteredSignal(unittest.TestCase):
     def test_every_context_binds_a_proxy_with_refiltered(self):
         """Read off each context's own `activate()`, so a new section is covered too."""
         panel = self.panel
-        self.addCleanup(lambda: panel.active_section().activate())
-        contexts = dict(panel.sections, online=panel.online_context)
+        self.addCleanup(lambda: panel.pane.active_section().activate())
+        contexts = dict(panel.pane.sections, online=panel.pane.online_context)
         bound = {}
         for key, context in contexts.items():
             with mock.patch.object(panel, "bind_grid_views") as bind, \
-                    mock.patch.object(panel.matx_online_model, "reload"):
+                    mock.patch.object(panel.pane.matx_online_model, "reload"):
                 context.activate()
             self.assertEqual(1, bind.call_count,
                              "%s bound the grid %d times" % (key, bind.call_count))

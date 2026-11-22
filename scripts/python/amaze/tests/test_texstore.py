@@ -298,7 +298,7 @@ class SaveFromNodeTest(unittest.TestCase):
 
     def test_saving_copies_textures_and_the_scene_node_stays_untouched(self):
         from amaze.core import library_files, material
-        model = self.panel.material_model
+        model = self.panel.pane.material_model
         prefs = model.preferences
         source = self._outside_texture()
         builder, image = self._saveable_builder("Copied_Fabric", source)
@@ -331,7 +331,7 @@ class SaveFromNodeTest(unittest.TestCase):
         """A placed material's library textures resolve, written under `$JOB` when that is chosen."""
         from amaze.core import texstore
         from amaze.render import nodes as nodes_mod
-        model = self.panel.material_model
+        model = self.panel.pane.material_model
         prefs = model.preferences
         source = self._outside_texture("resolved_diff.png")
         builder, _image = self._saveable_builder("Resolved_Fabric", source)
@@ -365,7 +365,7 @@ class PanelEnvTest(unittest.TestCase):
 
     def test_the_fixture_panel_published_the_variable(self):
         self.assertEqual(
-            os.path.normpath(self.panel.prefs.dir),
+            os.path.normpath(self.panel.pane.prefs.dir),
             os.path.normpath(hou.getenv("AMAZELIB") or ""),
             "panel startup did not publish $AMAZELIB")
 
@@ -389,7 +389,7 @@ class EverySwitchPublishesTheVariable(unittest.TestCase):
             "closes, so a render reads that library's textures")
 
     def _write_settings(self, **changes):
-        settings = os.path.join(self.panel.prefs.path, "settings.json")
+        settings = os.path.join(self.panel.pane.prefs.path, "settings.json")
         with open(settings, encoding="utf-8") as handle:
             data = json.load(handle)
         data.update(changes)
@@ -399,7 +399,7 @@ class EverySwitchPublishesTheVariable(unittest.TestCase):
     def test_reload_library(self):
         other = test_support.seeded_library(self)
         self._write_settings(directory=other)
-        self.panel.open()
+        self.panel.pane.library.reload()
         self._assert_published(other)
 
     def test_preferences_apply(self):

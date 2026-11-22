@@ -379,9 +379,11 @@ class OnlyTheProxySorts(unittest.TestCase):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         offenders = []
         for relative in ("core/library.py", "core/cop_library.py",
-                         "core/code_library.py", "panel/panel.py", "panel/sections.py",
-                         "panel/online_import.py", "panel/package_import.py",
-                         "panel/drop_placement.py", "panel/tile_capture.py"):
+                         "core/code_library.py", "panel/panel.py", *test_support.section_files(),
+                         "pane/pane.py", "pane/library.py", "pane/sidebar.py", "pane/assets.py",
+                         "pane/loading.py", "pane/saving.py", "pane/files.py",
+                         "pane/online_import.py", "pane/package_import.py",
+                         "pane/drop_placement.py", "pane/tile_capture.py"):
             source = open(os.path.join(root, relative),
                           encoding="utf-8").read()
             tree = ast.parse(source)

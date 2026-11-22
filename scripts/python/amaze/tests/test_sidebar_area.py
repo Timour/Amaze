@@ -16,7 +16,7 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 from amaze.core import category  # noqa: E402
-from amaze.panel import sections  # noqa: E402
+from amaze.sections import color as color_section, base as section_base  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
 
@@ -37,38 +37,27 @@ class _Model:
     CategoryRole = QtCore.Qt.ItemDataRole.UserRole + 1
 
 
-class _CatList:
-    """Only what the name reader asks of the sidebar widget - which model it is showing."""
-
-    def __init__(self, model):
-        self._model = model
-
-    def model(self):
-        return self._model
-
-
-class _Panel:
+class _Pane:
     """The real `raw_category_name`, given the proxy as in production; it reads SIDEBAR_KEY_ROLE."""
 
-    from amaze.panel.panel import AmazePanel as _Real
-    raw_category_name = _Real.raw_category_name
-
     def __init__(self, proxy):
-        self.cat_list = _CatList(proxy)
+        from amaze.pane import sidebar
+        self.sidebar = sidebar.Sidebar(self)
+        self.sidebar.model = proxy
 
 
-class _Section(sections.AssetSection):
+class _Section(section_base.AssetSection):
     """An AssetSection over the recorder above; its inherited `select_category` is under test."""
 
     def __init__(self, categories, proxy, sidebar_proxy):
         self._categories = categories
         self._proxy = proxy
         self._model = _Model()
-        self.panel = _Panel(sidebar_proxy)
+        self.pane = _Pane(sidebar_proxy)
 
     def stack(self):
         # The named tuple the real `stack()` returns - a bare tuple could get out of step.
-        return sections.AssetStack(
+        return section_base.AssetStack(
             model=self._model, proxy=self._proxy,
             selection=None, categories=self._categories)
 
@@ -128,14 +117,14 @@ class EachCONTEXTDecidesWhatMayBeDroppedOnItsSidebarRows(unittest.TestCase):
                             ("FileSection", False), ("OnlineContext", False)):
             with self.subTest(context=name):
                 self.assertEqual(
-                    takes, bool(getattr(sections, name).takes_category_drops),
+                    takes, bool(test_support.section_class(name).takes_category_drops),
                     "%s returns the wrong value for tiles dropped on its "
                     "sidebar" % name)
 
     def test_COLOR_still_guards_its_synthetic_rows(self):
         """A gradient row must be a real user category; the AssetSection default accepts any row."""
-        section = sections.GradientSection.__new__(sections.GradientSection)
-        section.panel = type("_P", (), {
+        section = color_section.GradientSection.__new__(color_section.GradientSection)
+        section.pane = type("_P", (), {
             "gradient_model": type("_M", (), {
                 "user_categories": staticmethod(lambda: ["Warm"])})()})()
         self.assertTrue(section.accepts_category_drop(None, "Warm"))
@@ -143,7 +132,7 @@ class EachCONTEXTDecidesWhatMayBeDroppedOnItsSidebarRows(unittest.TestCase):
             section.accepts_category_drop(None, "Wada 3 Colors"),
             "a synthetic palette row accepted a dropped tile")
         self.assertTrue(
-            sections.AssetSection.accepts_category_drop(None, None, "Metal"))
+            section_base.AssetSection.accepts_category_drop(None, None, "Metal"))
 
 
 class TheSidebarMatchesItsDesignFrame(unittest.TestCase):
@@ -179,8 +168,8 @@ class TheSidebarMatchesItsDesignFrame(unittest.TestCase):
     def test_the_sidebar_opens_at_its_drawn_width(self):
         width = self.px(self._kind("list")[0][3])
         panel = self.panel
-        self.addCleanup(setattr, panel.prefs, "sidebar_width", panel.prefs.sidebar_width)
-        panel.prefs.sidebar_width = 0    # no saved width: the pane uses its default width
+        self.addCleanup(setattr, panel.pane.prefs, "sidebar_width", panel.pane.prefs.sidebar_width)
+        panel.pane.prefs.sidebar_width = 0    # no saved width: the pane uses its default width
         self.assertEqual(width, panel.cat_wrapper.sizeHint().width())
         self.assertEqual((width, width),
                          (panel.cat_wrapper.maximumWidth(), panel.cat_list.maximumWidth()))

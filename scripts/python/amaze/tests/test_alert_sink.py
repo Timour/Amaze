@@ -115,25 +115,21 @@ class ReportUnlistedShowsOneStatusLineTest(unittest.TestCase):
 class AnOnlineImportReportsUnlistedRecordsLast(unittest.TestCase):
     """A batch collects the records the library could not save and shows one line, after all else"""
 
-    class _Panel:
-        _online_download_active = False
-
+    class _Pane:
         def __init__(self):
             self.material_model = types.SimpleNamespace(assets=())
             self.landed = []
-
-        def render_new_thumbnails(self, held):
-            self.landed.append(held)
+            self.assets = types.SimpleNamespace(render_new_thumbnails=self.landed.append)
 
     def _batch(self, answers):
         """`import_records` on len(answers) records; `import_material` returns each (ok, reason)."""
-        from amaze.panel import online_import as online_import_mod
+        from amaze.pane import online_import as online_import_mod
 
         class StubImport(online_import_mod.OnlineImport):
             def import_material(self, record, on_progress=None, **kwargs):
                 return answers[record]
 
-        panel = self._Panel()
+        panel = self._Pane()
         with mock.patch.object(hou, "ui", types.SimpleNamespace(
                 setStatusMessage=lambda text, *a, **k: self.lines.append(text),
                 displayMessage=lambda text, *a, **k: self.shown.append(
@@ -389,13 +385,18 @@ class NoReleaseHandlerOpensAModalInline(unittest.TestCase):
     MODALS = {"displayMessage", "displayConfirmation", "displayCustomConfirmation", "readInput",
               "readMultiInput", "selectFromList", "selectFile", "selectColor", "selectNode"}
     BOX_MODALS = {"information", "warning", "critical", "question"}    # on QMessageBox
-    PANEL_RELEASES = ("assign_category_active", "move_files_active")    # the panel's own drop calls
+    PANE_RELEASES = (("sidebar", "assign_category"), ("files", "move_files"))    # the drop's own calls
     REACHED = ("material_lop_viewport_drop", "assign_material_to_obj", "_import_material_builder",
                "import_geo_in_context")    # the functions that once opened one
-    HELPERS = {"drop_placement": ("panel/drop_placement.py", "DropPlacement"),    # the objects the panel holds
-               "tile_capture": ("panel/tile_capture.py", "TileCapture"),
-               "online_import": ("panel/online_import.py", "OnlineImport"),
-               "package_import": ("panel/package_import.py", "PackageImport")}
+    HELPERS = {"drop_placement": ("pane/drop_placement.py", "DropPlacement"),    # the parts the pane holds
+               "tile_capture": ("pane/tile_capture.py", "TileCapture"),
+               "online_import": ("pane/online_import.py", "OnlineImport"),
+               "package_import": ("pane/package_import.py", "PackageImport"),
+               "loading": ("pane/loading.py", "Loading"),
+               "sidebar": ("pane/sidebar.py", "Sidebar"),
+               "files": ("pane/files.py", "Files"),
+               "assets": ("pane/assets.py", "Assets"),
+               "saving": ("pane/saving.py", "Saving")}
 
     def _methods(self, relative, only=None) -> dict:
         """{name: [def]} for the methods of one source file, of class `only` when given."""
@@ -412,9 +413,10 @@ class NoReleaseHandlerOpensAModalInline(unittest.TestCase):
     @staticmethod
     def _release_handlers() -> set:
         """Every handler a section declares for a release, read off the live DropRules."""
-        from amaze.panel import sections
+        from amaze import sections
+        from amaze.sections import online as online_section
         handlers = set()
-        for cls in sections.SECTION_CLASSES + (sections.OnlineContext,):
+        for cls in sections.SECTION_CLASSES + (online_section.OnlineContext,):
             for rule in [cls.DROP] + list(cls.DROP_BY_KIND.values()):
                 if rule is not None:
                     handlers.update(v for v in (rule.on_node, rule.on_space, rule.resolve)
@@ -422,11 +424,12 @@ class NoReleaseHandlerOpensAModalInline(unittest.TestCase):
         return handlers
 
     def test_no_release_handler_reaches_a_modal(self):
-        own = {"section": self._methods("panel/sections.py"),
-               "panel": self._methods("panel/panel.py", "AmazePanel")}
+        own = {"section": {name: found for path in test_support.section_files()
+                           for name, found in self._methods(path).items()},
+               "pane": self._methods("pane/pane.py", "Pane")}
         own.update((held, self._methods(*where)) for held, where in self.HELPERS.items())
         stack = [("section", handler, handler) for handler in sorted(self._release_handlers())]
-        stack += [("panel", handler, handler) for handler in self.PANEL_RELEASES]
+        stack += [(held, handler, handler) for held, handler in self.PANE_RELEASES]
         seen, offenders = set(), []
         while stack:
             side, name, path = stack.pop()
@@ -444,9 +447,9 @@ class NoReleaseHandlerOpensAModalInline(unittest.TestCase):
                         offenders.append("%s: %s, line %d" % (path, called, node.lineno))
                     elif owner == "self":
                         stack.append((side, called, path + " > " + called))
-                    elif owner in ("panel", "self.panel"):
-                        stack.append(("panel", called, path + " > " + called))
-                    elif held in self.HELPERS and head in ("self", "panel", "self.panel"):
+                    elif owner in ("pane", "self.pane"):
+                        stack.append(("pane", called, path + " > " + called))
+                    elif held in self.HELPERS and head in ("self", "pane", "self.pane"):
                         stack.append((held, called, path + " > " + called))
                     elif owner in ("context", "section"):
                         stack.append(("section", called, path + " > " + called))
@@ -488,14 +491,14 @@ class AFailedReleaseIsReportedThroughDebugRefuse(unittest.TestCase):
         panel.section_tabs.setChecked("file")
         QtWidgets.QApplication.processEvents()
         proxy = panel.thumblist.model()
-        kind, path_role = panel.file_files_model.KindRole, panel.file_files_model.PathRole
+        kind, path_role = panel.pane.file_files_model.KindRole, panel.pane.file_files_model.PathRole
         row = next((r for r in range(proxy.rowCount())
                     if proxy.index(r, 0).data(kind) == locations.KIND_HIP), None)
         self.assertIsNotNone(row, "premise: the fixture folder lists no scene")
         failed = mock.Mock(side_effect=hou.OperationFailed("the file is damaged"))
         self.later.reset_mock()    # the section switch defers work of its own
         with mock.patch.object(hou.hipFile, "load", failed):
-            panel.sections["file"].open_hip_scene(proxy.index(row, 0))
+            panel.pane.sections["file"].open_hip_scene(proxy.index(row, 0))
         self.assertEqual(1, failed.call_count, "premise: the load was never called")
         self.assertEqual([], self.shown, "the failed open showed a modal inside the release")
         self.assertEqual(1, self.later.call_count, "the failed open was not deferred to a dialog")
@@ -510,7 +513,7 @@ class AFailedReleaseIsReportedThroughDebugRefuse(unittest.TestCase):
         network = types.SimpleNamespace(
             childTypeCategory=lambda: types.SimpleNamespace(name=lambda: "Object"),
             createNode=refuse)
-        made = self.panel.drop_placement.import_geo_in_context("/nowhere/rock.bgeo.sc", network)
+        made = self.panel.pane.drop_placement.import_geo_in_context("/nowhere/rock.bgeo.sc", network)
         self.assertIsNone(made)
         self.assertEqual(([], 0), (self.shown, self.later.call_count),
                          "a network refusing the import opened a dialog")

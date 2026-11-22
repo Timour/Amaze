@@ -157,7 +157,7 @@ class GalleryImportInThePanel(unittest.TestCase):
     def setUp(self):
         from amaze.render import thumbs
         self.panel = test_support.fixture_panel(self)
-        self.panel.prefs.render_on_import = 1
+        self.panel.pane.prefs.render_on_import = 1
         self.said, self.batches = [], []
         ui = types.SimpleNamespace(
             selectFile=lambda *a, **k: "probe.gal",
@@ -188,18 +188,18 @@ class GalleryImportInThePanel(unittest.TestCase):
         return made
 
     def _import(self, categories):
-        held = test_support.asset_ids(self.panel.material_model)
+        held = test_support.asset_ids(self.panel.pane.material_model)
         with mock.patch.object(gallery_import, "entries_from_file",
                                lambda path: self._entries(categories)):
-            self.panel.import_galleries()
+            self.panel.pane.saving.import_galleries()
         return sorted(str(mat.mat_id) for mat in
-                      test_support.arrived(self.panel.material_model, held))
+                      test_support.arrived(self.panel.pane.material_model, held))
 
     def test_esc_keeps_the_saved_entries_their_categories_and_counts(self):
         with mock.patch.object(hou, "InterruptableOperation", _InterruptedAtThirdUpdate):
             saved = self._import(["GalleryEscA", "GalleryEscB", "GalleryEscC"])
         self.assertEqual(2, len(saved), "premise: the Esc did not stop the third entry")
-        shown = self.panel.category_names_from(self.panel.category_model)
+        shown = self.panel.pane.sidebar.category_names_from(self.panel.pane.category_model)
         self.assertEqual([True, True, False],
                          [name in shown for name in ("GalleryEscA", "GalleryEscB", "GalleryEscC")],
                          "the categories of the saved entries have no sidebar row")
@@ -209,7 +209,7 @@ class GalleryImportInThePanel(unittest.TestCase):
         saved = self._import(["GalleryBatchA", "GalleryBatchB"])
         self.assertEqual(2, len(saved), "premise: the gallery saved nothing")
         self.assertEqual([saved], self.batches, "not ONE batch of the saved entries")
-        self.assertEqual(1, self.panel.prefs.render_on_import)
+        self.assertEqual(1, self.panel.pane.prefs.render_on_import)
         self.assertEqual(messages.GALLERY_IMPORT_FINISHED_RENDERING % (2, 0, 0), self.said[-1])
 
 

@@ -18,7 +18,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 import hou  # noqa: E402,F401
-from amaze.panel import sections  # noqa: E402
+from amaze.sections import file as file_section  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 from amaze.core import file_library, texture_library  # noqa: E402 - after test_support, which redirects config_root and the cache
 from amaze.prefs import prefs as prefs_module  # noqa: E402
@@ -33,8 +33,8 @@ class FilterMenuTest(unittest.TestCase):
             test_support.class_scope(cls))
 
     def _labels_for(self, key):
-        self.panel._on_tab_toggled(key, True)
-        self.assertEqual(key, self.panel.current_section,
+        self.panel.pane.choose_tab(key)
+        self.assertEqual(key, self.panel.pane.current_section,
                          "the tab switch to %r did not happen" % key)
         return [act.text() for act in self.panel.menu_filter.actions() if not act.isSeparator()]
 
@@ -56,7 +56,8 @@ class FilterMenuTest(unittest.TestCase):
             if key in values:
                 label, value = values[key]
                 self.assertEqual(
-                    value, self.panel.filter_values[label],
+                    value, {entry.label: entry.value
+                            for entry in self.panel.pane.filter_entries()}[label],
                     "the %s menu value is no longer passed through the "
                     "panel unchanged" % key)
         material = self._labels_for("material")
@@ -82,7 +83,7 @@ class FilterMenuTest(unittest.TestCase):
     def test_a_pick_narrows_the_grid_and_all_puts_it_back(self):
         """Through the real menu action: one language narrows the rows, `All` shows them all."""
         self._labels_for("code")
-        model = self.panel.code_model
+        model = self.panel.pane.code_model
         total = model.rowCount()
         if not total:
             self.skipTest("fixture library has no code snippets")
@@ -102,34 +103,34 @@ class FilterMenuTest(unittest.TestCase):
         self.panel.filter_actions[pick].setChecked(True)
         self.panel.filter_menu_changed(self.panel.filter_actions[pick])
         self.assertEqual(
-            expected, self.panel.code_sorted_model.rowCount(),
+            expected, self.panel.pane.code_sorted_model.rowCount(),
             "picking %r did not narrow the Code grid to the snippets "
             "written in it" % pick)
         self.panel.filter_actions["All"].setChecked(True)
         self.panel.filter_menu_changed(self.panel.filter_actions["All"])
         self.assertEqual(
-            total, self.panel.code_sorted_model.rowCount(),
+            total, self.panel.pane.code_sorted_model.rowCount(),
             "All does not put every snippet back")
 
     def test_all_stores_no_filter_and_keeps_the_sidebar_counts(self):
         """Rows without a renderer show only unfiltered; storing `All` once zeroed sidebar counts."""
         self._labels_for("material")
         self.panel.filter_actions["All"].setChecked(True)
-        self.panel.apply_section_filter()
-        stored = getattr(self.panel.material_sorted_model, "_filters", {})
+        self.panel.pane.choose_filter("All")
+        stored = getattr(self.panel.pane.material_sorted_model, "_filters", {})
         self.assertNotIn(
-            self.panel.material_model.RendererRole, stored,
+            self.panel.pane.material_model.RendererRole, stored,
             "All still stores a filter - every row runs an "
             "index.data() on every pass that always accepts it")
-        if not self.panel.material_model.rowCount():
+        if not self.panel.pane.material_model.rowCount():
             self.skipTest("fixture library has no materials")
         self.assertTrue(
-            self.panel.category_model.showing_all_renderers(),
+            self.panel.pane.category_model.showing_all_renderers(),
             "the category model does not treat All as all renderers, so the "
             "sidebar hides categories the grid is showing")
         self.assertEqual(
-            self.panel.category_model.rowCount(),
-            self.panel.category_sorted_model.rowCount(),
+            self.panel.pane.category_model.rowCount(),
+            self.panel.pane.category_sorted_model.rowCount(),
             "the sidebar is hiding categories while the grid shows "
             "every material")
 
@@ -181,7 +182,7 @@ class FilterMenuTest(unittest.TestCase):
         self.assertEqual("MaterialX", act.text(), "the Karma entry is not shown as MaterialX")
         act.setChecked(True)
         self.panel.filter_menu_changed(act)
-        self.assertEqual("Karma", self.panel.prefs.section_filter("material"),
+        self.assertEqual("Karma", self.panel.pane.prefs.section_filter("material"),
                          "the saved choice is the label, so renaming it loses the choice")
         self._labels_for("code")
         self._labels_for("material")
@@ -197,11 +198,11 @@ class FilterMenuTest(unittest.TestCase):
         act = self.panel.filter_actions["Redshift"]
         act.setChecked(True)
         self.panel.filter_menu_changed(act)
-        before = self.panel.prefs.renderer_redshift_enabled
-        self.panel.prefs.renderer_redshift_enabled = False
-        self.addCleanup(setattr, self.panel.prefs,
+        before = self.panel.pane.prefs.renderer_redshift_enabled
+        self.panel.pane.prefs.renderer_redshift_enabled = False
+        self.addCleanup(setattr, self.panel.pane.prefs,
                         "renderer_redshift_enabled", before)
-        self.panel.update_renderer_toggles()
+        self.panel.pane.refresh_filter()
         self.assertNotIn("Redshift", self.panel.filter_actions,
                          "a disabled renderer is still offered")
         checked = self.panel.filter_action_group.checkedAction()
@@ -209,16 +210,16 @@ class FilterMenuTest(unittest.TestCase):
             "All", checked.text() if checked is not None else "",
             "the menu is checked on an entry that no longer exists")
         self.assertNotIn(
-            self.panel.material_model.RendererRole,
-            getattr(self.panel.material_sorted_model, "_filters", {}),
+            self.panel.pane.material_model.RendererRole,
+            getattr(self.panel.pane.material_sorted_model, "_filters", {}),
             "the grid is still filtered to a renderer the menu no "
             "longer offers")
 
     def test_the_palette_sizes_actually_filter(self):
         """Colors filters on a range: `5+ colors` keeps a 9-color palette while `4 colors` does not."""
         self._labels_for("gradient")
-        model = self.panel.gradient_model
-        proxy = self.panel.gradient_sorted_model
+        model = self.panel.pane.gradient_model
+        proxy = self.panel.pane.gradient_sorted_model
         total = model.rowCount()
         if not total:
             self.skipTest("fixture library has no palettes")
@@ -228,7 +229,8 @@ class FilterMenuTest(unittest.TestCase):
             act = self.panel.filter_actions[label]
             act.setChecked(True)
             self.panel.filter_menu_changed(act)
-            fewest, most = self.panel.filter_values[label]
+            fewest, most = {entry.label: entry.value
+                            for entry in self.panel.pane.filter_entries()}[label]
             expected = sum(
                 1 for count in held
                 if count >= fewest and (most is None or count <= most))
@@ -266,7 +268,7 @@ class FilterMenuTest(unittest.TestCase):
                          "the fixture folder did not load as five rows")
         for label, expected in (("Images", 2), ("Geometry", 1), ("Hip", 1)):
             kind = {entry.label: entry.value
-                    for entry in sections.FileSection.FILTER_CHOICES}[label]
+                    for entry in file_section.FileSection.FILTER_CHOICES}[label]
             proxy.set_kind_filter(kind)
             self.assertEqual(
                 expected, proxy.rowCount(),
@@ -321,12 +323,12 @@ class TypingCostsOnePassNotOnePerKeystroke(unittest.TestCase):
     def setUpClass(cls):
         cls.panel = test_support.fixture_panel(
             test_support.class_scope(cls))
-        cls.panel._on_tab_toggled("material", True)
+        cls.panel.pane.choose_tab("material")
 
     def setUp(self):
-        self.panel._filter_timer.stop()
+        self.panel.pane._search_timer.stop()
         self.panel.line_filter.clear()
-        self.panel.filter_thumb_view()
+        self.panel.pane.search(self.panel.line_filter.text())
         _app.processEvents()
 
     def _type(self, word):
@@ -338,12 +340,12 @@ class TypingCostsOnePassNotOnePerKeystroke(unittest.TestCase):
 
     def _settle(self):
         """Run the pending debounced filter now, as the timer does after a pause in typing."""
-        timer = self.panel._filter_timer
+        timer = self.panel.pane._search_timer
         self.assertTrue(timer.isActive(),
                         "typing left no pending filter, so nothing "
                         "would ever narrow the grid")
         timer.stop()
-        self.panel.filter_thumb_view()
+        self.panel.pane.search(self.panel.line_filter.text())
         _app.processEvents()
 
     @staticmethod
@@ -396,27 +398,27 @@ class TypingCostsOnePassNotOnePerKeystroke(unittest.TestCase):
     def test_a_section_switch_with_every_filter_set_costs_ONE_pass(self):
         """Category, search, renderer and favourites all set: returning to Materials is one pass."""
         panel = self.panel
-        panel._on_tab_toggled("material", True)
-        panel._select_category("usds")
+        panel.pane.choose_tab("material")
+        panel.pane.sidebar.select_key("usds")
         panel.line_filter.setText("a")
-        panel.filter_thumb_view()
+        panel.pane.search(panel.line_filter.text())
         renderers = [label for label in panel.filter_actions if label != "All"]
         self.assertTrue(renderers, "premise: no renderer filter to set")
         panel.filter_actions[renderers[0]].trigger()
         panel.cb_favsonly.setChecked(True)
         self.addCleanup(panel.cb_favsonly.setChecked, False)
         self.addCleanup(lambda: panel.filter_actions["All"].trigger())
-        self.addCleanup(panel._select_category, "")
-        proxy = panel.material_sorted_model
+        self.addCleanup(panel.pane.sidebar.select_key, "")
+        proxy = panel.pane.material_sorted_model
         self.assertEqual(4, len(proxy._filters), "premise: a filter is not set")
-        panel._on_tab_toggled("code", True)
+        panel.pane.choose_tab("code")
         with self._passes() as seen:
-            panel._on_tab_toggled("material", True)
+            panel.pane.choose_tab("material")
         mine = [p for p in seen if p is proxy]
         self.assertEqual(1, len(mine),
                          "returning to Material ran %d passes" % len(mine))
         self.assertEqual("usds", proxy.filter_value(
-            panel.material_model.CategoryRole),
+            panel.pane.material_model.CategoryRole),
             "the switch did not put the category back")
 
     def test_the_settled_text_is_what_the_grid_filters_on(self):
@@ -424,7 +426,7 @@ class TypingCostsOnePassNotOnePerKeystroke(unittest.TestCase):
         self._type("metal")
         self._settle()
         stored = getattr(    # the proxy's own store, as MultiFilterProxyModel has no reader
-            self.panel.material_sorted_model, "_filters", {})
+            self.panel.pane.material_sorted_model, "_filters", {})
         self.assertEqual(
             "metal", stored.get(QtCore.Qt.ItemDataRole.DisplayRole),
             "the grid is filtering on something other than the word "

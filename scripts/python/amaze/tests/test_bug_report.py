@@ -47,7 +47,7 @@ class TheBugReportIncludesTheVersions(unittest.TestCase):
         from amaze.core import updater
         from amaze.dialogs import prefs_window
         from amaze.helpers import ui_helpers
-        state = prefs_window.AmazePrefsState(test_support.fixture_prefs(self), panel=None)
+        state = prefs_window.AmazePrefsState(test_support.fixture_prefs(self), pane=None)
         with mock.patch.object(ui_helpers, "open_url") as open_url:
             state.reportBug()
         open_url.assert_called_once_with(updater.bug_report_url())

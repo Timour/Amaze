@@ -21,7 +21,8 @@ import hou  # noqa: E402,F401
 from amaze.actions import files as files_actions  # noqa: E402
 from amaze.core import captures, file_library, locations, scene_captures, scene_files, section_list, thumbnails, tile_icons  # noqa: E402
 from amaze.helpers import hostos, ui_helpers  # noqa: E402
-from amaze.panel import sections  # noqa: E402
+from amaze.panel import grid  # noqa: E402
+from amaze import sections  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401
 
 
@@ -321,7 +322,7 @@ class NoAutomaticCaptureTest(unittest.TestCase):
         import tokenize
         path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "panel", filename)
+            *filename.split("/"))
         with open(path, "rb") as fh:
             toks = list(tokenize.tokenize(fh.readline))
         rows = {}
@@ -341,19 +342,18 @@ class NoAutomaticCaptureTest(unittest.TestCase):
         return "\n".join(out)
 
     def _panel_source(self):
-        return self._stripped_source("panel.py")
+        return self._stripped_source("panel/panel.py")
 
     def _sections_source(self):
         """open_hip_scene is a FileSection method, so the scans for it read sections.py."""
-        return self._stripped_source("sections.py")
+        return "\n".join(self._stripped_source(path) for path in test_support.section_files())
 
     def test_nothing_schedules_a_capture(self):
         """Comments and docstrings are stripped first; the panel, sections and helper sources are read."""
-        code = (self._panel_source() + "\n" + self._sections_source() + "\n"
-                + self._stripped_source("online_import.py") + "\n"
-                + self._stripped_source("package_import.py") + "\n"
-                + self._stripped_source("drop_placement.py") + "\n"
-                + self._stripped_source("tile_capture.py"))
+        code = "\n".join([self._panel_source(), self._sections_source()] + [
+            self._stripped_source("pane/%s.py" % name) for name in (
+                "pane", "library", "sidebar", "assets", "loading", "saving", "files",
+                "online_import", "package_import", "drop_placement", "tile_capture")])
         for row in code.splitlines():
             if any(name in row for name in _CAPTURE_ENTRY_POINTS):
                 self.assertNotIn(
@@ -385,7 +385,7 @@ class NoAutomaticCaptureTest(unittest.TestCase):
         """Checks the scan itself: each file scan must find the function it looks for."""
         panel_code = self._panel_source()
         section_code = self._sections_source()
-        capture_code = self._stripped_source("tile_capture.py")
+        capture_code = self._stripped_source("pane/tile_capture.py")
         self.assertIn("def open_hip_scene", section_code)
         self.assertIn("def onto_tile", capture_code)
         self.assertIn("def from_toolbar", capture_code)
@@ -1046,7 +1046,7 @@ class CaptureButtonTest(unittest.TestCase):
         """Driven through the real tab switch, not read off a visibility line in panel.py."""
         for key in [cls.key for cls in sections.SECTION_CLASSES]:
             with self.subTest(section=key):
-                self.panel._on_tab_toggled(key, True)
+                self.panel.pane.choose_tab(key)
                 self.assertFalse(self.panel.btn_hip_capture.isHidden(),
                                  "the capture button is hidden in %s" % key)
                 self.assertTrue(self.panel.btn_hip_capture.isEnabled(),
@@ -1181,7 +1181,7 @@ class CaptureDecisionPathTest(unittest.TestCase):
         """Read from source: every capture entry point leaves the checks to scene_captures."""
         path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "panel", "tile_capture.py")
+            "pane", "tile_capture.py")
         with open(path, encoding="utf-8") as handle:
             code = handle.read()
         for name, shared in (("from_toolbar", ("onto_tile(", "capture_and_report(")),
@@ -1643,7 +1643,7 @@ class LibraryUpdateTest(unittest.TestCase):
         from unittest import mock
         from amaze.core import library_policy, library_settings
         self.policy, self.settings = library_policy, library_settings
-        self.dir = self.panel.prefs.dir
+        self.dir = self.panel.pane.prefs.dir
         test_support.set_library_version(self.dir, 3)    # a library a step-1 Amaze stamped
         test_support.reset_database_singletons()
         self.asked = []
@@ -1654,7 +1654,7 @@ class LibraryUpdateTest(unittest.TestCase):
 
     def test_the_version_moves_without_a_question(self):
         """No Later: a library is never left open but not updated."""
-        self.panel._update_library()
+        self.panel.pane.library._update_library()
         self.assertEqual(self.policy.LIBRARY_VERSION, self.settings.library_version(self.dir))
         self.assertEqual([], self.asked, "the update asked first")
 
@@ -1664,7 +1664,7 @@ class LibraryUpdateTest(unittest.TestCase):
         window = self.panel._prefs_window
         self.addCleanup(test_support.close_window, window)
         self.assertEqual("Format: v3", window.sharedState().libraryFormat)
-        self.panel._update_library()
+        self.panel.pane.library._update_library()
         self.assertEqual("Format: v2.0", window.sharedState().libraryFormat)
 
 
@@ -1678,7 +1678,7 @@ class NewerLibraryTest(unittest.TestCase):
     def setUp(self):
         from amaze.core import library_policy, library_settings
         self.policy = library_policy
-        self.dir = self.panel.prefs.dir
+        self.dir = self.panel.pane.prefs.dir
         self.newer = library_policy.LIBRARY_VERSION + 1
         before = library_settings.library_version(self.dir)
         test_support.set_library_version(self.dir, self.newer)
@@ -1705,7 +1705,7 @@ class NewerLibraryTest(unittest.TestCase):
     def test_a_panel_opened_on_it_stays_without_a_library(self):
         asked = self._answering(1)
         panel = test_support.reopened_panel(self)
-        self.assertIsNone(panel.material_model, "the newer library was opened")
+        self.assertIsNone(panel.pane.material_model, "the newer library was opened")
         self.assertEqual([], asked, "asked inside onCreateInterface, where a modal draws black")
         self._idle(asked)
         text, kwargs = asked[0]
@@ -1716,8 +1716,8 @@ class NewerLibraryTest(unittest.TestCase):
     def test_a_switch_onto_it_leaves_the_models_where_they_are(self):
         from unittest import mock
         asked = self._answering(1)
-        with mock.patch.object(type(self.panel.material_model), "switch_model_data") as switched:
-            self.panel.open_library()
+        with mock.patch.object(type(self.panel.pane.material_model), "switch_model_data") as switched:
+            self.panel.pane.library.open_library()
         switched.assert_not_called()
         self._idle(asked)
         self.assertEqual(1, len(asked), "the update was not offered")
@@ -1727,12 +1727,12 @@ class NewerLibraryTest(unittest.TestCase):
         asked = self._answering(1)
         other = test_support.seeded_library(self)
         test_support.set_library_version(other, self.newer)
-        before = self.panel.prefs.dir
-        self.addCleanup(setattr, self.panel.prefs, "dir", before)    # the class shares one panel
-        self.panel.prefs.dir = other    # what Reload or closing Preferences reads back
-        self.assertFalse(self.panel.open_library())
+        before = self.panel.pane.prefs.dir
+        self.addCleanup(setattr, self.panel.pane.prefs, "dir", before)    # the class shares one panel
+        self.panel.pane.prefs.dir = other    # what Reload or closing Preferences reads back
+        self.assertFalse(self.panel.pane.library.open_library())
         self._idle(asked)
-        self.assertEqual(before, self.panel.prefs.dir,
+        self.assertEqual(before, self.panel.pane.prefs.dir,
                          "the Library Path names a library that stayed closed")
 
     def test_update_amaze_installs_the_newest_release(self):
@@ -1744,7 +1744,7 @@ class NewerLibraryTest(unittest.TestCase):
                                sentence="newer", library_version=self.newer)
         with mock.patch.object(updater, "check", return_value=found), \
                 mock.patch.object(update_dialog, "install_and_report") as install:
-            self.panel._offer_amaze_update()
+            self.panel.pane.library._offer_amaze_update()
         install.assert_called_once_with(found)
         self.assertEqual(1, len(asked), "a release reading this library asked Continue too")
 
@@ -1828,7 +1828,7 @@ class CaptureFromTheMenuTest(unittest.TestCase):
         for row in rows:
             selection.select(proxy.index(row, 0),
                              _QtCore.QItemSelectionModel.SelectionFlag.Select)
-        context = panel.active_section()
+        context = panel.pane.active_section()
         chosen = context.grid_selection()
         self.assertEqual(len(rows), len(chosen), "the selection is not what the test says")
         return context, chosen
@@ -1836,13 +1836,13 @@ class CaptureFromTheMenuTest(unittest.TestCase):
     def _rows_of_kind(self, kind):
         self._select("file", [])
         proxy = self.panel.thumblist.model()
-        role = self.panel.file_files_model.KindRole
+        role = self.panel.pane.file_files_model.KindRole
         return [row for row in range(proxy.rowCount())
                 if (proxy.index(row, 0).data(role) or "") == kind]
 
     def _capture_warnings(self):
         displayed = []
-        _patch(self, self.panel.tile_capture, "show_capture_warning", displayed.append)
+        _patch(self, self.panel.pane.tile_capture, "show_capture_warning", displayed.append)
         return displayed
 
     def test_one_tile_in_any_section_can_be_captured(self):
@@ -1856,7 +1856,7 @@ class CaptureFromTheMenuTest(unittest.TestCase):
     def test_a_scene_is_captured_only_while_it_is_the_open_one(self):
         rows = self._rows_of_kind(locations.KIND_HIP)
         context, chosen = self._select("file", rows[:1])
-        path = chosen[0].data(self.panel.file_files_model.PathRole)
+        path = chosen[0].data(self.panel.pane.file_files_model.PathRole)
         _patch(self, scene_captures, "current_scene_path", lambda: "")
         self.assertFalse(context.menu_capture_enabled(chosen, chosen[0]),
                          "a scene that is not open was offered a capture")
@@ -1882,7 +1882,7 @@ class CaptureFromTheMenuTest(unittest.TestCase):
 
         _patch(self, scene_captures, "capture_tile", capture)
         self.addCleanup(model.set_tile_icons, [row], {})
-        self.panel.tile_capture.onto_tile(context, chosen[0])
+        self.panel.pane.tile_capture.onto_tile(context, chosen[0])
         self.assertEqual([(model.capture_path(row), model.tile_key(row))], taken)
         self.assertEqual("image", tile_icons.face_for(model, row),
                          "the tile does not show the captured picture")
@@ -1891,7 +1891,7 @@ class CaptureFromTheMenuTest(unittest.TestCase):
         """Code and Color paint their own pictures in RAM; a capture's file takes precedence."""
         for name in ("material_model", "code_model", "gradient_model"):    # the fixture has no Nodes
             with self.subTest(model=name):
-                model = getattr(self.panel, name)
+                model = getattr(self.panel.pane, name)
                 self.assertGreater(model.rowCount(), 0, "the fixture has no %s rows" % name)
                 _write_png(model.capture_path(0), _two_tone_png_bytes())
                 self.addCleanup(model.set_tile_icons, [0], {})
@@ -1912,7 +1912,7 @@ class CaptureFromTheMenuTest(unittest.TestCase):
 
         _patch(self, scene_captures, "capture_tile", raise_capture_refused)
         displayed = self._capture_warnings()
-        self.panel.tile_capture.onto_tile(context, chosen[0])
+        self.panel.pane.tile_capture.onto_tile(context, chosen[0])
         self.assertEqual(["Please stop the viewport render before capturing."], displayed)
         self.assertEqual(before, model.tile_icon(row), "a refused capture changed the tile")
 
@@ -1922,7 +1922,7 @@ class CaptureFromTheMenuTest(unittest.TestCase):
         displayed = self._capture_warnings()
         _patch(self, scene_captures, "capture_tile",
                lambda out, key: self.fail("captured onto no tile"))
-        self.panel.tile_capture.from_toolbar()
+        self.panel.pane.tile_capture.from_toolbar()
         self.assertEqual([messages.CAPTURE_SELECT_ONE_TILE], displayed)
 
     def test_the_toolbar_in_File_with_nothing_selected_takes_the_open_scene(self):
@@ -1930,7 +1930,7 @@ class CaptureFromTheMenuTest(unittest.TestCase):
         asked = []
         _patch(self, scene_captures, "capture_open_scene",
                lambda preferences, target="": asked.append(target) or "")
-        self.panel.tile_capture.from_toolbar()
+        self.panel.pane.tile_capture.from_toolbar()
         self.assertEqual([""], asked, "the open scene was not captured")
 
 
@@ -1947,7 +1947,7 @@ class LoadOnTheGridMenuOpensTheSceneTest(unittest.TestCase):
         panel.section_tabs.setChecked("file")
         QtWidgets.QApplication.processEvents()
         proxy = panel.thumblist.model()
-        kind, path_role = panel.file_files_model.KindRole, panel.file_files_model.PathRole
+        kind, path_role = panel.pane.file_files_model.KindRole, panel.pane.file_files_model.PathRole
         row = next((r for r in range(proxy.rowCount())
                     if proxy.index(r, 0).data(kind) == locations.KIND_HIP), None)
         self.assertIsNotNone(row, "premise: the fixture folder lists no scene")
@@ -1961,7 +1961,7 @@ class LoadOnTheGridMenuOpensTheSceneTest(unittest.TestCase):
         with mock.patch.object(QtWidgets.QMenu, "exec_", _pick), \
                 mock.patch.object(hou.hipFile, "load",
                                   lambda path, **_kwargs: loaded.append(path)):
-            panel.active_section().rc_menu()
+            grid.open_grid_menu(panel, panel.pane.active_section())
         self.assertEqual([proxy.index(row, 0).data(path_role)], loaded,
                          "Open Scene did not open the scene it was picked on")
 

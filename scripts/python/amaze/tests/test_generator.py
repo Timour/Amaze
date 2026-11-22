@@ -963,14 +963,14 @@ class NoNetworkBeforeTheProgressBarTest(unittest.TestCase):
     def test_import_and_model_find_a_records_source_one_way(self):
         """The import and the model find the same source by name, or none, off the network."""
         panel = test_support.fixture_panel(self)
-        named = panel.matx_online_model.sources[0]
+        named = panel.pane.matx_online_model.sources[0]
         record = self._records(named.name, kind="values", count=1)[0]
         stray = self._records("Nowhere", count=1)[0]
-        self.assertIs(named, panel.online_import.source_for(record)[0])
+        self.assertIs(named, panel.pane.online_import.source_for(record)[0])
         self.assertEqual((None, None, "Unknown source Nowhere"),
-                         panel.online_import.source_for(stray))
+                         panel.pane.online_import.source_for(stray))
         self.assertEqual([], self.calls, "a source lookup reached the network")
-        model = panel.matx_online_model
+        model = panel.pane.matx_online_model
         self.assertIsNone(model.source_for(stray))
         for named in model.sources:
             with self.subTest(source=named.name):
@@ -986,15 +986,15 @@ class AnotherResolutionIsShownOnTheStatusLine(unittest.TestCase):
         from unittest import mock
         from amaze import messages
         panel = test_support.fixture_panel(self)
-        panel.prefs.matx_resolution = wanted
+        panel.pane.prefs.matx_resolution = wanted
         source = source or types.SimpleNamespace(
             needs_download=lambda _record: True, picks_resolution=lambda _record: True,
             resolutions=lambda _record: list(available))
         record = types.SimpleNamespace(kind="package", title="Rust", source="Somewhere")
-        module = sys.modules[type(panel.online_import).__module__]
-        with mock.patch.object(panel.matx_online_model, "source_for", lambda _r: source), \
+        module = sys.modules[type(panel.pane.online_import).__module__]
+        with mock.patch.object(panel.pane.matx_online_model, "source_for", lambda _r: source), \
                 mock.patch.object(module.debug, "status") as status:
-            found = panel.online_import.source_for(record)
+            found = panel.pane.online_import.source_for(record)
         return found, [call.args[0] for call in status.call_args_list], messages
 
     def _source_for(self, available):

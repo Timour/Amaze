@@ -60,6 +60,11 @@ ONLINE_BINDINGS = {   # the online models use the same four widgets, with a dele
 }
 
 
+def _bound_to(panel, area, name):
+    """What `name` is: a delegate is the panel's own, every model the pane engine's."""
+    return getattr(panel if area == "delegate" else panel.pane, name)
+
+
 class EveryLibraryBackedModelIsDeclaredBySection(unittest.TestCase):
     """Models a library switch repoints are derived from the sections; asserted in both directions."""
 
@@ -69,9 +74,10 @@ class EveryLibraryBackedModelIsDeclaredBySection(unittest.TestCase):
 
     @staticmethod
     def _declared():
-        from amaze.panel import sections as sections_mod
+        from amaze import sections
+        from amaze.sections import online as online_section, base as section_base
         declared = set()
-        for section_cls in sections_mod.SECTION_CLASSES:
+        for section_cls in sections.SECTION_CLASSES:
             declared.update(getattr(section_cls, "library_model_attrs", ()))
         return declared
 
@@ -80,9 +86,9 @@ class EveryLibraryBackedModelIsDeclaredBySection(unittest.TestCase):
         self.assertTrue(declared, "no section declares a library model")
         broken = {}
         for attr in sorted(declared):
-            model = getattr(self.panel, attr, None)
+            model = getattr(self.panel.pane, attr, None)
             if model is None:
-                broken[attr] = "not built on the panel"
+                broken[attr] = "not built on the pane"
             elif not callable(getattr(model, "switch_model_data", None)):
                 broken[attr] = "%s has no switch_model_data" % type(
                     model).__name__
@@ -95,11 +101,11 @@ class EveryLibraryBackedModelIsDeclaredBySection(unittest.TestCase):
     def test_every_switchable_model_the_panel_builds_is_declared(self):
         declared = self._declared()
         undeclared = set()
-        for attr in dir(self.panel):
+        for attr in dir(self.panel.pane):
             if attr.startswith("__") or attr in declared:
                 continue
             try:
-                value = getattr(self.panel, attr)
+                value = getattr(self.panel.pane, attr)
             except Exception:                            # noqa: BLE001
                 continue
             if isinstance(value, type):
@@ -123,13 +129,13 @@ class AreaBindingCase(unittest.TestCase):
     def activate(self, key):
         """Put the panel into one context and process pending Qt events."""
         panel = self.panel
-        if panel._is_online():
-            panel.leave_online_mode()
+        if panel.pane.is_online():
+            panel.pane.leave_online()
             QtWidgets.QApplication.processEvents()
         panel.section_tabs.setChecked(key)
         QtWidgets.QApplication.processEvents()
         self.assertEqual(
-            key, panel.current_section,
+            key, panel.pane.current_section,
             "the panel did not switch to %s, so the checks below test "
             "the wrong section" % key)
         return panel
@@ -145,9 +151,9 @@ class AreaBindingCase(unittest.TestCase):
     def _restore(self):
         """Put the shared panel back in a local world, so no test inherits the online one."""
         panel = self.panel
-        if panel._is_online():
-            panel.leave_online_mode()
-        section = panel.active_section()
+        if panel.pane.is_online():
+            panel.pane.leave_online()
+        section = panel.pane.active_section()
         if section is not None:
             section.activate()
         QtWidgets.QApplication.processEvents()
@@ -191,7 +197,7 @@ class EveryContextShowsTheBadgesItsModelSupports(AreaBindingCase):
         from amaze.panel import delegates
         for key, expected in EXPECTED_BADGES.items():
             panel = self.activate(key)
-            model = getattr(panel, BINDINGS[key]["grid"]).sourceModel()
+            model = getattr(panel.pane, BINDINGS[key]["grid"]).sourceModel()
             for badge, role_name in BADGE_ROLES.items():
                 if not role_name or delegates.BADGE[badge].equals:
                     continue    # no role, or one value of a shared one: a model having it proves nothing
@@ -209,7 +215,7 @@ class EveryContextShowsTheBadgesItsModelSupports(AreaBindingCase):
 
     def test_only_a_material_tile_reads_the_short_text_and_draws_the_renderer_icon(self):
         panel = self.activate("material")
-        delegate, model = panel.thumblist.itemDelegate(), panel.material_model
+        delegate, model = panel.thumblist.itemDelegate(), panel.pane.material_model
         self.assertEqual(model.TileSubtitleRole, delegate._subtitle_role,
                          "a material tile's second line is not the renderer's name alone")
         self.assertEqual(model.RendererRole, delegate._renderer_role,
@@ -221,10 +227,10 @@ class EveryContextShowsTheBadgesItsModelSupports(AreaBindingCase):
 
     def test_the_online_mode_grid_shows_only_online_badges(self):
         panel = self.panel
-        panel.enter_online_mode()
+        panel.pane.enter_online()
         QtWidgets.QApplication.processEvents()
         self.addCleanup(QtWidgets.QApplication.processEvents)
-        self.addCleanup(panel.leave_online_mode)
+        self.addCleanup(panel.pane.leave_online)
         self.assertEqual(
             ONLINE_BADGES, set(panel.thumblist.itemDelegate().badges()),
             "the online grid shows a badge no online record has data for")
@@ -248,8 +254,8 @@ class TheGridIsBoundToItsOwnContext(AreaBindingCase):
                 actual = self.bound(panel)
                 for area in ("grid", "selection", "delegate", "sidebar"):
                     self.assertIs(
-                        actual[area], getattr(panel, expected[area]),
-                        "%s bound the wrong %s - expected panel.%s. Two "
+                        actual[area], _bound_to(panel, area, expected[area]),
+                        "%s bound the wrong %s - expected %s. Two "
                         "sections share a delegate instance and two "
                         "share a proxy class, so a wrong binding here "
                         "looks right to an isinstance check and shows up "
@@ -286,7 +292,7 @@ class TheToolbarFollowsTheContext(AreaBindingCase):
             with self.subTest(section=key):
                 panel = self.activate(key)
                 panel.texture_progress.setVisible(True)
-                panel.active_section().activate()
+                panel.pane.active_section().activate()
                 QtWidgets.QApplication.processEvents()
                 self.assertTrue(   # isHidden(), not isVisible(): the panel is never shown, so isVisible() is always False
                     panel.texture_progress.isHidden(),
@@ -299,7 +305,7 @@ class TheToolbarFollowsTheContext(AreaBindingCase):
         QtWidgets.QApplication.processEvents()
         if panel.texture_progress.isHidden():
             return                      # nothing to convert; fine
-        model = panel.file_files_model
+        model = panel.pane.file_files_model
         outstanding = getattr(model, "_progress_total", 0) or 0
         done = getattr(model, "_progress_done", 0) or 0
         self.assertGreater(
@@ -345,14 +351,14 @@ class TheOnlineModeBindsTheSameFourAreas(AreaBindingCase):
         panel = self.activate("gradient")
         self.addCleanup(self._restore)
         before = self.bound(panel)
-        panel.enter_online_mode()
+        panel.pane.enter_online()
         QtWidgets.QApplication.processEvents()
         actual = self.bound(panel)
         for area, name in ONLINE_BINDINGS.items():
-            self.assertIs(actual[area], getattr(panel, name),
+            self.assertIs(actual[area], _bound_to(panel, area, name),
                           "the online world bound the wrong %s - "
-                          "expected panel.%s" % (area, name))
-        panel.leave_online_mode()
+                          "expected %s" % (area, name))
+        panel.pane.leave_online()
         QtWidgets.QApplication.processEvents()
         after = self.bound(panel)
         for area in ("grid", "selection", "delegate", "sidebar"):
@@ -367,7 +373,7 @@ class TheOnlineModeBindsTheSameFourAreas(AreaBindingCase):
 
         panel = self.activate("material")
         self.addCleanup(self._restore)
-        online = panel.matx_online_model
+        online = panel.pane.matx_online_model
         names = [source.name for source in online.sources[:2]]
         for attr in ("_all", "_loaded"):
             self.addCleanup(setattr, online, attr, getattr(online, attr))
@@ -376,11 +382,11 @@ class TheOnlineModeBindsTheSameFourAreas(AreaBindingCase):
             source=name, uid="%s-%d" % (name, n), title="%s %d" % (name, n),
             category="Metal") for name in names for n in range(3)]
         online._loaded = True
-        panel.enter_online_mode(names[0])
+        panel.pane.enter_online(names[0])
         QtWidgets.QApplication.processEvents()
         resets = []
         online.modelReset.connect(lambda: resets.append(1))
-        panel.open_online_source(names[1])
+        panel.pane.open_online_source(names[1])
         self.assertEqual(1, len(resets),
                          "one source pick reset the catalogue %d times"
                          % len(resets))
@@ -390,7 +396,7 @@ class TheOnlineModeBindsTheSameFourAreas(AreaBindingCase):
     def test_its_delegate_has_no_role_the_online_model_lacks(self):
         """Columns follow the active delegate's roles, so the online one has only online roles."""
         delegate = self.panel.matx_delegate
-        model = self.panel.matx_online_model
+        model = self.panel.pane.matx_online_model
         for role in ("_versions_role", "_licence_role", "_notes_role",
                      "_active_version_role", "_category_color_role"):
             self.assertFalse(
@@ -402,14 +408,14 @@ class TheOnlineModeBindsTheSameFourAreas(AreaBindingCase):
         self.assertEqual(model.TagRole, delegate._tag_role)
 
     def test_entering_and_leaving_go_through_ONE_path(self):
-        """Entering and leaving run everything `_on_tab_toggled` does, so Capture and Comments update."""
+        """Entering and leaving run everything `choose_tab` does, so Capture and Comments update."""
         panel = self.activate("file")
         self.addCleanup(self._restore)
         self.assertTrue(panel.btn_hip_capture.isEnabled(),
                         "Capture should be offered on the File tab, so "
                         "this test is not set up to prove anything")
 
-        panel.enter_online_mode()
+        panel.pane.enter_online()
         QtWidgets.QApplication.processEvents()
         self.assertFalse(
             panel.btn_hip_capture.isEnabled(),
@@ -418,7 +424,7 @@ class TheOnlineModeBindsTheSameFourAreas(AreaBindingCase):
         self.assertFalse(panel.btn_hip_capture.isHidden(),
                          "Capture is hidden online; it should be greyed out")
         self.assertFalse(   # not `assertIsNone(panel._notes_subject())`: with no online rows it is None regardless
-            panel.online_context.takes_comments,
+            panel.pane.online_context.takes_comments,
             "the online context allows a comment on "
             "an online record, which has no library asset to store it")
 
@@ -428,8 +434,9 @@ class TheOnlineContextIsCalledLikeAnySection(AreaBindingCase):
 
     def test_the_context_declares_every_handler_the_branches_relied_on(self):
         """Every handler a deleted branch relied on is still declared by the online context."""
-        from amaze.panel import sections
-        online = sections.OnlineContext
+        from amaze import sections
+        from amaze.sections import online as online_section, base as section_base
+        online = online_section.OnlineContext
         self.assertEqual(
             "", online.search_hint,
             "the online world has a placeholder now, so deleting "
@@ -452,16 +459,16 @@ class TheOnlineContextIsCalledLikeAnySection(AreaBindingCase):
 
         panel = self.activate("material")
         self.addCleanup(self._restore)
-        panel.enter_online_mode()
+        panel.pane.enter_online()
         QtWidgets.QApplication.processEvents()
 
-        online = panel.matx_online_model  # seeded via `_all`, the model's cache: the fixture blocks the network, so nothing arrives
+        online = panel.pane.matx_online_model  # seeded via `_all`, the model's cache: the fixture blocks the network, so nothing arrives
         previous = online._all
         online._all = [matx_sources.MatxRecord(
             source=online._source_filter, uid="a12-probe",
             title="A12 Probe", category="Metal")]
         self.addCleanup(setattr, online, "_all", previous)
-        source_model = panel.matx_source_model
+        source_model = panel.pane.matx_source_model
         source_model.refresh()
 
         row = next((r for r in range(source_model.rowCount())
@@ -469,10 +476,10 @@ class TheOnlineContextIsCalledLikeAnySection(AreaBindingCase):
         self.assertIsNotNone(
             row, "the seeded category is not in the online sidebar, "
                  "so clicking it cannot prove anything")
-        panel.online_context.select_category(source_model.index(row, 0))
+        panel.pane.online_context.select_category(source_model.index(row, 0))
         self.assertEqual(   # `_filters` is the proxy's own store: MultiFilterProxyModel offers no filter reader
             "Metal",
-            panel.matx_sorted_model._filters.get(online.CategoryRole),
+            panel.pane.matx_sorted_model._filters.get(online.CategoryRole),
             "selecting an online category did not narrow the catalogue, "
             "so the code moved from the panel to OnlineContext is broken")
 
@@ -505,10 +512,10 @@ class TheBindingsAreDeclaredNotHandWritten(unittest.TestCase):
         """An import leaves the new node selected and the editors where Houdini puts them."""
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         found = []
-        for name in ("panel.py", "sections.py", "dragdrop_widgets.py",
-                     "online_import.py", "package_import.py",
-                     "drop_placement.py", "tile_capture.py"):
-            with open(os.path.join(root, "panel", name), encoding="utf-8") as fh:
+        for name in ("panel/panel.py", *test_support.section_files(), "panel/dragdrop_widgets.py",
+                     "pane/online_import.py", "pane/package_import.py", "pane/loading.py",
+                     "pane/drop_placement.py", "pane/tile_capture.py"):
+            with open(os.path.join(root, *name.split("/")), encoding="utf-8") as fh:
                 source = fh.read()
             for wrapper in self._RESTORERS:
                 if wrapper in source:
@@ -524,7 +531,8 @@ class TheReleaseHandlersAreDefinedOnTheirSections(unittest.TestCase):
 
     def test_every_rule_named_handler_is_defined_by_its_section(self):
         """Every DROP / DROP_BY_KIND named handler must be callable on its declaring section class."""
-        from amaze.panel import sections
+        from amaze import sections
+        from amaze.sections import online as online_section, base as section_base
         missing = []
         for cls in sections.SECTION_CLASSES:
             rules = []
@@ -549,25 +557,26 @@ class EveryDoubleClickCallsClickOnRow(unittest.TestCase):
     """A double-click calls `click_on_row` in every section, including a newly added one."""
 
     def test_every_section_and_a_new_one_call_click_on_row(self):
-        from amaze.panel import sections
-
-        class _Panel:
+        from amaze import sections
+        from amaze.sections import online as online_section, base as section_base
+        class _Pane:
             def __init__(self):
                 self.walked = []
+                self.loading = self
 
             def click_on_row(self, section, index, payload=None):
                 self.walked.append((section, index))
 
-        class _NewSection(sections.Section):    # declares no double-click of its own
+        class _NewSection(section_base.Section):    # declares no double-click of its own
             key = "new"
 
         for cls in sections.SECTION_CLASSES + (_NewSection,):
             with self.subTest(section=cls.__name__):
-                panel = _Panel()
-                section = cls(panel)
+                pane = _Pane()
+                section = cls(pane)
                 index = object()
                 section.double_click(index)
-                self.assertEqual([(section, index)], panel.walked,
+                self.assertEqual([(section, index)], pane.walked,
                                  "%s's double-click never called `click_on_row`" % cls.__name__)
 
 

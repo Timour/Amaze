@@ -136,7 +136,7 @@ class EveryWayIntoAnEmptyFolderReadiesIt(unittest.TestCase):
         self.panel = test_support.fixture_panel(self)
         self.empty = test_support.posix_path(test_support.scratch_dir("amaze_empty_lib_")) + "/"
         self.addCleanup(shutil.rmtree, self.empty, True)
-        settings = os.path.join(self.panel.prefs.path, "settings.json")
+        settings = os.path.join(self.panel.pane.prefs.path, "settings.json")
         with open(settings, encoding="utf-8") as handle:
             data = json.load(handle)
         data["directory"] = self.empty    # what each of the three ways re-reads before it opens the folder
@@ -153,7 +153,7 @@ class EveryWayIntoAnEmptyFolderReadiesIt(unittest.TestCase):
         self._assert_ready()
 
     def test_reload_library(self):
-        self.panel.open()
+        self.panel.pane.library.reload()
         self._assert_ready()
 
     def test_preferences_apply(self):

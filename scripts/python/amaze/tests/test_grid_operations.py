@@ -25,7 +25,7 @@ from amaze.actions import materials as material_actions  # noqa: E402
 from amaze.actions import nodes as node_actions  # noqa: E402
 from amaze.core import library_settings, material, matx_import, renderers, tile_icons  # noqa: E402
 from amaze.dialogs import base_dialog, code_dialog  # noqa: E402
-from amaze.panel import sections  # noqa: E402
+from amaze.sections import color as color_section, file as file_section, online as online_section, base as section_base  # noqa: E402
 from amaze.render import nodes as render_nodes  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
@@ -33,10 +33,9 @@ PACKAGE =os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def menu_handlers_calling(*attributes):
-    """Every `menu_*` handler in sections.py that calls one of these methods, as name:line."""
-    with open(os.path.join(PACKAGE, "panel", "sections.py"),
-              encoding="utf-8") as handle:
-        tree = ast.parse(handle.read())
+    """Every `menu_*` handler in the section files that calls one of these methods, as name:line."""
+    tree = ast.Module(body=[node for path in test_support.section_files()
+                            for node in ast.parse(test_support.source_of(path)).body], type_ignores=[])
     handlers = [node for node in ast.walk(tree)
                 if isinstance(node, ast.FunctionDef)
                 and node.name.startswith("menu_")]
@@ -55,8 +54,8 @@ class EveryContextImplementsTheHandlersItOffers(unittest.TestCase):
 
     def test_a_context_without_favourites_ignores_the_favourite_handler(self):
         """Online rows have no favourite state, so the handler is a no-op there, never an error."""
-        context = sections.OnlineContext.__new__(sections.OnlineContext)
-        self.assertFalse(sections.OnlineContext.takes_favourites)
+        context = online_section.OnlineContext.__new__(online_section.OnlineContext)
+        self.assertFalse(online_section.OnlineContext.takes_favourites)
         context.toggle_favourite([])          # must not raise
 
 
@@ -71,7 +70,7 @@ class OnlyASectionThatRENDERSOffersUpdatePreview(unittest.TestCase):
                                        ("CodeSection", False, False),
                                        ("GradientSection", False, False)):
             with self.subTest(context=name):
-                context = getattr(sections, name)
+                context = test_support.section_class(name)
                 self.assertEqual(
                     renders, bool(context.offers_preview_update),
                     "%s is wrong about whether it can re-render" % name)
@@ -85,9 +84,9 @@ class OnlyASectionThatRENDERSOffersUpdatePreview(unittest.TestCase):
 
     def _render_image_listed(self, name):
         """Render Image is a row of the shared Thumbnail submenu; this returns whether it is listed."""
-        entry = next(e for e in sections.GRID_MENU_TAIL
+        entry = next(e for e in section_base.GRID_MENU_TAIL
                      if e.label == "Thumbnail")
-        context = getattr(sections, name)(None)  # an instance with no panel: the submenu reads the section, and False for a missing model
+        context = test_support.section_class(name)(None)  # an instance with no panel: the submenu reads the section, and False for a missing model
         return "Render Image" in [row[0] for row in getattr(context, entry.children)([], None)]
 
 
@@ -99,12 +98,12 @@ class DeleteIsOneProcedureWithFourPrompts(unittest.TestCase):
 
     def test_the_FILE_section_offers_no_delete_at_all(self):
         """A File row is a file on disk; the section browses locations and owns nothing in them."""
-        self.assertFalse(sections.FileSection.deletes_rows)
+        self.assertFalse(file_section.FileSection.deletes_rows)
 
     def test_each_context_prompt_names_what_deleting_removes(self):
         for name in self.DELETING:
             with self.subTest(context=name):
-                context = getattr(sections, name)
+                context = test_support.section_class(name)
                 for count in (1, 4):
                     prompt = context.delete_prompt(count)
                     self.assertTrue(
@@ -121,7 +120,7 @@ class DeleteIsOneProcedureWithFourPrompts(unittest.TestCase):
                 self.assertIn(
                     "4", context.delete_prompt(4),
                     "%s does not say HOW MANY" % name)
-        prompts = {getattr(sections, name).delete_prompt(1)
+        prompts = {test_support.section_class(name).delete_prompt(1)
                    for name in self.DELETING}
         self.assertEqual(
             len(self.DELETING), len(prompts),
@@ -130,12 +129,12 @@ class DeleteIsOneProcedureWithFourPrompts(unittest.TestCase):
 
     def test_only_COLOR_quotes_the_palette_by_NAME(self):
         """A palette is picked by its label; the others take the name and leave it out."""
-        prompt = sections.GradientSection.delete_prompt(1, "Sunset")
+        prompt = color_section.GradientSection.delete_prompt(1, "Sunset")
         self.assertIn('"Sunset"', prompt)
         self.assertIn("gradient is deleted permanently", prompt)
         for name in ("MaterialSection", "CopSection", "CodeSection"):
             with self.subTest(context=name):
-                context = getattr(sections, name)
+                context = test_support.section_class(name)
                 self.assertEqual(context.delete_prompt(1),
                                  context.delete_prompt(1, "Sunset"))
 
@@ -147,7 +146,7 @@ class TheCustomizeDialogFindsItsTilesAfterAModelReset(unittest.TestCase):
         self.panel = test_support.fixture_panel(self)
 
     def _open_on(self, model, row):
-        self.panel.edit_tile_icon(model, None, [model.index(row, 0)])
+        self.panel.pane.assets.edit_tile_icon(model, None, [model.index(row, 0)])
         dialog = self.panel._icon_dialog
         self.assertIsNotNone(dialog, "the dialog did not open")
         self.addCleanup(dialog.deleteLater)
@@ -161,7 +160,7 @@ class TheCustomizeDialogFindsItsTilesAfterAModelReset(unittest.TestCase):
 
     def test_a_RESET_that_moves_nothing_or_REORDERS_still_finds_the_asset(self):
         """The case where row numbers fail and `tile_key` identity does not."""
-        model = self.panel.material_model
+        model = self.panel.pane.material_model
         self.assertGreater(model.rowCount(), 2, "need three assets")
 
         def bare():
@@ -198,7 +197,7 @@ class TheCustomizeDialogFindsItsTilesAfterAModelReset(unittest.TestCase):
         for attr in ("material_model", "cop_model", "code_model",
                      "file_files_model", "gradient_model"):
             with self.subTest(model=attr):
-                model = getattr(self.panel, attr, None)
+                model = getattr(self.panel.pane, attr, None)
                 self.assertIsNotNone(model, "%s is missing" % attr)
                 self.assertTrue(
                     callable(getattr(model, "tile_key", None)),
@@ -227,9 +226,9 @@ class NoMenuHandlerFavouritesRowsItself(unittest.TestCase):
             "rule have to be remembered" % offenders)
 
     def test_no_layout_change_is_opened_or_closed_by_hand(self):
-        """A model's begin/end contract or ui_helpers.relayout(); a bare layoutChanged segfaults H21."""
+        """A model's begin/end contract or grid_engine.relayout(); a bare layoutChanged segfaults H21."""
         def emits(name, menu_handlers_only, signal):
-            with open(os.path.join(PACKAGE, "panel", name),
+            with open(os.path.join(PACKAGE, *name.split("/")),
                       encoding="utf-8") as handle:
                 tree = ast.parse(handle.read())
             scopes = [tree]
@@ -246,37 +245,21 @@ class NoMenuHandlerFavouritesRowsItself(unittest.TestCase):
                     and isinstance(call.func.value, ast.Attribute)
                     and signal(call)]
 
-        for why, name, menu_handlers_only, signal in (
-                ("a right-click handler opens or closes one", "sections.py", True,
-                 lambda call: call.func.value.attr.startswith("layout")),
-                ("panel.py opens one", "panel.py", False,
-                 lambda call: call.func.value.attr == "layoutAboutToBeChanged"),
-                ("panel.py emits a bare layoutChanged", "panel.py", False,
-                 lambda call: not call.args
-                 and call.func.value.attr == "layoutChanged"),
-                ("online_import.py opens one", "online_import.py", False,
-                 lambda call: call.func.value.attr == "layoutAboutToBeChanged"),
-                ("online_import.py emits a bare layoutChanged", "online_import.py", False,
-                 lambda call: not call.args
-                 and call.func.value.attr == "layoutChanged"),
-                ("package_import.py opens one", "package_import.py", False,
-                 lambda call: call.func.value.attr == "layoutAboutToBeChanged"),
-                ("package_import.py emits a bare layoutChanged", "package_import.py", False,
-                 lambda call: not call.args
-                 and call.func.value.attr == "layoutChanged"),
-                ("drop_placement.py opens one", "drop_placement.py", False,
-                 lambda call: call.func.value.attr == "layoutAboutToBeChanged"),
-                ("drop_placement.py emits a bare layoutChanged", "drop_placement.py", False,
-                 lambda call: not call.args
-                 and call.func.value.attr == "layoutChanged"),
-                ("tile_capture.py opens one", "tile_capture.py", False,
-                 lambda call: call.func.value.attr == "layoutAboutToBeChanged"),
-                ("tile_capture.py emits a bare layoutChanged", "tile_capture.py", False,
-                 lambda call: not call.args
-                 and call.func.value.attr == "layoutChanged")):
+        opens = lambda call: call.func.value.attr == "layoutAboutToBeChanged"    # noqa: E731
+        bare = lambda call: not call.args and call.func.value.attr == "layoutChanged"    # noqa: E731
+        checked = [("a right-click handler in %s opens or closes one" % name, name, True,
+                    lambda call: call.func.value.attr.startswith("layout"))
+                   for name in test_support.section_files()]
+        for name in ("panel/panel.py", "pane/pane.py", "pane/library.py", "pane/sidebar.py",
+                     "pane/assets.py", "pane/loading.py", "pane/saving.py", "pane/files.py",
+                     "pane/online_import.py", "pane/package_import.py", "pane/drop_placement.py",
+                     "pane/tile_capture.py"):
+            checked += [("%s opens one" % name, name, False, opens),
+                        ("%s emits a bare layoutChanged" % name, name, False, bare)]
+        for why, name, menu_handlers_only, signal in checked:
             with self.subTest(why):
                 self.assertEqual([], emits(name, menu_handlers_only, signal),
-                                 "%s by hand - use ui_helpers.relayout(), "
+                                 "%s by hand - use grid_engine.relayout(), "
                                  "which closes it in a finally" % why)
 
 
@@ -297,7 +280,7 @@ class FavouritingWorksInEverySection(unittest.TestCase):
         self.assertGreater(proxy.rowCount(), 0,
                            "the %s fixture is empty, so this test "
                            "cannot check anything" % key)
-        context = panel.active_section()
+        context = panel.pane.active_section()
         if displaced:
             self.assertGreater(
                 proxy.rowCount(), 1,
@@ -317,7 +300,7 @@ class FavouritingWorksInEverySection(unittest.TestCase):
     def _clear_filter(self, key):
         self.panel.section_tabs.setChecked(key)
         QtWidgets.QApplication.processEvents()
-        self.panel.active_section().filter_text("")
+        self.panel.pane.active_section().filter_text("")
         QtWidgets.QApplication.processEvents()
 
     def _favourite_role(self, panel, key):
@@ -350,14 +333,14 @@ class FavouritingWorksInEverySection(unittest.TestCase):
         role = self._favourite_role(self.panel, "gradient")
         before = bool(index.data(role))
 
-        self.panel.grid_toggle_favourite([index])
+        self.panel.pane.assets.toggle_favourite([index])
         QtWidgets.QApplication.processEvents()
 
         self.assertEqual(
             not before, bool(proxy.index(0, 0).data(role)),
             "the panel's handler did nothing in Color - it is still "
             "acting on one section by name")
-        self.panel.grid_toggle_favourite([proxy.index(0, 0)])
+        self.panel.pane.assets.toggle_favourite([proxy.index(0, 0)])
         QtWidgets.QApplication.processEvents()
 
     def test_unfavouriting_removes_the_tile_from_a_favourites_only_grid(self):
@@ -399,7 +382,7 @@ class AStarOverASelectionWritesOnce(unittest.TestCase):
         from amaze.prefs import prefs as prefs_mod
         self.panel.section_tabs.setChecked(key)
         QtWidgets.QApplication.processEvents()
-        context = self.panel.active_section()
+        context = self.panel.pane.active_section()
         proxy = self.panel.thumblist.model()
         rows = range(min(proxy.rowCount(), 5))
         self.assertGreater(len(rows), 1, "premise: %s shows two tiles" % key)
@@ -447,13 +430,13 @@ class ANonModalDialogHoldsIDENTITYNotRowNumbers(unittest.TestCase):
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
-        self.model = self.panel.material_model
+        self.model = self.panel.pane.material_model
         self.assertGreater(self.model.rowCount(), 2,
                            "need three materials to shift a row")
 
     def _open_for(self, row):
         index = self.model.index(row, 0)
-        self.panel.edit_tile_icon(self.model, None, [index])
+        self.panel.pane.assets.edit_tile_icon(self.model, None, [index])
         dialog = self.panel._icon_dialog
         self.assertIsNotNone(dialog, "the dialog did not open")
         self.addCleanup(dialog.deleteLater)
@@ -521,9 +504,9 @@ class TheStarBadgeClickActsOnTheSELECTION(unittest.TestCase):
         self.panel = test_support.fixture_panel(self)
         self.panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()
-        self.proxy = self.panel.material_sorted_model
-        self.role = self.panel.material_model.FavoriteRole
-        self.selmodel = self.panel.material_selection_model
+        self.proxy = self.panel.pane.material_sorted_model
+        self.role = self.panel.pane.material_model.FavoriteRole
+        self.selmodel = self.panel.pane.material_selection_model
         self.assertGreater(self.proxy.rowCount(), 2,
                            "need three materials to tell selection "
                            "semantics apart")
@@ -595,21 +578,21 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
     def setUp(self):
         test_support.pin_env(self, "OCIO", "/dev/null")    # save_node requires $OCIO; nothing renders here
         self.panel = test_support.fixture_panel(self)
-        self.panel.prefs.render_on_import = 0
-        self.model = self.panel.material_model
+        self.panel.pane.prefs.render_on_import = 0
+        self.model = self.panel.pane.material_model
         self.panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()
 
     def _select(self, row):
-        proxy = self.panel.material_sorted_model
-        self.panel.material_selection_model.select(
+        proxy = self.panel.pane.material_sorted_model
+        self.panel.pane.material_selection_model.select(
             proxy.mapFromSource(self.model.index(row, 0)),
             QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
 
     def _peer_adds_a_row(self, model, row):
         """Another machine writes a row; OUR next save reads it in, which is an INSERT."""
         self.assertTrue(model.save(), "premise: the baseline save failed")
-        path = os.path.join(self.panel.prefs.dir, model.DB_FILENAME)
+        path = os.path.join(self.panel.pane.prefs.dir, model.DB_FILENAME)
         with open(path, encoding="utf-8-sig") as handle:
             document = json.load(handle)
         document["assets"][row["id"]] = dict(row, categories=[], tags=[])
@@ -642,7 +625,7 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
                                        self._saving_a_twin(twin)), \
                         test_support.row_moves_inside_a_layout_change(
                             self.model) as caught:
-                    self.panel.convert_selected(target)
+                    self.panel.pane.assets.convert_selected(target)
                 self.assertEqual(before + 1, self.model.rowCount(),
                                  "premise: the conversion added no twin")
                 self._assert_no_row_moved_inside(caught,
@@ -661,7 +644,7 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
                 with mock.patch.object(material_actions, "convert",
                                        lambda _model, _index, _target, render=True: (True, report)), \
                         mock.patch.object(hou, "ui", ui, create=True):
-                    self.panel.convert_selected(target)
+                    self.panel.pane.assets.convert_selected(target)
                 self.assertEqual(
                     ("Converted 1 of 1 %s material(s) to %s." % shown, "a line"),
                     (ui.displayMessage.call_args.args[0],
@@ -676,13 +659,13 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
             return bool(saved), ""
 
         before = self.model.rowCount()
-        with mock.patch.object(self.panel.online_import, "source_for",
+        with mock.patch.object(self.panel.pane.online_import, "source_for",
                                lambda _record: (object(), "1k", "")), \
                 mock.patch.object(matx_import, "import_record",
                                   importing), \
                 test_support.row_moves_inside_a_layout_change(
                     self.model) as caught:
-            ok, reason = self.panel.online_import.import_material(record)
+            ok, reason = self.panel.pane.online_import.import_material(record)
         self.assertTrue(ok, reason)
         self.assertEqual(before + 1, self.model.rowCount())
         self._assert_no_row_moved_inside(caught, "an online import")
@@ -693,7 +676,7 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
         self._select(1)
         with test_support.row_moves_inside_a_layout_change(
                 self.model) as caught:
-            self.panel.assign_category_active("usds")
+            self.panel.pane.sidebar.assign_category("usds")
         self.assertIn("Dropped elsewhere",
                       [asset.name for asset in self.model.assets],
                       "premise: the save merged nothing")
@@ -713,14 +696,14 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
                                updating), \
                 test_support.row_moves_inside_a_layout_change(
                     self.model) as caught:
-            self.panel._update_existing_asset(self.model.tile_key(1), None)
+            self.panel.pane.saving._update_existing_asset(self.model.tile_key(1), None)
         self.assertIn("Saved elsewhere",
                       [asset.name for asset in self.model.assets],
                       "premise: the save merged nothing")
         self._assert_no_row_moved_inside(caught, "Save Version")
 
     def test_editing_a_snippet(self):
-        code = self.panel.code_model
+        code = self.panel.pane.code_model
         row = next(i for i, asset in enumerate(code.assets)
                    if str(asset.code or "").strip())
         self._peer_adds_a_row(code, {"id": "PEER-CODE",
@@ -734,8 +717,8 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
 
         with mock.patch.object(code_dialog.CodeDialog, "exec", accepting), \
                 test_support.row_moves_inside_a_layout_change(
-                    code, self.panel.code_category_model) as caught:
-            self.panel.sections["code"]._edit_code_row(row)
+                    code, self.panel.pane.code_category_model) as caught:
+            self.panel.pane.sections["code"]._edit_code_row(row)
         self.assertIn("Typed elsewhere",
                       [asset.name for asset in code.assets],
                       "premise: the save merged nothing")
@@ -751,7 +734,7 @@ class ARowHeldAcrossASaveIsFoundAgain(unittest.TestCase):
     def _deleted_elsewhere(self, model, mat_id):
         """Another machine deletes `mat_id`; the next save of the file applies the deletion."""
         self.assertTrue(model.save(), "premise: the baseline save failed")
-        path = os.path.join(self.panel.prefs.dir, model.DB_FILENAME)
+        path = os.path.join(self.panel.pane.prefs.dir, model.DB_FILENAME)
         with open(path, encoding="utf-8-sig") as handle:
             document = json.load(handle)
         del document["assets"][str(mat_id)]
@@ -761,18 +744,18 @@ class ARowHeldAcrossASaveIsFoundAgain(unittest.TestCase):
     def test_a_drop_onto_a_new_category_moves_the_asset_dropped(self):
         self.panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()
-        model = self.panel.material_model
-        proxy = self.panel.material_sorted_model
+        model = self.panel.pane.material_model
+        proxy = self.panel.pane.material_sorted_model
         shown = [model.assets[proxy.mapToSource(proxy.index(row, 0)).row()]
                  for row in range(proxy.rowCount())]
         self.assertGreaterEqual(len(shown), 4, "premise: too few tiles")
         target = shown[2]
-        self.panel.material_selection_model.select(
+        self.panel.pane.material_selection_model.select(
             proxy.index(2, 0),
             QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
         self._deleted_elsewhere(model, shown[0].mat_id)
 
-        self.panel.assign_category_active("Brand New")
+        self.panel.pane.sidebar.assign_category("Brand New")
 
         self.assertEqual(
             ["Brand New"], list(target.categories),
@@ -780,7 +763,7 @@ class ARowHeldAcrossASaveIsFoundAgain(unittest.TestCase):
             "a deletion above it, and the row kept from before pointed to another")
 
     def test_an_edited_snippet_is_the_one_saved(self):
-        code = self.panel.code_model
+        code = self.panel.pane.code_model
         rows = [row for row, asset in enumerate(code.assets)
                 if row and str(asset.code or "").strip()]
         self.assertTrue(rows, "premise: no snippet below the first row")
@@ -795,7 +778,7 @@ class ARowHeldAcrossASaveIsFoundAgain(unittest.TestCase):
             return 0
 
         with mock.patch.object(code_dialog.CodeDialog, "exec", accepting):
-            self.panel.sections["code"]._edit_code_row(rows[0])
+            self.panel.pane.sections["code"]._edit_code_row(rows[0])
 
         self.assertEqual(
             "// edited here", target.code,
@@ -805,7 +788,7 @@ class ARowHeldAcrossASaveIsFoundAgain(unittest.TestCase):
     def _material_tiles(self):
         self.panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()
-        model = self.panel.material_model
+        model = self.panel.pane.material_model
         self.assertGreaterEqual(len(model.assets), 7, "premise: too few assets")
         return model
 
@@ -815,14 +798,14 @@ class ARowHeldAcrossASaveIsFoundAgain(unittest.TestCase):
 
     def test_customize_moves_exactly_the_tiles_chosen(self):
         model = self._material_tiles()
-        proxy = self.panel.material_sorted_model
+        proxy = self.panel.pane.material_sorted_model
         chosen = [model.assets[row] for row in (2, 4, 6)]
         target = "Moved Here"
-        self.panel.category_model.check_add_category(target)
+        self.panel.pane.category_model.check_add_category(target)
         self._deleted_elsewhere(model, model.assets[1].mat_id)
         indexes = [proxy.mapFromSource(model.index(model.assets.index(asset), 0))
                    for asset in chosen]
-        self.panel.sections["material"].menu_customize(indexes, indexes[0])
+        self.panel.pane.sections["material"].menu_customize(indexes, indexes[0])
         dialog = self.panel._icon_dialog
         combo = dialog.category_combo
         self.assertGreaterEqual(combo.findData(target), 0, "premise: not offered")
@@ -837,13 +820,13 @@ class ARowHeldAcrossASaveIsFoundAgain(unittest.TestCase):
 
     def test_converting_a_selection_converts_exactly_the_tiles_chosen(self):
         model = self._material_tiles()
-        proxy = self.panel.material_sorted_model
+        proxy = self.panel.pane.material_sorted_model
         shown = [model.assets[proxy.mapToSource(proxy.index(row, 0)).row()]
                  for row in range(proxy.rowCount())]
         for asset in shown:
             asset.renderer = "Karma"    # a stale row then converts another tile, never skips it
         chosen = [shown[row] for row in (2, 4, 6)]
-        selection = self.panel.material_selection_model
+        selection = self.panel.pane.material_selection_model
         selection.clearSelection()
         for row in (2, 4, 6):
             selection.select(proxy.index(row, 0),
@@ -858,7 +841,7 @@ class ARowHeldAcrossASaveIsFoundAgain(unittest.TestCase):
             return True, types.SimpleNamespace(summary_lines=lambda: [])
 
         with mock.patch.object(material_actions, "convert", convert):
-            self.panel.convert_selected("Redshift")
+            self.panel.pane.assets.convert_selected("Redshift")
         self.assertEqual(self._ids(chosen), self._ids(converted),
                          "Convert reached other tiles: each twin saves, and the first "
                          "save took in a deletion above the rows it held")
@@ -882,12 +865,12 @@ class ARowHeldAcrossASaveIsFoundAgain(unittest.TestCase):
         asking = types.SimpleNamespace(displayMessage=lambda *_a, **_k: 0)    # Save Version
         with mock.patch.object(hou, "selectedNodes", lambda: nodes), \
                 mock.patch.object(hou, "ui", asking, create=True), \
-                mock.patch.object(self.panel, "_find_existing_asset_row",
+                mock.patch.object(self.panel.pane.saving, "_find_existing_asset_row",
                                   lambda node: where[id(node)]), \
                 mock.patch.object(library_settings, "allow_overwrite",
                                   lambda *_a: True), \
                 mock.patch.object(material_actions, "update_asset_content", update):
-            self.panel.save_asset()
+            self.panel.pane.saving.save_asset()
         self.assertEqual(self._ids(chosen), self._ids(updated),
                          "Save Version wrote over other materials: each update saves, "
                          "and the first save took in a deletion above the rows it held")
@@ -899,10 +882,10 @@ class ARowHeldAcrossASaveIsFoundAgain(unittest.TestCase):
         def node(stamp):
             return types.SimpleNamespace(name=lambda: asset.name,
                                          userData=lambda key: stamp)
-        self.assertEqual(-1, self.panel._find_existing_asset_row(node(None)),
+        self.assertEqual(-1, self.panel.pane.saving._find_existing_asset_row(node(None)),
                          "a node with no stamp was matched to a material of the same name")
-        self.assertEqual(-1, self.panel._find_existing_asset_row(node("no-such-id")))
-        self.assertEqual(3, self.panel._find_existing_asset_row(node(str(asset.mat_id))))
+        self.assertEqual(-1, self.panel.pane.saving._find_existing_asset_row(node("no-such-id")))
+        self.assertEqual(3, self.panel.pane.saving._find_existing_asset_row(node(str(asset.mat_id))))
 
     def test_deleting_a_selection_deletes_exactly_the_tiles_chosen(self):
         model = self._material_tiles()
@@ -910,7 +893,7 @@ class ARowHeldAcrossASaveIsFoundAgain(unittest.TestCase):
         elsewhere = model.assets[1]
         before = {str(asset.mat_id) for asset in model.assets}
         self._deleted_elsewhere(model, elsewhere.mat_id)
-        self.panel.sections["material"].delete_rows(
+        self.panel.pane.sections["material"].delete_rows(
             [model.index(model.assets.index(asset), 0) for asset in chosen])
         self.assertEqual(
             sorted(before - set(self._ids(chosen)) - {str(elsewhere.mat_id)}),
@@ -935,10 +918,10 @@ class CustomizeOffersTheEditedSectionsCategories(unittest.TestCase):
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
-        self.panel.prefs.render_on_import = 0
-        self.model = self.panel.cop_model
+        self.panel.pane.prefs.render_on_import = 0
+        self.model = self.panel.pane.cop_model
         for name in ("Rigs", "Terrain"):
-            self.panel.cop_category_model.check_add_category(name)
+            self.panel.pane.cop_category_model.check_add_category(name)
         self.rows = [self._node_asset("rig_setup", "Rigs"),
                      self._node_asset("terrain_setup", "Terrain")]
         self.panel.section_tabs.setChecked("cop")
@@ -956,10 +939,10 @@ class CustomizeOffersTheEditedSectionsCategories(unittest.TestCase):
         return self.model.find_asset_row_by_id(saved.mat_id)
 
     def _customize(self, rows):
-        proxy = self.panel.cop_sorted_model
+        proxy = self.panel.pane.cop_sorted_model
         indexes = [proxy.mapFromSource(self.model.index(row, 0))
                    for row in rows]
-        self.panel.sections["cop"].menu_customize(indexes, indexes[0])
+        self.panel.pane.sections["cop"].menu_customize(indexes, indexes[0])
         dialog = self.panel._icon_dialog
         self.assertIsNotNone(dialog, "Customize did not open")
         self.addCleanup(dialog.deleteLater)
@@ -969,7 +952,7 @@ class CustomizeOffersTheEditedSectionsCategories(unittest.TestCase):
         combo = self._customize(self.rows[:1]).category_combo
         offered = [combo.itemData(i) for i in range(combo.count())
                    if combo.itemData(i)]
-        self.assertEqual(self.panel.category_names_from(self.panel.cop_category_model), offered,
+        self.assertEqual(self.panel.pane.sidebar.category_names_from(self.panel.pane.cop_category_model), offered,
                          "a Node tile was offered another section's "
                          "categories")
         self.assertEqual("Rigs", base_dialog.chosen_category(combo))
@@ -996,7 +979,7 @@ class ADeleteOverASelectionSavesOnce(unittest.TestCase):
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
-        self.model = self.panel.material_model
+        self.model = self.panel.pane.material_model
         self.assertGreaterEqual(self.model.rowCount(), 6, "premise: six rows")
         self.panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()
@@ -1017,7 +1000,7 @@ class ADeleteOverASelectionSavesOnce(unittest.TestCase):
                                   autospec=True,
                                   side_effect=library.AssetLibrary.rebuild_thumbs
                                   ) as rebuilds:
-            self.panel.active_section().delete_rows(
+            self.panel.pane.active_section().delete_rows(
                 [self.model.index(row, 0) for row in self.rows])
             QtWidgets.QApplication.processEvents()
         return saves.call_count, rebuilds.call_count
@@ -1044,7 +1027,7 @@ class ADeleteOverASelectionSavesOnce(unittest.TestCase):
         self.assertTrue(self.model.save(), "premise: the next save succeeds")
         from amaze.core import library_db
         library_db.flush()
-        path = os.path.join(self.panel.prefs.dir, self.model.DB_FILENAME)
+        path = os.path.join(self.panel.pane.prefs.dir, self.model.DB_FILENAME)
         with open(path, encoding="utf-8-sig") as handle:
             on_disk = set(json.load(handle)["assets"])
         self.assertEqual(set(self.ids), set(self.ids) & on_disk,
@@ -1056,7 +1039,7 @@ class ACustomizeOverASelectionSavesOnce(unittest.TestCase):
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
-        self.model = self.panel.material_model
+        self.model = self.panel.pane.material_model
         self.assertGreaterEqual(self.model.rowCount(), 6, "premise: six rows")
         self.rows = [1, 2, 3, 4, 5]
         self.ids = [str(self.model.assets[row].mat_id) for row in self.rows]
@@ -1064,7 +1047,7 @@ class ACustomizeOverASelectionSavesOnce(unittest.TestCase):
     def _apply(self, tags, category):
         from amaze.core import library, library_db
         library_db.flush()
-        self.panel.edit_tile_icon(
+        self.panel.pane.assets.edit_tile_icon(
             self.model, None, [self.model.index(row, 0) for row in self.rows])
         dialog = self.panel._icon_dialog
         self.assertIsNotNone(dialog, "Customize did not open")
@@ -1093,7 +1076,7 @@ class ACustomizeOverASelectionSavesOnce(unittest.TestCase):
             record = self._record(mat_id)
             self.assertIn("probe-tag", record.tags)
             self.assertEqual(["Probe Shelf"], list(record.categories))
-        path = os.path.join(self.panel.prefs.dir, self.model.DB_FILENAME)
+        path = os.path.join(self.panel.pane.prefs.dir, self.model.DB_FILENAME)
         with open(path, encoding="utf-8-sig") as handle:
             on_disk = json.load(handle)["assets"]
         for mat_id in self.ids:
@@ -1117,7 +1100,7 @@ class _SavesThroughThePanel:
         self.shown = []
 
     def _karma(self, count):
-        assets = [asset for asset in self.panel.material_model.assets
+        assets = [asset for asset in self.panel.pane.material_model.assets
                   if renderers.is_karma(asset.renderer)][:count]
         self.assertEqual(count, len(assets), "premise: too few Karma materials")
         return assets
@@ -1136,7 +1119,7 @@ class _SavesThroughThePanel:
         return held
 
     def _list_of(self, model):
-        return os.path.join(self.panel.prefs.dir, model.DB_FILENAME)
+        return os.path.join(self.panel.pane.prefs.dir, model.DB_FILENAME)
 
     def _answering(self, text, *_args, **kwargs):
         self.shown.append((text, kwargs["details"]) if kwargs.get("details") else text)    # a list is passed in `details`
@@ -1152,7 +1135,7 @@ class _SavesThroughThePanel:
                           *patches):
                 stack.enter_context(patch)
             log = stack.enter_context(test_support.captured_log())
-            self.panel.save_asset()
+            self.panel.pane.saving.save_asset()
         return self.shown[1:], log
 
 
@@ -1162,12 +1145,12 @@ class ASaveVersionWhoseDatabaseWriteFailsAlertsOnce(_SavesThroughThePanel, unitt
     def _save_over(self, count):
         from amaze.core import library_db
         assets = self._karma(count)
-        index = self._list_of(self.panel.material_model)
+        index = self._list_of(self.panel.pane.material_model)
         shown, log = self._save(self._nodes_with_asset_ids(assets), test_support.full_disk_for(index))
         self.assertEqual([], shown, "a dialog was shown besides the library's own alert")
         self.assertTrue(log.matching("could not save the library", "alert"),
                         "premise: the database write went through")
-        held = library_db.document(self.panel.prefs, self.panel.material_model.DB_FILENAME)
+        held = library_db.document(self.panel.pane.prefs, self.panel.pane.material_model.DB_FILENAME)
         self.assertTrue(held.dirty, "the unsaved rows were dropped, not kept for the next save")
         library_db.flush()
         self.assertFalse(held.dirty, "the kept rows were not saved once the disk accepted writes")
@@ -1184,7 +1167,7 @@ class ASaveVersionNamesWhatItDidNotUpdateOnce(_SavesThroughThePanel, unittest.Te
     """Every material Save Version did not update, named once with its reason, after the batch."""
 
     def _files(self, assets):
-        model = self.panel.material_model
+        model = self.panel.pane.material_model
         found = []
         for asset in assets:
             with open(model.asset_files(asset.mat_id)["mat"], "rb") as handle:
@@ -1212,7 +1195,7 @@ class ASaveVersionNamesWhatItDidNotUpdateOnce(_SavesThroughThePanel, unittest.Te
     def test_two_changed_on_disk_are_both_named_in_one_message(self):
         assets = self._karma(2)
         for asset in assets:
-            path = self.panel.material_model.asset_files(asset.mat_id)["mat"]
+            path = self.panel.pane.material_model.asset_files(asset.mat_id)["mat"]
             with open(path, "ab") as handle:
                 handle.write(b"\0their-bytes")
             stat = os.stat(path)
@@ -1251,17 +1234,17 @@ class ASaveNewWhoseDatabaseWriteFailsShowsOneDialog(_SavesThroughThePanel, unitt
         return types.SimpleNamespace(categories="", tags="", fav=False, name=name)
 
     def _folder_of(self, model):
-        return material.section_folder(self.panel.prefs.dir, model.DB_FILENAME)
+        return material.section_folder(self.panel.pane.prefs.dir, model.DB_FILENAME)
 
     def _save_new(self, count):
         held = self._builders(count)
-        model = self.panel.material_model
+        model = self.panel.pane.material_model
         index = self._list_of(model)
         rows, files = model.rowCount(), sorted(os.listdir(self._folder_of(model)))
         with test_support.full_disk_for(index), \
                 mock.patch.object(hou, "ui", types.SimpleNamespace(
                     displayMessage=self._answering), create=True):
-            self.panel.sections["material"].commit_save(held, held[0], self._dialog())
+            self.panel.pane.sections["material"].commit_save(held, held[0], self._dialog())
         self.assertEqual(rows, model.rowCount(), "a material the database did not save shows as a tile")
         self.assertEqual(files, sorted(os.listdir(self._folder_of(model))),
                          "a material the database did not save left its files in the library")
@@ -1282,14 +1265,14 @@ class ASaveNewWhoseDatabaseWriteFailsShowsOneDialog(_SavesThroughThePanel, unitt
         lop = hou.node("/obj").createNode("lopnet", "refused_setup")
         self.addCleanup(lop.destroy)
         lop.createNode("sphere")
-        model = self.panel.cop_model
+        model = self.panel.pane.cop_model
         index = self._list_of(model)
         rows = model.rowCount()
         with test_support.full_disk_for(index), \
                 mock.patch.object(hou, "selectedItems", lambda: [lop]), \
                 mock.patch.object(hou, "ui", types.SimpleNamespace(
                     displayMessage=self._answering), create=True):
-            self.panel.sections["cop"].commit_save([lop], lop, self._dialog("probe_setup"))
+            self.panel.pane.sections["cop"].commit_save([lop], lop, self._dialog("probe_setup"))
         self.assertEqual([messages.NODE_SAVE_FAILED % "refused_setup"], self.shown,
                          "the unsaved setup was not named once")
         self.assertEqual(rows, model.rowCount(), "a setup the database did not save shows as a tile")

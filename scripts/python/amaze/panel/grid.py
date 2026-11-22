@@ -174,7 +174,7 @@ def open_catlist_menu(panel, context) -> None:
 
 def selected_current(view, indexes):
     """The row a menu acts on: the current one while selected, else the first, else None."""
-    current = ui_helpers.live_current_index(view)
+    current = grid_columns.live_current_index(view)
     if current is None or not current.isValid() or current not in indexes:
         current = indexes[0] if indexes else None    # Qt keeps a current row OUTSIDE the selection
     return current
@@ -182,7 +182,7 @@ def selected_current(view, indexes):
 
 def selected_current_in(view, selection):
     """`selected_current` from the selection model: tests one row; builds the list if needed."""
-    current = ui_helpers.live_current_index(view)
+    current = grid_columns.live_current_index(view)
     if current is not None and selection is not None \
             and selection.isSelected(current):
         return current
@@ -422,12 +422,12 @@ def set_up_rows_header(panel) -> None:
 
 def apply_view_mode(panel) -> None:
     """Apply the saved grid/list view mode and sync the toggles; a bad state falls back to grid."""
-    if not panel.material_model:
+    if not panel.pane.material_model:
         return
     panel._sync_slider_for_mode()
     ts = active_thumbsize(panel)
     try:
-        if panel.prefs.view_mode == "list":
+        if panel.pane.prefs.view_mode == "list":
             restore_drag_mode(panel)    # list mode is the row list; the QListView stays in IconMode
             show_rows(panel, True)    # show_rows ends with sync_row_columns
         else:
@@ -464,7 +464,7 @@ def sync_view_mode_controls(panel) -> None:
     """Show prefs.view_mode on the toggle button and menu, without re-entering the handlers."""
     panel._suppress_view_signals = True
     try:
-        is_list = panel.prefs.view_mode == "list"
+        is_list = panel.pane.prefs.view_mode == "list"
         if hasattr(panel, "cb_viewmode"):
             panel.cb_viewmode.setChecked(is_list)
         if getattr(panel, "view_actions", None):
@@ -480,8 +480,8 @@ def sync_view_mode_controls(panel) -> None:
 
 def active_thumbsize(panel) -> int:
     """The thumbnail size in use: list's fixed one, else the saved one, snapped under Step Size."""
-    if panel.prefs.view_mode == "list":
+    if panel.pane.prefs.view_mode == "list":
         return panel.LIST_THUMB_SIZE
-    if panel.prefs.step_size:
-        return ui_helpers.ClickSlider.nearest_mark(panel.prefs.thumbsize)
-    return panel.prefs.thumbsize
+    if panel.pane.prefs.step_size:
+        return ui_helpers.ClickSlider.nearest_mark(panel.pane.prefs.thumbsize)
+    return panel.pane.prefs.thumbsize

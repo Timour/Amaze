@@ -1,6 +1,5 @@
 """Shared UI elements: the drag tag, the ui/ asset and SVG readers, and hand-painted widgets."""
 
-import contextlib
 import math
 import os
 import re
@@ -8,65 +7,16 @@ import re
 from PySide6 import QtWidgets, QtCore, QtGui, QtQml, QtQuick, QtSvg
 
 import amaze
-from amaze import amazetheme, messages
+from amaze import amazetheme
 from amaze.core import debug, grid_columns
 from amaze.helpers import theme
 from hutil.qt.common import qmlviews    # Houdini's own QML panels' base ▸r/houdini-qml-tabs
-
-
-@contextlib.contextmanager
-def relayout(*models):
-    """Wrap a wholesale change to models' contents; never a structural insert or removal (segfault)."""
-    live = [model for model in models if model is not None]
-    for model in live:
-        model.layoutAboutToBeChanged.emit()
-    try:
-        yield              # layoutChanged is emitted even when the body raises
-    finally:
-        for model in reversed(live):   # reverse order: the last model given layoutAboutToBeChanged gets layoutChanged first
-            model.layoutChanged.emit()
-
-
-def reveal(path: str) -> None:
-    """Show `path` in the system file browser with Houdini's `fileutils.revealFile`; never raises."""
-    if not os.path.exists(path):    # the system's command fails on it without raising
-        debug.refuse(messages.REVEAL_MISSING % path)
-        return
-    try:
-        import fileutils    # ships in Houdini's python libs ▸r/show-in-file-browser-macos
-        fileutils.revealFile(path)
-    except Exception as exc:                             # noqa: BLE001 - the command is missing or failed
-        debug.refuse(messages.REVEAL_FAILED % exc)
-        return
-    debug.event("file", "shown in the file browser", path=path)
 
 
 def open_url(url: str) -> None:
     """Open `url` in the system's browser; a refusal is logged, as a silent failure gives no clue."""
     if not QtGui.QDesktopServices.openUrl(QtCore.QUrl(url)):
         debug.event("prefs", "the OS refused to open the link", url=url)
-
-
-def copy_files(paths) -> bool:
-    """Put `paths` on the system clipboard as files, and as text one per line; False without one."""
-    clipboard = QtWidgets.QApplication.clipboard()
-    paths = [path for path in paths if path]
-    if clipboard is None or not paths:
-        return False
-    data = QtCore.QMimeData()
-    data.setUrls([QtCore.QUrl.fromLocalFile(path) for path in paths])
-    data.setText("\n".join(paths))
-    clipboard.setMimeData(data)
-    return True
-
-
-def clipboard_files() -> list:
-    """The paths of the local files and folders on the system clipboard, in its order."""
-    clipboard = QtWidgets.QApplication.clipboard()
-    data = clipboard.mimeData() if clipboard is not None else None
-    if data is None or not data.hasUrls():
-        return []
-    return [url.toLocalFile() for url in data.urls() if url.isLocalFile()]
 
 
 DRAG_TAG_STYLE = (     # the drag name tag, shared by the self-managed and the native drags
@@ -129,28 +79,6 @@ def paint_svg(device, svg) -> bool:
     finally:
         painter.end()
     return True
-
-
-def live_current_index(view):
-    """A view's current index, rebuilt from its current model, or None. ▸r/model-contracts"""
-    if view is None:
-        return None
-    model = view.model()
-    if model is None:
-        return None
-    index = view.currentIndex()
-    if not index.isValid():
-        return None
-    if index.model() is not model:   # it may come from a replaced model; never map it through the current proxy
-        return None
-    parent = index.parent()    # a tree row keeps its parent: the same row number elsewhere is another row
-    try:
-        rows = model.rowCount(parent)   # ROW ONLY: a list model's columnCount is private ▸r/model-contracts
-    except TypeError:
-        return None                  # another signature; "no selection" is the caller's safe fallback
-    if index.row() >= rows:
-        return None
-    return model.index(index.row(), 0, parent)   # COLUMN 0, not the clicked cell ▸r/row-selection
 
 
 def tooltip_text(text: str, max_px: int = 800) -> str:

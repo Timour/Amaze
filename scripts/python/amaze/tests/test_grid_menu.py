@@ -20,7 +20,8 @@ sys.path.insert(
 
 from amaze.core import locations, renderers  # noqa: E402
 from amaze.helpers import ui_helpers  # noqa: E402
-from amaze.panel import grid, sections  # noqa: E402
+from amaze.panel import grid  # noqa: E402
+from amaze.sections import material as material_section  # noqa: E402
 from amaze.render.material_conversion import engine as conversion_engine  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
@@ -74,13 +75,13 @@ class TheTableIsWellFormED(unittest.TestCase):
         for name in MENU_CONTEXTS:
             with self.subTest(context=name):
                 self.assertTrue(
-                    getattr(sections, name).GRID_MENU,
+                    test_support.section_class(name).GRID_MENU,
                     "%s shows tiles and offers no right-click menu"
                     % name)
 
     def test_every_named_handler_exists_on_the_context(self):
         for name in MENU_CONTEXTS:
-            context = getattr(sections, name)
+            context = test_support.section_class(name)
             for entry in rows_of(context.GRID_MENU):
                 if not entry.label or holds_rows(entry):
                     continue
@@ -94,7 +95,7 @@ class TheTableIsWellFormED(unittest.TestCase):
     def test_every_named_FACT_exists_on_the_context(self):
         """A missing name reads as False: a missing `shown` deletes the entry, a missing `needs` greys it."""
         for name in MENU_CONTEXTS:
-            context = getattr(sections, name)
+            context = test_support.section_class(name)
             for entry in rows_of(context.GRID_MENU):
                 if not entry.label:
                     continue
@@ -111,7 +112,7 @@ class TheTableIsWellFormED(unittest.TestCase):
     def test_a_submenu_row_declares_a_handler_for_its_children(self):
         """A submenu's children dispatch through the parent's handler, so a parent with children needs one."""
         for name in MENU_CONTEXTS:
-            context = getattr(sections, name)
+            context = test_support.section_class(name)
             for entry in rows_of(context.GRID_MENU):
                 if entry.children and not holds_rows(entry):
                     with self.subTest(context=name, entry=entry.label):
@@ -126,15 +127,15 @@ class NoMenuIsWrittenInThePanelAnyMore(unittest.TestCase):
 
     def _panel_tree(self):
         body = []
-        for name in ("panel.py", "drop_placement.py", "tile_capture.py"):
-            with open(os.path.join(PACKAGE, "panel", name),
+        for name in ("panel/panel.py", "pane/drop_placement.py", "pane/tile_capture.py"):
+            with open(os.path.join(PACKAGE, *name.split("/")),
                       encoding="utf-8") as handle:
                 body += ast.parse(handle.read()).body
         return ast.Module(body=body, type_ignores=[])
 
     MAY_BUILD_A_MENU = {  # the menus panel.py may still build, named rather than counted
         "init_ui",                      # the toolbar's Filter menu
-        "material_lop_viewport_drop",   # the Drag & Drop Engine's
+        "ask_drop_choice",              # the Drag & Drop Engine's prim menu, asked by the pane
         "_build_menus",                 # the online eye's kind filter (All/Materials/Colors/Nodes/Code) - a toolbar menu, not a grid menu
     }
 
@@ -204,7 +205,7 @@ class TheMenusMatchTheOldHandlersOutput(unittest.TestCase):
         with mock.patch.object(QtWidgets.QMenu, "exec_",
                                lambda menu, *a, **k: seen.extend(
                                    render(menu))):
-            panel.active_section().rc_menu()
+            grid.open_grid_menu(panel, panel.pane.active_section())
         return seen
 
     def _rows_of_kind(self, kind):
@@ -212,7 +213,7 @@ class TheMenusMatchTheOldHandlersOutput(unittest.TestCase):
         panel.section_tabs.setChecked("file")
         QtWidgets.QApplication.processEvents()
         proxy = panel.thumblist.model()
-        role = panel.file_files_model.KindRole
+        role = panel.pane.file_files_model.KindRole
         return [row for row in range(proxy.rowCount())
                 if (proxy.index(row, 0).data(role) or "") == kind]
 
@@ -325,7 +326,7 @@ class TheMenusMatchTheOldHandlersOutput(unittest.TestCase):
 
     def test_online_menu_over_an_empty_selection(self):
         """Built directly, as the online context uses the network; only Refresh is enabled when empty."""
-        context = self.panel.online_context
+        context = self.panel.pane.online_context
         menu, _handlers = grid.build_grid_menu(self.panel, context, [], None)
         plugins = (off_unless_loaded("Redshift"), off_unless_loaded("Octane"))
         self.assertEqual(
@@ -336,8 +337,8 @@ class TheMenusMatchTheOldHandlersOutput(unittest.TestCase):
 
     def test_online_imports_show_HOW_MANY_they_are_about_to_fetch(self):
         """On a multi-selection the imports show a count, from the same indexes the import runs on."""
-        context = self.panel.online_context
-        proxy = self.panel.matx_sorted_model
+        context = self.panel.pane.online_context
+        proxy = self.panel.pane.matx_sorted_model
         pretend = [proxy.index(row, 0) for row in range(3)]
         menu, _handlers = grid.build_grid_menu(
             self.panel, context, pretend, pretend[0])
@@ -385,7 +386,7 @@ class TheRowTheMenuIsAboutIsAlwaysSELECTED(unittest.TestCase):
         with mock.patch.object(grid, "build_menu", _capture), \
                 mock.patch.object(QtWidgets.QMenu, "exec_",
                                   lambda *a, **k: None):
-            panel.active_section().rc_menu()
+            grid.open_grid_menu(panel, panel.pane.active_section())
 
         self.assertEqual([2], [i.row() for i in seen["indexes"]])
         self.assertEqual(
@@ -417,7 +418,7 @@ class AMenuIsDeletedOnceClosed(unittest.TestCase):
         with mock.patch.object(QtWidgets.QMenu, "exec_",
                                lambda *a, **k: None):
             for _ in range(20):
-                panel.active_section().rc_menu()
+                grid.open_grid_menu(panel, panel.pane.active_section())
         QtWidgets.QApplication.sendPostedEvents(  # processEvents never delivers DeferredDelete; without this the test is vacuous
             None, QtCore.QEvent.Type.DeferredDelete)
 
@@ -446,7 +447,7 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
                 panel.thumblist.selectionModel().select(
                     proxy.index(0, 0),
                     QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
-                context = panel.active_section()
+                context = panel.pane.active_section()
                 called = []
                 handlers = {entry.handler for entry in context.GRID_MENU
                             if entry.handler}
@@ -460,7 +461,7 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
                     for patch in patches:
                         patch.start()
                     try:
-                        context.rc_menu()
+                        grid.open_grid_menu(panel, context)
                     finally:
                         for patch in patches:
                             patch.stop()
@@ -473,7 +474,7 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
         panel = self.panel
         panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()
-        context = panel.active_section()
+        context = panel.pane.active_section()
         with mock.patch.object(type(context), "_convertible_renderers",
                                lambda _self, _indexes: frozenset(held)), \
                 plugins_loaded("Redshift", "Octane"):
@@ -499,17 +500,17 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
         panel = self.panel
         panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()
-        proxy = panel.material_sorted_model
-        model = panel.material_model
+        proxy = panel.pane.material_sorted_model
+        model = panel.pane.material_model
         rows = [row for row in range(proxy.rowCount())
                 if model.assets[proxy.mapToSource(
                     proxy.index(row, 0)).row()].renderer == "Karma"][:count]
-        selection = panel.material_selection_model
+        selection = panel.pane.material_selection_model
         selection.clearSelection()
         for row in rows:
             selection.select(proxy.index(row, 0),
                              QtCore.QItemSelectionModel.SelectionFlag.Select)
-        indexes = panel.active_section().grid_selection()
+        indexes = panel.pane.active_section().grid_selection()
         self.assertEqual(len(rows), len(indexes), "premise: the rows are selected")
         self.assertTrue(indexes, "premise: the fixture has Karma materials")
         return indexes
@@ -520,7 +521,7 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
         indexes = self._select_karma_rows(1)
         with plugins_loaded():
             menu, _handlers = grid.build_grid_menu(
-                panel, panel.active_section(), indexes, indexes[0])
+                panel, panel.pane.active_section(), indexes, indexes[0])
         row = [r for r in render(menu) if r.startswith("Convert >")]
         self.assertEqual(["Convert > [MaterialX(off), Redshift(off), Octane(off)](off)"], row)
 
@@ -529,8 +530,8 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
         panel = self.panel
         panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()
-        context = panel.active_section()
-        with mock.patch.object(panel, "convert_selected") as convert:
+        context = panel.pane.active_section()
+        with mock.patch.object(panel.pane.assets, "convert_selected") as convert:
             context.menu_convert_to([], None, "Redshift")
             context.menu_convert_to([], None, "Karma")
             context.menu_convert_to([], None)
@@ -540,12 +541,12 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
     def test_online_import_passes_the_renderer_to_import_records(self):
         """C06a/C06b: the picked Import child is passed on as `renderer`; a bare call means Karma."""
         panel = self.panel
-        context = panel.online_context
+        context = panel.pane.online_context
         records = ["rec"]
         with mock.patch.object(type(context), "_records",
                                lambda self, idx: records), \
-                mock.patch.object(panel.online_import, "import_records") as lib, \
-                mock.patch.object(panel.online_import,
+                mock.patch.object(panel.pane.online_import, "import_records") as lib, \
+                mock.patch.object(panel.pane.online_import,
                                   "import_records_to_scene") as scene:
             context.menu_import_to_library([], None, "Redshift")
             lib.assert_called_once_with(records, renderer="Redshift")
@@ -561,7 +562,7 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
         from amaze.helpers import helpers
         from amaze.render import nodes
         panel = self.panel
-        context = panel.online_context
+        context = panel.pane.online_context
         rec = types.SimpleNamespace(title="rec", kind="material", source="test")
         depth = []
 
@@ -574,11 +575,11 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
         with mock.patch.object(hou, "ui", mock.MagicMock(), create=True), \
                 mock.patch.object(nodes, "karma_destination",
                                   return_value=hou.node("/obj")), \
-                mock.patch.object(panel.online_import, "source_for", side_effect=offline), \
-                mock.patch.object(panel, "matx_sorted_model"), \
-                mock.patch.object(panel, "matx_online_model"), \
+                mock.patch.object(panel.pane.online_import, "source_for", side_effect=offline), \
+                mock.patch.object(panel.pane, "matx_sorted_model"), \
+                mock.patch.object(panel.pane, "matx_online_model"), \
                 mock.patch.object(type(context), "_records", lambda self, idx: [rec]):
-            panel.matx_online_model.record.return_value = rec
+            panel.pane.matx_online_model.record.return_value = rec
             context.double_click(index)    # the import path the menu handler does not share
             context.menu_import_to_scene([], None)
         self.assertEqual([0, 0], depth,
@@ -605,11 +606,11 @@ class EveryRendererRowShowsTheFilterMenusIcon(unittest.TestCase):
         stack = contextlib.ExitStack()
         stack.callback(panel.build_filter_menu)    # runs LAST: rebuilds the menu with the fixture's own settings
         for flag in ("renderer_redshift_enabled", "renderer_octane_enabled"):
-            stack.callback(setattr, panel.prefs, flag, getattr(panel.prefs, flag))
-            setattr(panel.prefs, flag, True)    # a property with no deleter: mock cannot undo it
+            stack.callback(setattr, panel.pane.prefs, flag, getattr(panel.pane.prefs, flag))
+            setattr(panel.pane.prefs, flag, True)    # a property with no deleter: mock cannot undo it
         stack.enter_context(plugins_loaded("Redshift", "Octane"))
         stack.enter_context(mock.patch.object(
-            sections.MaterialSection, "_convertible_renderers",
+            material_section.MaterialSection, "_convertible_renderers",
             lambda _self, _indexes: frozenset({"Karma"})))
         panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()
@@ -619,11 +620,11 @@ class EveryRendererRowShowsTheFilterMenusIcon(unittest.TestCase):
         """The Filter menu, then the material and online grid menus: (filter, material, online)."""
         panel = self.panel
         panel.build_filter_menu()
-        context = panel.active_section()
+        context = panel.pane.active_section()
         material_menu, _handlers = grid.build_grid_menu(
             panel, context, context.grid_selection(), None)
         online_menu, _handlers = grid.build_grid_menu(
-            panel, panel.online_context, [], None)
+            panel, panel.pane.online_context, [], None)
         return panel.menu_filter, material_menu, online_menu
 
     @staticmethod
@@ -660,9 +661,9 @@ class EveryRendererRowShowsTheFilterMenusIcon(unittest.TestCase):
         panel = self.panel
         for hidden in renderers.ALL:
             with self.subTest(hidden=hidden.label), self._everything_offered() as stack:
-                stack.callback(setattr, panel.prefs, hidden.switch,
-                               getattr(panel.prefs, hidden.switch))
-                setattr(panel.prefs, hidden.switch, False)
+                stack.callback(setattr, panel.pane.prefs, hidden.switch,
+                               getattr(panel.pane.prefs, hidden.switch))
+                setattr(panel.pane.prefs, hidden.switch, False)
                 filter_menu, material_menu, online_menu = self._build()
                 self.assertNotIn(hidden.label, [act.text() for act in filter_menu.actions()])
                 for menu, name in ((material_menu, "Convert"),
@@ -683,13 +684,13 @@ class EveryRendererRowShowsTheFilterMenusIcon(unittest.TestCase):
 
         with self._everything_offered(), mock.patch.object(ui_helpers, "menu_icon", spy):
             panel = self.panel
-            context = panel.active_section()
+            context = panel.pane.active_section()
             for build, times in (
                     (panel.build_filter_menu, 1),
                     (lambda: grid.build_grid_menu(
                         panel, context, context.grid_selection(), None), 1),
                     (lambda: grid.build_grid_menu(
-                        panel, panel.online_context, [], None), 2)):
+                        panel, panel.pane.online_context, [], None), 2)):
                 del drawn[:]
                 kept = build()
                 for stored in ("Karma", "Redshift", "Octane"):
@@ -726,15 +727,15 @@ class AHandlerActsOnlyOnRowsStillThere(unittest.TestCase):
             return next(a for a in menu.actions() if a.text() == label)
 
         with mock.patch.object(QtWidgets.QMenu, "exec_", _exec):
-            panel.active_section().rc_menu()
+            grid.open_grid_menu(panel, panel.pane.active_section())
 
     def _starred(self, model):
         return {str(a.mat_id) for a in model.assets
-                if locations.is_favourite(self.panel.prefs, a.mat_id, model.DB_FILENAME)}
+                if locations.is_favourite(self.panel.pane.prefs, a.mat_id, model.DB_FILENAME)}
 
     def test_a_row_removed_above_the_one_picked(self):
         """A plain index would now name the tile below it."""
-        model = self.panel.gradient_model
+        model = self.panel.pane.gradient_model
         self.panel.section_tabs.setChecked("gradient")
         proxy = self.panel.thumblist.model()
         self.assertGreater(proxy.rowCount(), 3, "premise: rows above and below the picked one")
@@ -755,12 +756,12 @@ class AHandlerActsOnlyOnRowsStillThere(unittest.TestCase):
         clipboard = QtWidgets.QApplication.clipboard()
         clipboard.setText("sentinel")
         self._pick_through_the_menu("file", 0, "Copy Path",
-                                    self.panel.file_files_model.refresh_current_folder)
+                                    self.panel.pane.file_files_model.refresh_current_folder)
         self.assertEqual("sentinel", clipboard.text(), "a reloaded row's path was copied")
 
 
 class EveryHandlerIsCalledThroughThePanel(unittest.TestCase):
-    """The five handlers the panel already defined are called THROUGH it, not copied into a table."""
+    """The pane's asset handlers are called THROUGH it, not copied into a table."""
 
     @classmethod
     def setUpClass(cls):
@@ -786,17 +787,17 @@ class EveryHandlerIsCalledThroughThePanel(unittest.TestCase):
             raise AssertionError("%s has no %r entry" % (key, label))
 
         with mock.patch.object(QtWidgets.QMenu, "exec_", _exec):
-            panel.active_section().rc_menu()
+            grid.open_grid_menu(panel, panel.pane.active_section())
 
-    def test_FAVORITE_DELETE_and_UPDATE_PREVIEW_go_through_the_panels_entry_points(self):
+    def test_FAVORITE_DELETE_and_UPDATE_PREVIEW_go_through_the_panes_entry_points(self):
         for label, owner, keys in (
-                ("Favorite", "grid_toggle_favourite",
+                ("Favorite", "toggle_favourite",
                  ("material", "gradient", "code", "file")),
-                ("Delete", "grid_delete", ("material", "gradient", "code")),
-                ("Render Image", "grid_update_preview", ("material", "file"))):
+                ("Delete", "delete", ("material", "gradient", "code")),
+                ("Render Image", "update_preview", ("material", "file"))):
             for key in keys:
                 with self.subTest(section=key, entry=label):
-                    with mock.patch.object(type(self.panel), owner) as handler:
+                    with mock.patch.object(self.panel.pane.assets, owner) as handler:
                         self._pick(key, label)
                     self.assertTrue(handler.called)
 
@@ -804,7 +805,7 @@ class EveryHandlerIsCalledThroughThePanel(unittest.TestCase):
         """`tile_models()` returns the models each context has, so Customize reaches a real pair."""
         for key in ("material", "gradient", "code", "file"):
             with self.subTest(section=key):
-                with mock.patch.object(type(self.panel),
+                with mock.patch.object(self.panel.pane.assets,
                                        "edit_tile_icon") as handler:
                     self._pick(key, "Customize")
                 self.assertTrue(handler.called)

@@ -313,17 +313,17 @@ class UpdateRenderOnMaterialTiles(unittest.TestCase):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
     def test_the_selection_goes_in_one_batch(self):
-        proxy = self.panel.material_sorted_model
+        proxy = self.panel.pane.material_sorted_model
         if proxy.rowCount() < 2:
             self.skipTest("the fixture shows fewer than two materials")
         indexes = [proxy.index(0, 0), proxy.index(1, 0)]
-        model = self.panel.material_model
+        model = self.panel.pane.material_model
         wanted = [model.assets[proxy.mapToSource(i).row()].mat_id for i in indexes]
         batches = []
         with mock.patch.object(thumbs.ThumbNailRenderer, "render_assets",
                                lambda preferences, mats: batches.append(
                                    [mat.mat_id for mat in mats])):
-            self.panel.sections["material"].update_preview(indexes)
+            self.panel.pane.sections["material"].update_preview(indexes)
         self.assertEqual([wanted], batches)
 
 
@@ -337,8 +337,8 @@ class AMultiMaterialSaveRendersOneBatch(unittest.TestCase):
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
-        self.panel.prefs.render_on_import = 1
-        self.model = self.panel.material_model
+        self.panel.pane.prefs.render_on_import = 1
+        self.model = self.panel.pane.material_model
         self.batches = []
         for owner, name, value in (
                 (thumbs.ThumbNailRenderer, "render_assets", lambda prefs, mats:
@@ -375,13 +375,13 @@ class AMultiMaterialSaveRendersOneBatch(unittest.TestCase):
         rows = [row for row, mat in enumerate(self.model.assets)
                 if renderers.is_karma(mat.renderer)][:2]
         self.assertEqual(2, len(rows), "premise: two MaterialX materials in the fixture")
-        proxy, selection = self.panel.material_sorted_model, self.panel.material_selection_model
+        proxy, selection = self.panel.pane.material_sorted_model, self.panel.pane.material_selection_model
         for row in rows:
             selection.select(proxy.mapFromSource(self.model.index(row, 0)),
                              QtCore.QItemSelectionModel.SelectionFlag.Select)
         registry = {engine.INTERMEDIATE: engine.apis()[engine.INTERMEDIATE], "Octane": Plain()}
         with mock.patch.dict(engine._registry, registry, clear=True):
-            twins = self._new_asset_ids(lambda: self.panel.convert_selected("Octane"))
+            twins = self._new_asset_ids(lambda: self.panel.pane.assets.convert_selected("Octane"))
         self.assertEqual(2, len(twins), "premise: the conversion saved no twins")
         self.assertEqual(0, self.each.call_count, "a twin started a render of its own")
         self.assertEqual([twins], self.batches, "not ONE batch of the twins")
@@ -419,8 +419,8 @@ class AMultiMaterialSaveRendersOneBatch(unittest.TestCase):
                 kind="values", licence="CC0 1.0", payload=payload)
 
         records = [record("batch-hosted", True), record("batch-plain", False)]
-        with mock.patch.object(self.panel.matx_online_model, "_sources", [Source()]):
-            imported = self._new_asset_ids(lambda: self.panel.online_import.import_records(records))
+        with mock.patch.object(self.panel.pane.matx_online_model, "_sources", [Source()]):
+            imported = self._new_asset_ids(lambda: self.panel.pane.online_import.import_records(records))
         self.assertEqual(2, len(imported), "premise: the two records were not saved")
         plain = [str(mat.mat_id) for mat in self.model.assets
                  if mat._extra.get("online_uid") == "batch-plain" and str(mat.mat_id) in imported]

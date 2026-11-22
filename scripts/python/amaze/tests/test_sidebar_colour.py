@@ -16,7 +16,7 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 from amaze.core import category  # noqa: E402
-from amaze.panel import sections  # noqa: E402
+from amaze.sections import file as file_section  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
 
@@ -24,10 +24,10 @@ class EveryContextNamesItsColourPicker(unittest.TestCase):
 
     def test_each_one_names_its_own_picker(self):
         """A location is not a category, and the picker's title is the only text that shows it."""
-        self.assertEqual("Location Color", sections.FileSection.colour_title)
+        self.assertEqual("Location Color", file_section.FileSection.colour_title)
         for name in ("AssetSection", "GradientSection"):
             self.assertEqual("Category Color",
-                             getattr(sections, name).colour_title)
+                             test_support.section_class(name).colour_title)
 
 
 class TheColourIsAppliedInBOTHPlacesItIsPainted(unittest.TestCase):
@@ -48,7 +48,7 @@ class TheColourIsAppliedInBOTHPlacesItIsPainted(unittest.TestCase):
                            "the %s sidebar has only All, so there is "
                            "nothing to colour" % key)
         row = getattr(model, "_offset", lambda: 1)()    # File puts a scene row first
-        return panel.active_section(), model, model.index(row, 0)
+        return panel.pane.active_section(), model, model.index(row, 0)
 
     def test_the_model_EMITS_a_change_signal_so_the_row_repaints(self):
         """These models read the store live, so only a change signal proves the row repaints."""
@@ -97,13 +97,13 @@ class TheColourIsAppliedInBOTHPlacesItIsPainted(unittest.TestCase):
         panel = self.panel
         panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()
-        categories = panel.category_model
+        categories = panel.pane.category_model
         if categories._row_of("_WIP") is None:
             categories.check_add_category("_WIP")
         self.addCleanup(categories.remove_category, "_WIP")
         QtWidgets.QApplication.processEvents()
 
-        context = panel.active_section()
+        context = panel.pane.active_section()
         self.addCleanup(context.set_sidebar_colour, "_WIP", "")
         context.set_sidebar_colour("_WIP", "#4af2a1")
 
@@ -114,11 +114,11 @@ class TheColourIsAppliedInBOTHPlacesItIsPainted(unittest.TestCase):
             "row is keyed by")
 
         row = panel.cat_list.model().mapFromSource(
-            panel.category_model.index(
-                panel.category_model._row_of("_WIP"), 0)) \
+            panel.pane.category_model.index(
+                panel.pane.category_model._row_of("_WIP"), 0)) \
             if hasattr(panel.cat_list.model(), "mapFromSource") \
-            else panel.category_model.index(
-                panel.category_model._row_of("_WIP"), 0)
+            else panel.pane.category_model.index(
+                panel.pane.category_model._row_of("_WIP"), 0)
         panel.cat_list.selectionModel().select(
             row, QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
         self.assertEqual(
@@ -126,7 +126,7 @@ class TheColourIsAppliedInBOTHPlacesItIsPainted(unittest.TestCase):
             "the row does not display the stripped name, so this is not "
             "reproducing the conditions")
 
-        panel.sidebar_set_colour(pick=False)
+        panel.pane.sidebar.set_colour(pick=False)
 
         self.assertEqual(
             "", context.sidebar_colour("_WIP"),

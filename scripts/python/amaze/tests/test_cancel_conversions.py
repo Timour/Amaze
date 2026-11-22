@@ -146,38 +146,38 @@ class TheChipIsShownWithTheProgressBar(unittest.TestCase):
     def _file_section_with_no_batch_running(self):
         """Enter the File section and settle any batch the fixture queued."""
         panel = self.panel
-        if panel._is_online():
-            panel.leave_online_mode()
+        if panel.pane.is_online():
+            panel.pane.leave_online()
         panel.section_tabs.setChecked("file")
         QtWidgets.QApplication.processEvents()
-        self.assertEqual("file", panel.current_section)
-        panel.file_files_model.cancel_conversions()
+        self.assertEqual("file", panel.pane.current_section)
+        panel.pane.file_files_model.cancel_conversions()
         return panel
 
     def test_the_chip_shows_exactly_when_the_bar_shows(self):
         panel = self._file_section_with_no_batch_running()
-        panel._on_file_folder_progress(1, 10)
+        panel.pane._on_file_folder_progress(1, 10)
         self.assertFalse(panel.texture_progress.isHidden())
         self.assertTrue(panel.section_tabs.cancel_visible())
-        panel._on_file_folder_progress(10, 10)
+        panel.pane._on_file_folder_progress(10, 10)
         self.assertTrue(panel.texture_progress.isHidden())
         self.assertFalse(panel.section_tabs.cancel_visible())
 
     def test_the_chip_is_kept_through_a_strip_rebuild(self):
         """A rebuilt tab strip reads the chip state from the bar itself, never recomputing it."""
         panel = self._file_section_with_no_batch_running()
-        panel._on_file_folder_progress(1, 10)
+        panel.pane._on_file_folder_progress(1, 10)
         panel._build_section_tabs()
         self.assertTrue(
             panel.section_tabs.cancel_visible(),
             "the rebuilt strip hid the chip during a batch")
-        panel._on_file_folder_progress(10, 10)
+        panel.pane._on_file_folder_progress(10, 10)
         panel._build_section_tabs()
         self.assertFalse(panel.section_tabs.cancel_visible())
 
     def test_activation_hides_the_chip_with_the_bar(self):
         panel = self._file_section_with_no_batch_running()
-        panel._on_file_folder_progress(1, 10)
+        panel.pane._on_file_folder_progress(1, 10)
         panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()
         self.assertTrue(panel.texture_progress.isHidden())
@@ -189,12 +189,12 @@ class TheChipIsShownWithTheProgressBar(unittest.TestCase):
     def test_the_chip_press_cancels_the_engine(self):
         """Press, hit test, `cancelClicked`, panel, model, engine; the flush before the cancel."""
         panel = self._file_section_with_no_batch_running()
-        panel._on_file_folder_progress(1, 10)
+        panel.pane._on_file_folder_progress(1, 10)
         panel.section_tabs.resize(600, panel.section_tabs.HEIGHT)
         rect = panel.section_tabs._cancel_rect()
         self.assertIsNotNone(rect)
         order = []
-        model = panel.file_files_model
+        model = panel.pane.file_files_model
         real_flush = model._flush_image_cache
         real_cancel = thumbnails.engine.cancel_pending_converts
         model._flush_image_cache = lambda why: order.append("flush")

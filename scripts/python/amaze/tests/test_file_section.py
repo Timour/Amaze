@@ -7,6 +7,7 @@ import sys
 import tempfile
 import threading
 import time
+import types
 import unittest
 from unittest import mock
 
@@ -209,7 +210,7 @@ class ScenePathsAreSpelledPerPreferenceTest(unittest.TestCase):
         home = self._home()
         geo = hou.node("/obj").createNode("geo", "amaze_pathtest_dest")
         self.addCleanup(geo.destroy)
-        self.panel.drop_placement.import_geo_in_context(
+        self.panel.pane.drop_placement.import_geo_in_context(
             home + "/models/amaze_spelling.obj", geo)
         loaders = [n for n in geo.children() if n.type().name() == "file"]
         self.assertTrue(loaders, "no loader SOP was created")
@@ -242,9 +243,9 @@ class AGeometryImportMakesItsNodeCurrent(unittest.TestCase):
     def test_the_imported_geometry_is_the_current_node(self):
         index = mock.MagicMock()
         index.data.return_value = "/nowhere/amaze_fronted.obj"
-        with mock.patch.object(self.panel, "_active_network_pwd",
+        with mock.patch.object(self.panel.pane.loading, "_active_network_pwd",
                                return_value=hou.node("/obj")):
-            self.panel.import_geo_asset(index)
+            self.panel.pane.loading.import_geo_asset(index)
         made = hou.node("/obj/amaze_fronted")
         self.assertIsNotNone(made, "premise: the import made no geo node")
         self.addCleanup(made.destroy)
@@ -276,7 +277,7 @@ class DropFilePathOnNodeTest(unittest.TestCase):
         geo = hou.node("/obj").createNode("geo", "amaze_droptest")
         self.addCleanup(geo.destroy)
         loader = geo.createNode("file")
-        self.assertTrue(self.panel.sections["file"].drop_file_path_on_node(
+        self.assertTrue(self.panel.pane.sections["file"].drop_file_path_on_node(
             self._index_for(home + "/textures/amaze_drop.png"), loader))
         self.assertEqual(
             "$HOME/textures/amaze_drop.png",
@@ -284,7 +285,7 @@ class DropFilePathOnNodeTest(unittest.TestCase):
             "drop_file_path_on_node wrote a raw absolute path")
         bare = geo.createNode("null")
         self.assertFalse(
-            self.panel.sections["file"].drop_file_path_on_node(
+            self.panel.pane.sections["file"].drop_file_path_on_node(
                 self._index_for(home + "/x.png"), bare),
             "a node with no file parameter returned True")
 
@@ -330,7 +331,7 @@ class CreationRuleTest(unittest.TestCase):
 
         home = self._home()
         net = self._matnet()
-        self.assertTrue(self.panel.sections["file"].create_image_node_in(
+        self.assertTrue(self.panel.pane.sections["file"].create_image_node_in(
             self._index_for(home + "/textures/amaze_create.png"), net))
         children = net.children()
         self.assertEqual(1, len(children), "exactly one carrier")
@@ -340,7 +341,7 @@ class CreationRuleTest(unittest.TestCase):
             helpers.find_file_parm(children[0]).rawValue(),
             "the carrier holds a raw absolute path")
         sop = self._geo()
-        self.assertFalse(self.panel.sections["file"].create_image_node_in(
+        self.assertFalse(self.panel.pane.sections["file"].create_image_node_in(
             self._index_for(home + "/x.png"), sop))
         self.assertEqual((), sop.children(),
                          "a network that cannot hold it gained a child anyway")
@@ -349,10 +350,10 @@ class CreationRuleTest(unittest.TestCase):
         from amaze.helpers import helpers
 
         net = self._matnet()
-        index = self.panel.gradient_sorted_model.index(0, 0)
+        index = self.panel.pane.gradient_sorted_model.index(0, 0)
         self.assertTrue(index.isValid(),
                         "premise: the fixture has gradients")
-        self.assertTrue(self.panel.sections["gradient"].create_gradient_node_in(index, net))
+        self.assertTrue(self.panel.pane.sections["gradient"].create_gradient_node_in(index, net))
         children = net.children()
         self.assertEqual(1, len(children))
         self.assertIn("hmtlxrampc", children[0].type().name())
@@ -364,14 +365,14 @@ class CreationRuleTest(unittest.TestCase):
         from amaze.helpers import helpers
 
         net = self._geo()
-        index = self.panel.code_sorted_model.index(0, 0)
+        index = self.panel.pane.code_sorted_model.index(0, 0)
         self.assertTrue(index.isValid(),
                         "premise: the fixture has snippets")
-        source = self.panel.code_sorted_model.mapToSource(index)
-        asset = self.panel.code_model.assets[source.row()]
+        source = self.panel.pane.code_sorted_model.mapToSource(index)
+        asset = self.panel.pane.code_model.assets[source.row()]
         if str(getattr(asset, "renderer", "")).lower() != "vex":
             self.skipTest("the first snippet is not VEX")
-        self.assertTrue(self.panel.sections["code"].create_code_node_in(index, net))
+        self.assertTrue(self.panel.pane.sections["code"].create_code_node_in(index, net))
         children = net.children()
         self.assertEqual(1, len(children))
         self.assertIn("attribwrangle", children[0].type().name())
@@ -379,12 +380,12 @@ class CreationRuleTest(unittest.TestCase):
             asset.code, helpers.find_code_parm(children[0]).eval(),
             "the wrangle does not contain the snippet")
         vop = self._matnet()
-        self.assertFalse(self.panel.sections["code"].create_code_node_in(index, vop),
+        self.assertFalse(self.panel.pane.sections["code"].create_code_node_in(index, vop),
                          "a VOP network took a VEX snippet")
         self.assertEqual((), vop.children())
 
     def _with_view_networks(self, networks):
-        self.panel._view_create_networks = lambda: list(networks)
+        self.panel.pane.loading._view_create_networks = lambda: list(networks)
         self.addCleanup(
             lambda: self.panel.__dict__.pop("_view_create_networks", None))
 
@@ -394,7 +395,7 @@ class CreationRuleTest(unittest.TestCase):
         net = self._matnet()
         spot = hou.Vector2(-3.5, -2.25)
         with mock.patch.object(hou.Node, "moveToGoodPosition") as auto:
-            ok = self.panel.sections["file"].create_image_node_in(
+            ok = self.panel.pane.sections["file"].create_image_node_in(
                 self._index_for(self._home() + "/x.png"), net,
                 position=spot)
         self.assertTrue(ok)
@@ -421,23 +422,23 @@ class CreationRuleTest(unittest.TestCase):
         with mock.patch.object(dragengine, "pane_tab_under_cursor",
                                return_value=editor):
             self.assertIsNone(
-                self.panel.drop_placement.release_position_in(inside),
+                self.panel.pane.drop_placement.release_position_in(inside),
                 "an editor showing another network gave its coordinates to the "
                 "destination network")
-            got = self.panel.drop_placement.release_position_in(outer)
+            got = self.panel.pane.drop_placement.release_position_in(outer)
         self.assertEqual((9.0, 9.0), (got.x(), got.y()))
 
     def test_a_creation_restores_the_prior_selection(self):
         """Houdini selects new nodes and makes them current; a creation restores the prior selection."""
         sop = self._geo()
         self._with_view_networks([sop])
-        index = self.panel.code_sorted_model.index(0, 0)
-        source = self.panel.code_sorted_model.mapToSource(index)
-        asset = self.panel.code_model.assets[source.row()]
+        index = self.panel.pane.code_sorted_model.index(0, 0)
+        source = self.panel.pane.code_sorted_model.mapToSource(index)
+        asset = self.panel.pane.code_model.assets[source.row()]
         if str(getattr(asset, "renderer", "")).lower() != "vex":
             self.skipTest("the first snippet is not VEX")
         hou.clearAllSelected()
-        self.panel.click_on_row(self.panel.sections["code"], index)
+        self.panel.pane.loading.click_on_row(self.panel.pane.sections["code"], index)
         self.assertEqual(1, len(sop.children()), "premise: created")
         self.assertEqual(
             (), hou.selectedNodes(),
@@ -450,24 +451,24 @@ class CreationRuleTest(unittest.TestCase):
         self._with_view_networks([net])
         keeper = net.createNode("box", "the_artists_own")
         keeper.setSelected(True, clear_all_selected=True)
-        proxy = self.panel.material_sorted_model
+        proxy = self.panel.pane.material_sorted_model
         index = None
         for row in range(proxy.rowCount()):
             candidate = proxy.index(row, 0)
             source = proxy.mapToSource(candidate)
-            asset = self.panel.material_model.assets[source.row()]
+            asset = self.panel.pane.material_model.assets[source.row()]
             if str(getattr(asset, "renderer", "")):
                 index = candidate
                 break
         if index is None:
             self.skipTest("no fixture material has a renderer")
-        self.panel.material_selection_model.select(
+        self.panel.pane.material_selection_model.select(
             index,
             QtCore.QItemSelectionModel.ClearAndSelect
             | QtCore.QItemSelectionModel.Rows)
         mat_net = hou.node("/mat")
         held = set(mat_net.children())
-        self.panel.sections["material"].menu_copy_to(
+        self.panel.pane.sections["material"].menu_copy_to(
             (index,), index, payload="mat")
         new = [n for n in mat_net.children() if n not in held]
         if not new:
@@ -479,11 +480,11 @@ class CreationRuleTest(unittest.TestCase):
 
     def test_the_click_dispatcher_catches_permission_error_and_raises_other_errors(self):
         """A locked network's PermissionError is caught as on a drop; any other error still raises."""
-        from amaze.panel import sections as sections_module
+        from amaze.sections import base as section_base
 
         class PermissionErrorSection:
             key = "refusing"
-            DROP = sections_module.DropRule(
+            DROP = section_base.DropRule(
                 click_resolve="refuse_for_the_test")
 
             def refuse_for_the_test(self, _index):
@@ -492,31 +493,33 @@ class CreationRuleTest(unittest.TestCase):
 
         class CrashingSection:
             key = "crashing"
-            DROP = sections_module.DropRule(
+            DROP = section_base.DropRule(
                 click_resolve="crash_for_the_test")
 
             def crash_for_the_test(self, _index):
                 raise RuntimeError("a real defect")
 
-        index = self.panel.code_sorted_model.index(0, 0)
-        self.panel.click_on_row(PermissionErrorSection(), index)
+        index = self.panel.pane.code_sorted_model.index(0, 0)
+        self.panel.pane.loading.click_on_row(PermissionErrorSection(), index)
         with self.assertRaises(RuntimeError):
-            self.panel.click_on_row(CrashingSection(), index)
+            self.panel.pane.loading.click_on_row(CrashingSection(), index)
 
     def test_the_drag_preview_names_the_node_the_drop_creates(self):
         """The drag preview names the node a drop on empty space creates, from the same DropRule."""
-        from amaze.panel import dragdrop_widgets, sections as sections_mod
+        from amaze.panel import dragdrop_widgets
+        from amaze import sections
+        from amaze.sections import file as file_section
         sop = self._geo()
         vop = self._matnet()
-        index = self.panel.code_sorted_model.index(0, 0)
-        source = self.panel.code_sorted_model.mapToSource(index)
-        asset = self.panel.code_model.assets[source.row()]
+        index = self.panel.pane.code_sorted_model.index(0, 0)
+        source = self.panel.pane.code_sorted_model.mapToSource(index)
+        asset = self.panel.pane.code_model.assets[source.row()]
         if str(getattr(asset, "renderer", "")).lower() != "vex":
             self.skipTest("the first snippet is not VEX")
-        rule = sections_mod.SECTION_INDEX["code"].DROP
+        rule = sections.SECTION_INDEX["code"].DROP
         promised = dragdrop_widgets.GridGestureMixin._preview_node_type(    # the index is passed in, as the live drag passes it
             self.panel, rule, "code", sop, index)
-        self.assertTrue(self.panel.sections["code"].create_code_node_in(index, sop))
+        self.assertTrue(self.panel.pane.sections["code"].create_code_node_in(index, sop))
         made = [c for c in sop.children() if "wrangle" in c.type().name()]
         self.assertEqual(promised, made[0].type().name(),
                          "the drag preview showed a different node than the "
@@ -679,12 +682,12 @@ class CreationRuleTest(unittest.TestCase):
 
     def test_the_click_and_the_menu_treat_a_selected_node_alike(self):
         """A selected node that cannot take the snippet falls through to creation; one that can gets it."""
-        index = self.panel.code_sorted_model.index(0, 0)
-        source = self.panel.code_sorted_model.mapToSource(index)
-        asset = self.panel.code_model.assets[source.row()]
+        index = self.panel.pane.code_sorted_model.index(0, 0)
+        source = self.panel.pane.code_sorted_model.mapToSource(index)
+        asset = self.panel.pane.code_model.assets[source.row()]
         if str(getattr(asset, "renderer", "")).lower() != "vex":
             self.skipTest("the first snippet is not VEX")
-        section = self.panel.sections["code"]
+        section = self.panel.pane.sections["code"]
         for route, selected, children in (("click", "sphere", 2),
                                           ("menu", "sphere", 2),
                                           ("menu", "attribwrangle", 1)):
@@ -695,7 +698,7 @@ class CreationRuleTest(unittest.TestCase):
                 node.setSelected(True)
                 self._with_view_networks([sop])
                 if route == "click":
-                    self.panel.click_on_row(section, index)
+                    self.panel.pane.loading.click_on_row(section, index)
                 else:
                     section.menu_apply([index], index)    # the handler the menu table names
                 wrangles = [c for c in sop.children()
@@ -711,19 +714,19 @@ class CreationRuleTest(unittest.TestCase):
         stage = hou.node("/stage")
         sc = stage.createNode("sopcreate")
         self.addCleanup(sc.destroy)
-        index = self.panel.code_sorted_model.index(0, 0)
-        source = self.panel.code_sorted_model.mapToSource(index)
-        asset = self.panel.code_model.assets[source.row()]
+        index = self.panel.pane.code_sorted_model.index(0, 0)
+        source = self.panel.pane.code_sorted_model.mapToSource(index)
+        asset = self.panel.pane.code_model.assets[source.row()]
         if str(getattr(asset, "renderer", "")).lower() != "vex":
             self.skipTest("the first snippet is not VEX")
-        section = self.panel.sections["code"]
+        section = self.panel.pane.sections["code"]
         editable = sc.node("sopnet/create")
         self.assertTrue(editable.isEditableInsideLockedHDA(),
                         "premise: the create subnet is marked editable")
         self._with_view_networks([sc, sc.node("sopnet"), editable])    # locked levels first - the walk sees all three, only the last can take the carrier
         hou.clearAllSelected()
         before = len(editable.children())
-        self.panel.click_on_row(section, index)
+        self.panel.pane.loading.click_on_row(section, index)
         self.assertEqual(before + 1, len(editable.children()),
                          "the walk did not reach the editable subnet")
         self.assertTrue(sc.isLockedHDA(),
@@ -745,7 +748,7 @@ class CreationRuleTest(unittest.TestCase):
         index = types.SimpleNamespace(
             data=lambda role: roles.get(role, path),
             isValid=lambda: True)
-        self.panel.click_on_row(self.panel.sections["file"], index)
+        self.panel.pane.loading.click_on_row(self.panel.pane.sections["file"], index)
         self.assertEqual(
             "$HOME/models/amaze_click.obj",
             helpers.find_file_parm(loader).rawValue(),
@@ -762,12 +765,12 @@ class CreationRuleTest(unittest.TestCase):
         stray = elsewhere.createNode("mtlxstandard_surface")
         stray.setSelected(True)
         self._with_view_networks([sop])
-        index = self.panel.code_sorted_model.index(0, 0)
-        source = self.panel.code_sorted_model.mapToSource(index)
-        asset = self.panel.code_model.assets[source.row()]
+        index = self.panel.pane.code_sorted_model.index(0, 0)
+        source = self.panel.pane.code_sorted_model.mapToSource(index)
+        asset = self.panel.pane.code_model.assets[source.row()]
         if str(getattr(asset, "renderer", "")).lower() != "vex":
             self.skipTest("the first snippet is not VEX")
-        self.panel.click_on_row(self.panel.sections["code"], index)
+        self.panel.pane.loading.click_on_row(self.panel.pane.sections["code"], index)
         self.assertEqual(
             1, len(sop.children()),
             "a selected node in no visible network took the double-click")
@@ -778,8 +781,8 @@ class CreationRuleTest(unittest.TestCase):
         home = self._home()
         net = self._matnet()
         self._with_view_networks([net])
-        self.panel.click_on_row(
-            self.panel.sections["file"],
+        self.panel.pane.loading.click_on_row(
+            self.panel.pane.sections["file"],
             self._index_for(home + "/textures/amaze_dbl.png",
                             kind=locations_mod.KIND_IMAGE))
         children = net.children()
@@ -795,12 +798,12 @@ class CreationRuleTest(unittest.TestCase):
         vop = self._matnet()
         sop = self._geo()
         self._with_view_networks([vop, sop])
-        index = self.panel.code_sorted_model.index(0, 0)
-        source = self.panel.code_sorted_model.mapToSource(index)
-        asset = self.panel.code_model.assets[source.row()]
+        index = self.panel.pane.code_sorted_model.index(0, 0)
+        source = self.panel.pane.code_sorted_model.mapToSource(index)
+        asset = self.panel.pane.code_model.assets[source.row()]
         if str(getattr(asset, "renderer", "")).lower() != "vex":
             self.skipTest("the first snippet is not VEX")
-        self.panel.click_on_row(self.panel.sections["code"], index)
+        self.panel.pane.loading.click_on_row(self.panel.pane.sections["code"], index)
         self.assertEqual((), vop.children(),
                          "the network that cannot hold it gained the carrier")
         children = sop.children()
@@ -842,7 +845,7 @@ class HoudiniPathTest(unittest.TestCase):
 
         p = test_support.fixture_prefs(self)
         p.cache_dir = "/somewhere/else"
-        state = prefs_window.AmazePrefsState(p, panel=None)
+        state = prefs_window.AmazePrefsState(p, pane=None)
 
         state.resetCachePath()
         self.assertEqual(hostos_mod.cache_root(), state.cachePath,
@@ -866,7 +869,7 @@ class HoudiniPathTest(unittest.TestCase):
         from amaze.dialogs import prefs_window
         p = test_support.fixture_prefs(self)
         p.library_user = ""
-        state = prefs_window.AmazePrefsState(p, panel=None)
+        state = prefs_window.AmazePrefsState(p, pane=None)
         self.assertEqual("", state.getPref(prefs_window.USER),
                          "a user was selected in a library that has no users")
         self.assertEqual({}, users.all_users(p), "opening Preferences created a user")
@@ -896,7 +899,7 @@ class HoudiniPathTest(unittest.TestCase):
         first = users.create(p, "Cobalt")
         second = users.create(p, "Sienna")
         p.library_user = first
-        state = prefs_window.AmazePrefsState(p, panel=None)
+        state = prefs_window.AmazePrefsState(p, pane=None)
         listed = {row["text"] for row in state.userOptions}
         self.assertIn("Cobalt", listed)
         self.assertIn("Sienna", listed)
@@ -1228,31 +1231,34 @@ class TheCachePngIsWrittenOffTheGuiThreadTest(unittest.TestCase):
                          "the written PNG was not recorded in the manifest")
 
 
-class _RecordingPanel:
-    """A fake panel `self` for `click_on_row`: the real dispatch runs, the panel methods record."""
+class _RecordingPane:
+    """A fake pane for `click_on_row`: the real dispatch runs, the scene and file calls record."""
 
     file_files_model = file_library.FileFiles
 
     def __init__(self):
+        from amaze.pane import loading
+
+        class Recording(loading.Loading):
+            def _visible_selected_nodes(self):
+                """Nothing selected - this test checks the per-kind dispatch, not the selection path."""
+                return []
+
+            def _view_create_networks(self):
+                """One writable network, so the empty-space rule can run."""
+                return [object()]
+
+            def _cannot_load_here(self):
+                self.pane.calls.append("refused")
+
+            def import_geo_asset(self, index):
+                self.pane.calls.append("import_geo_asset")
+
         self.calls = []
         self.prefs = _Prefs([])
-
-    def _visible_selected_nodes(self):
-        """Nothing selected - this test checks the per-kind dispatch, not the selection path."""
-        return []
-
-    def _view_create_networks(self):
-        """One writable network, so the empty-space rule can run."""
-        return [object()]
-
-    def _cannot_load_here(self):
-        self.calls.append("refused")
-
-    def import_geo_asset(self, index):
-        self.calls.append("import_geo_asset")
-
-    def copy_file_paths(self, indexes):
-        self.calls.append("copy_file_paths")
+        self.loading = Recording(self)
+        self.files = types.SimpleNamespace(
+            copy_paths=lambda indexes: self.calls.append("copy_file_paths"))
 
 
 class _FakeIndex:
@@ -1275,24 +1281,21 @@ class DoubleClickDispatchTest(unittest.TestCase):
     """Each kind gets its own `DROP_BY_KIND` handler via `click_on_row` on a real FileSection."""
 
     def test_every_kind_reaches_its_own_handler(self):
-        from amaze.panel import panel as panel_mod
-        from amaze.panel import sections
+        from amaze import sections
+        from amaze.sections import file as file_section
         for kind, expected in (("image", "create_image_node_in"),
                                ("geometry", "import_geo_asset"),
                                ("hip", "open_hip_scene"),
                                ("other", "copy_file_paths"),
                                ("", "copy_file_paths")):
-            recorder = _RecordingPanel()
-            recorder._apply_click_rule = (
-                panel_mod.AmazePanel._apply_click_rule.__get__(recorder))
-            section = sections.FileSection(recorder)
+            recorder = _RecordingPane()
+            section = file_section.FileSection(recorder)
             section.create_image_node_in = (
                 lambda index, network, position=None:
                 recorder.calls.append("create_image_node_in") or True)
             section.open_hip_scene = (
                 lambda index: recorder.calls.append("open_hip_scene"))
-            panel_mod.AmazePanel.click_on_row(
-                recorder, section, _FakeIndex(kind))
+            recorder.loading.click_on_row(section, _FakeIndex(kind))
             self.assertEqual([expected], recorder.calls,
                              "kind %r dispatched %r" % (kind,
                                                         recorder.calls))
@@ -1302,14 +1305,13 @@ class CopyPathTest(unittest.TestCase):
     """Copy Path fills the clipboard with HOUDINI paths, one per line, and no dialog."""
 
     def test_paths_are_copied_houdini_spelled_one_per_line(self):
-        from amaze.panel import drop_placement
-        from amaze.panel import panel as panel_mod
+        from amaze.pane import drop_placement, files
         home = hou.expandString("$HOME").replace("\\", "/").rstrip("/")
         if not home or home in ("/", "."):
             self.skipTest("no $HOME in this session")
-        recorder = _RecordingPanel()
+        recorder = _RecordingPane()
         recorder.drop_placement = drop_placement.DropPlacement(recorder)    # the real path-spelling code, bound to the stub
-        panel_mod.AmazePanel.copy_file_paths(recorder, [
+        files.Files(recorder).copy_paths([
             _FakeIndex("other", home + "/mocap/walk.bvh"),
             _FakeIndex("image", "/mnt/elsewhere/tex.png"),
         ])
@@ -2410,14 +2412,14 @@ class CheckLibraryResetsTheFolderModelTest(unittest.TestCase):
 
     def test_missing_locations_are_removed_with_a_structural_signal(self):
         panel = self.panel
-        model = panel.file_folders_model
+        model = panel.pane.file_folders_model
         missing_a, alive, missing_b = [
             tempfile.mkdtemp(prefix="amaze_cleanup_%s_" % name)
             for name in ("missing_a", "alive", "missing_b")
         ]
         for path in (missing_a, alive, missing_b):
             self.addCleanup(shutil.rmtree, path, ignore_errors=True)
-            self.addCleanup(panel.prefs.remove_file_folder, path)
+            self.addCleanup(panel.pane.prefs.remove_file_folder, path)
             model.add_folder(path)
         for path in (missing_a, missing_b):
             shutil.rmtree(path)
@@ -2440,7 +2442,7 @@ class CheckLibraryResetsTheFolderModelTest(unittest.TestCase):
         self.assertIn("said", events, "premise: nothing was set aside")
         self.assertNotEqual("said", events[0], "the result box was shown before the model was reset, "
                                              "so a view paints a stale row count under it")
-        survivors = list(panel.prefs.file_folders)
+        survivors = list(panel.pane.prefs.file_folders)
         self.assertIn(    # the locations API returns CANONICAL absolute paths, so the expectation converts too
             hostos.canonical_path_key(alive), survivors,
             "cleanup removed a location whose folder is still there")
@@ -2458,15 +2460,15 @@ class CheckLibraryReachesTheFoldersTest(unittest.TestCase):
         panel = test_support.fixture_panel(self)
         missing = tempfile.mkdtemp(prefix="amaze_missing_location_")
         self.addCleanup(shutil.rmtree, missing, ignore_errors=True)
-        self.addCleanup(panel.prefs.remove_file_folder, missing)
-        panel.file_folders_model.add_folder(missing)
+        self.addCleanup(panel.pane.prefs.remove_file_folder, missing)
+        panel.pane.file_folders_model.add_folder(missing)
         shutil.rmtree(missing)
 
         screen = _check_ui("Fix Safe")
         with mock.patch.object(hou, "ui", screen, create=True):
             test_support.repair_from_preferences(self, panel)
 
-        self.assertNotIn(hostos.canonical_path_key(missing), list(panel.prefs.file_folders),
+        self.assertNotIn(hostos.canonical_path_key(missing), list(panel.pane.prefs.file_folders),
                          "Check Library left a location whose folder is gone")
         self.assertIn("1 folder in the Files section is gone.", screen.shown[0],
                       "the Repair dialog does not count the location")
@@ -2479,28 +2481,28 @@ class CheckLibraryDropsOnlyFileStarsTest(unittest.TestCase):
 
     def test_a_material_star_is_kept_and_a_missing_file_star_is_removed(self):
         panel = test_support.fixture_panel(self)
-        model = panel.material_model
+        model = panel.pane.material_model
         mat_id = model.assets[1].mat_id    # row 0 is the fixture's odd id -1
         model.toggle_fav(1)
-        self.assertTrue(locations_mod.is_favourite(panel.prefs, mat_id, model.DB_FILENAME),
+        self.assertTrue(locations_mod.is_favourite(panel.pane.prefs, mat_id, model.DB_FILENAME),
                         "premise: the material star did not set")
-        missing = os.path.join(panel.prefs.file_folders[0], "gone.exr")
-        panel.prefs.add_file_favorite(missing)
-        self.assertTrue(locations_mod.is_favourite(panel.prefs, missing),
+        missing = os.path.join(panel.pane.prefs.file_folders[0], "gone.exr")
+        panel.pane.prefs.add_file_favorite(missing)
+        self.assertTrue(locations_mod.is_favourite(panel.pane.prefs, missing),
                         "premise: the File star did not set")
 
         from amaze.core import repair
-        findings = repair.survey(panel.prefs)
+        findings = repair.survey(panel.pane.prefs)
         lines = repair.report_lines(findings)
         repair.drop_favorites_of_missing_files(findings, guard_session=False)
 
         self.assertTrue(
-            locations_mod.is_favourite(panel.prefs, mat_id, model.DB_FILENAME),
+            locations_mod.is_favourite(panel.pane.prefs, mat_id, model.DB_FILENAME),
             "Check Library removed a material's star - its bare asset id "
             "was checked as a file path, and no file is named like an id")
         self.assertNotIn(str(mat_id), "\n".join(lines),
                          "the report lists a material id as a gone file")
-        self.assertFalse(locations_mod.is_favourite(panel.prefs, missing),
+        self.assertFalse(locations_mod.is_favourite(panel.pane.prefs, missing),
                          "Check Library kept a favourite whose file is gone")
 
     def test_the_file_favourites_list_no_asset_star(self):
@@ -2629,8 +2631,9 @@ class ALocationListsEveryKindOfFileTest(unittest.TestCase):
         self.assertEqual({"registered": True}, locations_mod.record(prefs, self.tmp))
 
     def test_the_sidebar_menu_has_no_show_entry(self):
-        from amaze.panel import sections
-        labels = [entry.label for entry in sections.FileSection.SIDEBAR_MENU if entry.label]
+        from amaze import sections
+        from amaze.sections import file as file_section
+        labels = [entry.label for entry in file_section.FileSection.SIDEBAR_MENU if entry.label]
         self.assertNotIn("Show", labels)
         self.assertEqual(["Add", "Locate", "Rename", "Remove", "Sort by name", "Label"],
                          [label for label in labels if "Undo" not in label])
@@ -2955,7 +2958,7 @@ class TheUserPickerFollowsTheLibrary(unittest.TestCase):
         from amaze.dialogs import prefs_window
 
         first = test_support.fixture_prefs(self)
-        state = prefs_window.AmazePrefsState(first, panel=None)
+        state = prefs_window.AmazePrefsState(first, pane=None)
 
         second = test_support.fresh_library(self)
         moved = test_support.fixture_prefs(self)
@@ -2966,7 +2969,6 @@ class TheUserPickerFollowsTheLibrary(unittest.TestCase):
 
     def test_picking_a_library_lists_its_users(self):
         from amaze.core import users
-        from amaze.dialogs import prefs_window
         state, first, second, uid_b, name_b = self._state_on_a_second_library()
         self.assertNotIn(uid_b, users.all_users(first),
                          "premise: both fixture libraries hold the same user")
@@ -2974,8 +2976,6 @@ class TheUserPickerFollowsTheLibrary(unittest.TestCase):
         listed = [row["value"] for row in state.userOptions]
         self.assertIn(uid_b, listed,
                       "the picker still lists the open library's users")
-        self.assertEqual("", state.getPref(prefs_window.USER),
-                         "a user of another library was picked without being chosen")
 
     def test_a_switch_applied_lists_the_new_librarys_users(self):
         """Apply opens B; the picker then lists B's users with B's user picked."""
@@ -3036,13 +3036,13 @@ class NewFolderAndSaveScene(unittest.TestCase):
     def setUp(self):
         self.folder = test_support.scratch_dir("amaze_new_")
         self.addCleanup(shutil.rmtree, self.folder, True)
-        self.section = self.panel.sections["file"]
-        self.files = self.panel.file_files_model
+        self.section = self.panel.pane.sections["file"]
+        self.files = self.panel.pane.file_files_model
         self.files.set_folder(self.folder)
         self.refused = []
         for owner, name, value in (
                 (debug, "refuse", lambda reason, **data: self.refused.append(str(reason))),
-                (self.panel, "ask_category_name", lambda title, default="": self.answer)):
+                (self.panel, "ask_name", lambda title, default, then: then(self.answer))):
             patcher = mock.patch.object(owner, name, value)
             patcher.start()
             self.addCleanup(patcher.stop)

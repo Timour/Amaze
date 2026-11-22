@@ -1,4 +1,4 @@
-"""The package import: `.amazepkg` files and store tiles into the library, for one panel."""
+"""The package import: `.amazepkg` files and store tiles into the library, for one pane."""
 
 import os
 
@@ -7,20 +7,19 @@ import hou
 from amaze import messages
 from amaze.core import debug
 from amaze.helpers import hostos
-from amaze.panel import sections
-
-
+from amaze import sections
 class PackageImport:
-    """One panel's package import commands; the panel holds it as `package_import`."""
+    """One pane's package import commands; the pane holds it as `package_import`."""
 
-    def __init__(self, panel) -> None:
-        self.panel = panel
+    def __init__(self, pane) -> None:
+        self.pane = pane
+        self.last_summary = None    # the last store tile's summary; the restore batch reads its totals
 
     def import_file(self, path: str, restore: bool = False) -> dict:
         """Import a whole package; `restore=True` keeps original ids. Returns packages' summary."""
         from amaze.core import packages
         summary = packages.import_package(self.models(),
-                                          self.panel.prefs, path,
+                                          self.pane.prefs, path,
                                           restore=restore)
         self.register_imported_categories(summary)
         return summary
@@ -29,7 +28,7 @@ class PackageImport:
         """Package Import: the picker, the import, then one summary; no dialog when headless."""
         from amaze.core import packages
         ui = getattr(hou, "ui", None)
-        if not self.panel.prefs.dir or getattr(self.panel, "material_model", None) is None:
+        if not self.pane.prefs.dir or getattr(self.pane, "material_model", None) is None:
             if ui is not None:    # no library open, whether none is set or it was left closed
                 ui.displayMessage(messages.NO_LIBRARY_CONFIGURED,
                                   title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
@@ -84,7 +83,7 @@ class PackageImport:
         models = {}
         for cls in sections.SECTION_CLASSES:
             attr = getattr(cls, "model_attr", "")
-            model = getattr(self.panel, attr, None) if attr else None
+            model = getattr(self.pane, attr, None) if attr else None
             if model is not None and getattr(cls, "key", "") != "file":
                 models[cls.key] = model
         return models
@@ -92,7 +91,7 @@ class PackageImport:
     def register_imported_categories(self, summary) -> None:
         """Register a package import's categories on their sidebars, and its import folder."""
         for key, names in summary.get("categories", {}).items():
-            section = self.panel.sections.get(key)
+            section = self.pane.sections.get(key)
             st = section.stack() if section is not None else None
             if st is None:
                 continue
@@ -100,14 +99,14 @@ class PackageImport:
                 st.categories.check_add_category(name)
         if summary.get("files"):
             folder = hostos.canonical_path_key(
-                os.path.join(self.panel.prefs.dir, "import"))
-            folders = getattr(self.panel, "file_folders_model", None)
+                os.path.join(self.pane.prefs.dir, "import"))
+            folders = getattr(self.pane, "file_folders_model", None)
             listed = {hostos.canonical_path_key(path)
-                      for path in self.panel.prefs.file_folders}
+                      for path in self.pane.prefs.file_folders}
             if folder not in listed:
-                self.panel.prefs.set_file_folder_name(folder, "Import")    # before the row is added, and only here: a user rename is kept
+                self.pane.prefs.set_file_folder_name(folder, "Import")    # before the row is added, and only here: a user rename is kept
                 if folders is None:
-                    self.panel.prefs.add_file_folder(folder)
+                    self.pane.prefs.add_file_folder(folder)
                 else:
                     folders.add_folder(folder)
             elif folders is not None:
@@ -124,7 +123,7 @@ class PackageImport:
         url = record.payload.get("package")
         debug.event("import", "package tile start", title=record.title,
                     package=str(url), restore=bool(restore))
-        self.panel._last_package_summary = None    # the restore batch reads its totals here
+        self.last_summary = None
         try:
             entry = record.payload.get("entry")
             if not entry:
@@ -134,9 +133,9 @@ class PackageImport:
                 on_progress(min(done / float(max(total, 1)), 1.0)))
             bundle = source.import_reader(url, notify=notify)    # a separate reader: a preview may be using the shared one
             summary = packages.import_entries(
-                self.models(), self.panel.prefs, bundle, [entry],
+                self.models(), self.pane.prefs, bundle, [entry],
                 restore=restore)
-            self.panel._last_package_summary = summary
+            self.last_summary = summary
             self.register_imported_categories(summary)
             if on_progress is not None:
                 on_progress(1.0)
@@ -158,9 +157,9 @@ class PackageImport:
         """Restore the selected store tiles by original id, with one summary for the batch."""
         totals = {"imported": 0, "skipped": 0, "files": 0, "refused": 0}
         failures = []
-        with self.panel.online_import.download_operation(records) as progress_for:
+        with self.pane.online_import.download_operation(records) as progress_for:
             for i, record in enumerate(records):
-                source, _resolution, error = self.panel.online_import.source_for(
+                source, _resolution, error = self.pane.online_import.source_for(
                     record)
                 if error or source is None:
                     failures.append("%s: %s" % (record.title,
@@ -178,7 +177,7 @@ class PackageImport:
                                     record=record.title)
                     failures.append("%s: %s" % (record.title, exc))
                     continue
-                summary = self.panel._last_package_summary or {}
+                summary = self.last_summary or {}
                 for key in totals:
                     totals[key] += summary.get(key, 0)
                 if not ok and reason:

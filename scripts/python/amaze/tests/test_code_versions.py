@@ -224,7 +224,7 @@ class TheEditorWindowKeepsVersions(unittest.TestCase):
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
-        self.model = self.panel.code_model
+        self.model = self.panel.pane.code_model
         self.mat_id = self.model.add_snippet(FIRST, "helper", "VEX", "Examples", "")
         self.assertTrue(self.mat_id)
 
@@ -239,11 +239,11 @@ class TheEditorWindowKeepsVersions(unittest.TestCase):
             return 0
 
         with patch.object(code_dialog.CodeDialog, "exec", driving):
-            (opening or (lambda: self.panel.sections["code"]._edit_code_row(self._row())))()
+            (opening or (lambda: self.panel.pane.sections["code"]._edit_code_row(self._row())))()
 
     def _listed(self):
         return [(v["n"], v["name"]) for v in
-                versions.list_versions(self.panel.prefs, self.mat_id, versions.CODE)]
+                versions.list_versions(self.panel.pane.prefs, self.mat_id, versions.CODE)]
 
     def test_new_version_then_apply_keeps_the_old_one_too(self):
         def steps(dialog):
@@ -268,7 +268,7 @@ class TheEditorWindowKeepsVersions(unittest.TestCase):
             dialog._editor.setPlainText(THIRD)
             dialog._apply()
         self._through_code_dialog(steps)
-        self.assertEqual(1, versions.active_version(self.panel.prefs, self.mat_id, versions.CODE))
+        self.assertEqual(1, versions.active_version(self.panel.pane.prefs, self.mat_id, versions.CODE))
         self.assertEqual(THIRD, self.model.version_text(self._row(), 1))
         self.assertEqual(SECOND, self.model.version_text(self._row(), 2))
 
@@ -325,7 +325,7 @@ class TheEditorWindowKeepsVersions(unittest.TestCase):
         from amaze.dialogs import versions_dialog
         self.model.save_version(self._row(), self.model.NEW_VERSION, THIRD, "helper fast",
                                 "VEX", "Examples", "")
-        proxy = self.panel.code_sorted_model
+        proxy = self.panel.pane.code_sorted_model
         index = next(proxy.index(r, 0) for r in range(proxy.rowCount())
                      if proxy.mapToSource(proxy.index(r, 0)).row() == self._row())
         seen = {}
@@ -336,7 +336,7 @@ class TheEditorWindowKeepsVersions(unittest.TestCase):
             return QtWidgets.QDialog.DialogCode.Accepted
 
         with patch.object(versions_dialog.VersionsDialog, "exec", picking):
-            self.panel.sections["code"].menu_versions([index], index)
+            self.panel.pane.sections["code"].menu_versions([index], index)
         self.assertEqual(2, seen.get("rows"), "the badge opened no window, or another asset's")
         asset = self.model.assets[self._row()]
         self.assertEqual((FIRST, "helper"), (asset.code, asset.name))
@@ -345,7 +345,7 @@ class TheEditorWindowKeepsVersions(unittest.TestCase):
         from amaze.core import library_settings
         self.model.save_version(self._row(), self.model.NEW_VERSION, SECOND, "helper fast",
                                 "VEX", "Examples", "")
-        self.assertTrue(library_settings.set_allow_overwrite(self.panel.prefs, False))
+        self.assertTrue(library_settings.set_allow_overwrite(self.panel.pane.prefs, False))
 
         def steps(dialog):
             self.assertTrue(dialog._plus.isHidden(), "Versions is off and the + is still there")
@@ -371,7 +371,7 @@ class TheEditorWindowKeepsVersions(unittest.TestCase):
             dialog._editor.setPlainText(THIRD)
             dialog._apply()
         self._through_code_dialog(
-            steps, lambda: self.panel._add_code_snippet("", "VEX", ""))
+            steps, lambda: self.panel.pane.saving.new_code_snippet())
         added = [a for a in self.model.assets if a.name == "fresh"]
         self.assertEqual((before + 1, 1), (len(self.model.assets), len(added)),
                          "a second Apply added the snippet again")

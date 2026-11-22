@@ -38,7 +38,7 @@ class ThereIsONEColumnOrder(unittest.TestCase):
     def test_every_model_reads_the_SAME_list(self):
         """The order is in `core`: models importing `ui_helpers` would cycle via `core.debug`."""
         for name in ("material_model", "gradient_model", "node_model"):
-            model = getattr(self.panel, name, None)
+            model = getattr(self.panel.pane, name, None)
             if model is None:
                 continue
             with self.subTest(model=name):
@@ -66,7 +66,7 @@ class AGridModelReturnsDataPerCOLUMN(unittest.TestCase):
 
     def _models(self):
         for key, attr in GRID_MODELS:
-            model = getattr(self.panel, attr, None)
+            model = getattr(self.panel.pane, attr, None)
             if model is not None and model.rowCount():
                 yield key, model
 
@@ -117,13 +117,13 @@ class AGridModelReturnsDataPerCOLUMN(unittest.TestCase):
 
     def test_a_column_the_model_cannot_fill_returns_NOTHING(self):
         """Color has no Tags and File has no Version: the column is absent from its map."""
-        gradient = self.panel.gradient_model
+        gradient = self.panel.pane.gradient_model
         tags = grid_columns.KEYS.index("tags")
         self.assertIsNone(
             gradient.index(0, tags).data(
                 QtCore.Qt.ItemDataRole.DisplayRole),
             "Color returned a Tags value, which it has no data for")
-        files = self.panel.file_files_model
+        files = self.panel.pane.file_files_model
         version = grid_columns.KEYS.index("version")
         self.assertIsNone(
             files.index(0, version).data(
@@ -133,7 +133,7 @@ class AGridModelReturnsDataPerCOLUMN(unittest.TestCase):
 
     def test_a_LIST_of_values_is_joined_for_display(self):
         """Categories and tags are lists on the record; a cell shows them joined as text."""
-        model = self.panel.material_model
+        model = self.panel.pane.material_model
         if not model.rowCount():
             self.skipTest("no materials in the fixture")
         column = grid_columns.KEYS.index("category")
@@ -147,7 +147,7 @@ class AGridModelReturnsDataPerCOLUMN(unittest.TestCase):
 
     def test_a_non_display_role_returns_data_on_column_ZERO_only(self):
         """Decoration and the rest return data on column 0 only, or all ten show the thumbnail."""
-        model = self.panel.material_model
+        model = self.panel.pane.material_model
         if not model.rowCount():
             self.skipTest("no materials in the fixture")
         column = grid_columns.KEYS.index("type")
@@ -180,7 +180,7 @@ class ACellLooksAsItsRolesSet(unittest.TestCase):
     def test_the_CATEGORY_is_written_in_the_CATEGORYS_OWN_COLOUR(self):
         """The colour the user gave that category, the same one the grid paints under its tiles."""
         panel = self.panel
-        model = panel.material_model
+        model = panel.pane.material_model
         column = self._column("category")
         role = getattr(model, "CategoryColorRole", None)
         self.assertIsNotNone(
@@ -204,7 +204,7 @@ class ACellLooksAsItsRolesSet(unittest.TestCase):
 
     def _colour_a_category(self, colour):
         """Give one category a colour and return a row that has it; the fixture ships none coloured."""
-        model = self.panel.material_model
+        model = self.panel.pane.material_model
         column = self._column("category")
         row = next((r for r in range(model.rowCount())
                     if model.index(r, column).data(
@@ -212,7 +212,7 @@ class ACellLooksAsItsRolesSet(unittest.TestCase):
         self.assertIsNotNone(row, "no fixture asset has a category")
         name = model.index(row, column).data(
             QtCore.Qt.ItemDataRole.DisplayRole)
-        categories = self.panel.category_model
+        categories = self.panel.pane.category_model
         self.addCleanup(categories.set_color, name,
                         categories.color_of(name))
         categories.set_color(name, colour)
@@ -220,7 +220,7 @@ class ACellLooksAsItsRolesSet(unittest.TestCase):
 
     def test_a_row_whose_category_has_NO_colour_returns_none(self):
         """No colour is not black: an invalid QColor for `ForegroundRole` still paints the text."""
-        model = self.panel.material_model
+        model = self.panel.pane.material_model
         column = self._column("category")
         role = model.CategoryColorRole
         for row in range(model.rowCount()):
@@ -235,7 +235,7 @@ class ACellLooksAsItsRolesSet(unittest.TestCase):
 
     def test_NO_column_overrides_the_views_font_or_alignment(self):
         """A role's font replaces the view's family; a centred tick looks like another table."""
-        model = self.panel.material_model
+        model = self.panel.pane.material_model
         if not model.rowCount():
             self.skipTest("no materials in the fixture")
         text = ("name", "type", "category", "tags")
@@ -250,7 +250,7 @@ class ACellLooksAsItsRolesSet(unittest.TestCase):
     def _every_model(self):
         panel = self.panel
         for key in ("material_model", "gradient_model", "node_model"):
-            model = getattr(panel, key, None)
+            model = getattr(panel.pane, key, None)
             if model is not None and model.rowCount():
                 yield key, model
 
@@ -421,11 +421,11 @@ class EveryCellHasPADDINGEitherSide(unittest.TestCase):
     def setUp(self):
         panel = self.panel
         panel.section_tabs.setChecked("material")
-        panel.prefs.view_mode = "list"
+        panel.pane.prefs.view_mode = "list"
         panel.apply_view_mode()
         QtWidgets.QApplication.processEvents()
         self.addCleanup(panel.apply_view_mode)
-        self.addCleanup(setattr, panel.prefs, "view_mode", "grid")
+        self.addCleanup(setattr, panel.pane.prefs, "view_mode", "grid")
 
     def test_the_table_has_NO_style_object_and_NO_stylesheet(self):
         """An unowned QProxyStyle bus-errored on teardown; a stylesheet takes over item drawing."""
@@ -476,7 +476,7 @@ class ARowRepaintCoversTheWholeROW(unittest.TestCase):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
     def test_a_row_repaint_spans_every_column(self):
-        model = self.panel.material_model
+        model = self.panel.pane.material_model
         if not model.rowCount():
             self.skipTest("no materials in the fixture")
         seen = []
@@ -623,7 +623,7 @@ class TheTableViewIsWiredToTheSameEVERYTHING(unittest.TestCase):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
     def _mode(self, mode):
-        self.panel.prefs.view_mode = mode
+        self.panel.pane.prefs.view_mode = mode
         self.panel.apply_view_mode()
         QtWidgets.QApplication.processEvents()
 
@@ -722,13 +722,13 @@ class TheHeaderSORTS(unittest.TestCase):
         panel = self.panel
         panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()
-        panel.prefs.view_mode = "list"
+        panel.pane.prefs.view_mode = "list"
         panel.apply_view_mode()
         QtWidgets.QApplication.processEvents()
         self.addCleanup(self._back_to_grid)
 
     def _back_to_grid(self):
-        self.panel.prefs.view_mode = "grid"
+        self.panel.pane.prefs.view_mode = "grid"
         self.panel.apply_view_mode()
         QtWidgets.QApplication.processEvents()
 
@@ -772,9 +772,9 @@ class TheHeaderSORTS(unittest.TestCase):
         panel.thumbrows.sortByColumn(
             column, QtCore.Qt.SortOrder.AscendingOrder)
         QtWidgets.QApplication.processEvents()
-        panel.active_section().filter_text("a")
+        panel.pane.active_section().filter_text("a")
         QtWidgets.QApplication.processEvents()
-        self.addCleanup(panel.active_section().filter_text, "")
+        self.addCleanup(panel.pane.active_section().filter_text, "")
         self.assertEqual(
             column, panel.thumbrows.model().sourceModel().sort_column(),
             "the filter change reset the sort column")
@@ -794,13 +794,13 @@ class TheSelectionIsInROWS(unittest.TestCase):
         panel = self.panel
         panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()
-        panel.prefs.view_mode = "list"
+        panel.pane.prefs.view_mode = "list"
         panel.apply_view_mode()
         QtWidgets.QApplication.processEvents()
         self.addCleanup(self._back_to_grid)
 
     def _back_to_grid(self):
-        self.panel.prefs.view_mode = "grid"
+        self.panel.pane.prefs.view_mode = "grid"
         self.panel.apply_view_mode()
         QtWidgets.QApplication.processEvents()
 
@@ -817,7 +817,7 @@ class TheSelectionIsInROWS(unittest.TestCase):
 
     def test_one_selected_row_is_ONE_grid_selection(self):
         self._select_row(0)
-        selection = self.panel.active_section().grid_selection()
+        selection = self.panel.pane.active_section().grid_selection()
         self.assertEqual(
             1, len(selection),
             "one selected row reads as %d selections" % len(selection))
@@ -826,7 +826,7 @@ class TheSelectionIsInROWS(unittest.TestCase):
 
     def test_favourite_toggles_ONCE_for_one_row(self):
         proxy = self._select_row(0)
-        model = self.panel.material_model
+        model = self.panel.pane.material_model
         row = proxy.mapToSource(proxy.index(0, 0)).row()
 
         def fav():
@@ -834,7 +834,7 @@ class TheSelectionIsInROWS(unittest.TestCase):
                                    model.FavoriteRole))
 
         before = fav()
-        section = self.panel.active_section()
+        section = self.panel.pane.active_section()
         section.toggle_favourite(section.grid_selection())
         self.assertNotEqual(
             before, fav(),
@@ -844,9 +844,9 @@ class TheSelectionIsInROWS(unittest.TestCase):
     def test_assign_category_MOVES_the_selected_asset(self):
         """The Move-to menu and the sidebar drop both call this, and must edit the row."""
         proxy = self._select_row(0)
-        model = self.panel.material_model
+        model = self.panel.pane.material_model
         row = proxy.mapToSource(proxy.index(0, 0)).row()
-        self.panel.assign_category_active("Seam Test")
+        self.panel.pane.sidebar.assign_category("Seam Test")
         self.assertIn(
             "Seam Test",
             model.data(model.index(row, 0), model.CategoryRole),
@@ -855,7 +855,7 @@ class TheSelectionIsInROWS(unittest.TestCase):
     def test_a_rename_through_the_model_WRITES_the_edit(self):
         """The rename path of D01 and D02 writes the edit through the table model."""
         proxy = self._select_row(0)
-        model = self.panel.material_model
+        model = self.panel.pane.material_model
         row = proxy.mapToSource(proxy.index(0, 0)).row()
         self.assertTrue(model.set_tile_name(row, "Renamed By Seam"))
         self.assertEqual(
@@ -898,7 +898,7 @@ class TheSelectionIsInROWS(unittest.TestCase):
         library_db.set_scheduler(timer)
         self.addCleanup(library_db.drop_scheduler, timer)
         with mock.patch.object(guard.Disk, "write", counting):
-            self.panel.assign_category_active("One Write")
+            self.panel.pane.sidebar.assign_category("One Write")
             library_db.flush()
         self.assertEqual(
             1, len(writes),
@@ -930,8 +930,9 @@ class TheCallersNameTheColumnToo(unittest.TestCase):
         import ast
 
         offenders = []
-        panel_dir = os.path.join(PACKAGE, "panel")
-        for name in sorted(os.listdir(panel_dir)):
+        for panel_dir, name in sorted((os.path.join(PACKAGE, folder), name)
+                                      for folder in ("panel", "pane", "sections")
+                                      for name in os.listdir(os.path.join(PACKAGE, folder))):
             if not name.endswith(".py"):
                 continue
             with open(os.path.join(panel_dir, name),
@@ -968,12 +969,12 @@ class AColumnIsShownONLYIfTheModelCanFillIt(unittest.TestCase):
 
     def _activate(self, key):
         """The table's column state is the active section's, so activate the one under test."""
-        kept = self.panel.current_section
+        kept = self.panel.pane.current_section
         if kept != key:
             self.addCleanup(self.panel.section_tabs.setChecked, kept)
         self.panel.section_tabs.setChecked(key)
         QtWidgets.QApplication.processEvents()
-        self.assertEqual(key, self.panel.current_section,
+        self.assertEqual(key, self.panel.pane.current_section,
                          "the panel did not switch to %s" % key)
 
     def test_a_shown_column_is_one_the_model_fills(self):
@@ -981,7 +982,7 @@ class AColumnIsShownONLYIfTheModelCanFillIt(unittest.TestCase):
                                     ("material", "material_model"),
                                     ("gradient", "gradient_model")):
             self._activate(section)
-            model = getattr(self.panel, model_attr)
+            model = getattr(self.panel.pane, model_attr)
             for key in ("category", "tags", "license", "version", "open"):
                 column = grid_columns.KEYS.index(key)
                 can_fill = model._column_role(key) is not None
@@ -1090,11 +1091,11 @@ class TheListMatchesItsDesignFrame(unittest.TestCase):
     def setUp(self):
         panel = self.panel
         panel.section_tabs.setChecked("material")
-        panel.prefs.view_mode = "list"
+        panel.pane.prefs.view_mode = "list"
         panel.apply_view_mode()
         QtWidgets.QApplication.processEvents()
         self.addCleanup(panel.apply_view_mode)
-        self.addCleanup(setattr, panel.prefs, "view_mode", "grid")
+        self.addCleanup(setattr, panel.pane.prefs, "view_mode", "grid")
         self.px = theme.ui_px
         self.column = self._by_key("column")
         self.heading = self._by_key("heading")

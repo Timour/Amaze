@@ -1,4 +1,4 @@
-"""The online import: catalogue records into the library or the scene, for one panel."""
+"""The online import: catalogue records into the library or the scene, for one pane."""
 
 import contextlib
 import functools
@@ -12,16 +12,17 @@ from amaze.render import nodes
 
 
 class OnlineImport:
-    """One panel's online import commands; the panel holds it as `online_import`."""
+    """One pane's online import commands; the pane holds it as `online_import`."""
 
-    def __init__(self, panel) -> None:
-        self.panel = panel
+    def __init__(self, pane) -> None:
+        self.pane = pane
+        self.downloading = False    # a download import uses the bar: a late preview signal must not repaint it
 
     @contextlib.contextmanager
     def download_operation(self, records):
         """The interruptable operation around a multi-record import; yields progress_for(i, name)."""
         total = max(len(records), 1)
-        self.panel._online_download_active = True    # a late preview signal must not repaint the bar
+        self.downloading = True
         try:
             with hou.InterruptableOperation(    # type: ignore
                 messages.IMPORTING_ONLINE_MATERIALS, open_interrupt_dialog=True
@@ -34,7 +35,7 @@ class OnlineImport:
                     return on_progress
                 yield progress_for
         finally:
-            self.panel._online_download_active = False
+            self.downloading = False
 
     def import_records(self, records, renderer=renderers.INTERMEDIATE.key) -> None:
         """Import online records into the LIBRARY, built as `renderer` through the conversion engine."""
@@ -42,7 +43,7 @@ class OnlineImport:
             return
         total = len(records)
         failures, unlisted = [], []
-        before = {str(mat.mat_id) for mat in getattr(self.panel.material_model, "assets", ())}
+        before = {str(mat.mat_id) for mat in getattr(self.pane.material_model, "assets", ())}
         with self.download_operation(records) as progress_for:
             for i, rec in enumerate(records):
                 on_progress = progress_for(i, rec.title)
@@ -60,8 +61,8 @@ class OnlineImport:
                     failures.append("%s: %s" % (rec.title, reason))
                 elif isinstance(reason, library.ListNotSaved):
                     unlisted.append(str(reason))
-        if self.panel.material_model is not None:
-            self.panel.render_new_thumbnails(before)
+        if self.pane.material_model is not None:
+            self.pane.assets.render_new_thumbnails(before)
         ui = getattr(hou, "ui", None)
         if failures and ui is not None:    # ONE dialog for the batch, never one per record
             ui.displayMessage(
@@ -74,7 +75,7 @@ class OnlineImport:
                         renderer=renderers.INTERMEDIATE.key, render=True):
         """Download and save one online material as `renderer`, calling on_progress(0..1): (ok, reason)."""
         from amaze.core import matx_import
-        if record is None or not self.panel.material_model:
+        if record is None or not self.pane.material_model:
             return (False, messages.NO_LIBRARY_TO_IMPORT_INTO)
         source, resolution, error = self.source_for(record)
         if error:
@@ -82,30 +83,30 @@ class OnlineImport:
         if source is None:
             return (False, messages.ONLINE_SOURCE_UNKNOWN)
         if getattr(record, "kind", "") == "amazepkg":
-            return self.panel.package_import.import_record(
+            return self.pane.package_import.import_record(
                 record, source, restore=False, on_progress=on_progress)
         ok, reason = matx_import.import_record(    # NO layout pair: it ends in add_asset, an insert
-            record, source, resolution, self.panel.material_model, self.panel.prefs,
+            record, source, resolution, self.pane.material_model, self.pane.prefs,
             progress=on_progress, renderer=renderer,
-            save=functools.partial(material_actions.add_asset, self.panel.material_model),
+            save=functools.partial(material_actions.add_asset, self.pane.material_model),
             render=render,    # False: the caller renders its batch once
         )
         if not ok:
             return (False, reason or messages.ONLINE_IMPORT_FAILED)
-        self.panel.category_model.check_add_category(record.category)    # no relayout wrapper: it emits its own row-insert signals
-        self.panel.refresh_sidebar_categories()
+        self.pane.category_model.check_add_category(record.category)    # no relayout wrapper: it emits its own row-insert signals
+        self.pane.sidebar.refresh()
         return (True, library.ListNotSaved(reason) if reason else "")    # a reason: files saved, list entry not saved
 
     def source_for(self, record):
         """The record's source and the resolution to fetch it at: (source, resolution, error)."""
-        source = self.panel.matx_online_model.source_for(record)
+        source = self.pane.matx_online_model.source_for(record)
         if source is None:
             return (None, None, messages.ONLINE_SOURCE_UNKNOWN_NAMED % record.source)
         if not source.needs_download(record):    # ask the source; sources override it
             return (source, None, "")     # nothing to download
         if not source.picks_resolution(record):
             return (source, None, "")     # downloads, but picks no resolution
-        wanted = self.panel.prefs.matx_resolution
+        wanted = self.pane.prefs.matx_resolution
         available = source.resolutions(record)
         if not available:
             return (None, None,
@@ -138,7 +139,7 @@ class OnlineImport:
         ui = getattr(hou, "ui", None)
         with self.download_operation(records) as progress_for:
             with hou.undos.group("Amaze Import to Scene"):    # one undo step, the destination included
-                destination = nodes.karma_destination(self.panel.prefs)
+                destination = nodes.karma_destination(self.pane.prefs)
                 if destination is None:
                     if ui is not None:
                         ui.displayMessage(
@@ -155,7 +156,7 @@ class OnlineImport:
 
                     try:
                         builder, reason = matx_import.build_in_scene(
-                            rec, source, resolution, destination, self.panel.prefs,
+                            rec, source, resolution, destination, self.pane.prefs,
                             progress=on_progress, renderer=renderer,
                         )
                     except hou.OperationInterrupted:

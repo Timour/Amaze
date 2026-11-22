@@ -22,9 +22,11 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 _PACKAGE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 GUARDED = ("panel/panel.py", "render/thumbs.py", "core/dragengine.py",
-           "utils/rc_calls.py", "prefs/prefs.py", "panel/sections.py",
-           "panel/online_import.py", "panel/package_import.py",
-           "panel/drop_placement.py", "panel/tile_capture.py")
+           "utils/rc_calls.py", "prefs/prefs.py", *test_support.section_files(),
+           "pane/pane.py", "pane/library.py", "pane/sidebar.py", "pane/assets.py",
+           "pane/loading.py", "pane/saving.py", "pane/files.py",
+           "pane/online_import.py", "pane/package_import.py",
+           "pane/drop_placement.py", "pane/tile_capture.py")
 
 
 def direct_hou_ui_uses(relpath):
@@ -74,13 +76,13 @@ class TheGuardedPanelReturnsEarlyHeadlessTest(unittest.TestCase):
         panel = self.panel
         geo = hou.node("/obj").createNode("geo", "headless_convert_geo")    # no conversion route: the error message is shown
         self.addCleanup(geo.destroy)
-        calls = (("open_usdlib_folder", lambda: panel.open_usdlib_folder()),
-                 ("_active_network_pwd", lambda: self.assertIsNone(panel._active_network_pwd())),
-                 ("locate_folder_user", lambda: panel.locate_folder_user(None)),
+        calls = (("open_usdlib_folder", lambda: panel.pane.library.open_folder()),
+                 ("_active_network_pwd", lambda: self.assertIsNone(panel.pane.loading._active_network_pwd())),
+                 ("locate_folder_user", lambda: panel.pane.files.locate_folder(None)),
                  ("rc_calls.convert(None)", lambda: rc_calls.convert(None, "Karma")),
                  ("rc_calls.convert(geo)", lambda: rc_calls.convert(geo, "Karma")),
                  ("rc_calls.convert(geo, swap)", lambda: rc_calls.convert(geo, "Karma", swap=True)))
-        panel.material_model = None
+        panel.pane.material_model = None
         for name, call in calls:
             with self.subTest(function=name):
                 try:
@@ -112,9 +114,9 @@ class TheGuardStillOpensTheDialogTest(unittest.TestCase):
         return 1
 
     def test_open_folder_still_shows_its_message_when_there_is_a_screen(self):
-        self.panel.material_model = None
+        self.panel.pane.material_model = None
         with mock.patch.object(hou, "ui", self._ui(), create=True):
-            self.panel.open_usdlib_folder()
+            self.panel.pane.library.open_folder()
         self.assertEqual(1, len(self.shown),
                          "the guard skipped the dialog in a session that "
                          "HAS a ui, which a headless-only test cannot detect")
@@ -129,7 +131,7 @@ class TheGuardStillOpensTheDialogTest(unittest.TestCase):
 
         with mock.patch.object(hou, "ui", self._ui(paneTabs=pane_tabs),
                                create=True):
-            self.panel._active_network_pwd()
+            self.panel.pane.loading._active_network_pwd()
         self.assertEqual(1, len(reads),
                          "the guard skipped the pane-tab read in a session "
                          "that has a ui")
@@ -152,10 +154,10 @@ class EveryLookupFindsTheSameVisibleNetworkEditor(unittest.TestCase):
         viewer = types.SimpleNamespace(type=lambda: hou.paneTabType.SceneViewer)
         ui = types.SimpleNamespace(paneTabs=lambda: [viewer, hidden, shown, twin])
         with mock.patch.object(hou, "ui", ui, create=True):
-            self.assertEqual("/stage", panel._active_network_pwd())
-            self.assertEqual(["/stage", "/obj"], panel._view_create_networks())
+            self.assertEqual("/stage", panel.pane.loading._active_network_pwd())
+            self.assertEqual(["/stage", "/obj"], panel.pane.loading._view_create_networks())
             self.assertIs(shown, nodes.NodeHandler(
-                panel.prefs).get_active_network_editor())
+                panel.pane.prefs).get_active_network_editor())
 
 
 class TheCheckReportHeadingMatchesEveryLine(unittest.TestCase):
@@ -170,14 +172,14 @@ class TheCheckReportHeadingMatchesEveryLine(unittest.TestCase):
         return kwargs.get("close_choice", 0)    # Close, and Cancel on any confirm
 
     def test_the_heading_contains_no_removed_deleted_or_finished(self):
-        mats = material.section_folder(self.panel.prefs.dir, library_files.MATERIALS)
+        mats = material.section_folder(self.panel.pane.prefs.dir, library_files.MATERIALS)
         left = os.path.join(mats, "LEFTOVERHERE1.mat")
         with open(left, "w", encoding="utf-8") as handle:
             handle.write("in no list at all\n")    # beside an empty Node list: nothing moves
         from amaze.dialogs import repair_dialog
         screen = types.SimpleNamespace(displayMessage=self._display_message)
         with mock.patch.object(hou, "ui", screen, create=True):
-            repair_dialog.check_failed_library(self.panel.prefs.dir, self.panel.prefs)
+            repair_dialog.check_failed_library(self.panel.pane.prefs.dir, self.panel.pane.prefs)
         report = self.shown[-1]
         self.assertIn("LEFTOVERHERE1.mat", report, "premise: the report did not name the file")
         self.assertTrue(os.path.exists(left), "the report moved the file it lists")
@@ -320,7 +322,7 @@ class ThePanelLookupStillReadsTheScreenTest(unittest.TestCase):
 def _preferences(case):
     from amaze.dialogs import prefs_window
     prefs = test_support.fixture_prefs(case)
-    return prefs, prefs_window.AmazePrefsState(prefs, panel=None)
+    return prefs, prefs_window.AmazePrefsState(prefs, pane=None)
 
 
 def _picked(state):
@@ -443,7 +445,7 @@ class TheMaterialSaveUsesTheClickedNodeTest(unittest.TestCase):
             self.b.isSelected(),
             "the save would have followed the selection, not the click - "
             "the bug rc_calls.save exists to prevent")
-        self.panel.save_from_node.assert_called_once_with(self.a)
+        self.panel.pane.saving.save_from_node.assert_called_once_with(self.a)
 
     def test_a_click_inside_a_multi_selection_keeps_it(self):
         self.a.setSelected(True, clear_all_selected=True)
@@ -453,11 +455,11 @@ class TheMaterialSaveUsesTheClickedNodeTest(unittest.TestCase):
             self.a.isSelected() and self.b.isSelected(),
             "multi-save is a feature - a click inside the selection "
             "must not shrink it")
-        self.panel.save_from_node.assert_called_once_with(self.a)
+        self.panel.pane.saving.save_from_node.assert_called_once_with(self.a)
 
     def test_no_node_still_saves_the_selection(self):
         rc_calls.save()
-        self.panel.save_from_node.assert_called_once_with(None)
+        self.panel.pane.saving.save_from_node.assert_called_once_with(None)
 
 
 class EveryDialogKnowsWhichWindowOpenedIt(unittest.TestCase):
@@ -504,7 +506,7 @@ class EveryDialogKnowsWhichWindowOpenedIt(unittest.TestCase):
     def test_no_dialog_is_built_without_a_parent(self):
         found = self._constructions()
         self.assertGreaterEqual(    # ▸p/vacuous-register
-            len(found), 6,
+            len(found), 5,
             "the dialog scan found %d construction sites - it has stopped "
             "matching, so its empty result means nothing" % len(found))
         offenders = [

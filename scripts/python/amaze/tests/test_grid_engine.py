@@ -202,7 +202,7 @@ class ASavedAssetHoldsItsSortedRow(unittest.TestCase):
 
     def test_the_returned_row_holds_the_record(self):
         from amaze.core import material
-        model = self.panel.code_model
+        model = self.panel.pane.code_model
         self.assertTrue(model.rowCount(), "premise: the fixture has snippets to sort among")
         record = material.Material()
         record.set_data("!first by name", "", "", False, "VEX")

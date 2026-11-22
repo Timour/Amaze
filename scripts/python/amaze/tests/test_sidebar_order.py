@@ -80,8 +80,8 @@ class TheSortActionRestoresTheCurrentSidebarRow(unittest.TestCase):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
     def _section(self):
-        section = self.panel.sections["material"]
-        source = self.panel.category_sorted_model.sourceModel()
+        section = self.panel.pane.sections["material"]
+        source = self.panel.pane.category_sorted_model.sourceModel()
         self.assertIsNotNone(source, "no Categories behind the sidebar")
         return section, source
 
@@ -109,7 +109,7 @@ class TheSortActionRestoresTheCurrentSidebarRow(unittest.TestCase):
         cat_list.selectionModel().select(
             standing,
             QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
-        self.panel.update_selected_cat()    # as a click does: the selected row sets the grid's filter
+        self.panel.pane.sidebar.show_row()    # as a click does: the selected row sets the grid's filter
 
         section.menu_sort_categories((), None)
 
@@ -129,20 +129,20 @@ class DeletingTheLastOfACategorySelectsAll(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
-        cls.panel._on_tab_toggled("material", True)
+        cls.panel.pane.choose_tab("material")
 
     def test_the_sidebar_selects_all_and_the_grid_shows_everything(self):
         panel = self.panel
-        section = panel.sections["material"]
-        proxy = panel.category_sorted_model
+        section = panel.pane.sections["material"]
+        proxy = panel.pane.category_sorted_model
         source = proxy.sourceModel()
         source.set_renderer_filter("karma")    # empty categories hide only under a renderer filter
         proxy.hide_empty = True
-        panel.refresh_sidebar_categories()
+        panel.pane.sidebar.refresh()
         self.assertTrue(
-            panel._select_category("Karma_Mats"),
+            panel.pane.sidebar.select_key("Karma_Mats"),
             "the fixture sidebar has no Karma_Mats row to select")
-        model = panel.material_model
+        model = panel.pane.material_model
         rows = [model.index(row, 0) for row, asset in enumerate(model.assets)
                 if "Karma_Mats" in list(asset.categories)]
         self.assertEqual(2, len(rows), "the fixture's Karma_Mats holds two")
@@ -159,7 +159,7 @@ class DeletingTheLastOfACategorySelectsAll(unittest.TestCase):
         self.assertEqual(
             "All", current.data(),
             "the sidebar did not move to All after its category was hidden")
-        stored = getattr(panel.material_sorted_model, "_filters", {})
+        stored = getattr(panel.pane.material_sorted_model, "_filters", {})
         self.assertNotIn(
             model.CategoryRole, stored,
             "the grid is still filtered on the category that was hidden")
@@ -262,7 +262,7 @@ class SidebarShowsStoredOrderTest(unittest.TestCase):
 
 
 class PanelWiresNoSidebarSortTest(unittest.TestCase):
-    """Source-derived: the four sidebar proxies are built UNSORTED in panel.py."""
+    """Source-derived: the four sidebar proxies are built UNSORTED in the pane's library setup."""
 
     SIDEBAR_PROXIES = (
         "category_sorted_model",
@@ -274,7 +274,7 @@ class PanelWiresNoSidebarSortTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        with open(os.path.join(root, "panel", "panel.py"),
+        with open(os.path.join(root, "pane", "library.py"),
                   encoding="utf-8") as handle:
             cls.panel_source = handle.read()
         # A call wrapped over lines is the same call: the searches ignore whitespace.
@@ -283,7 +283,7 @@ class PanelWiresNoSidebarSortTest(unittest.TestCase):
     def test_no_sidebar_proxy_is_sorted_or_sort_roled(self):
         for attr in self.SIDEBAR_PROXIES:
             for call in (".sort(", ".setSortRole(", ".setSortCaseSensitivity("):
-                needle = "self.%s%s" % (attr, call)
+                needle = "pane.%s%s" % (attr, call)
                 self.assertNotIn(
                     needle, self.flat_source,
                     "%s - the sidebar shows STORED order; sorting it "
@@ -293,7 +293,7 @@ class PanelWiresNoSidebarSortTest(unittest.TestCase):
         """Every sidebar, Color included, is built by `_sidebar_proxy`, which never sorts."""
         for attr in self.SIDEBAR_PROXIES:
             self.assertIn(
-                "self.%s=self._sidebar_proxy(" % attr, self.flat_source,
+                "pane.%s=self._sidebar_proxy(" % attr, self.flat_source,
                 "%s does not use the shared sidebar proxy - one section built "
                 "differently is how the sections came to differ before" % attr)
         start = self.panel_source.index("def _sidebar_proxy(")
@@ -304,7 +304,7 @@ class PanelWiresNoSidebarSortTest(unittest.TestCase):
 
     def test_the_save_dialog_dropdown_keeps_its_sort(self):
         """Alphabetical by the label a row shows, sorted only in `category_names_from`."""
-        from amaze.panel.panel import AmazePanel
+        from amaze.pane import sidebar as pane_sidebar
 
         class _Stored:    # the three calls `category_names_from` makes on a Categories model
             def __init__(self, names):
@@ -321,16 +321,16 @@ class PanelWiresNoSidebarSortTest(unittest.TestCase):
 
         self.assertEqual(
             ["Karma_Mats", "usds", "_WIP"],
-            AmazePanel.category_names_from(
+            pane_sidebar.Sidebar.category_names_from(
                 _Stored(["_All", "usds", "_WIP", "Karma_Mats"])),
             "the dropdown is not alphabetical by label - `_WIP` reads "
             "WIP and sorts there - or it offers All as a category")
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        with open(os.path.join(root, "panel", "sections.py"),
+        with open(os.path.join(root, "sections", "base.py"),
                   encoding="utf-8") as handle:
             sections_flat = "".join(handle.read().split())
         self.assertIn(    # the three asset sections share one body over their own categories
-            "returnpanel.category_names_from(st.categories),", sections_flat,
+            "returnpane.sidebar.category_names_from(st.categories),", sections_flat,
             "the asset sections' list no longer comes straight from "
             "`category_names_from`")
 
@@ -577,16 +577,16 @@ class FolderOrderTest(unittest.TestCase):
 
     def test_the_file_menu_action_sorts_and_saves_once(self):
         from amaze.core import file_library, locations
-        from amaze.panel import sections
+        from amaze.sections import file as file_section
         base = self._base()
         two, one = (os.path.join(base, n) for n in ("2", "1"))
         prefs = self._prefs([two, one])
         model = file_library.FileFolders(prefs)
-        section = sections.FileSection.__new__(sections.FileSection)    # the menu action alone, with no panel
-        with mock.patch.object(sections.FileSection, "_p", lambda _s, _name: model), \
-                mock.patch.object(sections.FileSection, "shown_sidebar_key", lambda _s: ""), \
-                mock.patch.object(sections.FileSection, "select_sidebar_key") as stand, \
-                mock.patch.object(sections.FileSection, "panel", mock.Mock(prefs=prefs), create=True), \
+        section = file_section.FileSection.__new__(file_section.FileSection)    # the menu action alone, with no panel
+        with mock.patch.object(file_section.FileSection, "_p", lambda _s, _name: model), \
+                mock.patch.object(file_section.FileSection, "shown_sidebar_key", lambda _s: ""), \
+                mock.patch.object(file_section.FileSection, "select_sidebar_key") as stand, \
+                mock.patch.object(file_section.FileSection, "pane", mock.Mock(prefs=prefs), create=True), \
                 mock.patch.object(locations, "commit_registered_order") as commit:
             section.menu_sort_locations([], None)
             commit.assert_called_once()
@@ -607,8 +607,8 @@ class EverySidebarSourceMovesCategories(unittest.TestCase):
         """Checked for every context the panel built, through the lookup the reorder uses."""
         panel = self.panel
         sourced = []
-        for key, context in dict(panel.sections, online=panel.online_context).items():
-            listed = getattr(panel, context.sidebar_attr, None)
+        for key, context in dict(panel.pane.sections, online=panel.pane.online_context).items():
+            listed = getattr(panel.pane, context.sidebar_attr, None)
             source = getattr(listed, "sourceModel", lambda: None)()
             if source is None:
                 continue

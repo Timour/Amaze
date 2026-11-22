@@ -18,7 +18,7 @@ sys.path.insert(
 
 from amaze.actions import nodes as node_actions  # noqa: E402
 from amaze.dialogs import code_dialog, save_dialog  # noqa: E402
-from amaze.panel import sections  # noqa: E402
+from amaze import sections  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
 
@@ -86,7 +86,7 @@ class SaveTargetsOfferOnlySectionsThatAcceptTheNode(unittest.TestCase):
                  {"material"}, {"gradient", "code"}),
                 ("an empty wrangle", wrangle_with_a_blank_snippet, set(), {"code"})):
             with self.subTest(why):
-                keys = set(self.panel._save_targets(nodes()))
+                keys = set(self.panel.pane.saving._save_targets(nodes()))
                 self.assertEqual(set(), offered - keys,
                                  "%s is not offered these" % why)
                 self.assertEqual(set(), refused & keys,
@@ -156,22 +156,22 @@ class TheSaveIsWrittenToTheChosenSection(unittest.TestCase):
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
-        self.panel.prefs.render_on_import = 0
+        self.panel.pane.prefs.render_on_import = 0
 
     def test_a_material_saved_to_node_imports_back_as_a_vop_network(self):
         node = _material(self, "save_to_node")
-        before = self.panel.cop_model.rowCount()
-        held = test_support.asset_ids(self.panel.cop_model)
+        before = self.panel.pane.cop_model.rowCount()
+        held = test_support.asset_ids(self.panel.pane.cop_model)
         with _choosing("cop"):
-            self.panel._save_new([node], "material", node)
-        self.assertEqual(before + 1, self.panel.cop_model.rowCount(),
+            self.panel.pane.saving._save_new([node], "material", node)
+        self.assertEqual(before + 1, self.panel.pane.cop_model.rowCount(),
                          "the save did not add a row to Node")
-        asset, = test_support.arrived(self.panel.cop_model, held)
+        asset, = test_support.arrived(self.panel.pane.cop_model, held)
         self.assertEqual("VOP", asset.renderer)
-        index = self.panel.cop_model.index(
-            self.panel.cop_model.find_asset_row_by_id(asset.mat_id), 0)
+        index = self.panel.pane.cop_model.index(
+            self.panel.pane.cop_model.find_asset_row_by_id(asset.mat_id), 0)
         ok, reason, created = node_actions.import_asset_to_scene(
-            self.panel.cop_model, index, context_node=hou.node("/stage"))
+            self.panel.pane.cop_model, index, context_node=hou.node("/stage"))
         for made in created:
             self.addCleanup(made.destroy)
         self.assertTrue(ok, reason)
@@ -181,12 +181,12 @@ class TheSaveIsWrittenToTheChosenSection(unittest.TestCase):
 
     def test_a_wrangle_saved_as_code_keeps_the_chosen_language(self):
         wrangle = _wrangle(self)
-        before = self.panel.code_model.rowCount()
-        held = test_support.asset_ids(self.panel.code_model)
+        before = self.panel.pane.code_model.rowCount()
+        held = test_support.asset_ids(self.panel.pane.code_model)
         with _choosing("code", language="Python"):
-            self.panel._save_new([wrangle], "code", wrangle)
-        self.assertEqual(before + 1, self.panel.code_model.rowCount())
-        snippet, = test_support.arrived(self.panel.code_model, held)
+            self.panel.pane.saving._save_new([wrangle], "code", wrangle)
+        self.assertEqual(before + 1, self.panel.pane.code_model.rowCount())
+        snippet, = test_support.arrived(self.panel.pane.code_model, held)
         self.assertEqual("Python", snippet.renderer)    # a snippet's language is stored in the renderer field
         self.assertIn("@Cd = 1;", snippet.code)
 
@@ -197,16 +197,16 @@ class ASaveKeepsTheArtistsSelection(unittest.TestCase):
     def setUp(self):
         test_support.pin_env(self, "OCIO", "/dev/null")
         self.panel = test_support.fixture_panel(self)
-        self.panel.prefs.render_on_import = 0
+        self.panel.pane.prefs.render_on_import = 0
 
     def test_the_saved_node_is_still_the_selection(self):
         node = _material(self, "save_selected")
         hou.clearAllSelected()
         node.setSelected(True)
-        before = self.panel.material_model.rowCount()
+        before = self.panel.pane.material_model.rowCount()
         with _choosing("material"):
-            self.panel._save_new([node], "material", node)
-        self.assertEqual(before + 1, self.panel.material_model.rowCount(),
+            self.panel.pane.saving._save_new([node], "material", node)
+        self.assertEqual(before + 1, self.panel.pane.material_model.rowCount(),
                          "premise: the material did not save")
         self.assertEqual(
             [node], list(hou.selectedNodes()),
@@ -231,7 +231,7 @@ class ADroppedNodeIsSavedAtTheTopOfTheEventLoop(unittest.TestCase):
         event.source.return_value = None    # a drag from a network editor, not from the panel
         event.mimeData.return_value = mime
         saved = []
-        with mock.patch.object(self.panel, "save_from_node",
+        with mock.patch.object(self.panel.pane.saving, "save_from_node",
                                lambda dropped, **_kw: saved.append(dropped.path())):
             target.dropEvent(event)
             self.assertEqual([], saved, "the drop saved inside the release handler")
@@ -260,7 +260,7 @@ class ADroppedNodeIsSavedAtTheTopOfTheEventLoop(unittest.TestCase):
         hou.undos.clear()
         self.addCleanup(hou.undos.clear)
         routed = []
-        with mock.patch.object(self.panel, "save_from_node",
+        with mock.patch.object(self.panel.pane.saving, "save_from_node",
                                lambda dropped, **_kw: routed.append(dropped)):
             target.dropEvent(event)
             test_support.settle(lambda: routed)    # the deferred save runs while patched
@@ -345,7 +345,7 @@ class AnUnderscoredCategoryKeepsItsStoredName(unittest.TestCase):
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
-        self.categories = self.panel.code_category_model
+        self.categories = self.panel.pane.code_category_model
         self.categories.check_add_category("_WIP")
         self.panel.section_tabs.setChecked("code")
         QtWidgets.QApplication.processEvents()
@@ -365,10 +365,10 @@ class AnUnderscoredCategoryKeepsItsStoredName(unittest.TestCase):
             return 1
 
         wrangle = _wrangle(self)
-        held = test_support.asset_ids(self.panel.code_model)
+        held = test_support.asset_ids(self.panel.pane.code_model)
         with mock.patch.object(save_dialog.SaveDialog, "exec", fake_exec):
-            self.panel._save_new([wrangle], "code", wrangle)
-        seen["saved"], = test_support.arrived(self.panel.code_model, held)
+            self.panel.pane.saving._save_new([wrangle], "code", wrangle)
+        seen["saved"], = test_support.arrived(self.panel.pane.code_model, held)
         return seen
 
     def _assert_filed_under_the_stored_name(self, asset):
@@ -386,7 +386,7 @@ class AnUnderscoredCategoryKeepsItsStoredName(unittest.TestCase):
         self._assert_filed_under_the_stored_name(seen["saved"])
 
     def test_a_selected_WIP_row_pre_selects_it(self):
-        self.assertTrue(self.panel._select_category("_WIP"),
+        self.assertTrue(self.panel.pane.sidebar.select_key("_WIP"),
                         "premise: no row shows WIP")
         seen = self._save()
         self.assertEqual("WIP", seen["shown"],
@@ -394,7 +394,7 @@ class AnUnderscoredCategoryKeepsItsStoredName(unittest.TestCase):
         self._assert_filed_under_the_stored_name(seen["saved"])
 
     def test_editing_a_WIP_snippet_leaves_it_there(self):
-        code = self.panel.code_model
+        code = self.panel.pane.code_model
         row = next(i for i, asset in enumerate(code.assets)
                    if str(asset.code or "").strip())
         self.assertTrue(code.set_tile_category(row, "_WIP"))
@@ -406,7 +406,7 @@ class AnUnderscoredCategoryKeepsItsStoredName(unittest.TestCase):
             return 0
 
         with mock.patch.object(code_dialog.CodeDialog, "exec", accepting):
-            self.panel.sections["code"]._edit_code_row(row)
+            self.panel.pane.sections["code"]._edit_code_row(row)
         self.assertEqual("WIP", seen["shown"],
                          "the editor opened the snippet on another row")
         self._assert_filed_under_the_stored_name(code.assets[row])
@@ -419,7 +419,7 @@ class ACategoryHoldingACommaIsOneCategory(unittest.TestCase):
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
-        self.categories = self.panel.code_category_model
+        self.categories = self.panel.pane.code_category_model
         self.categories.check_add_category("Placeholder")
         self.categories.rename_category("Placeholder", self.NAME)    # the rename keeps a comma
         self.panel.section_tabs.setChecked("code")
@@ -433,10 +433,10 @@ class ACategoryHoldingACommaIsOneCategory(unittest.TestCase):
             return 1
 
         wrangle = _wrangle(self)
-        held = test_support.asset_ids(self.panel.code_model)
+        held = test_support.asset_ids(self.panel.pane.code_model)
         with mock.patch.object(save_dialog.SaveDialog, "exec", fake_exec):
-            self.panel._save_new([wrangle], "code", wrangle)
-        saved, = test_support.arrived(self.panel.code_model, held)
+            self.panel.pane.saving._save_new([wrangle], "code", wrangle)
+        saved, = test_support.arrived(self.panel.pane.code_model, held)
         self.assertEqual(([self.NAME], self.before),
                          (list(saved.categories), list(self.categories._categories)),
                          "the save split the category at its comma")
@@ -451,17 +451,17 @@ class ASaveOpensOnTheSidebarRowOnlyInItsOwnSection(unittest.TestCase):
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
         for key in self.ASSET_KEYS:
-            self.panel.sections[key].stack().categories.check_add_category(self.SHARED)
+            self.panel.pane.sections[key].stack().categories.check_add_category(self.SHARED)
 
     def _offered(self):
-        return {key: self.panel.sections[key].save_categories() for key in self.ASSET_KEYS}
+        return {key: self.panel.pane.sections[key].save_categories() for key in self.ASSET_KEYS}
 
     def test_only_the_section_showing_its_row_pre_selects_it(self):
         for standing in self.ASSET_KEYS:
             with self.subTest(standing_in=standing):
                 self.panel.section_tabs.setChecked(standing)
                 QtWidgets.QApplication.processEvents()
-                self.assertTrue(self.panel._select_category(self.SHARED), "premise: no row")
+                self.assertTrue(self.panel.pane.sidebar.select_key(self.SHARED), "premise: no row")
                 for key, (names, current) in self._offered().items():
                     self.assertIn(self.SHARED, names, "%s does not list its own category" % key)
                     self.assertEqual(self.SHARED if key == standing else "", current,
@@ -471,14 +471,14 @@ class ASaveOpensOnTheSidebarRowOnlyInItsOwnSection(unittest.TestCase):
         from amaze.core import matx_sources
         self.panel.section_tabs.setChecked("cop")
         QtWidgets.QApplication.processEvents()
-        self.panel.enter_online_mode()
+        self.panel.pane.enter_online()
         QtWidgets.QApplication.processEvents()
-        online = self.panel.matx_online_model
+        online = self.panel.pane.matx_online_model
         self.addCleanup(setattr, online, "_all", online._all)
         online._all = [matx_sources.MatxRecord(source=online._source_filter, uid="shared-probe",
                                                title="Probe", category=self.SHARED)]
-        self.panel.matx_source_model.refresh()
-        self.assertTrue(self.panel._select_category(self.SHARED), "premise: no online row")
+        self.panel.pane.matx_source_model.refresh()
+        self.assertTrue(self.panel.pane.sidebar.select_key(self.SHARED), "premise: no online row")
         for key, (_names, current) in self._offered().items():
             self.assertEqual("", current, "a %s save opened on an online category" % key)
 

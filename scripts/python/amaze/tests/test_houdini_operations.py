@@ -21,8 +21,9 @@ import hou  # noqa: E402
 
 from amaze import messages  # noqa: E402
 from amaze.panel import panel as panel_mod  # noqa: E402
-from amaze.panel import sections  # noqa: E402
-from amaze.panel import online_import, package_import  # noqa: E402
+from amaze.sections import material as material_section  # noqa: E402
+from amaze.pane import online_import, package_import  # noqa: E402
+from amaze.pane import saving as pane_saving  # noqa: E402
 from amaze.tests import test_support  # noqa: E402 - redirects the log
 
 
@@ -102,9 +103,9 @@ class TheOnlineImportRunsInsideHoudinisOperation(_OnThePanel):
             return True, ""
 
         with mock.patch.object(hou, "InterruptableOperation", operation), \
-                mock.patch.object(self.panel.online_import, "import_material", side_effect=one), \
-                mock.patch.object(self.panel, "render_new_thumbnails"):
-            self.panel.online_import.import_records([_record(t) for t in titles])
+                mock.patch.object(self.panel.pane.online_import, "import_material", side_effect=one), \
+                mock.patch.object(self.panel.pane.assets, "render_new_thumbnails"):
+            self.panel.pane.online_import.import_records([_record(t) for t in titles])
         return imported
 
     def test_the_batch_reports_each_record_by_name_and_share(self):
@@ -140,10 +141,10 @@ class TheSceneImportRunsInsideHoudinisOperation(_OnThePanel):
 
         with mock.patch.object(hou, "InterruptableOperation", _EscOnTheSecondReport), \
                 mock.patch.object(nodes, "karma_destination", return_value=hou.node("/mat")), \
-                mock.patch.object(self.panel.online_import, "source_for",
+                mock.patch.object(self.panel.pane.online_import, "source_for",
                                   return_value=("source", None, "")), \
                 mock.patch.object(matx_import, "build_in_scene", side_effect=build):
-            self.panel.online_import.import_records_to_scene([_record("Bricks"), _record("Moss")])
+            self.panel.pane.online_import.import_records_to_scene([_record("Bricks"), _record("Moss")])
         self.assertEqual(["Bricks"], built,
                          "the Esc did not stop the scene import after the current record")
         self.assertIn(messages.ONLINE_IMPORT_STOPPED % (1, 2), self.status_lines[-1])
@@ -166,10 +167,10 @@ class TheMultiMaterialSaveRunsInsideHoudinisOperation(_OnThePanel):
         dialog = types.SimpleNamespace(categories="", tags="", fav=False, name="")
         with mock.patch.object(hou, "InterruptableOperation", operation), \
                 mock.patch.object(panel_mod.material_actions, "add_asset", side_effect=add), \
-                mock.patch.object(self.panel, "enable_renderer_on_add"), \
-                mock.patch.object(self.panel, "update_renderer_toggles"), \
-                mock.patch.object(self.panel, "refresh_sidebar_categories"):
-            self.panel.sections["material"].commit_save(picked, picked[0], dialog)
+                mock.patch.object(self.panel.pane.saving, "enable_renderer_on_add"), \
+                mock.patch.object(self.panel.pane, "refresh_filter"), \
+                mock.patch.object(self.panel.pane.sidebar, "refresh"):
+            self.panel.pane.sections["material"].commit_save(picked, picked[0], dialog)
         return saved
 
     def test_each_material_is_reported_by_name_before_its_save(self):
@@ -227,7 +228,7 @@ class AnEscInsideOneRecordReachesTheBatch(_OnThePanel):
                                                   "entry": {"type": "asset"}})
         with self.assertRaises(hou.OperationInterrupted,
                                msg="the Esc in a store package download became a failed tile"):
-            self.panel.package_import.import_record(record, self._Interrupting(), restore=True)
+            self.panel.pane.package_import.import_record(record, self._Interrupting(), restore=True)
 
 
 class ThePanelCallsNoProcessEventsForImportsAndSaves(unittest.TestCase):
@@ -238,12 +239,12 @@ class ThePanelCallsNoProcessEventsForImportsAndSaves(unittest.TestCase):
                             (online_import.OnlineImport, "import_records"),
                             (package_import.PackageImport, "restore"),
                             (online_import.OnlineImport, "import_records_to_scene"),
-                            (panel_mod.AmazePanel, "save_asset")):
+                            (pane_saving.Saving, "save_asset")):
             source = inspect.getsource(getattr(owner, name))
             self.assertNotIn("processEvents", source,
                              owner.__name__ + "." + name + " processes events itself")
         self.assertNotIn("processEvents",
-                         inspect.getsource(sections.MaterialSection.commit_save),
+                         inspect.getsource(material_section.MaterialSection.commit_save),
                          "MaterialSection.commit_save processes events itself")
 
 

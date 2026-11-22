@@ -96,20 +96,20 @@ class OpeningALibraryPutsItFirst(unittest.TestCase):
         self.panel = test_support.fixture_panel(self)
 
     def test_the_open_library_is_listed_first(self):
-        self.assertEqual(self.panel.prefs.dir, self.panel.prefs.libraries[0])
+        self.assertEqual(self.panel.pane.prefs.dir, self.panel.pane.prefs.libraries[0])
 
     def test_a_switch_puts_the_new_library_first(self):
-        first = self.panel.prefs.dir
+        first = self.panel.pane.prefs.dir
         other = test_support.fresh_library(self)
-        self.panel.prefs.dir = other
-        path = os.path.join(self.panel.prefs.path, "settings.json")
+        self.panel.pane.prefs.dir = other
+        path = os.path.join(self.panel.pane.prefs.path, "settings.json")
         with open(path, encoding="utf-8") as handle:
             data = json.load(handle)
         data.update(directory=other, libraries=[first])    # the fixture panel does not save
         with open(path, "w", encoding="utf-8") as handle:
             json.dump(data, handle)
-        self.assertTrue(self.panel.open_library())
-        self.assertEqual([other, first], self.panel.prefs.libraries[:2])
+        self.assertTrue(self.panel.pane.library.open_library())
+        self.assertEqual([other, first], self.panel.pane.prefs.libraries[:2])
 
 
 class ManageLibrariesRemovesThroughTheState(unittest.TestCase):

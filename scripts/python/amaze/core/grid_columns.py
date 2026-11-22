@@ -27,3 +27,25 @@ def selected_rows(selection) -> list:
         return []
     return [index for index in selection.selectedIndexes()
             if index.column() == 0]
+
+
+def live_current_index(view):
+    """A view's or selection model's current index, rebuilt from its model, or None. ▸r/model-contracts"""
+    if view is None:
+        return None
+    model = view.model()
+    if model is None:
+        return None
+    index = view.currentIndex()
+    if not index.isValid():
+        return None
+    if index.model() is not model:   # it may come from a replaced model; never map it through the current proxy
+        return None
+    parent = index.parent()    # a tree row keeps its parent: the same row number elsewhere is another row
+    try:
+        rows = model.rowCount(parent)   # ROW ONLY: a list model's columnCount is private ▸r/model-contracts
+    except TypeError:
+        return None                  # another signature; "no selection" is the caller's safe fallback
+    if index.row() >= rows:
+        return None
+    return model.index(index.row(), 0, parent)   # COLUMN 0, not the clicked cell ▸r/row-selection

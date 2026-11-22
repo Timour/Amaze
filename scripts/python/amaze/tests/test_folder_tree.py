@@ -14,8 +14,8 @@ from PySide6 import QtCore, QtGui, QtTest, QtWidgets
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 from amaze import amazetheme  # noqa: E402
-from amaze.core import category, file_library, folders, locations, sidebar_model  # noqa: E402
-from amaze.helpers import hostos, theme, ui_helpers  # noqa: E402
+from amaze.core import category, file_library, folders, grid_columns, locations, sidebar_model  # noqa: E402
+from amaze.helpers import hostos, theme  # noqa: E402
 from amaze.panel import delegates, sidebar  # noqa: E402
 from amaze.tests import test_support  # noqa: E402 - arms the sandbox
 from amaze.tests.test_file_section import _Prefs  # noqa: E402
@@ -858,7 +858,7 @@ class TheFileTabBrowsesSubfolders(unittest.TestCase):
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
-        self.folders = self.panel.file_folders_model
+        self.folders = self.panel.pane.file_folders_model
         self.loc = self.folders.registered_at(self.folders._offset())
         for name in ("a_sub", "b_sub", "c_sub"):
             os.makedirs(os.path.join(self.loc, name), exist_ok=True)
@@ -878,27 +878,27 @@ class TheFileTabBrowsesSubfolders(unittest.TestCase):
         view = self.panel.cat_list
         view.selectionModel().setCurrentIndex(
             index, QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
-        self.panel.update_selected_cat()
+        self.panel.pane.sidebar.show_row()
         QtWidgets.QApplication.processEvents()
 
     def test_a_click_on_a_subfolder_browses_it(self):
         self._select_row(self.sub)
-        files = self.panel.file_files_model
+        files = self.panel.pane.file_files_model
         self.assertEqual(_child(self.loc, "c_sub"), files.browsing())
-        self.assertEqual(_child(self.loc, "c_sub"), self.panel.prefs.last_file_folder)
+        self.assertEqual(_child(self.loc, "c_sub"), self.panel.pane.prefs.last_file_folder)
 
     def test_a_subfolder_is_never_removed_moved_or_relocated_as_a_location(self):
-        section = self.panel.sections["file"]
+        section = self.panel.pane.sections["file"]
         self.assertFalse(self.folders.movable(self.sub), "a subfolder can be dragged")
         before = list(self.folders._folders())
         self._select_row(self.sub)
-        self.assertEqual([], self.panel.remove_file_folder_user(),
+        self.assertEqual([], self.panel.pane.files.remove_locations(),
                          "removing with a subfolder selected unregistered a location")
-        self.panel.locate_folder_user(self.folders)
+        self.panel.pane.files.locate_folder(self.folders)
         self.assertEqual(before, list(self.folders._folders()),
                          "Locate on a subfolder's row changed a location's path")
         self.assertEqual(self.folders.index_of(self.loc),
-                         sidebar.top_level(self.sub), "`top_level` of a subfolder is not its location's row")
+                         sidebar_model.top_level(self.sub), "`top_level` of a subfolder is not its location's row")
 
     def test_locate_and_add_on_a_folder_already_a_location_show_a_message(self):
         import hou
@@ -909,17 +909,17 @@ class TheFileTabBrowsesSubfolders(unittest.TestCase):
         ui = mock.Mock()
         ui.selectFile.return_value = second
         with mock.patch.object(hou, "ui", ui, create=True):
-            self.panel.locate_folder_user(self.folders)
+            self.panel.pane.files.locate_folder(self.folders)
             self.assertEqual(messages.LOCATION_ALREADY_ADDED, ui.displayMessage.call_args[0][0],
                              "a Locate onto a location showed a message other than `LOCATION_ALREADY_ADDED`")
             ui.displayMessage.reset_mock()
-            self.panel.add_file_folder_user()
+            self.panel.pane.files.add_location()
             self.assertTrue(ui.displayMessage.called, "adding a location twice showed no message")
             self.assertEqual(messages.LOCATION_ALREADY_ADDED, ui.displayMessage.call_args[0][0])
         self.assertEqual(before, list(self.folders._folders()))
 
     def test_a_subfolders_menu_greys_the_location_entries(self):
-        section = self.panel.sections["file"]
+        section = self.panel.pane.sections["file"]
         location = self.folders.index_of(self.loc)
         self.assertTrue(section.on_a_location([location], location), "premise: a location row")
         self.assertFalse(section.on_a_location([self.sub], self.sub),
@@ -932,10 +932,10 @@ class TheFileTabBrowsesSubfolders(unittest.TestCase):
     def test_the_file_tab_reopens_on_a_remembered_subfolder(self):
         sub = _child(self.loc, "b_sub")
         self.panel.section_tabs.setChecked("material")
-        self.panel.prefs.last_file_folder = sub
+        self.panel.pane.prefs.last_file_folder = sub
         self.panel.section_tabs.setChecked("file")
         QtWidgets.QApplication.processEvents()
-        self.assertEqual(sub, self.panel.file_files_model.browsing(),
+        self.assertEqual(sub, self.panel.pane.file_files_model.browsing(),
                          "the grid shows another folder")
         view, model = self.panel.cat_list, self.folders
         model.data(model.index_of(self.loc), COUNT)
@@ -945,7 +945,7 @@ class TheFileTabBrowsesSubfolders(unittest.TestCase):
     def test_the_live_current_index_keeps_its_parent(self):
         view = self.panel.cat_list
         view.setCurrentIndex(self.sub)
-        live = ui_helpers.live_current_index(view)
+        live = grid_columns.live_current_index(view)
         self.assertEqual(self.sub, live, "the live index lost the subfolder's parent")
 
 
@@ -1047,7 +1047,7 @@ class EverySectionsSidebarIsTheOneView(unittest.TestCase):
         self.addCleanup(panel.hide)
         steps = [(key, lambda key=key: panel.section_tabs.setChecked(key))
                  for key in test_support.ALL_SECTION_KEYS + ("material",)]
-        steps.append(("online", panel.enter_online_mode))
+        steps.append(("online", panel.pane.enter_online))
         first = None
         for name, show in steps:
             show()
@@ -1075,11 +1075,12 @@ class EverySectionsSidebarIsTheOneView(unittest.TestCase):
     def test_every_list_keys_each_row_and_finds_the_row_again_by_its_key(self):
         """Each row answers SIDEBAR_KEY_ROLE, "" on All; `index_of` gives that row back."""
         from amaze.core import matx_sources
-        from amaze.panel import sections
+        from amaze import sections
+        from amaze.sections import file as file_section, online as online_section, base as section_base
         panel = test_support.fixture_panel(self)
         steps = [(key, lambda key=key: panel.section_tabs.setChecked(key))
                  for key in test_support.ALL_SECTION_KEYS]
-        steps.append(("online", panel.enter_online_mode))
+        steps.append(("online", panel.pane.enter_online))
         for name, show in steps:
             show()
             test_support.pump_until(lambda: False, timeout=0.05)
@@ -1091,14 +1092,14 @@ class EverySectionsSidebarIsTheOneView(unittest.TestCase):
                     lambda: any(index.parent().isValid() for index in self._rows(model))),
                     "premise: the fixture location's subfolder never got a row")
             if name == "online":    # the suite blocks the network: one record gives the list a row
-                online = panel.matx_online_model
+                online = panel.pane.matx_online_model
                 previous = online._all
                 online._all = [matx_sources.MatxRecord(
                     source=online._source_filter, uid="key-probe", title="Key Probe",
                     category="Metal")]
                 self.addCleanup(setattr, online, "_all", previous)
                 model.refresh()
-            section = panel.active_section()
+            section = panel.pane.active_section()
             rows = list(self._rows(model))
             if name in ("material", "file", "online"):    # one of each list class has rows below All
                 self.assertGreater(len(rows), 1, "premise: the %s list has only All" % name)
@@ -1117,10 +1118,10 @@ class EverySectionsSidebarIsTheOneView(unittest.TestCase):
                         self.assertEqual(index.data(model.PathRole) or "",
                                          section.location_key(index),
                                          "a location action would act on a row that is no location")
-        classes = list(sections.SECTION_CLASSES) + [sections.OnlineContext]
+        classes = list(sections.SECTION_CLASSES) + [online_section.OnlineContext]
         for cls in classes:
             for klass in cls.__mro__:
-                if klass in (sections.Section, object):
+                if klass in (section_base.Section, object):
                     continue
                 for method in ("sidebar_key", "_row_keyed"):
                     self.assertNotIn(method, vars(klass),
@@ -1138,7 +1139,7 @@ class EverySidebarListAnswersTheReorder(unittest.TestCase):
         panel = test_support.fixture_panel(self)
         steps = [(key, lambda key=key: panel.section_tabs.setChecked(key))
                  for key in test_support.ALL_SECTION_KEYS]
-        steps.append(("online", panel.enter_online_mode))
+        steps.append(("online", panel.pane.enter_online))
         for name, show in steps:
             show()
             test_support.pump_until(lambda: False, timeout=0.05)
@@ -1153,8 +1154,9 @@ class EverySidebarListAnswersTheReorder(unittest.TestCase):
                                      "an online category row can be dragged")
 
     def test_no_section_defines_its_own_reorder(self):
-        from amaze.panel import sections
-        for cls in list(sections.SECTION_CLASSES) + [sections.OnlineContext]:
+        from amaze import sections
+        from amaze.sections import file as file_section, online as online_section, base as section_base
+        for cls in list(sections.SECTION_CLASSES) + [online_section.OnlineContext]:
             for klass in cls.__mro__:
                 if klass is object:
                     continue
@@ -1191,7 +1193,7 @@ class EverySidebarListAnswersTheReorder(unittest.TestCase):
 
     def test_in_file_a_location_moves_and_a_subfolder_the_scene_row_and_All_do_not(self):
         panel = test_support.fixture_panel(self)
-        model = panel.file_folders_model
+        model = panel.pane.file_folders_model
         loc = model.registered_at(model._offset())
         os.makedirs(os.path.join(loc, "a_sub"), exist_ok=True)
         second = test_support.fresh_files_folder(self)
@@ -1315,37 +1317,38 @@ class EverySidebarListIsOneTreeModel(unittest.TestCase):
 class EverySectionIsEnteredByOneActivate(unittest.TestCase):
     """Section holds `activate` and the colour methods once; each section keeps its entry order."""
 
-    ASSET_ORDER = ["setModel", "bind_grid_views", "set_conversion_bar_visible",
-                   "sync_list_columns", "select_default_sidebar_row"]
-    ORDER = {
-        "file": ["refresh_counts", "setModel", "bind_grid_views", "set_conversion_bar_visible",
-                 "sync_list_columns", "highlight", "update_selected_cat"],
-        "online": ["setModel", "bind_grid_views", "set_conversion_bar_visible", "reload",
-                   "sync_list_columns"],
+    ASSET_ORDER = ["setModel", "bind_grid_views", "sync_list_columns", "show_progress",
+                   "select_default_row"]
+    ORDER = {    # the views show the section's models, columns included, before its own hook runs
+        "file": ["refresh_counts", "setModel", "bind_grid_views", "sync_list_columns",
+                 "show_progress", "highlight", "show_row"],
+        "online": ["setModel", "bind_grid_views", "sync_list_columns", "show_progress", "reload"],
     }
 
     def test_no_section_defines_its_own_activate_or_colour_methods(self):
-        from amaze.panel import sections
-        for cls in list(sections.SECTION_CLASSES) + [sections.OnlineContext]:
+        from amaze import sections
+        from amaze.sections import file as file_section, online as online_section, base as section_base
+        for cls in list(sections.SECTION_CLASSES) + [online_section.OnlineContext]:
             for klass in cls.__mro__:
-                if klass in (sections.Section, object):
+                if klass in (section_base.Section, object):
                     continue
                 for method in ("activate", "sidebar_colour", "set_sidebar_colour"):
                     self.assertNotIn(method, vars(klass),
                                      "%s defines its own %s" % (klass.__name__, method))
                 if "select_sidebar_key" in vars(klass):
-                    self.assertIs(sections.FolderSection, klass,
+                    self.assertIs(file_section.FolderSection, klass,
                                   "%s selects a sidebar row its own way" % klass.__name__)
 
     @staticmethod
     def _recorded(panel, context) -> list:
         """The watched calls `context.activate()` makes itself, in order; calls inside them are not."""
         calls, depth = [], [0]
+        pane = panel.pane
         watched = ((panel.cat_list, "setModel"), (panel, "bind_grid_views"),
-                   (panel, "set_conversion_bar_visible"), (panel, "sync_list_columns"),
-                   (panel.file_folders_model, "refresh_counts"),
-                   (panel.matx_online_model, "reload"), (panel.cat_list, "highlight"),
-                   (panel, "select_default_sidebar_row"), (panel, "update_selected_cat"))
+                   (pane, "show_progress"), (panel, "sync_list_columns"),
+                   (pane.file_folders_model, "refresh_counts"),
+                   (pane.matx_online_model, "reload"), (pane.sidebar, "highlight"),
+                   (pane.sidebar, "select_default_row"), (pane.sidebar, "show_row"))
         with contextlib.ExitStack() as stack:
             for owner, name in watched:
                 def call(*args, _run=getattr(owner, name), _name=name, **kwargs):
@@ -1364,15 +1367,15 @@ class EverySectionIsEnteredByOneActivate(unittest.TestCase):
         panel = test_support.fixture_panel(self)
         steps = [(key, lambda key=key: panel.section_tabs.setChecked(key))
                  for key in test_support.ALL_SECTION_KEYS]
-        steps.append(("online", panel.enter_online_mode))
+        steps.append(("online", panel.pane.enter_online))
         for name, show in steps:
             show()
             test_support.pump_until(lambda: False, timeout=0.05)
-            context = panel.online_context if name == "online" else panel.sections[name]
+            context = panel.pane.online_context if name == "online" else panel.pane.sections[name]
             with self.subTest(section=name):
                 self.assertEqual(self.ORDER.get(name, self.ASSET_ORDER),
                                  self._recorded(panel, context))
-                self.assertIs(getattr(panel, context.sidebar_attr), panel.cat_list.model(),
+                self.assertIs(getattr(panel.pane, context.sidebar_attr), panel.cat_list.model(),
                               "the section did not put its own list in the sidebar")
 
 
@@ -1397,7 +1400,8 @@ class TheSidebarListStoresARowsColour(unittest.TestCase):
         self.assertNotIn("color", model._doc().table(category.SECTION)["Metal"])
 
     def test_the_folder_list_keeps_a_colour_in_the_location_record_and_none_on_a_subfolder(self):
-        from amaze.panel import sections
+        from amaze import sections
+        from amaze.sections import file as file_section, online as online_section, base as section_base
         model, prefs, roots = _model(self, {"A": {}})
         loc = roots[0]
         repainted = []
@@ -1413,8 +1417,8 @@ class TheSidebarListStoresARowsColour(unittest.TestCase):
             lambda: model.index_of(_child(loc, "A")).isValid()), "premise: the subfolder has no row")
         sub = model.index_of(_child(loc, "A"))
         self.assertEqual("", sub.data(category.SIDEBAR_COLOR_ROLE), "a subfolder paints a colour")
-        section = sections.FileSection.__new__(sections.FileSection)
-        with mock.patch.object(sections.FileSection, "_p", lambda _s, _name: model):
+        section = file_section.FileSection.__new__(file_section.FileSection)
+        with mock.patch.object(file_section.FileSection, "_p", lambda _s, _name: model):
             self.assertEqual("", section.colour_key(sub), "a subfolder row takes a colour")
             self.assertEqual(loc, section.colour_key(model.index_of(loc)))
         model.set_color(loc, "")
@@ -1422,7 +1426,8 @@ class TheSidebarListStoresARowsColour(unittest.TestCase):
 
     def test_sort_by_name_saves_through_the_lists_commit_order(self):
         """The sort and the drag reorder save a File order the same one way."""
-        from amaze.panel import sections
+        from amaze import sections
+        from amaze.sections import file as file_section, online as online_section, base as section_base
         prefs = test_support.fixture_prefs(self)
         for layout in ({}, {}):
             prefs.add_file_folder(_tree(self, layout))
@@ -1430,11 +1435,11 @@ class TheSidebarListStoresARowsColour(unittest.TestCase):
         roots = list(model._folders())
         prefs.set_file_folder_name(roots[0], "b")
         prefs.set_file_folder_name(roots[1], "a")
-        section = sections.FileSection.__new__(sections.FileSection)
-        with mock.patch.object(sections.FileSection, "_p", lambda _s, _name: model), \
-                mock.patch.object(sections.FileSection, "shown_sidebar_key", lambda _s: ""), \
-                mock.patch.object(sections.FileSection, "select_sidebar_key"), \
-                mock.patch.object(sections.FileSection, "panel", mock.Mock(prefs=prefs), create=True), \
+        section = file_section.FileSection.__new__(file_section.FileSection)
+        with mock.patch.object(file_section.FileSection, "_p", lambda _s, _name: model), \
+                mock.patch.object(file_section.FileSection, "shown_sidebar_key", lambda _s: ""), \
+                mock.patch.object(file_section.FileSection, "select_sidebar_key"), \
+                mock.patch.object(file_section.FileSection, "pane", mock.Mock(prefs=prefs), create=True), \
                 mock.patch.object(model, "commit_order") as commit:
             section.menu_sort_locations([], None)
         commit.assert_called_once_with()

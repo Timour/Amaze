@@ -97,8 +97,9 @@ class AUiSettingIsAppliedLikeTheOldDialog(unittest.TestCase):
         prefs = test_support.fixture_prefs(self)
         prefs.save()
         files = mock.Mock(preferences=prefs_mod.Prefs())    # the File model's own Prefs ▸p/one-model-set
-        panel = types.SimpleNamespace(file_files_model=files, serves=lambda _folder: True)
-        state = prefs_window.AmazePrefsState(prefs, panel)
+        pane = types.SimpleNamespace(file_files_model=files,
+                                     library=types.SimpleNamespace(serves=lambda _folder: True))
+        state = prefs_window.AmazePrefsState(prefs, pane)
         self.assertTrue(prefs.system_file_icons, "premise: on")
 
         state.setPref("system_file_icons", "0")    # what the row's switch sends
