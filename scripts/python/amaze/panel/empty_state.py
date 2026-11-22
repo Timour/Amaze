@@ -1,11 +1,10 @@
 """The empty grid page: which empty state applies, and its text; `grid.apply_grid_face` shows it."""
-from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtWidgets
 
 from amaze import amazetheme
 from amaze.helpers import theme
 from amaze.panel import grid
 
-EMPTY_SECTION = "nothing-yet"
 NO_MATCH = "nothing-matches"
 NO_FAVOURITES = "no-favourites"
 UNREACHABLE = "unreachable"
@@ -40,10 +39,6 @@ def verdict(panel) -> tuple:
 
     source = proxy.sourceModel() if hasattr(proxy, "sourceModel") else None
     total = source.rowCount() if source is not None else 0
-    section = panel.pane.active_section()
-    empty = section.shows_empty_state(source) if section is not None else not total
-    if empty:
-        return (EMPTY_SECTION, "")
 
     search = ""
     box = getattr(panel, "line_filter", None)
@@ -98,31 +93,11 @@ def unreadable_folder(panel) -> str:
     return ""
 
 
-def _method(panel, path: str):
-    """The method `path` names from the panel, a dotted path such as `pane.files.add_location`."""
-    found = panel
-    for name in path.split("."):
-        found = getattr(found, name, None)
-    return found
-
-def quote_for(panel, blank: str) -> tuple:
-    """(line, attribution) from the section's `QUOTE` for the first-run blank, else two empty strings."""
-    if blank != EMPTY_SECTION:
-        return ("", "")
-    section = panel.pane.active_section()
-    quote = getattr(section, "QUOTE", None) or ()
-    if len(quote) != 2:
-        return ("", "")
-    return (str(quote[0]), str(quote[1]))
-
 
 def words_for(panel, blank: str, detail: str) -> tuple:
     """(headline, sentence, button label, handler) with %s filled in; no handler means no button."""
     section = panel.pane.active_section()
-    table = dict(SHARED)
-    declared = getattr(section, "EMPTY", None) or {}
-    table.update(declared)
-    words = table.get(blank)
+    words = SHARED.get(blank)
     if not words:
         return ("", "", "", "")
 
@@ -157,19 +132,6 @@ class EmptyPage(QtWidgets.QWidget):
             outer.addWidget(label)
             outer.addSpacing(theme.ui_px(8))
 
-        self._quote = QtWidgets.QLabel("", self)    # the quotation and its attribution: italic, the text colour at half opacity, as designed
-        self._quote.setFont(theme.font("empty_quote", base))
-        self._quote.setWordWrap(True)
-        self._quote.setAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter
-                                 | QtCore.Qt.AlignmentFlag.AlignTop)
-        dim = theme.color("text")
-        dim.setAlphaF(0.5)
-        quote_palette = self._quote.palette()    # a palette, not a stylesheet: the text is painted with the alpha kept ▸r/palette-alpha
-        quote_palette.setColor(QtGui.QPalette.ColorRole.WindowText, dim)
-        self._quote.setPalette(quote_palette)
-        outer.addWidget(self._quote)
-        outer.addSpacing(theme.ui_px(8))
-
         self._btn = QtWidgets.QPushButton("", self)
         outer.addWidget(self._btn, 0,
                         QtCore.Qt.AlignmentFlag.AlignHCenter)
@@ -187,11 +149,7 @@ class EmptyPage(QtWidgets.QWidget):
         self._text.setText(sentence)
         self._text.setVisible(bool(sentence))
 
-        line, attribution = quote_for(panel, blank)
-        self._quote.setText("%s\n%s" % (line, attribution) if line else "")
-        self._quote.setVisible(bool(line))
-
-        handler = _method(panel, handler_name) if handler_name else None
+        handler = getattr(panel, handler_name, None) if handler_name else None
         wanted = bool(label) and callable(handler)
         self._btn.setText(label if wanted else "")
         self._btn.setVisible(wanted)

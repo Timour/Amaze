@@ -9,7 +9,6 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from amaze import amazetheme
 from amaze.panel import dragdrop_widgets, empty_state, grid
-from amaze import sections
 from amaze.tests import test_support
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])    # a subset run may have no earlier module that made one
@@ -57,24 +56,10 @@ def right_click_menu(testcase, panel, table) -> list:
 class TheDeclarationsAreWellFormed(unittest.TestCase):
     """Read from the section classes: no panel needed."""
 
-    def test_every_section_declares_a_noun_and_a_first_run_blank(self):
-        for key, cls in sections.SECTION_INDEX.items():
-            if key == "online":
-                continue                    # not a library section
-            self.assertTrue(getattr(cls, "empty_noun", ""),
-                            "%s declares no empty_noun, so the shared "
-                            "sentences cannot name it" % key)
-            self.assertIn(empty_state.EMPTY_SECTION, getattr(cls, "EMPTY", {}),
-                          "%s declares no EMPTY_SECTION text, and there is no "
-                          "shared one to use instead" % key)
-
     def test_every_declared_handler_is_a_method_on_the_panel(self):
         """A handler that names no method from the panel hides its button without an error."""
         panel = test_support.fixture_panel(self)
-        tables = [empty_state.SHARED]
-        tables += [getattr(c, "EMPTY", {})
-                   for c in sections.SECTION_INDEX.values()]
-        for table in tables:
+        for table in (empty_state.SHARED,):
             for blank, words in table.items():
                 self.assertLessEqual(words[0].count("%s"), 1, blank)
                 self.assertLessEqual(words[1].count("%s"), 1, blank)
@@ -87,7 +72,7 @@ class TheDeclarationsAreWellFormed(unittest.TestCase):
                 if not handler:
                     continue
                 self.assertTrue(
-                    callable(empty_state._method(panel, handler)),
+                    callable(getattr(panel, handler, None)),
                     "%s names the handler %r, which no path from the panel reaches - "
                     "its button would be hidden with no error"
                     % (blank, handler))
@@ -326,38 +311,6 @@ class OnlyOneGridPaneWidgetIsShown(unittest.TestCase):
                          "a view-mode change hid the empty state")
 
 
-class OnlyTheFirstRunBlankShowsTheQuote(unittest.TestCase):
-    """Only the first-run empty state shows a quotation; the page clears it for any other."""
-
-    def test_a_declared_quote_is_a_line_and_an_attribution(self):
-        for key, cls in sections.SECTION_INDEX.items():
-            quote = getattr(cls, "QUOTE", None)
-            if not quote:
-                continue
-            self.assertEqual(
-                2, len(quote),
-                "%s declares a QUOTE that is not (line, attribution)"
-                % key)
-            self.assertTrue(all(str(part).strip() for part in quote),
-                            "%s declares a QUOTE with an empty part"
-                            % key)
-
-    def test_only_the_first_run_blank_shows_it(self):
-        panel = test_support.fixture_panel(self)
-        for blank in (empty_state.NO_MATCH, empty_state.NO_FAVOURITES,
-                      empty_state.UNREACHABLE):
-            self.assertEqual(("", ""),
-                             empty_state.quote_for(panel, blank),
-                             "%s drew a quotation" % blank)
-        page = empty_state.page(panel)
-        page.say(panel, empty_state.EMPTY_SECTION, "")
-        page.say(panel, empty_state.NO_MATCH, "brick")
-        self.assertTrue(page._quote.isHidden(),    # isHidden: isVisible is False under a never-shown parent ▸r/qt-text-checklists
-                        "the quotation stayed visible on an empty state "
-                        "that declares none")
-        self.assertEqual("", page._quote.text())
-
-
 class AnEmptyCategoryIsThePlainGrid(unittest.TestCase):
     """A category with no rows shows its grid, empty: no text, its own right-click menu, its drops."""
 
@@ -458,17 +411,6 @@ class AnEmptyCategoryIsThePlainGrid(unittest.TestCase):
         self.assertEqual(["blank"], faces(self.panel),
                          "a search with no hits left the grid up, unexplained")
 
-    def test_a_section_with_nothing_saved_keeps_its_first_run_blank(self):
-        """The fixture saves no Node asset; a new category there is still a section with nothing."""
-        proxy = self._select_a_new_category("cop")
-        self.assertEqual(0, proxy.sourceModel().rowCount(),
-                         "premise: the fixture saves no Node asset")
-        self.assertEqual((empty_state.EMPTY_SECTION, ""),
-                         empty_state.verdict(self.panel))
-        self.assertEqual(["blank"], faces(self.panel))
-        self.assertEqual(amazetheme.EMPTY_NODE[empty_state.EMPTY_SECTION][0],
-                         self.panel.empty_page._head.text())
-
     def test_an_unreadable_location_still_shows_the_unreachable_blank(self):
         panel = self.panel
         panel.section_tabs.setChecked("file")
@@ -556,15 +498,6 @@ class AnEmptyLocationIsThePlainGrid(unittest.TestCase):
             with self.subTest(list_mode=table):
                 self.assertEqual(expected, right_click_menu(self, self.panel, table),
                                  "the right-click opened another menu")
-
-    def test_no_location_keeps_the_first_run_blank(self):
-        self._drop_fixture()
-        self._click_row(0)
-        self.assertEqual((empty_state.EMPTY_SECTION, ""), empty_state.verdict(self.panel))
-        self.assertEqual(["blank"], faces(self.panel))
-        self.assertEqual(amazetheme.EMPTY_FILE[empty_state.EMPTY_SECTION][0],
-                         self.panel.empty_page._head.text())
-
 
 class TheUnreachableBlankNamesARegisteredFolder(unittest.TestCase):
     """Only a scan clears the unreadable flag, so the empty state names only a registered folder."""

@@ -132,11 +132,9 @@ BTN_APPLY = "Apply"                 # ▸ THE WORDS, from here down. Buttons fir
 BTN_CANCEL = "Cancel"
 BTN_ACCEPT = "Accept"               # commits and CLOSES; Apply commits and stays open - Houdini's own pair (ref ▸ windows/optype)
 LABEL_CUSTOM_COLOR = "Custom Color"      # a LABEL since the 2026-08-27 overhaul: the chip beside it is the button
-BTN_ADD_FOLDER = "Add Folder"
 BTN_CLEAR_SEARCH = "Clear Search"
 BTN_SHOW_ALL = "Show All"
 BTN_LOCATE = "Locate"
-BTN_NEW_FILE = "New File"
 BTN_REMOVE_FROM_LIST = "Remove from List"
 BTN_SELECT = "Select"
 
@@ -176,51 +174,6 @@ EMPTY_SHARED = {    # ▸ E06 E08 E09, the empty states every section shares, re
         "“%s” is not available at the current location.",
         BTN_LOCATE, "locate_unreadable_folder"),
 }
-
-EMPTY_MATERIAL = {    # ▸ E01-E05, each section's FIRST-RUN empty state, and the quotation drawn under it
-    "nothing-yet": (
-        "No materials saved yet",
-        "Right-click a material in the network editor and choose "
-        "Amaze ▸ Save.",
-        "", ""),
-}
-QUOTE_MATERIAL = (
-    "Kunst gibt nicht das Sichtbare wieder, sondern macht sichtbar.",
-    "Paul Klee, Schöpferische Konfession, 1920")
-
-EMPTY_COLOR = {
-    "nothing-yet": (
-        "No palettes saved yet",
-        "Right-click a color ramp and choose Amaze ▸ Save.",
-        "", ""),
-}
-QUOTE_COLOR = ('"I\'m profoundly optimistic about nothing."',
-               "Francis Bacon")
-
-EMPTY_NODE = {
-    "nothing-yet": (
-        "No node assets saved yet",
-        "Select nodes in a network, right-click and choose "
-        "Amaze ▸ Save.",
-        "", ""),
-}
-QUOTE_NODE = ('"I have nothing to say and I am saying it."',
-              "John Cage, Lecture on Nothing, 1949")
-
-EMPTY_CODE = {
-    "nothing-yet": (
-        "No code saved yet",
-        "Right-click a wrangle and choose Amaze ▸ Save.",
-        BTN_NEW_FILE, "pane.saving.new_code_snippet"),
-}
-
-EMPTY_FILE = {
-    "nothing-yet": (
-        "No locations added yet",
-        "Add folders of images, geometry or .hip files.",
-        BTN_ADD_FOLDER, "pane.files.add_location"),
-}
-
 
 DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node, per frame ▸p/one-design-document
     "D01": {   # Versions: a material's versions, newest first

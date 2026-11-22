@@ -63,7 +63,6 @@ class Section:
     exports_categories = False    # the View menu's Export Category is enabled where the sidebar holds categories
 
     empty_noun = "items"  # the noun the shared empty-state texts use for these
-    EMPTY: dict = {}      # `nothing-yet`: (headline, sentence, button, handler)
 
     sidebar_attr = ""     # the list the sidebar shows
     proxy_attr = ""       # the grid's proxy, which `activate` binds to the grid views
@@ -215,10 +214,6 @@ class Section:
     def apply_filter(self, value) -> None:
         """Narrow this section to one Filter-menu value; the section defines what an entry means."""
         pass
-
-    def shows_empty_state(self, source) -> bool:
-        """Whether to show the first-run empty state: `source`, the grid's model, is empty."""
-        return not (source.rowCount() if source is not None else 0)
 
     def select_category(self, index) -> None:
         pass

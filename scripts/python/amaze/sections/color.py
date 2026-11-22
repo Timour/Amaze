@@ -5,7 +5,7 @@ from __future__ import annotations
 import hou
 from PySide6 import QtCore, QtGui
 
-from amaze import amazetheme, messages
+from amaze import messages
 from amaze.core import category, debug, section_list
 from amaze.helpers import wording
 from amaze.sections import base
@@ -26,8 +26,6 @@ class GradientSection(base.AssetSection):
     key = "gradient"
     label = section_list.label(key)
     empty_noun = "palette"
-    EMPTY = amazetheme.EMPTY_COLOR    # no button: a palette is saved from a node in the network editor
-    QUOTE = amazetheme.QUOTE_COLOR
     library_model_attrs = ("gradient_model", "gradient_categories_model")    # the raw models; sidebar_attr names the proxy over them
     model_attr = "gradient_model"
     category_attr = "gradient_categories_model"

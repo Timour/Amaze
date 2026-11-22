@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hou
 
-from amaze import amazetheme, messages
+from amaze import messages
 from amaze.actions import code as code_actions
 from amaze.core import debug, library_settings, section_list
 from amaze.helpers import wording
@@ -28,7 +28,6 @@ class CodeSection(base.AssetSection):
     key = "code"
     label = section_list.label(key)
     empty_noun = "snippet"
-    EMPTY = amazetheme.EMPTY_CODE    # New File needs no selection, so it always works
     GRID_MENU = (    # Load Asset and Edit act on one snippet; New File needs no selection and stays enabled
         base.MenuEntry("New File", handler="menu_new_snippet", needs="always"),
         base.SEPARATOR,

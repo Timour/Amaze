@@ -50,7 +50,6 @@ MIN_UI_POINTS = 12   # the smallest readable size before the UI scale ▸r/font-
 FONT_ROLES = {       # a role is a scale and a weight, never a literal size ▸r/font-sizing
     "comments_title": {"scale": 1.0, "bold": True},    # the Comments subject name, beside its type
     "empty_headline": {"scale": 1.25, "bold": True},   # the empty grid's headline, over its one explaining sentence
-    "empty_quote": {"scale": 1.0, "italic": True},     # the empty first-run grid's quotation and its attribution, drawn at the sentence's size
 }
 
 

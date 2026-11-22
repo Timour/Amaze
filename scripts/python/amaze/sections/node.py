@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hou
 
-from amaze import amazetheme, messages
+from amaze import messages
 from amaze.actions import nodes as node_actions
 from amaze.core import debug, library, section_list
 from amaze.render import cop_nodes
@@ -25,8 +25,6 @@ class CopSection(base.AssetSection):
     key = "cop"
     label = section_list.label(key)
     empty_noun = "node asset"
-    EMPTY = amazetheme.EMPTY_NODE    # no button, for the same reason as Material
-    QUOTE = amazetheme.QUOTE_NODE
     GRID_MENU = (    # the material menu without renderer-specific entries; Load Asset is enabled on a multi-selection
         base.MenuEntry("Load Asset", handler="menu_load"),
         base.SEPARATOR,

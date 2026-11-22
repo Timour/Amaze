@@ -158,10 +158,6 @@ class FolderSection(base.Section):
         return (owner.rstrip("/") != path.rstrip("/") and folders.row_of(owner) is not None
                 and not folders.index_of(path).isValid())
 
-    def shows_empty_state(self, source) -> bool:
-        folders = self._p(self.sidebar_attr)    # the grid lists one location; the empty state means none
-        return folders is None or not folders._folders()
-
     def tile_models(self):
         return self._p(self.files_attr), self._p(self.proxy_attr)
 
@@ -515,7 +511,6 @@ class FileSection(FolderSection):
     label = section_list.label(key)
     filter_tooltip = "Show one kind of file."
     empty_noun = "file"
-    EMPTY = amazetheme.EMPTY_FILE    # a button: registering a folder needs nothing selected
 
     FILTER_CHOICES = (  # the known kinds, in the order kind_for tests them; KIND_OTHER has no entry
         base.FilterEntry("Images", "Images", locations.KIND_IMAGE),

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hou
 
-from amaze import amazetheme, messages
+from amaze import messages
 from amaze.actions import materials as material_actions
 from amaze.core import debug, library, renderers, section_list
 from amaze.render import cop_nodes, nodes as nodes_mod
@@ -15,8 +15,6 @@ class MaterialSection(base.AssetSection):
     key = "material"
     label = section_list.label(key)
     empty_noun = "material"
-    EMPTY = amazetheme.EMPTY_MATERIAL    # no button: save_asset needs a selected node and shows a message without one ▸p/one-design-document
-    QUOTE = amazetheme.QUOTE_MATERIAL
 
     @staticmethod
     def delete_prompt(count: int, name: str = "") -> str:
