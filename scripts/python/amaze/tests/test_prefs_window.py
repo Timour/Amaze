@@ -1,4 +1,4 @@
-"""Preferences as Houdini's own QML window: it loads, its page list, a Look setting applied."""
+"""Preferences as Houdini's own QML window: it loads, its pages, settings applied as before."""
 
 import os
 import shutil
@@ -96,6 +96,52 @@ class ALookSettingIsAppliedLikeTheOldDialog(unittest.TestCase):
         self.assertFalse(saved.system_file_icons, "Apply did not save it")
         self.assertFalse(files.preferences.system_file_icons)
         files.refresh_current_folder.assert_called_once_with()
+
+
+class OneSectionAlwaysStaysOn(unittest.TestCase):
+    """As the old dialog: the last section switched off turns Material on; Material stays on."""
+
+    def test_the_rule_is_one_undo_step_and_apply_keeps_tab_order_and_unknown_keys(self):
+        prefs = _scratch_prefs(self)
+        prefs.enabled_sections = ["code", "an_add_on_section"]
+        state = prefs_window.AmazePrefsState(prefs)
+        code, material = prefs_window.SECTION + "code", prefs_window.MATERIAL
+
+        state.setPref(code, "0")    # what the Code switch sends
+        self.assertEqual((False, True), (state.getBool(code), state.getBool(material)))
+        state.undo()
+        self.assertEqual((True, False), (state.getBool(code), state.getBool(material)),
+                         "the rule's change took a second undo step")
+        state.redo()
+        state.setPref(material, "0")
+        self.assertTrue(state.getBool(material), "the last section on was switched off")
+
+        state.apply()
+        self.assertEqual(["material", "an_add_on_section"], prefs.enabled_sections)
+
+
+class TheUpdateButtonChecksThenInstalls(unittest.TestCase):
+    """One button: a press checks; a release found turns it to Install Update; a press installs."""
+
+    def test_a_check_offers_the_release_and_the_install_withdraws_the_offer(self):
+        from amaze.core import updater
+        from amaze.dialogs import update_dialog
+        state = prefs_window.AmazePrefsState(_scratch_prefs(self))
+        found = updater.Update(updater.NEWER, version="9.9",
+                               url="https://example.invalid/r.zip", sentence="newer")
+
+        with mock.patch.object(updater, "check", return_value=found):
+            state.pressUpdate()
+        self.assertEqual(("Install Update", True, "newer"),
+                         (state.updateLabel, state.updateOffered, state.versionLine))
+
+        with mock.patch.object(update_dialog, "confirmed", return_value=True), \
+                mock.patch.object(updater, "install") as install:
+            state.pressUpdate()
+        install.assert_called_once_with(found)
+        self.assertEqual(("Check for Updates", False, False),
+                         (state.updateLabel, state.updateOffered, state.updateBusy))
+        self.assertIn("9.9", state.versionLine)
 
 
 if __name__ == "__main__":

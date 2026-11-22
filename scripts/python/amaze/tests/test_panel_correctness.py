@@ -1000,9 +1000,10 @@ class AnUnconfiguredPanelStillOpensPreferences(unittest.TestCase):
             "the File models were left unset - any reader raises "
             "AttributeError instead of seeing None")
         panel.show_prefs()          # raised before the fix
-        dialog = getattr(panel, "_prefs_dialog", None)
-        self.assertIsNotNone(dialog, "no dialog was built")
-        dialog.close()
+        window = getattr(panel, "_prefs_window", None)
+        self.assertIsNotNone(window, "no window was built")
+        window.close()
+        QtCore.QCoreApplication.sendPostedEvents(None, QtCore.QEvent.Type.DeferredDelete)
 
 
 class TheOnlineWorldNeedsALibrary(unittest.TestCase):
