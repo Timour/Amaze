@@ -24,6 +24,7 @@ Item {
         implicitWidth: root.drawn.button
         implicitHeight: root.drawn.button
         opacity: enabled ? 1.0 : Theme.disabledAlpha
+        layer.enabled: !enabled    // dimmed as one picture, or the chip would show through the art
         ToolTip.text: button.tip
         ToolTip.visible: button.hovered && button.tip !== ""
         ToolTip.delay: Config.toolTipDelay
@@ -105,6 +106,7 @@ Item {
             snapMode: SharedState.tileStepped ? Slider.SnapAlways : Slider.NoSnap
             value: SharedState.tileSize
             enabled: SharedState.viewMode !== "list"    // a list row is one text line
+            layer.enabled: !enabled    // Houdini dims it by opacity; flat, the groove no longer shows through
             ToolTip.text: enabled ? SharedState.tips.tileSize : SharedState.tips.tileSizeList
             ToolTip.visible: hovered
             ToolTip.delay: Config.toolTipDelay
