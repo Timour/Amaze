@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.48.0
+
+- Preferences: Houdini's own Preferences window, with the pages listed on the left, the settings in groups, and Search, which finds a setting on every page.
+- Preferences: the pages are Library, Render, UI, Add-On and About. UI holds what was on Look and Show/Hide; Write Paths As is on Library, and Add-On beta versions on Add-On.
+- Preferences: every setting takes effect with Apply or Accept, including the library and user picked, Cache Path, Versions and the add-on switches. Cancel closes without them, and the arrows undo and redo changes not yet applied.
+
 ## 1.47.1
 
 - Sidebar: a category moved by dragging is the one you picked up, even if the list changes during the drag.
