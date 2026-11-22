@@ -118,7 +118,8 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         self._key_pause.stop()    # the keys' row was the other section's
         old, self._sidebar_selection = self._sidebar_selection, QtCore.QItemSelectionModel(listed, self)
         self.pane.sidebar.use_selection(self._sidebar_selection)
-        self._show_rows("sidebar", listed, self._sidebar_selection)
+        self._show_rows("sidebar", listed, None)    # the selection follows once a row in it is current
+        self._sidebar_selection.currentChanged.connect(self._give_sidebar_selection)
         if old is not None:
             old.deleteLater()
         self._reveal = ""
@@ -129,6 +130,11 @@ class PaneState(qmlviews.SharedState, asks.Asks):
                 pass
             self._rows_followed = listed
             listed.rowsInserted.connect(self._reveal_step)
+
+    def _give_sidebar_selection(self, *_current) -> None:
+        """The tree gets the selection with a current row; given none, Qt marks old rows current."""
+        if self.sidebarSelection is not self._sidebar_selection:
+            self.sidebarSelection = self._sidebar_selection
 
     def _show_rows(self, view: str, rows, selection) -> None:
         """A view's rows, then its selection: Qt's view points any selection it holds at its rows."""
@@ -209,6 +215,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         """The user clicked a row: the grid shows it, as the widget panel's `_on_category_chosen`."""
         self._key_pause.stop()
         self._reveal = ""    # the user's row, not the one the app was opening the folders to
+        self._give_sidebar_selection()    # no row was current yet: the user's is the first
         if index.isValid() and self._sidebar_selection is not None \
                 and index.model() is self._sidebar_selection.model():
             self.pane.sidebar.show_row(index)

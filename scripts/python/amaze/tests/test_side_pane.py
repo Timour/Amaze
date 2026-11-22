@@ -77,8 +77,8 @@ class EveryPartIsBuiltInOnePlace(unittest.TestCase):
     def test_only_the_panel_places_panes_and_only_it_and_the_settings_know_their_widths(self):
         self._only_in(r"side_pane\.Pane\(", ["panel/panel.py"], "a pane is placed outside the panel")
         self._only_in(r"notes_panel_width|sidebar_width",
-                      ["panel/panel.py", "prefs/persistence.py", "prefs/prefs.py"],
-                      "a pane's saved width is handled outside the panel and the settings")
+                      ["panel/panel.py", "prefs/persistence.py", "prefs/prefs.py", "qml/pane.py"],
+                      "a pane's saved width is handled outside the two panels and the settings")
 
     def test_only_the_engine_builds_two_column_rows_a_picture_and_a_drag_line(self):
         for pattern in (r"class RowsView\(", r"drawImage\(", r"SplitVCursor"):
