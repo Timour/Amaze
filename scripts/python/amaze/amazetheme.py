@@ -85,6 +85,7 @@ COMMENT_DIM_ICON_COLOR = "#ffffff"        # in white
 COMMENT_DIM_ADD_COLOR = "#565656"         # the + art; Houdini's menu triangle keeps its colour
 
 ONLINE_ICON_COLOR = "#3fc28a"    # ▸ the toolbar's Online button while the online world is open
+ABOUT_REPO = {"row": 55, "mark": {"x": 6, "y": 15, "w": 26, "h": 25}, "gap": 10, "text": "#979797"}    # ▸ P06: GitHub's mark, its address
 TOOLBAR_ON = {"fill": "#393939", "border": "#a3abc5", "ring": "#364269"}    # ▸ B01c: a button on or open
 TOOLBAR_SEARCH_END_GAP = 6    # the least space between the Search box and Comments, in a narrow panel
 INFO_ICON_COLOR = "#fdba00"      # ▸ the info pane (N02): its header icon, and its toolbar button while open

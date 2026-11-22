@@ -14,6 +14,7 @@ from amaze import branding
 from amaze.core import debug
 
 RELEASES_URL = "https://api.github.com/repos/Timour/Amaze/releases/latest"    # unauthenticated, rate-limited per IP ▸p/updater-shape
+REPO_URL = "https://github.com/Timour/Amaze"    # the About page's address
 NEW_ISSUE_URL = "https://github.com/Timour/Amaze/issues/new"    # the repo URLs are defined HERE; pre-fillable with `?body=` ▸r/github-issue-url
 LIBRARY_POLICY_URL = "https://raw.githubusercontent.com/Timour/Amaze/%s/scripts/python/amaze/core/library_policy.py"    # a release's own code
 

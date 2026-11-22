@@ -10,7 +10,7 @@ from amaze import amazetheme, branding, messages, tooltips
 from amaze.actions import check as check_actions
 from amaze.actions import library as library_actions
 from amaze.core import (debug, library_check, library_db, library_settings, model_registry,
-                        renderers, repair, section_list, texture_library, tile_icons, users)
+                        renderers, repair, section_list, texture_library, tile_icons, updater, users)
 from amaze.dialogs import library_dialog, user_dialog
 from amaze.helpers import hostos, ui_helpers
 from amaze.pane import files as pane_files
@@ -249,6 +249,7 @@ class AmazePrefsState(mainprefs.PrefsState):
     sectionSwitches: list = SECTION_SWITCHES
     offeredRenderers: list = []    # the renderers switched on, unapplied switches included
     logoHeight: int = ui_helpers.LOGO_HEIGHT
+    repo: dict = dict(amazetheme.ABOUT_REPO, address=updater.REPO_URL.split("://", 1)[1])
     aboutText: str = ABOUT_TEXT
     creditsText: str = CREDITS_TEXT
     versionLine: str = "Amaze version " + branding.APP_VERSION    # every update result shows here
@@ -971,6 +972,10 @@ class AmazePrefsState(mainprefs.PrefsState):
         """Open the pre-filled new-issue page. ▸r/github-issue-url"""
         from amaze.core import updater
         ui_helpers.open_url(updater.bug_report_url())
+
+    @QtCore.Slot()
+    def openRepo(self) -> None:
+        ui_helpers.open_url(updater.REPO_URL)
 
     @QtCore.Slot()
     def openLog(self) -> None:
