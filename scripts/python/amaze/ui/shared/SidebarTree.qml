@@ -16,7 +16,6 @@ TreeView {
 
     clip: true
     selectionBehavior: TableView.SelectRows
-    pointerNavigationEnabled: false    // a click is the row's own: Qt's tap is lost on a 1 px move
     editTriggers: TableView.NoEditTriggers    // rename comes with the menus
     columnWidthProvider: column => column === 0 ? width : 0    // the name's column; the colour cell's is hidden
     onWidthChanged: forceLayout()
