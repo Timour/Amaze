@@ -89,6 +89,8 @@ class _CatalogueWorker(QtCore.QThread):
                                 "cap - anything past it is not listed",
                                 source=src.name, cap=CATALOGUE_CAP)
                 records.extend(found)
+                if getattr(src, "preview_error", ""):    # tiles listed, pictures not: never cached
+                    errors.append("%s: %s" % (src.name, src.preview_error))
             except Exception as exc:                    # noqa: BLE001
                 errors.append("%s: %s: %s"    # the MESSAGE, not just the type - the reason is what makes a missing source diagnosable
                               % (src.name, type(exc).__name__, exc))

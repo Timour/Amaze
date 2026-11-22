@@ -380,6 +380,7 @@ class MatxSource:
     licence = ""
     kind = "package"
     PREVIEWS = ""    # Amaze's own renders of this source, a hosted zip ▸r/simready-release
+    preview_error = ""    # why the last listing has no hosted previews; "" when it has them
 
     def page_url(self, record) -> str:
         """A link to where this material came from: its own page where known, else the library's."""
@@ -417,7 +418,8 @@ class MatxSource:
         return getattr(record, "kind", "") != "values"
 
     def with_previews(self, records) -> list:
-        """`records`; each with a hosted preview gets its location in the PREVIEWS zip."""
+        """`records` with their places in the PREVIEWS zip; a failed read is kept in `preview_error`."""
+        self.preview_error = ""
         places = self._preview_places() if self.PREVIEWS else {}
         for record in records:
             place = places.get(record.uid + ".jpg")
@@ -431,6 +433,7 @@ class MatxSource:
             try:
                 bundle, _remote = open_remote_zip([(self.PREVIEWS, remote_size(self.PREVIEWS))])
             except Exception as exc:                      # noqa: BLE001
+                self.preview_error = "hosted previews unreadable: %s" % exc
                 debug.event("online", "hosted previews unreadable", source=self.name,
                             error=str(exc))
                 return {}
