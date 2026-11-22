@@ -904,8 +904,8 @@ def _check_lines(findings: dict) -> tuple:
     renders = findings.get("missing_renders") or {}
     if any(renders.values()):
         total = sum(len(rows) for rows in renders.values())
-        said.append("No thumbnail image yet for %s - select %s in Amaze and use Thumbnail "
-                    "▸ Render Image when convenient, since a render takes time."
+        said.append("No thumbnail image yet for %s - select %s in Amaze and use Render "
+                    "Image when convenient, since a render takes time."
                     % (per_section(renders), "it" if total == 1 else "them"))
     if not any(missing.values()) and not any(renders.values()):
         well.append("Every %s in the databases has its files, and every one that can have a "

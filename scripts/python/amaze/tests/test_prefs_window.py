@@ -102,7 +102,7 @@ class AUiSettingIsAppliedLikeTheOldDialog(unittest.TestCase):
         state = prefs_window.AmazePrefsState(prefs, pane)
         self.assertTrue(prefs.system_file_icons, "premise: on")
 
-        state.setPref("system_file_icons", "0")    # what the row's switch sends
+        state.setPref("system_file_icons", "1")    # Show Generic File Icons switched on
         self.assertTrue(prefs.system_file_icons, "the change reached the prefs before Apply")
         files.refresh_current_folder.assert_not_called()
 

@@ -138,7 +138,7 @@ class LibraryButtonsAreDisabledUntilApply(unittest.TestCase):
 
 
 class TheDatabasesRowShowsOneCheck(unittest.TestCase):
-    """Grey lights until Check is pressed; then each light's colour and count, and a red Repair."""
+    """A grey light until Check is pressed; then the light's colour, its tip, and a red Repair."""
 
     def setUp(self):
         self.prefs = test_support.fixture_prefs(self)
@@ -149,9 +149,7 @@ class TheDatabasesRowShowsOneCheck(unittest.TestCase):
         self.state = _state(self.prefs)
 
     def row(self):
-        lights = self.state.checkLights
-        return ([light["fill"] for light in lights], [light["count"] for light in lights],
-                self.state.checkInfo, self.state.checkLabel)
+        return self.state.checkLight, self.state.checkInfo, self.state.checkLabel
 
     def favorite_of_a_missing_file(self):
         star = os.path.join(self.folder, "shot.exr")
@@ -162,23 +160,18 @@ class TheDatabasesRowShowsOneCheck(unittest.TestCase):
         return star
 
     def assert_unchecked(self):
-        self.assertEqual(([amazetheme.P01_LIGHT_IDLE] * 3, [""] * 3, "", "Check"), self.row())
+        self.assertEqual((amazetheme.P01_LIGHT_IDLE, "", "Check"), self.row())
         self.assertFalse(self.state.checkFixable)
 
     def test_nothing_is_checked_until_the_button_is_pressed(self):
         self.favorite_of_a_missing_file()
         self.assert_unchecked()
-        self.assertEqual(["Errors", "Files", "Ref"],
-                         [light["heading"] for light in self.state.checkLights])
 
-    def test_a_check_fills_the_lights_and_turns_the_button_into_a_red_repair(self):
+    def test_a_check_reds_the_light_and_turns_the_button_into_a_red_repair(self):
         self.favorite_of_a_missing_file()
         self.state.checkOrRepair()
-        fills, counts, info, button = self.row()
-        self.assertEqual(amazetheme.P01_LIGHT_CLEAN, fills[0])
-        self.assertEqual("0", counts[0])
-        self.assertEqual((amazetheme.P01_LIGHT_FOUND, "1"), (fills[2], counts[2]))
-        self.assertNotIn(amazetheme.P01_LIGHT_IDLE, fills)
+        light, info, button = self.row()
+        self.assertEqual(amazetheme.P01_LIGHT_FOUND, light)
         self.assertTrue(info, "the row shows nothing about what it found")
         self.assertEqual("Repair", button)
         self.assertTrue(self.state.checkFixable, "Repair is not Houdini's danger button")
@@ -199,28 +192,23 @@ class TheDatabasesRowShowsOneCheck(unittest.TestCase):
         self.assertEqual("Fix Safe", asked[0][1][-2])
         self.assertIn("1 favorite removed.", asked[1][0])
         self.assertNotIn(star, self.prefs.file_favorites)
-        fills, counts, _info, _button = self.row()
-        self.assertEqual((amazetheme.P01_LIGHT_CLEAN, "0"), (fills[2], counts[2]),
-                         "the row still shows what the repair fixed")
 
-    def test_a_clean_part_is_green_and_the_button_stays_check(self):
-        self.state.checkOrRepair()
-        fills, counts, _info, _button = self.row()
-        self.assertEqual((amazetheme.P01_LIGHT_CLEAN, "0"), (fills[2], counts[2]))
-        if amazetheme.P01_LIGHT_FOUND not in fills:
-            self.assertEqual(messages.CHECK_NOTHING_TO_REPAIR, self.row()[2])
-        from amaze.core import library_check, repair
-        if not library_check.summary(repair.survey(self.prefs))["lines"]:
-            self.assertEqual("Check", self.state.checkLabel)
-            self.assertFalse(self.state.checkFixable)
+    def test_a_clean_library_is_green_and_the_button_stays_check(self):
+        from amaze.core import library_check
+        clean = {"lights": {part: (library_check.CLEAN, 0) for part in library_check.PARTS},
+                 "lines": [], "info": messages.CHECK_NOTHING_TO_REPAIR}    # the fixture has a finding
+        with mock.patch.object(library_check, "summary", return_value=clean):
+            self.state.checkOrRepair()
+        self.assertEqual((amazetheme.P01_LIGHT_CLEAN, messages.CHECK_NOTHING_TO_REPAIR, "Check"),
+                         self.row())
+        self.assertFalse(self.state.checkFixable)
 
-    def test_a_part_that_cannot_be_checked_is_amber_with_a_dash(self):
+    def test_a_check_that_cannot_run_is_amber(self):
         from amaze.core import guard
         with mock.patch.object(guard.Guard, "_waiting", lambda self: True):
             self.state.checkOrRepair()
-        fills, counts, _info, button = self.row()
-        self.assertEqual([amazetheme.P01_LIGHT_UNCHECKED] * 3, fills)
-        self.assertEqual([amazetheme.LABEL_UNCHECKED] * 3, counts)
+        light, _info, button = self.row()
+        self.assertEqual(amazetheme.P01_LIGHT_UNCHECKED, light)
         self.assertEqual("Check", button)
 
     def test_picking_another_library_empties_the_row(self):

@@ -9,7 +9,7 @@ PrefsPage {
         text: "Thumbnails"
 
         SliderPref {
-            label: "RenderSize"
+            label: "Size in Pixels"
             pref: "rendersize"
             from: SharedState.ranges.rendersize[0]
             to: SharedState.ranges.rendersize[1]
@@ -30,14 +30,14 @@ PrefsPage {
             }
         }
         SliderPref {
-            label: "RAM Cache (MB)"
+            label: "MB of RAM Cache"
             pref: "ram_cache_mb"
             from: SharedState.ranges.ram_cache_mb[0]
             to: SharedState.ranges.ram_cache_mb[1]
             isInt: true
         }
         MenuPref {
-            label: "Geometry Shading"
+            label: "Geometry Style"
             pref: "geometry_shading_mode"
             options: [
                 {text: "Hidden Line Ghost", value: "hiddenlineghost"},
@@ -59,12 +59,12 @@ PrefsPage {
             ]
         }
         TogglePref {
-            label: "Render Thumbs on Import"
+            label: "Render Thumbnails on Import"
             pref: "render_on_import"
         }
     }
     Group {
-        text: "Textures"
+        text: "Image Generation"
 
         SliderPref {
             label: "Conversion Threads"

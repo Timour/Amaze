@@ -56,10 +56,10 @@ CODE_SYNTAX = {    # ▸ token kind: Houdini's own colour name, and its value in
     "function": ("ParmSyntaxFuncColor", "#8888c1"),    # point, addpoint
 }
 
-P01_LIGHT_IDLE = "#787878"      # ▸ P01's Databases row: a light before a check, filled, no stroke
-P01_LIGHT_CLEAN = "#3fc28a"     # a part the check found nothing in
-P01_LIGHT_FOUND = "#ff3600"     # a part with findings
-P01_LIGHT_UNCHECKED = "#ffae00"  # a part that could not be checked now
+P01_LIGHT_IDLE = "#787878"      # ▸ P01's Check Database light before a check, filled, no stroke
+P01_LIGHT_CLEAN = "#3fc28a"     # the check found nothing
+P01_LIGHT_FOUND = "#ff3600"     # the check found something
+P01_LIGHT_UNCHECKED = "#ffae00"  # a part could not be checked now
 
 MENU_CHIP = (4, 3, 16, 16)     # ▸ the chip submenus (C02b, C09c): x, y, w, h of a chip in its row
 
@@ -147,12 +147,10 @@ LABEL_LIGHT_ICON = "Light Icons"    # the D02 toggle that replaced the Lines dro
 LABEL_NAME = "Name"
 PLACEHOLDER_SEARCH_ICONS = "Search"     # D02 drew the count in it; it does not any more
 LABEL_NOT_CONNECTED = "not connected"    # D15: a listed library whose folder cannot be reached
-LABEL_LIBRARY_FORMAT = "Format: v%s"    # ▸ P01, under the library's buttons
+LABEL_LIBRARY_FORMAT = "Current Library Format: %s"    # ▸ P01, beside Check
 LABEL_UPGRADES_LIBRARY ="Apply/Accept will upgrade your library to v%s"   # beside Apply
 LABEL_LIBRARY_TOO_NEW = "You need to update Amaze to use this library"
 LABEL_LIBRARY_UNREACHABLE = "Amaze cannot reach this library"
-LABEL_CHECK_PARTS = ("Errors", "Files", "Ref")
-LABEL_UNCHECKED = "-"                # a light's count when its part could not be checked
 BTN_CHECK = "Check"                 # the row's button, until a check finds what can be fixed
 BTN_REPAIR = "Repair"
 

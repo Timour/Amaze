@@ -25,7 +25,7 @@ PrefsPage {
             pref: "step_size"
         }
         MenuPref {
-            label: "Tile Icon Line"
+            label: "Custom Icons Line Width"
             pref: "icon_line_weight"
             options: [
                 {text: "Thin", value: "template"},
@@ -33,7 +33,7 @@ PrefsPage {
             ]
         }
         SliderPref {
-            label: "Scroll Speed (%)"
+            label: "Scroll Speed"
             pref: "scroll_speed"
             from: SharedState.ranges.scroll_speed[0]
             to: SharedState.ranges.scroll_speed[1]
@@ -47,8 +47,9 @@ PrefsPage {
             label: "Render RAT Files"
             pref: "render_rat_files"
         }
+        // On is `system_file_icons` off: the switch shows the stored setting the other way round
         TogglePref {
-            label: "System File Icons"
+            label: "Show Generic File Icons"
             pref: "system_file_icons"
         }
     }

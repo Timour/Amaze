@@ -43,10 +43,10 @@ PREFS_GEOMETRY_SHADING = 'How geometry thumbnails are drawn: shaded, wireframe, 
 
 PREFS_GEOMETRY_BACKGROUND = 'The background behind geometry thumbnails.'
 
-PREFS_RENDER_ON_IMPORT = 'Render thumbnails as soon as you import materials. Turn off to render them later with Thumbnail ▸ Render Image.'
+PREFS_RENDER_ON_IMPORT = 'Render thumbnails as soon as you import materials. Turn off to render them later with Render Image.'
 
 PREFS_RENDER_RAT_FILES = 'Render a thumbnail for every .rat file in the File tab. Off, a .rat file shows the rat picture.'
-PREFS_SYSTEM_FILE_ICONS = 'Show the system icon for a file that has no preview in the File tab. Off, such a file shows the generic file icon.'
+PREFS_GENERIC_FILE_ICONS = 'Show the generic file icon for a file that has no preview in the File tab. Off, such a file shows its system icon.'
 
 PREFS_CONVERSION_THREADS = 'How many textures (EXR/HDR) are turned into thumbnails at the same time.'
 

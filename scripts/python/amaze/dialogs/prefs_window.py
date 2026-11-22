@@ -52,6 +52,8 @@ def _same_folder(one: str, other: str) -> bool:
 
 
 SWITCH = (_switch_text, _switch_value)    # Houdini's switch rows write "1" and "0"
+NOT_SWITCH = (lambda value: _switch_text(not value),    # a switch on while its setting is off
+              lambda text: not _switch_value(text))
 WORD = (str, str)
 NUMBER = (str, _number_value)    # Houdini's number rows write "256"; Prefs holds the whole number
 PERCENT = (_percent_text, _percent_value)    # a factor in Prefs, a percent on its row
@@ -60,10 +62,10 @@ SECTION = "enabled_sections."    # a Sections switch's `pref`: this, then the se
 SECTION_PREFS = tuple(SECTION + key for key in section_list.keys())
 MATERIAL = SECTION + "material"    # on again when every other section is off, as the old dialog
 
-LIBRARY = "library"    # the Library row's `pref`: the folder picked, opened on Apply
-USER = "library_user"    # the User row's `pref`: the user picked, switched to with the library
+LIBRARY = "library"    # the Active Library row's `pref`: the folder picked, opened on Apply
+USER = "library_user"    # the Active User row's `pref`: the user picked, switched to with the library
 NEW_USER = "\x00new:"    # a user named here and created on Apply: this, then the name
-OVERWRITE = "allow_overwrite"    # the Versions switch: the open library's policy, not a Prefs setting
+OVERWRITE = "allow_overwrite"    # Enable Asset Versions: the open library's policy, not a Prefs setting
 CACHE = "cache_dir"    # the Cache Path row: empty is this machine's own place
 ADDON = "addon/"    # an add-on switch's `pref`: this, its folder, a slash, its row's name
 
@@ -82,7 +84,7 @@ SETTINGS = {    # a row's `pref` -> (the Prefs value as Houdini's rows' text, th
     "hide_empty_categories": SWITCH,
     "step_size": SWITCH,
     "render_rat_files": SWITCH,
-    "system_file_icons": SWITCH,
+    "system_file_icons": NOT_SWITCH,    # the Show Generic File Icons switch
     "path_style": WORD,
     "icon_line_weight": WORD,
     "scroll_speed": PERCENT,
@@ -130,7 +132,7 @@ TIPS = {    # a row's or a button's `tipID` -> the text Houdini's tip window sho
     "hide_empty_categories": tooltips.PREFS_HIDE_EMPTY_CATEGORIES,
     "step_size": tooltips.PREFS_STEP_SIZE,
     "render_rat_files": tooltips.PREFS_RENDER_RAT_FILES,
-    "system_file_icons": tooltips.PREFS_SYSTEM_FILE_ICONS,
+    "system_file_icons": tooltips.PREFS_GENERIC_FILE_ICONS,
     "path_style": tooltips.PREFS_WRITE_PATHS_AS,
     "icon_line_weight": tooltips.PREFS_TILE_ICON_LINE,
     "scroll_speed": tooltips.PREFS_SCROLL_SPEED,
@@ -146,16 +148,16 @@ TIPS = {    # a row's or a button's `tipID` -> the text Houdini's tip window sho
     "clear_log": tooltips.PREFS_CLEAR_LOG,
 }
 
-SAMPLES_ROWS = [    # the Render page's samples row per renderer, in the old dialog's order
-    {"key": renderer.key, "label": "Samples (%s)" % renderer.engine, "pref": renderer.samples}
+SAMPLES_ROWS = [    # the Render page's samples row per renderer, in RENDER_TAB's order
+    {"key": renderer.key, "label": "%s Samples" % renderer.engine, "pref": renderer.samples}
     for renderer in renderers.RENDER_TAB]
 RENDERER_SWITCHES = [{"label": renderer.label, "pref": renderer.switch} for renderer in renderers.ALL]
 SECTION_SWITCHES = [{"label": label, "pref": SECTION + key} for key, label in section_list.SECTIONS]
 
 FILE_TAB_SWITCHES = frozenset(("render_rat_files", "system_file_icons"))    # applied: File relists
-LIGHT_FILLS = {library_check.CLEAN: amazetheme.P01_LIGHT_CLEAN,    # a Databases light per part state
-               library_check.FOUND: amazetheme.P01_LIGHT_FOUND,
-               library_check.UNCHECKED: amazetheme.P01_LIGHT_UNCHECKED}
+LIGHT_FILLS = {library_check.FOUND: amazetheme.P01_LIGHT_FOUND,    # the light: first state any part is in
+               library_check.UNCHECKED: amazetheme.P01_LIGHT_UNCHECKED,
+               library_check.CLEAN: amazetheme.P01_LIGHT_CLEAN}
 
 ABOUT_TEXT = (    # the old About page's text, under the logo
     '<p><span style="color:%s;">v' % amazetheme.LINK_COLOR
@@ -284,10 +286,10 @@ class AmazePrefsState(mainprefs.PrefsState):
     userPicked: bool = False
     userEditable: bool = False    # Rename and Delete: a new user, or one of the open library
     libraryOpen: bool = False    # the picked library is the one open: its own buttons work
-    libraryFormat: str = ""
+    libraryFormat: str = ""    # the Check Database row's text
     applyLine: str = ""    # what Apply does to the picked library, when it warns
     cachePath: str = ""
-    checkLights: list = []    # the Databases row: per part its heading, light and count
+    checkLight: str = amazetheme.P01_LIGHT_IDLE    # the Check Database row's one light
     checkInfo: str = ""
     checkTip: str = ""
     checkLabel: str = amazetheme.BTN_CHECK
@@ -310,7 +312,7 @@ class AmazePrefsState(mainprefs.PrefsState):
         self._creating = False    # the name dialog was opened by the create row, not by Rename
         self._last_update = None    # what the last Check for Updates found
         self._added: list = []    # folders Add put in the Library list, until applied
-        self._shown_folder = None    # the library the Databases row was last emptied for
+        self._shown_folder = None    # the library the Check Database row was last emptied for
         self._check_found = None    # what the last check found, while Repair can fix some of it
         self._addons_found: list = []    # what the last add-on check found, until installed
         self._addon_rows: dict = {}    # an add-on switch's `pref` -> (root, folder, row)
@@ -570,13 +572,13 @@ class AmazePrefsState(mainprefs.PrefsState):
         return opened
 
     def _drop_library_pick(self) -> None:
-        """The Library and User rows back to the open library, outside the undo steps."""
+        """The Active Library and Active User rows back to the open library, outside the undo steps."""
         self._overlay.pop((LIBRARY, ""), None)
         self._overlay.pop((USER, ""), None)
         self._updateFlags()
 
     def pick_library(self, folder: str) -> None:
-        """Show `folder` in the Library row, added to its list until applied when the list lacks it."""
+        """Show `folder` in the Active Library row, added to its list until applied when it lacks it."""
         folder = hostos.canonical_path_key(folder).rstrip("/") + "/"    # the library folder's canonical form
         known = next((one for one in self._library_folders() if _same_folder(one, folder)), None)
         if known is None:
@@ -676,7 +678,7 @@ class AmazePrefsState(mainprefs.PrefsState):
         self.userNameRequested.emit("Create User", "")
 
     def rename_user(self, name: str) -> None:
-        """Rename the user the User row shows: a new one before Apply, else in the open library now."""
+        """Rename the user Active User shows: a new one before Apply, else in the open library now."""
         uid, name = self.getPref(USER), str(name or "").strip()
         if not name:
             return
@@ -706,7 +708,7 @@ class AmazePrefsState(mainprefs.PrefsState):
                 return
             if name:
                 self._show_name_taken(name)
-            self.prefsUpdated.emit()    # the User row shows the user it showed before
+            self.prefsUpdated.emit()    # the Active User row shows the user it showed before
             return
         if self._name_taken(name, besides="" if uid.startswith(NEW_USER) else uid):
             self._show_name_taken(name)
@@ -737,28 +739,23 @@ class AmazePrefsState(mainprefs.PrefsState):
             self.delete_user(uid)
 
     def _clear_check(self) -> None:
-        """The Databases row before a check: grey lights, no counts, no line, `Check`."""
+        """The Check Database row before a check: a grey light, no tip, `Check`."""
         self._check_found = None
-        self.checkLights = [{"heading": heading, "fill": amazetheme.P01_LIGHT_IDLE, "count": ""}
-                            for heading in amazetheme.LABEL_CHECK_PARTS]
+        self.checkLight = amazetheme.P01_LIGHT_IDLE
         self._show_check_line("", False)
 
     def _show_check_line(self, info: str, fixable: bool) -> None:
-        """The row's line, whole in its tip, and its one button: `Check`, or `Repair` drawn red."""
+        """What the check found, the light's tip, and the one button: `Check`, or `Repair` drawn red."""
         self.checkInfo = info
         self.checkTip = _tip_html(info)
         self.checkFixable = fixable
         self.checkLabel = amazetheme.BTN_REPAIR if fixable else amazetheme.BTN_CHECK
 
     def _show_check(self, findings: dict) -> None:
-        """Fill the row from one survey: each light's colour and count, the line, the button."""
+        """Fill the row from one survey: the light's colour, its tip, the button."""
         found = library_check.summary(findings)
-        lights = []
-        for heading, part in zip(amazetheme.LABEL_CHECK_PARTS, library_check.PARTS):
-            state, number = found["lights"][part]
-            lights.append({"heading": heading, "fill": LIGHT_FILLS[state],
-                           "count": amazetheme.LABEL_UNCHECKED if number is None else str(number)})
-        self.checkLights = lights
+        states = {state for state, _number in found["lights"].values()}
+        self.checkLight = next(fill for state, fill in LIGHT_FILLS.items() if state in states)
         self._check_found = findings if found["lines"] else None
         self._show_check_line(found["info"], bool(found["lines"]))
 
@@ -820,7 +817,7 @@ class AmazePrefsState(mainprefs.PrefsState):
             texture_library.ThumbnailCache(self._prefs.rendersize).clear()
 
     def _overwrite_confirmed(self) -> bool:
-        """Versions switched on asks first; True on Turn On."""
+        """Enable Asset Versions switched on asks first; True on Turn On."""
         import hou
         return hou.ui.displayMessage(
             messages.MATERIAL_VERSIONS_TURN_ON_CONFIRM, help=messages.HELP_MATERIAL_VERSIONS,
@@ -997,13 +994,6 @@ class AmazePrefsState(mainprefs.PrefsState):
         ui_helpers.open_url(updater.bug_report_url())
 
     @QtCore.Slot()
-    @debug.guarded("prefs.convert_old_library")
-    def convertOldLibrary(self) -> None:
-        """About ▸ Convert pre-1.40: the pane's converter, on a folder picked there."""
-        if self._pane is not None:
-            self._pane.library.convert_old_library()
-
-    @QtCore.Slot()
     def openLog(self) -> None:
         """Open the log FILE itself; an empty log opens its folder instead."""
         path = debug.log_path()
@@ -1055,7 +1045,7 @@ class AmazePrefsState(mainprefs.PrefsState):
         self.setPage(QtCore.QUrl.fromLocalFile(os.path.join(PAGES_FOLDER, name + "Page.qml")))
 
     def _tip_text(self, tip_id: str) -> str:
-        """The tip a row or button shows; the Library row's also names the picked folder's path."""
+        """The tip a row or button shows; Active Library's also names the picked folder's path."""
         if tip_id == LIBRARY and self.getPref(LIBRARY):
             return TIPS[LIBRARY] + "\n\n" + library_dialog.shown_path(self.getPref(LIBRARY))
         if tip_id.startswith(ADDON):

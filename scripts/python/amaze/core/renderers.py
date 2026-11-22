@@ -43,7 +43,7 @@ OCTANE = Renderer("Octane", "Octane", "Octane", "filter_octane", "octane",
 
 ALL = (KARMA, REDSHIFT, OCTANE)
 INTERMEDIATE = KARMA
-RENDER_TAB = (REDSHIFT, KARMA, OCTANE)
+RENDER_TAB = (KARMA, OCTANE, REDSHIFT)    # the Render page's samples rows, as the P02 frame orders them
 
 RENDERABLE_CONTEXTS = ("SOP", "COP", "")    # node contexts whose tiles can hold a render; "" is a pre-context COP ▸p/nodes-section
 

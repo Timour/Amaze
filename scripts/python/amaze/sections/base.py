@@ -41,8 +41,11 @@ MenuEntry = collections.namedtuple(
 SEPARATOR = MenuEntry("")  # the empty label is what makes it a divider
 
 
-GRID_MENU_TAIL = (
-    MenuEntry("Thumbnail", handler="menu_thumbnail", children="thumbnail_actions"),    # the tile's thumbnail: render, capture, customize
+GRID_MENU_TAIL = (    # the tile's picture rows, Render Image only where one renders, as in C01
+    MenuEntry("Render Image", handler="menu_update_preview", shown="menu_offers_preview"),
+    MenuEntry("Capture Image", handler="menu_capture", needs="menu_capture_enabled"),
+    MenuEntry("Customize", handler="menu_customize"),
+    SEPARATOR,
     MenuEntry("Favorite", handler="menu_favourite"),
     MenuEntry("Delete", handler="menu_delete", shown="deletes_rows"),
 )
@@ -362,20 +365,6 @@ class Section:
 
     def menu_capture(self, indexes, current, payload=None) -> None:
         self.pane.tile_capture.onto_tile(self, current)
-
-    def thumbnail_actions(self, indexes, current) -> tuple:
-        """The Thumbnail submenu's rows, each naming its method; Render Image only where one renders."""
-        rows = []
-        if self.menu_offers_preview(indexes, current):
-            rows.append(("Render Image", "menu_update_preview", "", bool(indexes)))
-        rows.append(("Capture Scene", "menu_capture", "",
-                     self.menu_capture_enabled(indexes, current)))
-        rows.append(("Customize", "menu_customize", "", bool(indexes)))
-        return tuple(rows)
-
-    def menu_thumbnail(self, indexes, current, payload=None) -> None:
-        if payload:
-            getattr(self, payload)(indexes, current)
 
     def menu_favourite(self, indexes, current, payload=None) -> None:
         self.pane.assets.toggle_favourite(indexes)

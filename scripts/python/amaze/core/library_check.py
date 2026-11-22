@@ -258,7 +258,7 @@ def found_names(findings: dict) -> list:
 
 
 def summary(findings: dict) -> dict:
-    """The Databases row: {lights, info, lines, names, safe, fixable}."""
+    """The Check Database row: {lights, info, lines, names, safe, fixable}."""
     lines = finding_lines(findings)
     fixes = all_fixes(findings)
     return {"lights": lights(findings),

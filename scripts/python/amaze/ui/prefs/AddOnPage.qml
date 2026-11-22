@@ -73,11 +73,14 @@ PrefsPage {
                 }
             }
         }
+        // The check's or the install's line under its button, as Houdini's warnings are drawn
         LabeledPref {
             shown: SharedState.addonsLine !== ""
 
-            Help {
+            PrefMessage {
                 text: SharedState.addonsLine
+                symbol: PhosphorGlyphs.warning
+                symbolColor: Theme.yellow
             }
         }
     }

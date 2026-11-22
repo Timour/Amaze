@@ -322,7 +322,7 @@ class EverySentenceOfTheReportTest(_Library):
         os.remove(os.path.join(self.materials, "AAA1.png"))
         text = self.text()
         self.assertIn("No thumbnail image yet for 1 material - select it in Amaze and use "
-                      "Thumbnail ▸ Render Image when convenient", text)
+                      "Render Image when convenient", text)
         self.assertIn("Every material and node in the databases has its files.", text)
 
     def test_leftovers_amaze_made(self):

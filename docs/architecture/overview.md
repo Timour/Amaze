@@ -213,11 +213,11 @@ entry — and `panel/grid.py` is the ONLY code that turns one into a
 QMenu. A row holds its label (from the UI text register), the NAME of
 the Section method that performs it, the fact deciding whether it EXISTS
 (`shown`), what it needs to be LIVE (`needs`), and optionally the method
-building a submenu's children. Names, not callables. The last three rows
-are `GRID_MENU_TAIL` — the Thumbnail submenu (Render Image, Capture Scene,
-Customize, its rows from `Section.thumbnail_actions`), Favorite, Delete —
-shared by every context and gated on facts it already declares, so
-adding a section adds no copy of them. Dispatch is a dict keyed by
+building a submenu's children. Names, not callables. The last rows
+are `GRID_MENU_TAIL` — Render Image (shown where `menu_offers_preview`
+says the selection renders), Capture Image, Customize, a divider,
+Favorite, Delete — shared by every context and gated on facts it already
+declares, so adding a section adds no copy of them. Dispatch is a dict keyed by
 QAction, never `==` against an action that may be None.
 
 `pane.loading.click_on_row` is the one function a double-click AND the menu entry
@@ -394,7 +394,7 @@ adapter, and return the uniform one if no adapter does better.
 
 ### 4c. The **Database Engine**: guard, documents, library_db {#o/keyed-store}
 
-Library format 2.0 (library version 4, `Format: v2.0`) keeps six
+Library format 2.0 (library version 4, `Current Library Format: 2.0`) keeps six
 databases at the library root, each a JSON document of named sections,
 every section a table keyed by id or key:
 
@@ -882,9 +882,9 @@ contracts other code and the docs rely on:
 - **One survey, two callers.** `repair.survey` reads the library once
   (`library_files.walk`, one `os.scandir` per folder) and every report,
   button and count reads that one dict. In the panel it is called from Preferences ▸
-  Library's Databases row (`prefs_window.AmazePrefsState._survey_open_library`):
+  Library's Check Database row (`prefs_window.AmazePrefsState._survey_open_library`):
   its button saves every model first (`check.save_before_check`), surveys, and
-  shows `library_check.summary` as three lights; once something can be
+  shows `library_check.summary` as one light, the worst of its three parts'; once something can be
   fixed it reads Repair and opens `repair_dialog.repair_found`, whose
   Fix Safe and Fix All act with `guard=False`, read every model again
   (`check.reload_after_check`) and check again. A part that cannot be checked
@@ -1193,8 +1193,8 @@ core/repair.py            CHECK LIBRARY's engine: one `survey` from one
                           `move_aside`, set aside, uncategorised), each
                           taking `guard`; the only module that opens a
                           format 3 stamp; no `hou`, no Qt, no dialog
-core/library_check.py     Preferences' Databases row over `repair`: the
-                          three lights (`summary`: Errors, Files, Ref),
+core/library_check.py     Preferences' Check Database row over `repair`: a
+                          light per part (`summary`: Errors, Files, Ref),
                           the Repair dialog's lines, and the two fixes,
                           `fix_safe` and `fix_all`; no `hou`, no Qt
 dialogs/repair_dialog.py  the shelf tool's report, buttons, confirms
