@@ -1663,9 +1663,9 @@ class LibraryUpdateTest(unittest.TestCase):
         self.panel.show_prefs()
         window = self.panel._prefs_window
         self.addCleanup(test_support.close_window, window)
-        self.assertEqual("Format: v3", window.sharedState().libraryFormat)
+        self.assertEqual("Current Library Format: 3", window.sharedState().libraryFormat)
         self.panel.pane.library._update_library()
-        self.assertEqual("Format: v2.0", window.sharedState().libraryFormat)
+        self.assertEqual("Current Library Format: 2.0", window.sharedState().libraryFormat)
 
 
 class NewerLibraryTest(unittest.TestCase):

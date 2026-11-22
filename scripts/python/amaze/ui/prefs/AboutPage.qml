@@ -1,4 +1,4 @@
-// The About page: the old About tab's text loose on the page, then its buttons in Groups.
+// The About page: its text loose on the page, then the Updates and Developer Groups, as in P06.
 import QtQuick
 import houdini.pluto
 import houdini.ui
@@ -18,13 +18,8 @@ PrefsPage {
         text: SharedState.aboutText + SharedState.creditsText
     }
     Group {
-        text: "Version"
+        text: "Updates"
 
-        LabeledPref {
-            Help {
-                text: SharedState.versionLine
-            }
-        }
         ButtonRow {
             Button {
                 text: SharedState.updateLabel
@@ -39,31 +34,25 @@ PrefsPage {
                     tipID: SharedState.updateOffered ? "install_update" : "check_for_updates"
                 }
             }
-            Button {
-                text: "Report a Bug..."
-                height: SharedState.rowHeight
-                onClicked: SharedState.reportBug()
-
-                TipArea {
-                    anchors.fill: parent
-                    tipID: "report_bug"
-                }
-            }
-            Button {
-                text: "Convert pre-1.40"
-                height: SharedState.rowHeight
-                onClicked: SharedState.convertOldLibrary()
+        }
+        // The version, then each check's or install's line, under its button as on the Add-On page
+        LabeledPref {
+            PrefMessage {
+                text: SharedState.versionLine
+                symbol: PhosphorGlyphs.warning
+                symbolColor: Theme.yellow
             }
         }
     }
     Group {
         text: "Developer"
 
-        // Its buttons under the switch, as Houdini's UI Scale row holds its buttons
         TogglePref {
             label: "Debug Mode"
             pref: "debug_mode"
-
+        }
+        // The log's buttons and Report a Bug in the switch's column, as the P06 frame draws them
+        LabeledPref {
             Row {
                 topPadding: 4
                 bottomPadding: 4
@@ -94,6 +83,15 @@ PrefsPage {
                     TipArea {
                         anchors.fill: parent
                         tipID: "clear_log"
+                    }
+                }
+                Button {
+                    text: "Report a Bug..."
+                    onClicked: SharedState.reportBug()
+
+                    TipArea {
+                        anchors.fill: parent
+                        tipID: "report_bug"
                     }
                 }
             }

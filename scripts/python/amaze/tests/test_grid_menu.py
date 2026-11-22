@@ -224,18 +224,18 @@ class TheMenusMatchTheOldHandlersOutput(unittest.TestCase):
                  ["Load Asset to > [/mat, /stage/materiallibrary]",
                   "Convert > [MaterialX(off), Redshift(off), Octane(off)](off)",    # neither renderer
                   "----",
-                  "Thumbnail > [Render Image, Capture Scene, Customize]", "Favorite",
+                  "Render Image", "Capture Image", "Customize", "----", "Favorite",
                   "Delete"]),
                 ((0, 1),
                  ["Load Asset to > [/mat, /stage/materiallibrary]",
                   "Convert > [MaterialX(off), Redshift, Octane]",
                   "----",
-                  "Thumbnail > [Render Image, Capture Scene(off), Customize]", "Favorite",    # one capture, one tile
+                  "Render Image", "Capture Image(off)", "Customize", "----", "Favorite",    # one capture, one tile
                   "Delete"]),
                 ((),
                  ["Load Asset to > [/mat, /stage/materiallibrary](off)",
                   "Convert > [MaterialX(off), Redshift(off), Octane(off)](off)", "----",
-                  "Thumbnail > [Render Image(off), Capture Scene(off), Customize(off)](off)",
+                  "Render Image(off)", "Capture Image(off)", "Customize(off)", "----",
                   "Favorite(off)", "Delete(off)"])):
             with self.subTest(selected=len(rows)):
                 with plugins_loaded("Redshift", "Octane"):
@@ -248,7 +248,7 @@ class TheMenusMatchTheOldHandlersOutput(unittest.TestCase):
             ["Load Asset",
              "Load Asset as > [Constant, Linear, CatmullRom, MonotoneCubic, "
              "Bezier, BSpline, Hermite]",
-             "----", "Thumbnail > [Capture Scene, Customize]", "Favorite",
+             "----", "Capture Image", "Customize", "----", "Favorite",
              "Delete"],
             [row for row in shown if not row.startswith("Copy Color")])
         swatches = [row for row in shown if row.startswith("Copy Color")]
@@ -260,7 +260,7 @@ class TheMenusMatchTheOldHandlersOutput(unittest.TestCase):
         """Per-entry actions grey out; Customize, Favorite and Delete act on the whole selection."""
         shown = self._show("gradient", (0, 1))
         self.assertEqual(
-            ["Load Asset(off)", "----", "Thumbnail > [Capture Scene(off), Customize]",
+            ["Load Asset(off)", "----", "Capture Image(off)", "Customize", "----",
              "Favorite", "Delete"],
             [row for row in shown
              if not row.startswith(("Load Asset as", "Copy Color"))])
@@ -273,16 +273,16 @@ class TheMenusMatchTheOldHandlersOutput(unittest.TestCase):
         """The fixture has no Node assets, so this is the empty case, which once produced no menu."""
         self.assertEqual(
             ["Load Asset(off)", "----",
-             "Thumbnail > [Render Image(off), Capture Scene(off), Customize(off)](off)",
+             "Render Image(off)", "Capture Image(off)", "Customize(off)", "----",
              "Favorite(off)", "Delete(off)"],
             self._show("cop"))
 
     def test_code_with_one_or_two_selected(self):
         for rows, expected in (
                 ((0,), ["New File", "----", "Load Asset", "Edit", "----",
-                        "Thumbnail > [Capture Scene, Customize]", "Favorite", "Delete"]),
+                        "Capture Image", "Customize", "----", "Favorite", "Delete"]),
                 ((0, 1), ["New File", "----", "Load Asset(off)", "Edit(off)", "----",
-                          "Thumbnail > [Capture Scene(off), Customize]", "Favorite",
+                          "Capture Image(off)", "Customize", "----", "Favorite",
                           "Delete"])):
             with self.subTest(selected=len(rows)):
                 self.assertEqual(expected, self._show("code", rows))
@@ -303,21 +303,21 @@ class TheMenusMatchTheOldHandlersOutput(unittest.TestCase):
         for kind, count, expected in (
                 (locations.KIND_IMAGE, 1,
                  top + ["Load Asset", "Copy Path", "----", "Show Location",
-                        "Thumbnail > [Render Image, Capture Scene, Customize]", "Favorite"]),
+                        "Render Image", "Capture Image", "Customize", "----", "Favorite"]),
                 (locations.KIND_IMAGE, 2,    # an image loads onto ONE node parameter
                  top + ["Load Asset(off)", "Copy Path", "----", "Show Location(off)",
-                        "Thumbnail > [Render Image, Capture Scene(off), Customize]", "Favorite"]),
+                        "Render Image", "Capture Image(off)", "Customize", "----", "Favorite"]),
                 (locations.KIND_GEO, 2,      # geometry loads the whole selection
                  top + ["Load Asset", "Copy Path", "----", "Show Location(off)",
-                        "Thumbnail > [Render Image, Capture Scene(off), Customize]", "Favorite"]),
+                        "Render Image", "Capture Image(off)", "Customize", "----", "Favorite"]),
                 (locations.KIND_HIP, 1,      # a scene captures only while it is the open one
                  ["New Folder", "----", "Copy", "Paste(off)", "----",
                   "Open Scene", "Save Scene", "----",
                   "Copy Path", "----", "Show Location",
-                  "Thumbnail > [Capture Scene(off), Customize]", "Favorite"]),
+                  "Capture Image(off)", "Customize", "----", "Favorite"]),
                 (locations.KIND_OTHER, 1,    # what Houdini cannot open is absent, not greyed
                  top + ["Copy Path", "----", "Show Location",
-                        "Thumbnail > [Capture Scene, Customize]", "Favorite"])):
+                        "Capture Image", "Customize", "----", "Favorite"])):
             with self.subTest(kind=kind, selected=count):
                 rows = self._rows_of_kind(kind)
                 self.assertGreaterEqual(len(rows), count,

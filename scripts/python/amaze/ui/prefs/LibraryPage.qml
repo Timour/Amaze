@@ -1,4 +1,4 @@
-// The Library page: the old Library tab's rows, in its order, in one Group of Houdini's own pieces.
+// The Library page: its rows in three Groups of Houdini's own pieces, as the P01 frame draws them.
 import QtQuick
 import QtQuick.Layouts
 import houdini.pluto
@@ -7,11 +7,11 @@ import houdini.prefs
 
 PrefsPage {
     Group {
-        text: "Library"
+        text: "Libraries"
 
         // A list with its buttons under it, as Houdini's theme menus hold theirs
         ListMenuPref {
-            label: "Library"
+            label: "Active Library"
             pref: "library"
             options: SharedState.libraryOptions
 
@@ -20,6 +20,15 @@ PrefsPage {
                 bottomPadding: 4
                 spacing: 8
 
+                Button {
+                    text: "Add"
+                    onClicked: SharedState.addLibrary()
+
+                    TipArea {
+                        anchors.fill: parent
+                        tipID: "add_library"
+                    }
+                }
                 Button {
                     text: "Manage"
                     onClicked: manageDialog.open()
@@ -30,66 +39,29 @@ PrefsPage {
                     }
                 }
                 Button {
-                    text: "Add"
-                    onClicked: SharedState.addLibrary()
+                    text: "Reload"
+                    enabled: SharedState.libraryOpen
+                    onClicked: SharedState.reloadLibrary()
 
                     TipArea {
                         anchors.fill: parent
-                        tipID: "add_library"
+                        tipID: "reload_library"
+                    }
+                }
+                Button {
+                    text: "Show Folder"
+                    enabled: SharedState.libraryOpen
+                    onClicked: SharedState.showLibraryFolder()
+
+                    TipArea {
+                        anchors.fill: parent
+                        tipID: "show_library_folder"
                     }
                 }
             }
         }
-        ButtonRow {
-            label: SharedState.libraryFormat
-
-            Button {
-                text: "Reload"
-                enabled: SharedState.libraryOpen
-                height: SharedState.rowHeight
-                onClicked: SharedState.reloadLibrary()
-
-                TipArea {
-                    anchors.fill: parent
-                    tipID: "reload_library"
-                }
-            }
-            Button {
-                text: "Show Folder"
-                enabled: SharedState.libraryOpen
-                height: SharedState.rowHeight
-                onClicked: SharedState.showLibraryFolder()
-
-                TipArea {
-                    anchors.fill: parent
-                    tipID: "show_library_folder"
-                }
-            }
-        }
-        // The Databases row's own headings over its lights; a light's column is 31 wide, 8 apart
         LabeledPref {
-            RowLayout {
-                width: parent.width
-                spacing: 8
-
-                Repeater {
-                    model: SharedState.checkLights
-                    delegate: Text {
-                        required property var modelData
-
-                        text: modelData.heading
-                        color: Theme.dimFg
-                        horizontalAlignment: Text.AlignRight
-                        Layout.preferredWidth: 31
-                    }
-                }
-                Item {
-                    Layout.fillWidth: true
-                }
-            }
-        }
-        LabeledPref {
-            label: "Databases"
+            label: "Check Database"
             tipID: "check_library"
 
             RowLayout {
@@ -97,41 +69,6 @@ PrefsPage {
                 height: SharedState.rowHeight
                 spacing: 8
 
-                Repeater {
-                    model: SharedState.checkLights
-                    delegate: Row {
-                        required property var modelData
-
-                        layoutDirection: Qt.RightToLeft    // the count ends under its heading
-                        spacing: 5
-                        Layout.preferredWidth: 31
-                        Layout.alignment: Qt.AlignVCenter
-
-                        Text {
-                            text: modelData.count
-                            color: Theme.dimFg
-                        }
-                        Rectangle {
-                            width: 9
-                            height: 9
-                            radius: width / 2
-                            color: modelData.fill
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
-                    }
-                }
-                Text {
-                    text: SharedState.checkInfo
-                    color: Theme.dimFg
-                    elide: Text.ElideRight
-                    Layout.fillWidth: true
-                    Layout.alignment: Qt.AlignVCenter
-
-                    TipArea {
-                        anchors.fill: parent
-                        text: SharedState.checkTip
-                    }
-                }
                 Button {
                     text: SharedState.checkLabel
                     danger: SharedState.checkFixable
@@ -144,10 +81,34 @@ PrefsPage {
                         tipID: "check_library"
                     }
                 }
+                Text {
+                    text: SharedState.libraryFormat
+                    color: Theme.dimFg
+                    elide: Text.ElideRight
+                    Layout.fillWidth: true
+                    Layout.alignment: Qt.AlignVCenter
+                }
+                // One light for the whole check; what it found is its tip
+                Rectangle {
+                    width: 9
+                    height: 9
+                    radius: width / 2
+                    color: SharedState.checkLight
+                    Layout.alignment: Qt.AlignVCenter
+
+                    TipArea {
+                        anchors.fill: parent
+                        text: SharedState.checkTip
+                    }
+                }
             }
         }
+    }
+    Group {
+        text: "Users"
+
         ListMenuPref {
-            label: "User"
+            label: "Active User"
             pref: "library_user"
             options: SharedState.userOptions
 
@@ -182,6 +143,14 @@ PrefsPage {
                 }
             }
         }
+        TogglePref {
+            label: "Enable Asset Versions"
+            pref: "allow_overwrite"
+        }
+    }
+    Group {
+        text: "Paths"
+
         // The folder shown as TextPref shows its text, changed only by its buttons
         LabeledPref {
             label: "Cache Path"
@@ -232,17 +201,13 @@ PrefsPage {
                 {text: "Absolute", value: "absolute"},
             ]
         }
-        TogglePref {
-            label: "Versions"
-            pref: "allow_overwrite"
-        }
-        // What Apply does to the picked library, as Houdini's pages put a warning in a group
-        PrefMessage {
-            text: SharedState.applyLine
-            shown: SharedState.applyLine !== ""
-            symbol: PhosphorGlyphs.warning
-            symbolColor: Theme.yellow
-        }
+    }
+    // What Apply does to the picked library, loose on the page as Houdini's APEX pages put theirs
+    PrefMessage {
+        text: SharedState.applyLine
+        shown: SharedState.applyLine !== ""
+        symbol: PhosphorGlyphs.warning
+        symbolColor: Theme.yellow
     }
 
     // Both drawn in this window, blocking only it, as Houdini's OCIO page draws its Add Rule
@@ -254,7 +219,7 @@ PrefsPage {
         id: nameDialog
         anchors.centerIn: parent
         onAccepted: SharedState.nameUser(nameDialog.name)
-        onRejected: SharedState.prefsUpdated()    // the User row shows the user it showed before
+        onRejected: SharedState.prefsUpdated()    // the Active User row shows the user it showed before
     }
 
     // Python asks for the name dialog as Houdini's Node Search asks for its Save Query dialog

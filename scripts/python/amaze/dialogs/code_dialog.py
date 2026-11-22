@@ -251,7 +251,7 @@ class CodeDialog(base_dialog.AssetDialog):
         self._tabs = [{"n": active if self._versions else NO_VERSION, "name": name, "code": code}]
         self._front = 0                        # the tab the fields and the editor show
         self.name = self.language = self.category = self.tags = self.code = ""
-        self._versions_on = versions_on    # the library's Versions switch, in Preferences
+        self._versions_on = versions_on    # the library's Enable Asset Versions switch, in Preferences
         self.can_add_version = saved and versions_on    # and the snippet is already saved in the library
 
         form = QtWidgets.QGridLayout()

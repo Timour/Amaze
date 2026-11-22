@@ -83,11 +83,11 @@ class OnlyASectionThatRENDERSOffersUpdatePreview(unittest.TestCase):
                     "selection" % name)
 
     def _render_image_listed(self, name):
-        """Render Image is a row of the shared Thumbnail submenu; this returns whether it is listed."""
+        """Render Image is a row of the shared GRID_MENU_TAIL; this returns whether it is shown."""
         entry = next(e for e in section_base.GRID_MENU_TAIL
-                     if e.label == "Thumbnail")
-        context = test_support.section_class(name)(None)  # an instance with no panel: the submenu reads the section, and False for a missing model
-        return "Render Image" in [row[0] for row in getattr(context, entry.children)([], None)]
+                     if e.label == "Render Image")
+        context = test_support.section_class(name)(None)  # an instance with no panel: the row's fact reads the section, and False for a missing model
+        return getattr(context, entry.shown)([], None)
 
 
 class DeleteIsOneProcedureWithFourPrompts(unittest.TestCase):
