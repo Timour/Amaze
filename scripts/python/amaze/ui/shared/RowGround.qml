@@ -8,8 +8,8 @@ Item {
     property bool highlighted: false
     property bool failed: false    // what the row names cannot be reached: its highlight is red
     property bool alternate: false
-    property color ground: Theme.field    // Houdini's TreeViewDelegate's own two row colours
-    property color groundAlt: Theme.fieldAlt
+    property color ground: Theme.viewSurface    // Houdini's list rows, as its widget trees paint them
+    property color groundAlt: Theme.viewSurfaceAlt
     readonly property color fg: (    // the text on it, in the pair Houdini's theme gives each ground
         !root.highlighted ? Theme.fieldFg
             : root.failed ? Theme.errorSurfaceFg : Theme.highlightSurfaceFg
@@ -18,7 +18,6 @@ Item {
     implicitHeight: 20
     Rectangle {    // square stripes, as Houdini's stock tree draws them; its QML tree rounds them
         anchors.fill: parent
-        anchors.rightMargin: 2
         color: (
             !root.highlighted ? (root.alternate ? root.groundAlt : root.ground)
                 : root.failed ? Theme.errorSurface : Theme.highlightSurface

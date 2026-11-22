@@ -56,24 +56,30 @@ PaneRoot {
         SplitView {    // Houdini's split: the sidebar at its kept width, then the grid's area
             Layout.fillWidth: true
             Layout.fillHeight: true
-            onResizingChanged: if (!resizing) SharedState.keepSidebarWidth(sidebar.width)
+            onResizingChanged: if (!resizing) SharedState.keepSidebarWidth(sidebarArea.width)
 
-            SidebarTree {
-                id: sidebar
+            Rectangle {    // the list's own ground below its rows, as Houdini's lists have
+                id: sidebarArea
                 visible: SharedState.sidebarShown
+                color: Theme.viewSurface
                 SplitView.preferredWidth: SharedState.sidebarWidth
                 SplitView.maximumWidth: SharedState.sidebar.width    // never wider than G01, as the widget's
-                model: SharedState.sidebarModel
-                selectionModel: SharedState.sidebarSelection
-                counts: SharedState.sidebarCounts
-                drawn: SharedState.sidebar
-                onRowChosen: index => SharedState.chooseSidebarRow(index)
-                onStepped: SharedState.stepSidebar()
 
-                Connections {
-                    target: SharedState
-                    function onSidebarOpened(index) {
-                        sidebar.open(index)
+                SidebarTree {
+                    id: sidebar
+                    anchors.fill: parent
+                    model: SharedState.sidebarModel
+                    selectionModel: SharedState.sidebarSelection
+                    counts: SharedState.sidebarCounts
+                    drawn: SharedState.sidebar
+                    onRowChosen: index => SharedState.chooseSidebarRow(index)
+                    onStepped: SharedState.stepSidebar()
+
+                    Connections {
+                        target: SharedState
+                        function onSidebarOpened(index) {
+                            sidebar.open(index)
+                        }
                     }
                 }
             }
