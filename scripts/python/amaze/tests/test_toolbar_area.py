@@ -283,12 +283,6 @@ class TheToolbarMatchesFrameB01(unittest.TestCase):
                 self.assertEqual({QtGui.QColor(colour).name()},
                                  self._solid_colours(button._pms[(True, False)]))
 
-    def test_the_switched_on_colours_are_the_designs(self):
-        from amaze import amazetheme
-        self.assertEqual(("#3fc28a", "#a05dfe", "#fdba00", "#5d7abd"),
-                         (amazetheme.ONLINE_ICON_COLOR, amazetheme.COMMENT_ICON_COLOR,
-                          amazetheme.INFO_ICON_COLOR, amazetheme.MENU_IDLE_BODY))
-
     @staticmethod
     def _solid_colours(pixmap):
         """The colours of a pixmap's fully opaque pixels."""

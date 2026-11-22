@@ -70,7 +70,7 @@ LABEL_COLOURS = (              # ▸ the sidebar's Label submenu (C09c): its fou
     ("Green", "#a4c18a"),
 )
 
-COMMENT_ICON_COLOR = "#a05dfe"   # ▸ the Comments pane (N01): its header icon, and its toolbar button while open
+COMMENT_ICON_COLOR = "#765d99"   # ▸ the Comments pane (N01): its header icon, and its toolbar button while open
 COMMENT_ICON_ART_COLOR = "#5d7abd"    # the colour icon_comments.svg is drawn in; COMMENT_ICON_COLOR replaces it
 COMMENT_DONE_COLOR = "#4af2a1"   # a done to-do
 COMMENT_OPEN_COLOR = "#ff7760"   # an open to-do
@@ -84,11 +84,11 @@ COMMENT_DIM_ICON_OPACITY = 0.25         # the speech bubble,
 COMMENT_DIM_ICON_COLOR = "#ffffff"        # in white
 COMMENT_DIM_ADD_COLOR = "#565656"         # the + art; Houdini's menu triangle keeps its colour
 
-ONLINE_ICON_COLOR = "#3fc28a"    # ▸ the toolbar's Online button while the online world is open
+ONLINE_ICON_COLOR = "#598c76"    # ▸ the toolbar's Online button while the online world is open
 ABOUT_REPO = {"row": 55, "mark": {"x": 6, "y": 15, "w": 26, "h": 25}, "gap": 10, "text": "#979797"}    # ▸ P06: GitHub's mark, its address
 TOOLBAR_ON = {"fill": "#393939", "border": "#a3abc5", "ring": "#364269"}    # ▸ B01c: a button on or open
 TOOLBAR_SEARCH_END_GAP = 6    # the least space between the Search box and Comments, in a narrow panel
-INFO_ICON_COLOR = "#fdba00"      # ▸ the info pane (N02): its header icon, and its toolbar button while open
+INFO_ICON_COLOR = "#b69c51"      # ▸ the info pane (N02): its header icon, and its toolbar button while open
 INFO_ICON_ART_COLOR = "#5d7abd"  # the colour icon_info.svg is drawn in; INFO_ICON_COLOR replaces it
 INFO_HIDE_PREVIEW = "Hide Preview"    # the header button's tooltip while the picture is shown
 INFO_SHOW_PREVIEW = "Show Preview"    # and while it is hidden

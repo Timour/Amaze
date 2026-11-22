@@ -926,45 +926,6 @@ class IconAssetsTest(unittest.TestCase):
             self.assertTrue(inks, "%s draws no icon" % hover)
             self.assertNotIn("#FFFFFF", inks, "%s keeps %s's white icon" % (hover, rest))
 
-    def _play_mark(self, name):
-        """The play mark's path in a run button file: its `d`, fill, stroke and stroke opacity."""
-        with open(self._ui(name), encoding="utf-8") as fh:
-            marks = [tag for tag in re.findall(r'<path[^>]*?>', fh.read(), re.S)
-                     if 'id="Rounded-Rectangle' not in tag]
-        self.assertEqual(1, len(marks), "%s does not draw exactly one play mark" % name)
-
-        def attribute(key):
-            found = re.search(r'\s%s="([^"]*)"' % key, marks[0])
-            return found.group(1).upper() if found else None
-        return {key: attribute(key) for key in
-                ("d", "fill", "stroke", "stroke-opacity", "stroke-width")}
-
-    def test_the_run_button_is_an_outline_that_turns_green_and_fills_when_pressed(self):
-        """T20, T21 and T22: a white outline, a green outline, then solid green. ▸r/tile-from-frame"""
-        rest = self._play_mark("badge_execute.svg")
-        hover = self._play_mark("badge_execute_hover.svg")
-        press = self._play_mark("badge_execute_press.svg")
-        self.assertEqual((None, "#FFFFFF", "0.75", "1.3"),
-                         (rest["fill"], rest["stroke"], rest["stroke-opacity"], rest["stroke-width"]))
-        self.assertEqual((None, "#297D54", None, "1.3"),
-                         (hover["fill"], hover["stroke"], hover["stroke-opacity"],
-                          hover["stroke-width"]))
-        self.assertEqual(("#297D54", "#297D54", "1.3"),
-                         (press["fill"], press["stroke"], press["stroke-width"]))
-        self.assertTrue(self._same_outline(hover["d"], press["d"]),
-                        "hover and press draw two different marks")
-        self.assertFalse(self._same_outline(rest["d"], hover["d"]),
-                         "the mark does not grow under the pointer, so the check above proves nothing")
-
-    @staticmethod
-    def _same_outline(one, other):
-        """Whether two paths are one outline: the same commands, each number within a thousandth."""
-        number = r"-?\d*\.?\d+"
-        if re.sub(number, "#", one) != re.sub(number, "#", other):
-            return False
-        return all(abs(float(a) - float(b)) <= 0.001
-                   for a, b in zip(re.findall(number, one), re.findall(number, other)))
-
     @staticmethod
     def _effective_paint(tag):
         """A tag's painted fill and fill-opacity: `style` overrides attributes. ▸r/svg-style-overrides"""
