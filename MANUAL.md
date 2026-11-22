@@ -543,18 +543,18 @@ installed in its own folder inside Amaze's.
 row with a picture, the version and author, a switch and a short
 description. Nodes that belong together share a row and a switch.
 
-The switch takes effect at the next start of Houdini, and the line next
-to the button says so after each change. Switched off, the row's nodes
+A switch takes effect with **Apply** and at the next start of Houdini;
+the line at the top of the page says so. Switched off, the row's nodes
 are left out when Houdini starts; scenes that use them keep their values
 and show the nodes as incomplete until they are switched on again.
 
 **Check for Updates** lists new add-ons and newer versions from the store
-in the line next to it, and turns into **Update**, which installs them.
+in the line under it, and turns into **Update**, which installs them.
 They load at the next start of Houdini. Rows that are off stay off.
 
-**Preferences ▸ About ▸ Add-On beta versions** sets which version Check
+**Preferences ▸ Add-On ▸ Add-On beta versions** sets which version Check
 for Updates installs: the newest beta of each add-on when on, the newest
-release when off.
+release when off. It takes effect with **Apply**.
 
 Houdini loads add-ons through the `package_path` line in `Amaze.json`,
 described in the [README](README.md)'s installation steps.
@@ -760,29 +760,36 @@ a miss indicator
 
 The <img src="scripts/python/amaze/ui/icon_library.svg" width="16">
 gear button opens Preferences, a floating window that stays open next to
-the scene. It has six tabs.
+the scene. Its pages are listed on the left: Library, Render, UI, Add-On
+and About. **Search** at the top finds a setting by its name on every
+page. A changed setting takes effect with **Apply**, or with **Accept**,
+which also closes the window; **Cancel** closes it without the changes.
+The arrows at the bottom left undo and redo changes not yet applied.
+Buttons such as **Reload** or **Check for Updates** act at once.
 
 ### Library
 
-<img src="docs/images/prefs_library.png" width="440">
+The **Library** group holds the settings of the library.
 
 **Library** lists the libraries this computer has opened, the most
 recent first. Picking one shows its users and its format; **Apply**
 opens it with the user picked, and **Accept** does the same and closes
-Preferences. Until then the open library stays open. **Add** puts a
-library folder in the list, or an empty folder for a new library. The
-list holds 20 libraries; **Manage** takes libraries off it. **Check**,
-**Reload** and **Show Folder** act on the open library. **Check** opens
-[Check Library](#housekeeping-and-troubleshooting).
+Preferences. Until then the open library stays open. A pick that cannot
+be opened stays picked after **Apply**, and **Accept** keeps the window
+open on it. **Add** puts a library folder in the list, or an empty
+folder for a new library. The list holds 20 libraries; **Manage** takes
+libraries off it. **Reload** and **Show Folder** act on the open
+library.
 
 **Format** is the library's version: v2.0 for a library this Amaze
-writes. For a library from an older Amaze, the line beside **Apply**
-says that applying updates it; Amaze converts it to 2.0 when it opens,
-after a confirmation. A library from a newer Amaze cannot be applied,
-and the line says to update Amaze.
+writes. For a library from an older Amaze, the line at the end of the
+group says that applying updates it; Amaze converts it to 2.0 when it
+opens, after a confirmation. A library from a newer Amaze cannot be
+applied, and the line says to update Amaze.
 
-**Versions** turns [versions](#versions) on and off, for materials and
-snippets.
+**Databases** shows the state of the open library's databases. **Check**
+opens [Check Library](#housekeeping-and-troubleshooting); when a check
+has found something it can fix, the button is **Repair**.
 
 **User** lists the users in the picked library. Favorites, File folders
 and saved versions belong to the user, so the same user on another
@@ -791,71 +798,68 @@ users in one library cannot share a name.
 **Rename** renames the user shown, and **Delete** removes them from the
 library, after a confirmation. Amaze opens a library only with a user
 picked: when it starts without one, it shows a message with **Open
-Preferences**, which opens this tab. A computer still signed in as a
+Preferences**, which opens this page. A computer still signed in as a
 deleted user shows the same message the next time Amaze opens.
 
-**Cache Path** and **Delete Local Cache** manage the thumbnail cache on
-this machine, the cache and log of Redshift's preview renders included.
+**Cache Path** is the thumbnail cache on this machine, the cache and log
+of Redshift's preview renders included. **...** picks another folder and
+**Default** goes back to the default one; both take effect with
+**Apply**. **Delete** deletes the cache, after a confirmation.
+
+**Write Paths As** sets how Amaze writes paths; see [Write Paths
+As](#write-paths-as).
+
+**Versions** turns [versions](#versions) on and off, for materials and
+snippets.
 
 ### Render
 
-<img src="docs/images/prefs_render.png" width="440">
-
-**RenderSize**, **Samples (Redshift)**, **Samples (Karma)**, **Samples
-(Octane)**, **RAM Cache (MB)**, **Geometry Shading**, **Geometry
-Background** and **Render Thumbs on Import**. Below the divider:
-**Conversion Threads** for texture conversion, **Download
-Resolution** and **Parallel Downloads** for the online sources.
+- **Thumbnails**: **RenderSize**, **Samples (Redshift)**, **Samples
+  (Karma)**, **Samples (Octane)**, **RAM Cache (MB)**, **Geometry
+  Shading**, **Geometry Background** and **Render Thumbs on Import**.
+- **Textures**: **Conversion Threads**, for texture conversion.
+- **Downloads**: **Download Resolution** and **Parallel Downloads**, for
+  the online sources.
 
 ### UI
 
-<img src="docs/images/prefs_look.png" width="440">
-
-**Show Counts on Categories**, **Hide Empty Categories**, **Step Size**
-(the size slider moves in steps of 64 px), **Render RAT Files** (off:
-RAT files in the File tab show a rat and are not converted), **System
-File Icons** (off: files with no preview show the generic file icon),
-**Write Paths As**, **Tile Icon Line** (Thin, or Feather's Regular) and **Scroll
-Speed (%)**.
-
-<img src="docs/images/prefs_showhide.png" width="440">
-<img src="docs/images/prefs_showhide_sections.png" width="440">
-
-Two sub-tabs set which renderers and sections Amaze shows.
-
+- **Categories**: **Show Counts on Categories** and **Hide Empty
+  Categories**.
+- **Grid**: **Step Size** (the size slider moves in steps of 64 px),
+  **Tile Icon Line** (Thin, or Feather's Regular) and **Scroll Speed
+  (%)**.
+- **File Tab**: **Render RAT Files** (off: RAT files in the File tab
+  show a rat and are not converted) and **System File Icons** (off:
+  files with no preview show the generic file icon).
 - **Renderer** has a switch for each renderer. A renderer that is
   switched off is removed from the [Filter](#the-panel-at-a-glance)
   menu, Convert, Import to Materials and Import to Scene, and its
-  Samples row is removed from the Render tab.
+  Samples row is removed from the Render page.
 - **Sections** has a switch for each section. A section that is
-  switched off has no tab in the panel.
+  switched off has no tab in the panel. At least one section stays on.
 
 ### Add-On
 
-The installed add-ons, a switch for each row, and **Check for Updates**
-for the Amaze store. See [Add-ons](#add-ons).
-
-<img src="docs/images/prefs_addon.png" width="440">
+**Installed** lists the installed add-ons, with a switch for each.
+**Updates** holds **Add-On beta versions** and **Check for Updates** for
+the Amaze store. See [Add-ons](#add-ons).
 
 ### About
 
-<img src="docs/images/prefs_about.png" width="440">
+Credits and licenses, then two groups.
 
-Credits and licenses. The version line shows the running version and
-the answer to each update check. **Check for Updates** checks for a
-newer Amaze; when there is one, the button changes to **Install
-Update**, which installs it. When the newer Amaze also updates the
-library, **Install Update** is red, the version line names the library
-version it updates to, and installing asks to **Continue** or
-**Cancel** first. The **Updates** tool on the shelf asks the same.
-**Report a Bug...** opens the Amaze bug page
-in the browser with the Amaze, Houdini and OS versions filled in; the
-report is sent with **Submit** on that page.
+**Version**: the version line shows the running version and the answer
+to each update check. **Check for Updates** checks for a newer Amaze;
+when there is one, the button changes to **Install Update**, which
+installs it. When the newer Amaze also updates the library, **Install
+Update** is shown in red, the version line names the library version it
+updates to, and installing asks to **Continue** or **Cancel** first. The
+**Updates** tool on the shelf asks the same. **Report a Bug...** opens
+the Amaze bug page in the browser with the Amaze, Houdini and OS
+versions filled in; the report is sent with **Submit** on that page.
 
-**Debug Mode**, **Open Log**, **Save Log...** and **Clear Log** control
-the debug log. **Add-On beta versions** sets which
-version of each add-on Check for Updates on the Add-On tab installs: the
-newest beta when on, the newest release when off.
+**Developer**: **Debug Mode**, **Open Log**, **Save Log...** and **Clear
+Log** control the debug log.
 
 > **Where settings are stored.** Render settings, renderer choices,
 > conversion and download settings, and Write Paths As are stored in the
