@@ -45,15 +45,8 @@ PaneRoot {
             }
         }
 
-        ProgressBar {
-            Layout.fillWidth: true
-            visible: SharedState.progressShown
-            from: 0
-            to: Math.max(SharedState.progressTotal, 1)
-            value: SharedState.progressDone
-        }
-
         SplitView {    // Houdini's split: the sidebar at its kept width, then the grid's area
+            id: content
             splitColor: Theme.bg    // inside a pane, as Houdini's style draws it; paneDivider is between panes
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -92,5 +85,14 @@ PaneRoot {
                 }
             }
         }
+    }
+
+    ProgressBar {    // over the top edge of the sidebar and grid, so showing it moves nothing
+        y: content.y
+        width: parent.width
+        visible: SharedState.progressShown
+        from: 0
+        to: Math.max(SharedState.progressTotal, 1)
+        value: SharedState.progressDone
     }
 }
