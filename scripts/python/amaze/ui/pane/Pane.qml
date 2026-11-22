@@ -54,7 +54,7 @@ PaneRoot {
         }
 
         SplitView {    // Houdini's split: the sidebar at its kept width, then the grid's area
-            splitColor: Theme.paneDivider    // the colour of Houdini's own divider between panes
+            splitColor: Theme.bg    // inside a pane, as Houdini's style draws it; paneDivider is between panes
             Layout.fillWidth: true
             Layout.fillHeight: true
             onResizingChanged: if (!resizing) SharedState.keepSidebarWidth(sidebarArea.width)

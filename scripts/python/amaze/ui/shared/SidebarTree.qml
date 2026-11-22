@@ -53,7 +53,8 @@ TreeView {
                                          && (root.counts || entry.model.key === ""))
 
         leftMargin: root.drawn.bar_x * 2 + root.drawn.bar    // Houdini's tree starts after the bar
-        effectiveTextColor: entry.background.fg
+        // Houdini's QML arrow takes this colour; its widget trees draw it in primary (parts.drawTreeBranch)
+        effectiveTextColor: entry.highlighted ? entry.background.fg : Theme.primary
         background: RowGround {
             highlighted: entry.highlighted
             failed: entry.lost
@@ -65,7 +66,7 @@ TreeView {
             mirrored: entry.mirrored
             text: entry.counted ? `${entry.model.display} (${entry.count})` : entry.model.display
             font: entry.font
-            color: entry.effectiveTextColor
+            color: entry.background.fg
         }
         onClicked: root.rowChosen(root.index(entry.row, 0))
 
