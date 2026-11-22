@@ -16,10 +16,9 @@ Item {
     )
 
     implicitHeight: 20
-    Rectangle {    // the shape of Houdini's TreeViewDelegate background
+    Rectangle {    // square stripes, as Houdini's stock tree draws them; its QML tree rounds them
         anchors.fill: parent
         anchors.rightMargin: 2
-        radius: 4
         color: (
             !root.highlighted ? (root.alternate ? root.groundAlt : root.ground)
                 : root.failed ? Theme.errorSurface : Theme.highlightSurface
