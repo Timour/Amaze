@@ -190,7 +190,7 @@ from amaze.panel import delegates            # noqa: E402
 
 _reload(delegates)
 
-SIDEBAR_KEY_PAUSE_MS = 180    #: the arrow keys' pause before the sidebar row they stop on is shown: a File step lists a folder
+SIDEBAR_KEY_PAUSE_MS = pane_sidebar.KEY_PAUSE_MS    #: the engine's, which the QML pane waits too
 
 MIN_PANEL_WIDTH = 500    #: design px through `theme.ui_px` at use; the grid pane has none ▸r/qt-windows-macos
 

@@ -1,9 +1,9 @@
-"""The Amaze (QML) pane builds, loads its QML silently, and Qt deletes it on the main thread."""
+"""The Amaze (QML) pane builds, loads its QML silently, shows its sidebar, and Qt deletes it."""
 import os
 import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")   # the first QApplication picks the platform ▸p/first-app-picks-the-platform
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtQuick, QtWidgets
 import shiboken6
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
@@ -48,6 +48,42 @@ class TheQmlPaneOpensAndCloses(unittest.TestCase):
         QtCore.QCoreApplication.sendPostedEvents(None, QtCore.QEvent.Type.DeferredDelete)    # Qt's own loop, no collector
         self.assertEqual([False] * len(parts), [shiboken6.isValid(part) for part in parts],
                          "the pane, its QML view, its state or its engine outlived the close")
+
+    def test_the_sidebar_loads_silently_and_shows_the_sections_rows(self):
+        test_support.fixture_panel(self)
+        said = []
+
+        def hear(_kind, context, text):
+            if ".qml" in text or context.category in ("qml", "js"):
+                said.append(text)
+
+        previous = QtCore.qInstallMessageHandler(hear)
+        try:
+            panel = qml_pane.QmlPanel()
+            self.addCleanup(test_support.stop_panel_workers, panel)
+            self.addCleanup(QtCore.QCoreApplication.sendPostedEvents, None, QtCore.QEvent.Type.DeferredDelete)
+            self.addCleanup(panel.deleteLater)
+            panel.setAttribute(QtCore.Qt.WidgetAttribute.WA_DontShowOnScreen)
+            panel.resize(840, 420)
+            panel.show()
+            QtWidgets.QApplication.processEvents()
+            panel.view.grabFramebuffer()    # a frame: the tree makes its rows as it is drawn
+        finally:
+            QtCore.qInstallMessageHandler(previous)
+
+        self.assertEqual([], said, "the sidebar's QML reported errors or warnings")
+        trees = [item for item in panel.view.rootObject().findChildren(QtQuick.QQuickItem)
+                 if item.metaObject().className().startswith("SidebarTree")]
+        self.assertEqual(1, len(trees), "the pane has not one sidebar tree")
+        engine = panel.pane.sidebar
+        section = panel.pane.active_section()
+        self.assertIs(getattr(panel.pane, section.sidebar_attr), engine.model,
+                      "the engine does not show the section's own sidebar rows")
+        self.assertGreater(engine.model.rowCount(), 1, "the fixture's section has no rows below All")
+        self.assertEqual(engine.model.rowCount(), trees[0].property("rows"),
+                         "the tree does not show every row of the section's sidebar")
+        self.assertIs(engine.selection, trees[0].property("selectionModel"),
+                      "the tree keeps a selection other than the one the engine moves")
 
 
 if __name__ == "__main__":

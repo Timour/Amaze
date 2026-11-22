@@ -1287,7 +1287,9 @@ def drawn_tabs(frame_key: str = "S01") -> dict:
 
 def drawn_sidebar(frame_key: str = "G01") -> dict:
     """The sidebar's width, colour bar and splitter handle, off its frame. ▸r/sidebar-from-frame"""
-    return {"width": drawn_node(frame_key, "list")[3], "bar": drawn_node(frame_key, "bar")[3],
+    bar, row = drawn_node(frame_key, "bar"), drawn_node(frame_key, "row")
+    return {"width": drawn_node(frame_key, "list")[3], "bar": bar[3],
+            "bar_x": bar[1], "bar_inset": (row[4] - bar[4]) / 2,    # the bar's left edge, its gap above and below
             "handle": drawn_node(frame_key, "splitter handle")[3]}
 
 

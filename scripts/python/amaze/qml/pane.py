@@ -7,7 +7,7 @@ import amaze
 from amaze import amazetheme, tooltips
 from amaze.core import debug
 from amaze.helpers import ui_helpers
-from amaze.pane import asks, pane as pane_mod
+from amaze.pane import asks, pane as pane_mod, sidebar as pane_sidebar
 from amaze.panel import delegates
 from amaze.utils import rc_calls
 from hutil.qt.common import qmlviews    # Houdini's own QML panels' base ▸r/houdini-qml-tabs
@@ -42,8 +42,15 @@ class PaneState(qmlviews.SharedState, asks.Asks):
     emptyHeadline: str = ""
     emptySentence: str = ""
     emptyButton: str = ""
+    sidebar: dict = {}    # frame G01's figures: the sidebar's width and its colour bar
+    sidebarModel: QtCore.QAbstractItemModel = None    # the shown section's sidebar rows
+    sidebarSelection: QtCore.QObject = None    # this pane's selection of them, which the engine moves
+    sidebarCounts: bool = True
+    sidebarShown: bool = True
+    sidebarWidth: float = 0.0    # in the pane's design px
 
     searchCleared = QtCore.Signal()    # the empty state's Clear Search: the QML empties its field
+    sidebarOpened = QtCore.Signal(QtCore.QModelIndex)    # the tree opens this folder and those above it
 
     pane = None    # the engine, built by `start`
     os_file_icon = staticmethod(delegates.os_file_icon)    # held by the shared File model
@@ -58,6 +65,13 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         self._size_save.setSingleShot(True)
         self._size_save.setInterval(SIZE_SAVE_MS)
         self._size_save.timeout.connect(self._save_prefs)
+        self._key_pause = QtCore.QTimer(self)    # the arrow keys' pause, as the widget panel's
+        self._key_pause.setSingleShot(True)
+        self._key_pause.setInterval(pane_sidebar.KEY_PAUSE_MS)
+        self._key_pause.timeout.connect(self._show_key_choice)
+        self._key_start = QtCore.QPersistentModelIndex()    # the current row when the keys began
+        self._reveal = ""    # a File folder highlighted once the walks have given it a row
+        self._rows_followed = None
         tabs = amazetheme.drawn_tabs()
         self.toolbar = dict(amazetheme.drawn_toolbar(), end_gap=amazetheme.TOOLBAR_SEARCH_END_GAP)
         self.strip = {"height": tabs["height"], "left": tabs["left"]}
@@ -65,8 +79,9 @@ class PaneState(qmlviews.SharedState, asks.Asks):
                      "viewMode": tooltips.PANEL_VIEW_MODE,
                      "prefs": tooltips.PANEL_PREFERENCES, "capture": tooltips.PANEL_CAPTURE,
                      "tileSize": tooltips.PANEL_TILE_SIZE, "tileSizeList": tooltips.PANEL_TILE_SIZE_LIST,
-                     "search": tooltips.PANEL_SEARCH}
+                     "search": tooltips.PANEL_SEARCH, "sidebar": tooltips.PANEL_CATEGORIES}
         self.words = {"cancel": amazetheme.BTN_CANCEL, "search": "Search"}
+        self.sidebar = amazetheme.drawn_sidebar()
 
     def start(self) -> None:
         """Build this pane's engine, follow it, and open the library; Qt deletes the engine with this."""
@@ -76,6 +91,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         pane.context_shown.connect(self._show_context)
         pane.online_changed.connect(self._show_online)
         pane.sidebar_highlight.connect(self._highlight_sidebar_row)
+        pane.sidebar_reveal.connect(self._reveal_folder)
         pane.library_shown.connect(self._show_settings)
         pane.library_switched.connect(self._show_settings)
         pane.library_updated.connect(self._refresh_open_prefs)
@@ -97,15 +113,53 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         listed = getattr(self.pane, section.sidebar_attr, None) if section.sidebar_attr else None
         if listed is None:
             return
-        if self._sidebar_selection is not None:
-            self._sidebar_selection.deleteLater()
-        self._sidebar_selection = QtCore.QItemSelectionModel(listed, self)
+        self._key_pause.stop()    # the keys' row was the other section's
+        old, self._sidebar_selection = self._sidebar_selection, QtCore.QItemSelectionModel(listed, self)
         self.pane.sidebar.use_selection(self._sidebar_selection)
+        self._show_rows("sidebar", listed, self._sidebar_selection)
+        if old is not None:
+            old.deleteLater()
+        self._reveal = ""
+        if self._rows_followed is not listed:    # a reveal waits for rows the walks insert
+            try:
+                self._rows_followed.rowsInserted.disconnect(self._reveal_step)
+            except (AttributeError, RuntimeError, TypeError):    # none yet, or deleted with its library
+                pass
+            self._rows_followed = listed
+            listed.rowsInserted.connect(self._reveal_step)
+
+    def _show_rows(self, view: str, rows, selection) -> None:
+        """A view's rows, then its selection: Qt's view points any selection it holds at its rows."""
+        setattr(self, view + "Selection", None)
+        setattr(self, view + "Model", rows)
+        setattr(self, view + "Selection", selection)
 
     def _highlight_sidebar_row(self, index) -> None:
         if self._sidebar_selection is not None and index.model() is self._sidebar_selection.model():
             flag = QtCore.QItemSelectionModel.SelectionFlag
             self._sidebar_selection.setCurrentIndex(index, flag.ClearAndSelect | flag.Rows)
+
+    def _reveal_folder(self, path: str) -> None:
+        """Open the folders down to `path` as the walks give them rows, then highlight it; File only."""
+        self._reveal = path
+        self._reveal_step()
+
+    def _reveal_step(self, *_rows) -> None:
+        model, path = self.pane.sidebar.model, self._reveal
+        if not path or model is None or not hasattr(model, "key_above"):
+            return
+        index = model.index_of(path)
+        if index.isValid():
+            self._reveal = ""
+            self.pane.sidebar.highlight(index)    # the app's move: the folder is browsed already
+            index = index.parent()
+        else:    # the deepest folder above it that has a row: opening it reads the next one
+            key = model.key_above(path.rstrip("/"))
+            while key and not model.index_of(key).isValid():
+                key = model.key_above(key)
+            index = model.index_of(key) if key else QtCore.QModelIndex()
+        if index.isValid():
+            self.sidebarOpened.emit(index)
 
     def _show_context(self, context) -> None:
         """The shown context's tab and what its toolbar offers."""
@@ -123,6 +177,10 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         self.viewMode = prefs.view_mode
         self.tileStepped = bool(prefs.step_size)
         self.tileSize = self.pane.tile_size()
+        self.sidebarShown = bool(prefs.show_categories)
+        self.sidebarCounts = bool(prefs.sidebar_counts)
+        drawn = self.sidebar["width"]    # the last dragged width, never wider than drawn
+        self.sidebarWidth = min(prefs.sidebar_width / self.uiScale, drawn) if prefs.sidebar_width else drawn
 
     def _show_progress(self, visible: bool) -> None:
         self.progressShown = bool(visible)
@@ -143,6 +201,46 @@ class PaneState(qmlviews.SharedState, asks.Asks):
     def chooseTab(self, index: int) -> None:
         if 0 <= index < len(self._tab_keys) and self._tab_keys[index] != self.pane.current_tab():
             self.pane.choose_tab(self._tab_keys[index])
+
+    @QtCore.Slot(QtCore.QModelIndex)
+    def chooseSidebarRow(self, index) -> None:
+        """The user clicked a row: the grid shows it, as the widget panel's `_on_category_chosen`."""
+        self._key_pause.stop()
+        self._reveal = ""    # the user's row, not the one the app was opening the folders to
+        if index.isValid() and self._sidebar_selection is not None \
+                and index.model() is self._sidebar_selection.model():
+            self.pane.sidebar.show_row(index)
+
+    @QtCore.Slot()
+    def stepSidebar(self) -> None:
+        """An arrow key in the sidebar: the row Qt's keys stop on is shown once they pause, if it moved."""
+        if not self._key_pause.isActive():
+            current = self.pane.sidebar.current()
+            self._key_start = QtCore.QPersistentModelIndex(current if current is not None
+                                                           else QtCore.QModelIndex())
+        self._key_pause.start()
+
+    def _show_key_choice(self) -> None:
+        current = self.pane.sidebar.current()
+        if current is not None and current != QtCore.QModelIndex(self._key_start):
+            self._reveal = ""
+            self.pane.sidebar.show_row(current)
+
+    @QtCore.Slot(bool)
+    def showSidebar(self, on: bool) -> None:
+        """The toolbar's sidebar button: shown or hidden, remembered as the widget panel does."""
+        self.pane.prefs.show_categories = bool(on)
+        self.pane.prefs.save()
+        self.sidebarShown = bool(on)
+
+    @QtCore.Slot(float)
+    def keepSidebarWidth(self, width: float) -> None:
+        """A drag of the split ended: the width is kept in the widget panel's px, as its drags are."""
+        if width <= 0:
+            return    # a sidebar dragged shut keeps the width it had, as the widget panel's
+        self.pane.prefs.sidebar_width = int(round(width * self.uiScale))
+        self.pane.prefs.save()
+        self.sidebarWidth = width
 
     @QtCore.Slot(bool)
     def setOnline(self, on: bool) -> None:

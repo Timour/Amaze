@@ -3,6 +3,8 @@
 from amaze import amazetheme
 from amaze.core import category, grid_columns, grid_engine
 
+KEY_PAUSE_MS = 180    #: the arrow keys' pause before the row they stop on is shown: a File step lists a folder
+
 
 class Sidebar:
     """Which sidebar rows are shown and selected; the pane holds it as `sidebar`."""

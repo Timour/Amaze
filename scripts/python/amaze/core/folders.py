@@ -15,7 +15,7 @@ def name_order(names) -> list:
 
 
 def scan_folder(path: str, matches, stopped=lambda: False):
-    """(files in this folder the sidebar counts, visible subfolder names), or None once `stopped()`."""
+    """(files the sidebar counts, visible subfolder names, whether it opened), None once `stopped()`."""
     count, subfolders = 0, []
     try:
         with os.scandir(path) as entries:    # one read: the files to count, the folders to unfold
@@ -29,14 +29,14 @@ def scan_folder(path: str, matches, stopped=lambda: False):
                 elif matches(entry.name) and entry.is_file():
                     count += 1
     except OSError:
-        return 0, []
-    return count, name_order(subfolders)
+        return 0, [], False
+    return count, name_order(subfolders), True
 
 
 class _CountWorker(QtCore.QThread):
     """Reads ONE folder off the GUI thread."""
 
-    counted = QtCore.Signal(object, object, object)    # (path, token, (count, subfolders))
+    counted = QtCore.Signal(object, object, object)    # (path, token, (count, subfolders, opened))
 
     def __init__(self, path, token, matches) -> None:
         super().__init__()
@@ -105,7 +105,7 @@ class FolderTreeModel(sidebar_model.SidebarModel):
     COUNT_ROLE = category.SIDEBAR_COUNT_ROLE    # the ONE definition, shared by every sidebar model
     ROW_ROLES = frozenset((int(QtCore.Qt.ItemDataRole.DisplayRole), int(QtCore.Qt.ItemDataRole.ToolTipRole),
                            int(PathRole), int(BrowseRole), COUNT_ROLE, category.SIDEBAR_COLOR_ROLE,
-                           category.SIDEBAR_KEY_ROLE))    # every role a folder row answers
+                           category.SIDEBAR_KEY_ROLE, category.SIDEBAR_UNREACHABLE_ROLE))    # every role a row answers
     unfolds = True    # its rows reserve space for an expand arrow ▸r/tree-views
 
     def flags(self, index):
@@ -144,6 +144,7 @@ class FolderTreeModel(sidebar_model.SidebarModel):
         self._records: dict = {}    # path -> its location record, read against `_records_key`
         self._records_key = None
         self._listed: dict = {}    # folder path -> the subfolder names its last read found
+        self._unreachable: set = set()    # the folders whose last read could not open them
         self._scene = ""    # the open scene's folder the fixed row shows; "" shows no such row
 
 
@@ -186,6 +187,7 @@ class FolderTreeModel(sidebar_model.SidebarModel):
         if parent_id is not None:    # a subfolder no row shows: its counts are dropped with it
             for table in (self._counts, self._counted, self._tokens, self._listed):
                 table.pop(key, None)
+            self._unreachable.discard(key)
 
     def _offset(self) -> int:
         """The view row the registered locations start at."""
@@ -291,6 +293,7 @@ class FolderTreeModel(sidebar_model.SidebarModel):
             self._records_key = None
             self._forget_rows()
             self._listed = {}
+            self._unreachable = set()
         finally:
             self.endResetModel()
 
@@ -391,10 +394,14 @@ class FolderTreeModel(sidebar_model.SidebarModel):
         if token != self._tokens.get(path, 0):
             self._ask_count(path)    # changed while it walked: its result is of the folder as it was
             return
-        count, names = result
+        count, names, opened = result
         self._counts[path] = count
         self._counted[path] = token
         self._listed[path] = list(names)
+        if opened:
+            self._unreachable.discard(path)
+        else:
+            self._unreachable.add(path)
         wanted = [self._join(path, name) for name in names]
         for row_id in list(self._by_key.get(path, ())):
             self._merge(row_id, wanted)
@@ -416,7 +423,7 @@ class FolderTreeModel(sidebar_model.SidebarModel):
                                      for row_id in sorted(self._by_key.get(path, ())))
                  if index.isValid() and index not in rows]
         for index in rows + [self.index(0, 0)]:    # each row, then All, whose total changed
-            self.dataChanged.emit(index, index, [self.COUNT_ROLE])
+            self.dataChanged.emit(index, index, [self.COUNT_ROLE, category.SIDEBAR_UNREACHABLE_ROLE])
 
     def _walk_ended(self, worker) -> None:
         """A walk is done: the next queued folder takes its slot."""
@@ -468,6 +475,8 @@ class FolderTreeModel(sidebar_model.SidebarModel):
             return None
         if role == self.COUNT_ROLE:
             return self._folder_count(path)
+        if role == category.SIDEBAR_UNREACHABLE_ROLE:
+            return path in self._unreachable
         if parent_id == _SCENE:
             return self._scene_data(path, role)
         location = parent_id is None

@@ -9,6 +9,9 @@ from amaze.core import documents, library_db, library_files, material, renderers
 SIDEBAR_COUNT_ROLE = int(QtCore.Qt.ItemDataRole.UserRole) + 40  # the ONLY declaration - every sidebar model and SidebarItemDelegate import it from here
 SIDEBAR_COLOR_ROLE = int(QtCore.Qt.ItemDataRole.UserRole) + 41  # a category's colour, for the sidebar's left-edge bar
 SIDEBAR_KEY_ROLE = int(QtCore.Qt.ItemDataRole.UserRole) + 42  # a sidebar row's stored identity, "" on All; `index_of` takes it
+SIDEBAR_UNREACHABLE_ROLE = int(QtCore.Qt.ItemDataRole.UserRole) + 43  # True on a folder its last read could not open
+ROLE_NAMES = {SIDEBAR_COUNT_ROLE: b"count", SIDEBAR_COLOR_ROLE: b"colour",    # the names QML reads them by
+              SIDEBAR_KEY_ROLE: b"key", SIDEBAR_UNREACHABLE_ROLE: b"unreachable"}
 
 ROW_ROLES = frozenset((int(QtCore.Qt.ItemDataRole.DisplayRole), SIDEBAR_COUNT_ROLE,
                        SIDEBAR_COLOR_ROLE, SIDEBAR_KEY_ROLE))    # every role a category row answers
@@ -86,6 +89,13 @@ class Categories(sidebar_model.SidebarModel):
     def drop_count_cache(self, *args) -> None:
         """Invalidate the one-pass count map (also a layoutChanged slot, hence the ignored args)."""
         self._count_cache = None
+
+    def counts_changed(self) -> None:
+        """Drop the counts and tell every view each row's count may differ; a QML view reads only then."""
+        self.drop_count_cache()
+        if self._categories:
+            self.dataChanged.emit(self.index(0, 0), self.index(len(self._categories) - 1, 0),
+                                  [SIDEBAR_COUNT_ROLE])
 
     def _asset_matches_renderer(self, asset: dict) -> bool:
         """Whether an asset passes the renderer filter; must match MultiFilterProxyModel exactly."""
@@ -394,10 +404,10 @@ class CategoriesSidebarProxy(sidebar_model.RowMoves, QtCore.QSortFilterProxyMode
         return self.mapFromSource(model.index_of(key))
 
     def refresh(self) -> None:
-        """Drop its list's counts and refilter, for changes that emit no layoutChanged."""
+        """Drop its list's counts, say so, and refilter, for changes that emit no layoutChanged."""
         model = self.sourceModel()
         if model is not None:
-            model.drop_count_cache()
+            model.counts_changed()
         self.invalidateFilter()
 
     def flags(self, index):

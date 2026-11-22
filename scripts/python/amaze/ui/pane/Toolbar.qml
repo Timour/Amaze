@@ -43,6 +43,14 @@ Item {
         spacing: 0
 
         IconButton {
+            node: "btn_categories"
+            art: "icon_categories.svg"
+            tip: SharedState.tips.sidebar
+            checked: SharedState.sidebarShown
+            onClicked: SharedState.showSidebar(!SharedState.sidebarShown)
+        }
+        IconButton {    // the View and Filter menus go between, with the menus
+            Layout.leftMargin: root.drawn.gap
             node: "btn_online"
             art: "icon_online.svg"
             artColor: SharedState.online ? SharedState.onlineColor : "transparent"

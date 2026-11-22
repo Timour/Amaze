@@ -1,4 +1,4 @@
-// The Amaze (QML) pane: toolbar, section tabs, progress line, and the area the grid will fill.
+// The Amaze (QML) pane: toolbar, section tabs, progress line, the sidebar and the grid's area.
 import QtQuick
 import QtQuick.Layouts
 import houdini.pluto
@@ -53,13 +53,37 @@ PaneRoot {
             value: SharedState.progressDone
         }
 
-        Item {    // the grid's area; the sidebar, grid, info and comments come in later steps
+        SplitView {    // Houdini's split: the sidebar at its kept width, then the grid's area
             Layout.fillWidth: true
             Layout.fillHeight: true
+            onResizingChanged: if (!resizing) SharedState.keepSidebarWidth(sidebar.width)
 
-            EmptyState {
-                anchors.centerIn: parent
-                width: parent.width - 48    // the widget panel's empty page keeps 24 px each side
+            SidebarTree {
+                id: sidebar
+                visible: SharedState.sidebarShown
+                SplitView.preferredWidth: SharedState.sidebarWidth
+                SplitView.maximumWidth: SharedState.sidebar.width    // never wider than G01, as the widget's
+                model: SharedState.sidebarModel
+                selectionModel: SharedState.sidebarSelection
+                counts: SharedState.sidebarCounts
+                drawn: SharedState.sidebar
+                onRowChosen: index => SharedState.chooseSidebarRow(index)
+                onStepped: SharedState.stepSidebar()
+
+                Connections {
+                    target: SharedState
+                    function onSidebarOpened(index) {
+                        sidebar.open(index)
+                    }
+                }
+            }
+            Item {    // the grid's area; the grid, info and comments come in later steps
+                SplitView.fillWidth: true
+
+                EmptyState {
+                    anchors.centerIn: parent
+                    width: parent.width - 48    // the widget panel's empty page keeps 24 px each side
+                }
             }
         }
     }

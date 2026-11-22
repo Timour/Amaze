@@ -310,6 +310,11 @@ class SidebarModel(RowMoves, QtCore.QAbstractItemModel):
     def hasChildren(self, parent=None) -> bool:
         return self.rowCount(parent) > 0
 
+    def roleNames(self) -> dict:
+        names = super().roleNames()
+        names.update({role: QtCore.QByteArray(name) for role, name in category.ROLE_NAMES.items()})
+        return names
+
     def flags(self, index) -> QtCore.Qt.ItemFlag:
         flags = super().flags(index)
         if index.isValid() and not self.unfolds:
