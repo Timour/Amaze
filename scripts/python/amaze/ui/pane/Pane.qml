@@ -73,7 +73,6 @@ PaneRoot {
                     selectionModel: SharedState.sidebarSelection
                     counts: SharedState.sidebarCounts
                     drawn: SharedState.sidebar
-                    onRowChosen: index => SharedState.chooseSidebarRow(index)
                     onStepped: SharedState.stepSidebar()
 
                     Connections {

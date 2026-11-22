@@ -9,13 +9,12 @@ TreeView {
 
     property bool counts: true    // each row's count after its name; All always shows its total
     property var drawn: ({})    // `amazetheme.drawn_sidebar`: the colour bar's place, off G01
-    signal rowChosen(var index)    // the user's left click on a row; its arrow and the right button send none
     signal stepped()    // a key that Qt's own navigation moves the current row by; no other key
     readonly property var steps: [Qt.Key_Up, Qt.Key_Down, Qt.Key_Left, Qt.Key_Right,
                                   Qt.Key_PageUp, Qt.Key_PageDown, Qt.Key_Home, Qt.Key_End]
 
     clip: true
-    selectionBehavior: TableView.SelectRows
+    selectionBehavior: TableView.SelectRows    // Qt's view alone takes a click: the pane follows its current row
     editTriggers: TableView.NoEditTriggers    // rename comes with the menus
     columnWidthProvider: column => column === 0 ? width : 0    // the name's column; the colour cell's is hidden
     onWidthChanged: forceLayout()
@@ -68,7 +67,6 @@ TreeView {
             font: entry.font
             color: entry.background.fg
         }
-        onClicked: root.rowChosen(root.index(entry.row, 0))
 
         Rectangle {    // the row's colour bar, where G01 draws it
             x: root.drawn.bar_x

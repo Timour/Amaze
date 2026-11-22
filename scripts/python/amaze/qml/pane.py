@@ -71,6 +71,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         self._key_pause.setInterval(pane_sidebar.KEY_PAUSE_MS)
         self._key_pause.timeout.connect(self._show_key_choice)
         self._key_start = QtCore.QPersistentModelIndex()    # the current row when the keys began
+        self._app_moves_row = False    # the app is moving the sidebar's current row: no choice
         self._reveal = ""    # a File folder highlighted once the walks have given it a row
         self._rows_followed = None
         tabs = amazetheme.drawn_tabs()
@@ -120,6 +121,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         self.pane.sidebar.use_selection(self._sidebar_selection)
         self._show_rows("sidebar", listed, None)    # the selection follows once a row in it is current
         self._sidebar_selection.currentChanged.connect(self._give_sidebar_selection)
+        self._sidebar_selection.currentChanged.connect(self._sidebar_row_moved)
         if old is not None:
             old.deleteLater()
         self._reveal = ""
@@ -143,9 +145,14 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         setattr(self, view + "Selection", selection)
 
     def _highlight_sidebar_row(self, index) -> None:
+        """The app's move: the row is current and selected, and nothing is chosen."""
         if self._sidebar_selection is not None and index.model() is self._sidebar_selection.model():
             flag = QtCore.QItemSelectionModel.SelectionFlag
-            self._sidebar_selection.setCurrentIndex(index, flag.ClearAndSelect | flag.Rows)
+            self._app_moves_row = True
+            try:
+                self._sidebar_selection.setCurrentIndex(index, flag.ClearAndSelect | flag.Rows)
+            finally:
+                self._app_moves_row = False
 
     def _reveal_folder(self, path: str) -> None:
         """Open the folders down to `path` as the walks give them rows, then highlight it; File only."""
@@ -210,15 +217,12 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         if 0 <= index < len(self._tab_keys) and self._tab_keys[index] != self.pane.current_tab():
             self.pane.choose_tab(self._tab_keys[index])
 
-    @QtCore.Slot(QtCore.QModelIndex)
-    def chooseSidebarRow(self, index) -> None:
-        """The user clicked a row: the grid shows it, as the widget panel's `_on_category_chosen`."""
-        self._key_pause.stop()
+    def _sidebar_row_moved(self, current, _previous) -> None:
+        """Qt's tree moved the current row for the user's click: the grid shows it at once."""
+        if self._app_moves_row or not current.isValid() or self._key_pause.isActive():
+            return    # the app's move chooses nothing; a key's row is shown once the keys pause
         self._reveal = ""    # the user's row, not the one the app was opening the folders to
-        self._give_sidebar_selection()    # no row was current yet: the user's is the first
-        if index.isValid() and self._sidebar_selection is not None \
-                and index.model() is self._sidebar_selection.model():
-            self.pane.sidebar.show_row(index)
+        self.pane.sidebar.show_row(current)
 
     @QtCore.Slot()
     def stepSidebar(self) -> None:
