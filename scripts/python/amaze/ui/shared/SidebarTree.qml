@@ -24,6 +24,20 @@ TreeView {
             root.stepped()
     }
 
+    Repeater {    // the stripes go on below the last row, as Houdini's widget trees paint them
+        id: stripes
+        readonly property real rowSize: root.rows > 0 ? root.contentHeight / root.rows : 0
+        model: rowSize > 0 ? Math.max(0, Math.ceil((root.height - root.contentHeight) / rowSize)) : 0
+        RowGround {
+            required property int index
+            y: root.contentHeight + index * stripes.rowSize
+            z: -1
+            width: root.width
+            height: stripes.rowSize
+            alternate: root.alternatingRows && (root.rows + index) % 2 === 1
+        }
+    }
+
     function open(index) {    // the folder at `index` and every folder above it
         expandToIndex(index)
         expand(rowAtIndex(index))
