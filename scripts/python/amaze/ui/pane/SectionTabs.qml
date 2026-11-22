@@ -38,6 +38,13 @@ Item {
                 width: implicitWidth    // as Houdini's parameter pane sizes its tabs
                 checked: index === root.currentIndex    // the TabBar's own index follows its checked tab
                 onClicked: root.tabChosen(index)
+                Rectangle {    // Houdini's widget tabs' hover (pluto parts.drawTabShape); its QML tab has none
+                    parent: tab.background
+                    anchors.fill: parent
+                    radius: parent.radius
+                    color: Qt.rgba(1, 1, 1, 0.05)
+                    visible: tab.enabled && tab.hovered && !tab.checked
+                }
                 // Houdini's tab, with its own chip, padding and text colours; the art is drawn as
                 // drawn (Houdini's icon renderer makes square, re-tinted icons), 2 px from the name
                 contentItem: Item {
