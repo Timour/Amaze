@@ -4,7 +4,8 @@ from typing import Any
 from PySide6 import QtCore
 
 from amaze.prefs import prefs
-from amaze.core import documents, library_db, library_files, material, renderers, sidebar_model
+from amaze.core import (documents, library_db, library_files, material, multifilterproxy_model,
+                        renderers, sidebar_model)
 
 SIDEBAR_COUNT_ROLE = int(QtCore.Qt.ItemDataRole.UserRole) + 40  # the ONLY declaration - every sidebar model and SidebarItemDelegate import it from here
 SIDEBAR_COLOR_ROLE = int(QtCore.Qt.ItemDataRole.UserRole) + 41  # a category's colour, for the sidebar's left-edge bar
@@ -52,7 +53,8 @@ class Categories(sidebar_model.SidebarModel):
         self._colour_table = self._read_colours()
         self._removed = set()    # names this model took out, dropped from the database at its save
         self._shown = list(self._categories)    # the rows the views last showed; `apply_refresh` compares
-        self._renderer_filter = ""  # lowercased; empty = no filter. Set by the panel so counts match the grid
+        self._renderer_filter = None  # the grid's kind filter, folded; None = none. Counts match the grid
+        self._one_kind = False    # the Filter names one kind; under All every category shows
         self._count_cache = None  # category -> visible count, `_All` = total; cleared on every change
         self.layoutChanged.connect(self.drop_count_cache)
 
@@ -81,9 +83,11 @@ class Categories(sidebar_model.SidebarModel):
         if role == SIDEBAR_COLOR_ROLE:
             return self.color_of(name)
 
-    def set_renderer_filter(self, render_filter: str) -> None:
-        """Store the grid's renderer filter, the value MultiFilterProxyModel gets (`all_renderers`)."""
-        self._renderer_filter = str(render_filter or "").lower()
+    def set_renderer_filter(self, render_filter) -> None:
+        """The grid's Filter value as MultiFilterProxyModel gets it: None, one kind, or All's kinds."""
+        empty = render_filter is None or render_filter == ""
+        self._renderer_filter = None if empty else multifilterproxy_model.folded(render_filter)
+        self._one_kind = isinstance(render_filter, str) and not empty
         self.drop_count_cache()
 
     def drop_count_cache(self, *args) -> None:
@@ -100,17 +104,13 @@ class Categories(sidebar_model.SidebarModel):
     def _asset_matches_renderer(self, asset: dict) -> bool:
         """Whether an asset passes the renderer filter; must match MultiFilterProxyModel exactly."""
         rf = self._renderer_filter
-        if not rf:
+        if rf is None:
             return True
-        renderer = renderers.normalized(asset.get("renderer", "")).lower()
-        if rf in renderer:
-            return True
-        return "all_renderers" in rf  # All passes EVERY row, an empty renderer included
+        return multifilterproxy_model.kind_matches(rf, renderers.normalized(asset.get("renderer", "")))
 
     def showing_all_renderers(self) -> bool:
-        """True when the Renderer filter is All or unset; empty categories then stay visible."""
-        rf = self._renderer_filter
-        return (not rf) or ("all_renderers" in rf)
+        """True unless the Filter names one kind: All shows every category, empty ones included."""
+        return not self._one_kind
 
     def _category_count(self, raw_name: str) -> int:
         """How many visible assets are in this category; `_All` counts every visible asset."""

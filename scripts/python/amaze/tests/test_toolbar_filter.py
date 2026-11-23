@@ -134,6 +134,31 @@ class FilterMenuTest(unittest.TestCase):
             "the sidebar is hiding categories while the grid shows "
             "every material")
 
+    def test_a_renderer_switched_off_hides_its_materials_under_all(self):
+        """All shows the renderers switched on in Preferences, in the grid and in All's count."""
+        from amaze.core import category, renderers
+        pane = self.panel.pane
+        self._labels_for("material")
+        pane.choose_filter("All")
+        if not pane.material_sorted_model.rowCount():
+            self.skipTest("fixture library has no materials")
+        self.assertTrue(all(renderers.is_karma(pane.material_model._assets[row].renderer)
+                            for row in range(pane.material_sorted_model.rowCount())
+                            if pane.material_model._assets[row].name),
+                        "premise: the fixture holds a material that is not Karma")
+
+        def switch(on):
+            setattr(pane.prefs, renderers.KARMA.switch, on)
+            pane.refresh_filter()    # what Apply runs
+        self.addCleanup(switch, True)
+        switch(False)
+
+        self.assertEqual(0, pane.material_sorted_model.rowCount(),
+                         "All still shows the materials of a renderer switched off")
+        counts = pane.category_model
+        self.assertEqual(0, counts.data(counts.index(0, 0), category.SIDEBAR_COUNT_ROLE),
+                         "All's count in the sidebar still counts them")
+
     def test_each_section_remembers_its_own_choice(self):
         """One shared key would mean picking Redshift in Materials and finding Nodes narrowed to nothing."""
         self._labels_for("code")
@@ -209,9 +234,10 @@ class FilterMenuTest(unittest.TestCase):
         self.assertEqual(
             "All", checked.text() if checked is not None else "",
             "the menu is checked on an entry that no longer exists")
-        self.assertNotIn(
-            self.panel.pane.material_model.RendererRole,
-            getattr(self.panel.pane.material_sorted_model, "_filters", {}),
+        self.assertEqual(
+            self.panel.pane.filter_entries()[0].value,    # All: the renderers still switched on
+            self.panel.pane.material_sorted_model.filter_value(
+                self.panel.pane.material_model.RendererRole),
             "the grid is still filtered to a renderer the menu no "
             "longer offers")
 

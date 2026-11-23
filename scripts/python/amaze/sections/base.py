@@ -665,7 +665,7 @@ class AssetSection(Section):
             st.proxy.removeFilter(st.model.RendererRole)    # remove, never an accept-all value, which costs a data() call per row
         else:
             st.proxy.setFilter(st.model.RendererRole, value)    # every asset section keeps its kind in this role; a filter on any other role is ignored
-        st.categories.set_renderer_filter(value or "")    # the sidebar too, with the proxy's value, never the menu's label
+        st.categories.set_renderer_filter(value)    # the sidebar too, with the proxy's value, never the menu's label
         self.pane.sidebar.refresh()
 
     def select_category(self, index) -> None:

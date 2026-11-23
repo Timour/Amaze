@@ -135,9 +135,11 @@ class MaterialSection(base.AssetSection):
 
     def filter_entries(self) -> tuple:
         """Rebuilt, never hidden: the pane uses All for a saved choice no longer offered."""
-        return (base.FilterEntry(self.ALL_ID, self.ALL_LABEL, None, self.FILTER_ALL_ICON),) + tuple(
+        offered = renderers.offered(self.pane.prefs)
+        every = None if len(offered) == len(renderers.ALL) else tuple(r.key for r in offered)    # All: the renderers switched on
+        return (base.FilterEntry(self.ALL_ID, self.ALL_LABEL, every, self.FILTER_ALL_ICON),) + tuple(
             base.FilterEntry(renderer.key, renderer.label, renderer.key, renderer.icon)
-            for renderer in renderers.offered(self.pane.prefs))
+            for renderer in offered)
 
     def can_save(self, nodes) -> bool:
         return bool(nodes) and all(    # a fresh handler per node: it remembers the last renderer

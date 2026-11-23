@@ -5,6 +5,23 @@ from PySide6 import QtCore
 from amaze.core import grid_proxy
 
 
+def folded(value):
+    """A filter value lowercased once: a string, or each kind of a tuple; other values as they are."""
+    if isinstance(value, str):
+        return value.lower()
+    if isinstance(value, tuple):
+        return tuple(str(kind).lower() for kind in value)
+    return value
+
+
+def kind_matches(wanted, kind) -> bool:
+    """Whether a row's kind passes a folded kind filter: one kind, or any kind of a tuple."""
+    kind = str(kind or "").lower()
+    if isinstance(wanted, tuple):
+        return any(one in kind for one in wanted)
+    return wanted in kind
+
+
 def split_search(text) -> tuple:
     """(needle, tags_only) from the filter box; a leading colon means tags only."""
     needle = (text or "").strip().lower()
@@ -34,9 +51,7 @@ class MultiFilterProxyModel(grid_proxy.GridProxyModel):
                 and self._filters[filter_role] == filter_value:
             return    # the same value is already set: no re-filter
         self._filters[filter_role] = filter_value
-        self._folded[filter_role] = (filter_value.lower()
-                                     if isinstance(filter_value, str)
-                                     else filter_value)
+        self._folded[filter_role] = folded(filter_value)
         self.refilter()
 
     def filter_value(self, filter_role):
@@ -75,7 +90,6 @@ class MultiFilterProxyModel(grid_proxy.GridProxyModel):
         if 260 in filters and not any(
                 folded[260] in str(elem).lower() for elem in index.data(260)):
             return False
-        if 259 in filters and "all_renderers" not in folded[259] \
-                and folded[259] not in index.data(259).lower():
+        if 259 in filters and not kind_matches(folded[259], index.data(259)):
             return False
         return 258 not in filters or filters[258] == index.data(258)
