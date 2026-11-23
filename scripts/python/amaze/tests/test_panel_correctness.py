@@ -647,11 +647,7 @@ class TheOnlineGridIsFittedLikeTheOthers(unittest.TestCase):
 class EveryColumnIsInEveryColumnTable(unittest.TestCase):
     """A column missing from a table does not raise, it is only partly configured."""
 
-    def test_every_column_has_a_width_a_roles_entry_and_real_ticks(self):
-        """The roles table from source: it is a local inside `sync_row_columns`."""
-        import inspect
-
-        from amaze.panel import grid as grid_mod
+    def test_every_column_has_a_width_and_real_ticks(self):
         from amaze.panel import panel as panel_mod
 
         missing = set(grid_columns.KEYS) - set(
@@ -664,23 +660,6 @@ class EveryColumnIsInEveryColumnTable(unittest.TestCase):
             set(grid_engine.GridEngine.TICK_COLUMNS),
             set(grid_columns.KEYS),
             "a tick column names a column that does not exist")
-        keys = set(grid_columns.KEYS)
-        listed = set()
-        for node in ast.walk(ast.parse(
-                inspect.getsource(grid_mod.sync_row_columns))):
-            if isinstance(node, ast.Dict) and node.keys:
-                names = [k.value for k in node.keys
-                         if isinstance(k, ast.Constant)
-                         and isinstance(k.value, str)]
-                if names and set(names) <= keys:
-                    listed |= set(names)
-        self.assertTrue(
-            listed, "no per-column table was found, so this checks nothing")
-        missing = keys - listed
-        self.assertEqual(
-            set(), missing,
-            "these columns are in no roles entry, so they are shown "
-            "unconditionally: %s" % sorted(missing))
 
 
 class OneProgressBarPerThingShown(unittest.TestCase):

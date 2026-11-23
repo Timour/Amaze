@@ -105,8 +105,9 @@ class GridEngine:
         return None
 
     def roleNames(self) -> dict:
-        """Qt's role names and one per `<Name>Role` attribute; the decoded picture has none."""
+        """Qt's role names, a column's text colour, one per `<Name>Role`; the decoded picture has none."""
         names = {role: name for role, name in super().roleNames().items() if role != DECORATION}
+        names[int(QtCore.Qt.ItemDataRole.ForegroundRole)] = QtCore.QByteArray(b"foreground")
         for attr in dir(type(self)):
             if attr.endswith("Role") and len(attr) > len("Role"):
                 names[int(getattr(type(self), attr))] = QtCore.QByteArray(role_name(attr).encode())
@@ -171,6 +172,9 @@ class GridEngine:
         bottom = self.index(row, self.last_column())
         if roles is not None and DECORATION in roles:
             roles = list(roles) + [self.PictureRole]    # the same picture, for a view that loads it itself
+        if roles is not None and DISPLAY not in roles and any(
+                self._column_role(key) in roles for key in grid_columns.KEYS[NAME + 1:]):
+            roles = list(roles) + [DISPLAY]    # a later column's text is that role, for a view of cells
         if roles is None:
             self.dataChanged.emit(top, bottom)
         else:

@@ -185,6 +185,8 @@ class CodeSection(base.AssetSection):
     sidebar_attr = "code_category_sorted_model"
     delegate_attr = "code_delegate"
     tile_badges = ("favourite", "execute", "versions", "comment")
+    list_columns = ("name", "type", "category", "favorite", "comments", "tags", "license", "date",
+                    "id")    # no Version column, as the widget list shows none
     filter_tooltip = "Show snippets in one language."
 
     FILTER_CHOICES = (    # the stored language strings, "Code" the catch-all; not imported from code_dialog

@@ -243,10 +243,6 @@ def sidebar_row_height(panel, table) -> int:
     ).height()
 
 
-ALWAYS_SHOWN = "always-shown"    # distinct objects: missing, always and never are three cases; two of them once both used None
-NEVER_SHOWN = "never-shown"
-
-
 def visible_view(panel):
     """The grid view the user is looking at, by isHidden, which also works headless."""
     table = getattr(panel, "thumbrows", None)
@@ -340,45 +336,15 @@ def bind_row_cell_delegates(panel, tile_delegate) -> None:
 
 
 def sync_row_columns(panel) -> None:
-    """Which columns the table shows, by the section, and their starting widths."""
+    """Which columns the table shows, the section's own answer, and their starting widths."""
     table = getattr(panel, "thumbrows", None)
-    if table is None:
+    section = panel.pane.active_section()
+    if table is None or section is None:
         return
-    delegate = (panel.thumblist.itemDelegate()
-                if panel.thumblist is not None else None)
-    roles = {
-        "category": "_category_role", "tags": "_tag_role",
-        "license": "_licence_role", "favorite": "_favorite_role",
-        "date": "_date_role", "id": "_id_role",
-        "open": "_open_role", "comments": "_notes_role",
-        "version": "_active_version_role",
-        "thumb": NEVER_SHOWN,    # no picture column
-        "name": ALWAYS_SHOWN,    # every column listed, these two included: a missing key once also meant always-shown
-        "type": ALWAYS_SHOWN,
-    }
-    source = table.model()    # a column shows only if the delegate paints it and the model has a role for it
-    inner = getattr(source, "sourceModel", None)
-    source = (inner() if inner is not None else None) or source
-    column_role = getattr(source, "_column_role", None)
-
-    header = table.header()
+    shown = section.shown_list_columns()    # the QML list reads the same answer
     for column, key in enumerate(grid_columns.KEYS):
-        attribute = roles.get(key)
-        if attribute is None:
-            debug.event("grid", "column is in no roles entry - shown "
-                                "unconditionally", column=key)
-            table.setColumnHidden(column, False)
-            continue
-        if attribute is NEVER_SHOWN:
-            table.setColumnHidden(column, True)
-            continue
-        fills = True
-        if attribute is not ALWAYS_SHOWN and column_role is not None:
-            fills = column_role(key) is not None
-        shown = (attribute is ALWAYS_SHOWN
-                 or (getattr(delegate, attribute, None) is not None
-                     and fills))
-        table.setColumnHidden(column, not shown)
+        table.setColumnHidden(column, key not in shown)
+    header = table.header()
     if not getattr(table, "_widths_seeded", False):    # default widths set once per view; after that the user's
         table._widths_seeded = True
         header.setSectionResizeMode(

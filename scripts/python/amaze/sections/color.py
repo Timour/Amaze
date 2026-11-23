@@ -32,6 +32,7 @@ class GradientSection(base.AssetSection):
     sidebar_attr = "gradient_category_sorted_model"    # the same CategoriesSidebarProxy the asset sidebars use
     delegate_attr = "gradient_delegate"
     tile_badges = ("favourite", "comment")
+    list_columns = ("name", "type", "category", "favorite", "comments")
     proxy_attr = "gradient_sorted_model"
     selection_attr = "gradient_selection_model"
 

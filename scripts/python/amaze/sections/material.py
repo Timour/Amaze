@@ -127,6 +127,8 @@ class MaterialSection(base.AssetSection):
     sidebar_attr = "category_sorted_model"
     delegate_attr = "thumb_delegate"
     tile_badges = ("favourite", "versions", "comment")
+    list_columns = ("name", "type", "category", "favorite", "version", "comments", "tags",
+                    "license", "date", "id")
     filter_tooltip = "Show materials for one renderer."
 
     FILTER_ALL_ICON = "filter_all"

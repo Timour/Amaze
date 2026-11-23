@@ -72,6 +72,7 @@ class Section:
     delegate_attr = ""
     tile_badges: tuple = ()    # the badge IDs this section's tile shows ▸r/tile-from-frame
     tile_badge_clicks = True    # its tile badges are buttons; where False they only show a state
+    list_columns: tuple = ("name", "type")    # what its list shows where its model fills it ▸p/list-columns
     library_model_attrs: tuple = ()  # re-pointed on a library switch; () is a valid value
     selection_attr = ""   # a menu acts on THIS section's selection
     GRID_MENU: tuple = ()     # MenuEntry rows; empty = no menu opens
@@ -127,6 +128,13 @@ class Section:
     def grid_selection_model(self):
         """This section's grid selection MODEL, for a query about one row."""
         return self._p(self.selection_attr)
+
+    def shown_list_columns(self) -> tuple:
+        """The `grid_columns.KEYS` its list shows, in that order: those it names that its model fills."""
+        proxy = self._p(self.proxy_attr)
+        fills = getattr(proxy.sourceModel() if proxy is not None else None, "_column_role", None)
+        return tuple(key for key in grid_columns.KEYS
+                     if key in self.list_columns and fills is not None and fills(key) is not None)
 
     def tile_models(self):
         """(model, proxy) for the tile a menu is acting on - what the shared Customize handler needs."""

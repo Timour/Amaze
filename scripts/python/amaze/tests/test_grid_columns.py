@@ -997,8 +997,8 @@ class AColumnIsShownONLYIfTheModelCanFillIt(unittest.TestCase):
     def test_the_model_is_what_decides(self):
         """Source scan: the model alone decides, or the two disagree again."""
         import inspect
-        from amaze.panel import grid as grid_module
-        source = inspect.getsource(grid_module.sync_row_columns)
+        from amaze.sections import base
+        source = inspect.getsource(base.Section.shown_list_columns)    # both lists read this answer
         self.assertIn(
             "_column_role", source,
             "column visibility is still decided without asking the "

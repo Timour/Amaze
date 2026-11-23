@@ -75,6 +75,8 @@ class CopSection(base.AssetSection):
     sidebar_attr = "cop_category_sorted_model"
     delegate_attr = "asset_delegate"    # not thumb_delegate, which paints a Version column
     tile_badges = ("favourite", "comment")
+    list_columns = ("name", "type", "category", "favorite", "comments", "tags", "license", "date",
+                    "id")
     filter_tooltip = "Show setups saved from one context."
 
     FILTER_CHOICES = (    # the contexts cop_nodes.SAVE_CONTEXTS saves, spelled as Houdini's network tabs show them

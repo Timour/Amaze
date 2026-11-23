@@ -741,6 +741,7 @@ class FileSection(FolderSection):
     selection_attr = "file_selection_model"
     delegate_attr = "file_delegate"
     tile_badges = ("open", "favourite", "comment")
+    list_columns = ("name", "type", "favorite", "open", "comments")
     sidebar_attr = "file_folders_model"
     files_attr = "file_files_model"
     last_folder_pref = "last_file_folder"

@@ -5,7 +5,7 @@ import shiboken6
 
 import amaze
 from amaze import amazetheme, tooltips
-from amaze.core import debug, grid_engine
+from amaze.core import debug, grid_columns, grid_engine
 from amaze.helpers import ui_helpers
 from amaze.pane import asks, pane as pane_mod, sidebar as pane_sidebar
 from amaze.panel import delegates
@@ -67,6 +67,13 @@ def badge_rows(section) -> list:
     return rows
 
 
+def list_columns(section) -> list:
+    """Per column for `RowsTable`: L01's starting width, 0 where its list hides it, and if a tick."""
+    shown, widths = section.shown_list_columns(), amazetheme.drawn_list()["widths"]
+    return [{"width": widths[key] if key in shown else 0, "tick": key in grid_engine.GridEngine.TICK_COLUMNS}
+            for key in grid_columns.KEYS]
+
+
 def drawn_tile() -> dict:
     """For `Tile`: the spacing of T01, the strip of T20, the badge sizes and each renderer icon box."""
     marks = {}
@@ -113,9 +120,12 @@ class PaneState(qmlviews.SharedState, asks.Asks):
     sidebarWidth: float = 0.0    # in the pane's design px
     gridModel: QtCore.QAbstractItemModel = None    # the shown section's tiles, the proxy the widget grid shows
     gridSelection: QtCore.QObject = None    # the section's own selection of them, the engine's
-    gridTileSize: int = amazetheme.TILE_SIZES[1]    # the grid's size, which list mode keeps for now
     tile: dict = {}    # `drawn_tile`
     badges: list = []    # `badge_rows` of the shown section
+    table: dict = {}    # frame L01's figures: the header's height, the text's inset, the tick's box
+    listColumns: list = []    # `list_columns` of the shown section
+    sortColumn: int = -1    # the column the shown rows are sorted by, the model's own sort
+    sortDescending: bool = False
 
     searchCleared = QtCore.Signal()    # the empty state's Clear Search: the QML empties its field
     sidebarOpened = QtCore.Signal(QtCore.QModelIndex)    # the tree opens this folder and those above it
@@ -145,6 +155,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         self._rows_followed = None
         self._grid_anchor = QtCore.QPersistentModelIndex()    # where a Shift click's span starts
         self.tile = drawn_tile()
+        self.table = amazetheme.drawn_list()
         tabs = amazetheme.drawn_tabs()
         self.toolbar = dict(amazetheme.drawn_toolbar(), end_gap=amazetheme.TOOLBAR_SEARCH_END_GAP,
                             on=amazetheme.TOOLBAR_ON)
@@ -163,6 +174,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         pane.tabs_changed.connect(self._show_tabs)
         pane.context_bound.connect(self._use_sidebar_rows)
         pane.context_bound.connect(self._show_grid)
+        pane.grid_reordered.connect(self._show_sort)    # sorted here, or in another pane on the same model
         pane.context_shown.connect(self._show_context)
         pane.online_changed.connect(self._show_online)
         pane.sidebar_highlight.connect(self._highlight_sidebar_row)
@@ -206,7 +218,16 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         proxy = getattr(self.pane, section.proxy_attr, None) if section.proxy_attr else None
         self._grid_anchor = QtCore.QPersistentModelIndex()
         self.badges = badge_rows(section)
+        self.listColumns = list_columns(section)
         self._show_rows("grid", proxy, section.grid_selection_model() if proxy is not None else None)
+        self._show_sort()
+
+    def _show_sort(self) -> None:
+        """The heading the shown rows are sorted by and its direction, read off the model's own sort."""
+        model = self.gridModel.sourceModel() if self.gridModel is not None else None
+        sorted_here = isinstance(model, grid_engine.GridEngine)
+        self.sortColumn = model.sort_column() if sorted_here else -1
+        self.sortDescending = sorted_here and model.sort_order() == grid_engine.DESCENDING
 
     def _show_rows(self, view: str, rows, selection) -> None:
         """A view's rows, then its selection: Qt's view points any selection it holds at its rows."""
@@ -262,7 +283,6 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         self.viewMode = prefs.view_mode
         self.tileStepped = bool(prefs.step_size)
         self.tileSize = self.pane.tile_size()
-        self.gridTileSize = self.pane.tile_size("grid")
         self.sidebarShown = bool(prefs.show_categories)
         self.sidebarCounts = bool(prefs.sidebar_counts)
         drawn = self.sidebar["width"]    # the last dragged width, never wider than drawn
@@ -312,7 +332,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
 
     @QtCore.Slot(int, int)
     def clickTile(self, row: int, modifiers: int) -> None:
-        """The user's click on tile `row`, -1 for none, as Qt's views take it; Ctrl/Cmd, Shift."""
+        """The user's click on tile or row `row`, -1 for none, as Qt's views take it; Ctrl/Cmd, Shift."""
         selection = self.gridSelection
         if selection is None or self.gridModel is None:
             return
@@ -332,6 +352,22 @@ class PaneState(qmlviews.SharedState, asks.Asks):
             return
         selection.setCurrentIndex(index, (flag.Toggle if toggle else flag.ClearAndSelect) | flag.Rows)
         self._grid_anchor = QtCore.QPersistentModelIndex(index)
+
+    @QtCore.Slot(int)
+    def sortList(self, column: int) -> None:
+        """A heading's click: the proxy's own sort, by Qt's header rule; the same heading reverses it."""
+        model = self.gridModel.sourceModel() if self.gridModel is not None else None
+        if not isinstance(model, grid_engine.GridEngine):
+            return
+        again = column == model.sort_column() and model.sort_order() == grid_engine.ASCENDING
+        self.gridModel.sort(column, grid_engine.DESCENDING if again else grid_engine.ASCENDING)
+        self._show_sort()
+
+    @QtCore.Slot(QtGui.QColor, result=QtGui.QColor)
+    def listInk(self, colour) -> QtGui.QColor:
+        """A cell's own colour, Category's, made readable on Houdini's list ground as the widget list's."""
+        ground = QtGui.QColor(self.theme.viewSurface)    # the palette base of Houdini's widget lists
+        return delegates.AssetItemDelegate.readable_on(QtGui.QColor(colour), ground)
 
     @QtCore.Slot(int, str)
     def clickBadge(self, row: int, name: str) -> None:
@@ -377,7 +413,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
     def setTileSize(self, size: int) -> None:
         """The slider moved: the grid's tile size, saved once the slider rests."""
         self.pane.prefs.thumbsize = int(size)
-        self.tileSize = self.gridTileSize = self.pane.tile_size()
+        self.tileSize = self.pane.tile_size()
         self._size_save.start()
 
     def save_size(self) -> None:

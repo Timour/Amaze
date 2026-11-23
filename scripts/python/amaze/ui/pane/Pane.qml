@@ -76,19 +76,38 @@ PaneRoot {
                     }
                 }
             }
-            Item {    // the grid's area: the grid, which list mode also shows until the list is built
+            Item {    // the grid's area: the grid or the list of the same rows and selection, never both
                 SplitView.fillWidth: true
 
-                TileGrid {
+                Loader {    // made only in grid mode, so a hidden grid holds no picture
                     anchors.fill: parent
+                    active: SharedState.viewMode !== "list"
                     visible: SharedState.emptyHeadline === ""    // an empty category is an empty grid
-                    model: SharedState.gridModel
-                    selectionModel: SharedState.gridSelection
-                    tileSize: SharedState.gridTileSize
-                    drawn: SharedState.tile
-                    badges: SharedState.badges
-                    onTileClicked: (row, modifiers) => SharedState.clickTile(row, modifiers)
-                    onBadgeClicked: (row, name) => SharedState.clickBadge(row, name)
+                    sourceComponent: TileGrid {
+                        model: SharedState.gridModel
+                        selectionModel: SharedState.gridSelection
+                        tileSize: SharedState.tileSize
+                        drawn: SharedState.tile
+                        badges: SharedState.badges
+                        onTileClicked: (row, modifiers) => SharedState.clickTile(row, modifiers)
+                        onBadgeClicked: (row, name) => SharedState.clickBadge(row, name)
+                    }
+                }
+                Loader {
+                    anchors.fill: parent
+                    active: SharedState.viewMode === "list"
+                    visible: SharedState.emptyHeadline === ""    // an empty category is an empty list
+                    sourceComponent: RowsTable {
+                        model: SharedState.gridModel    // first: a selection set before it is cleared by Qt
+                        selectionModel: SharedState.gridSelection
+                        columns: SharedState.listColumns
+                        drawn: SharedState.table
+                        sortColumn: SharedState.sortColumn
+                        descending: SharedState.sortDescending
+                        ink: colour => SharedState.listInk(colour)
+                        onRowClicked: (row, modifiers) => SharedState.clickTile(row, modifiers)
+                        onHeadingClicked: column => SharedState.sortList(column)
+                    }
                 }
                 EmptyState {
                     anchors.centerIn: parent
