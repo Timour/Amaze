@@ -282,7 +282,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         prefs = self.pane.prefs
         self.viewMode = prefs.view_mode
         self.tileStepped = bool(prefs.step_size)
-        self.tileSize = self.pane.tile_size()
+        self.tileSize = self.pane.tile_size("grid")    # the list shows no pictures: no list size
         self.sidebarShown = bool(prefs.show_categories)
         self.sidebarCounts = bool(prefs.sidebar_counts)
         drawn = self.sidebar["width"]    # the last dragged width, never wider than drawn
@@ -413,7 +413,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
     def setTileSize(self, size: int) -> None:
         """The slider moved: the grid's tile size, saved once the slider rests."""
         self.pane.prefs.thumbsize = int(size)
-        self.tileSize = self.pane.tile_size()
+        self.tileSize = self.pane.tile_size("grid")
         self._size_save.start()
 
     def save_size(self) -> None:
