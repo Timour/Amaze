@@ -1,5 +1,7 @@
 """The Amaze (QML) pane: its pane-tab widget, its QML view, and the state hosting the engine."""
 
+import traceback
+
 from PySide6 import QtCore, QtGui, QtQml, QtQuick, QtWidgets
 import shiboken6
 
@@ -576,12 +578,12 @@ class PaneView(qmlviews.BaseQmlWidget):
     def mousePressEvent(self, event) -> None:
         debug.event("keys", "pane mouse press")
         super().mousePressEvent(event)
-        debug.event("keys", "pane mouse press handled", pane_has_focus=self.hasFocus())
+        debug.event("keys", "pane mouse press handled", pane_has_focus=self.hasFocus(), accepted=event.isAccepted())
 
     def mouseReleaseEvent(self, event) -> None:
         debug.event("keys", "pane mouse release")
         super().mouseReleaseEvent(event)
-        debug.event("keys", "pane mouse release handled", pane_has_focus=self.hasFocus())
+        debug.event("keys", "pane mouse release handled", pane_has_focus=self.hasFocus(), accepted=event.isAccepted())
 
     def _log_key(self, step: str, event, taken: bool) -> None:
         """Debug Mode: where a key went in the pane, to find where Houdini's hotkeys take it."""
@@ -639,13 +641,24 @@ def _log_focus_window(window) -> None:
 
 
 def _log_focus_object(thing) -> None:
-    debug.event("keys", "focus object %s" % _name_of(thing))
+    debug.event("keys", "focus object %s" % _name_of(thing), takes_text=_takes_text(thing))
+
+
+def _takes_text(thing) -> bool:
+    """Whether `thing` takes typing, by Qt's own input method query: a text field does, a grid not."""
+    if thing is None:
+        return False
+    query = QtGui.QInputMethodQueryEvent(QtCore.Qt.InputMethodQuery.ImEnabled)
+    QtCore.QCoreApplication.sendEvent(thing, query)
+    return bool(query.value(QtCore.Qt.InputMethodQuery.ImEnabled))
 
 
 def _log_focus_reason(step: str, event) -> None:
-    """Debug Mode: Qt's reason for a focus change: a click, the window, a popup, or code."""
+    """Debug Mode: Qt's reason for a focus change, and the Python calls behind it when code did it."""
     debug.event("keys", "%s, %s" % (step, event.reason().name),
-                focus_window=_name_of(QtGui.QGuiApplication.focusWindow()))
+                focus_window=_name_of(QtGui.QGuiApplication.focusWindow()),
+                python_calls=["%s:%d %s" % (frame.filename.rsplit("/", 1)[-1], frame.lineno, frame.name)
+                              for frame in traceback.extract_stack()[-8:-2]])
 
 
 def _name_of(thing) -> str:
@@ -685,6 +698,18 @@ class QmlPanel(QtWidgets.QFrame):
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self.view.resize(self.size())
+
+    def mousePressEvent(self, event) -> None:
+        debug.event("keys", "panel frame mouse press")    # the view left the press unaccepted
+        super().mousePressEvent(event)
+
+    def focusInEvent(self, event) -> None:
+        _log_focus_reason("panel frame focus in", event)
+        super().focusInEvent(event)
+
+    def focusOutEvent(self, event) -> None:
+        _log_focus_reason("panel frame focus out", event)
+        super().focusOutEvent(event)
 
     def panelActivated(self) -> None:
         """Called by the .pypanel when the tab comes to the front."""
