@@ -43,7 +43,7 @@ Levels:
 ## Wrong output
 
 - LS-30 Wrong output: With no user selected, the library takes no change at all.
-- LS-31 Wrong output: A user's stars and folder list are their own: one user's change never alters another user's, except that a moved file's stars follow it for everyone.
+- LS-31 Wrong output: A user's favorites and folder list are their own: one user's change never alters another user's, except that a file's favorites follow it for everyone when it moves, and go for everyone when it is deleted.
 - LS-32 Wrong output: Every shared entry records which user changed it last, and when.
 - LS-33 Wrong output: What another session saved appears here without a restart.
 - LS-34 Wrong output: The library records the format this Amaze writes, and shows its format as 2.x.

@@ -932,29 +932,26 @@ class AssetLibrary(grid_engine.GridEngine,
             key="delete-refused-index-write")
 
     def _unlist_what_belongs(self, going) -> dict:
-        """Drop each deleted asset's comments, icon and this user's favorite; {id: what they were}."""
+        """Drop each deleted asset's comments, icon and every user's favorite; {id: what they were}."""
         held, taken = self._doc(), {}
         for _row, asset in going:
             key = str(asset.mat_id)
             taken[key] = (held.get("comments", key), held.get("icons", key),
-                          held.mine("favorites").get(key))
+                          held.take_everyones("favorites", key))
             held.drop("comments", key)
             held.drop("icons", key)
-            if taken[key][2]:
-                held.put_mine("favorites", key, None)
         return taken
 
     def _restore_unsaved_removals(self, going, taken=None) -> None:
         """Put back `(row, record)` pairs whose delete failed to save, in the model and the database."""
         held = self._doc()
         with library_db.library_for(self.preferences).holding():
-            for key, (page, icon, star) in (taken or {}).items():
+            for key, (page, icon, stars) in (taken or {}).items():
                 if page is not None:
                     held.put("comments", key, page)
                 if icon is not None:
                     held.put("icons", key, icon)
-                if star:
-                    held.put_mine("favorites", key, star)
+                held.put_everyones("favorites", key, stars)
         for row, asset in going:    # ascending, so each returns to its old row
             row = min(max(row, 0), len(self._assets))
             self.beginInsertRows(QtCore.QModelIndex(), row, row)

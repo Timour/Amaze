@@ -430,8 +430,10 @@ change of several files is being applied.
   `loc:<id>/<relative>`, so Locate Folder is one field edit. A file
   inside two nested locations belongs to the innermost
   (`locations.file_ident`).
-- **A user writes only their own stars**: a file move or a location
-  removal moves or removes this user's stars, never another user's.
+- **Favorites follow their file for every user**: a move, a location that
+  changes a file's key, or a delete moves or drops every user's favorite
+  on it, as it does the file's comments and icon (`Document.rekey_everyones`,
+  `take_everyones`). A location removed drops only this user's favorites under it.
 - **Check Library never removes a location's file data**: a folder absent from
   this machine is removed from this user's `locations` only
   (`repair.set_aside_folders`), so its per-file keys stay in `files.json`.

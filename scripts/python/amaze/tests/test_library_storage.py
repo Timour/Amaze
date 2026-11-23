@@ -460,7 +460,7 @@ class TwoSessionsTest(_TwoUsers):
         self.assertEqual(documents.UNCHANGED, nobody.save().reason)
         self.assertNotIn("A9", self.on_disk()[ASSETS])
 
-    def test_ls31_a_users_stars_are_their_own_and_a_moved_files_stars_follow_it(self):
+    def test_ls31_favorites_are_each_users_own_and_follow_their_file_moved_or_deleted(self):
         self.erik.put_mine(STARS, "A2", True)
         self.erik.put_mine(STARS, "old", True)
         self.assertTrue(self.erik.save())
@@ -470,10 +470,10 @@ class TwoSessionsTest(_TwoUsers):
         self.assertTrue(self.anna.save())
         self.assertEqual({"A2": True, "old": True}, self.on_disk()[STARS][ERIK])
         self.assertEqual(2, self.anna.rekey_everyones(STARS, "old", "new"))
+        self.assertEqual({ERIK: True}, self.anna.take_everyones(STARS, "A2"))
         self.assertTrue(self.anna.save())
         stars = self.on_disk()[STARS]
-        self.assertEqual(({"A1": True, "new": True}, {"A2": True, "new": True}),
-                         (stars[ANNA], stars[ERIK]))
+        self.assertEqual(({"A1": True, "new": True}, {"new": True}), (stars[ANNA], stars[ERIK]))
 
     def test_ls32_every_shared_entry_records_who_changed_it_last_and_when(self):
         entry = self.on_disk()[ASSETS]["A1"]

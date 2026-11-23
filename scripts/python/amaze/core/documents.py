@@ -234,19 +234,36 @@ class Document:
 
     def rekey_everyones(self, section: str, old: str, new: str) -> int:
         """Move the entry at `old` to `new` in every user's table of a per-user section; how many."""
-        if not self._may_change(section, guard.PER_USER):
+        if old == new:
             return 0
-        moved = 0
-        for own in self._data[section].values():
-            if isinstance(own, dict) and old in own and old != new:
-                was, there = own.pop(old), own.get(str(new))
-                if isinstance(was, dict) and isinstance(there, dict):
-                    was = dict(was, **there)    # an entry already at `new` keeps its own fields
-                own[str(new)] = there if there is not None and not isinstance(was, dict) else was
-                moved += 1
-        if moved:
+        return self.put_everyones(section, new, self.take_everyones(section, old))
+
+    def take_everyones(self, section: str, key: str) -> dict:
+        """Remove `key` from every user's table of a per-user section; {user: what it was}."""
+        if not self._may_change(section, guard.PER_USER):
+            return {}
+        taken = {}
+        for user, own in list(self._data[section].items()):
+            if isinstance(own, dict) and key in own:
+                taken[user] = own.pop(key)
+                if not own:
+                    del self._data[section][user]
+        if taken:
             self._touch()
-        return moved
+        return taken
+
+    def put_everyones(self, section: str, key: str, by_user: dict) -> int:
+        """Each user's entry in `by_user` put at `key`, one already there keeping its fields; how many."""
+        if not by_user or not self._may_change(section, guard.PER_USER):
+            return 0
+        for user, was in by_user.items():
+            own = self._data[section].setdefault(user, {})
+            there = own.get(str(key))
+            if isinstance(was, dict) and isinstance(there, dict):
+                was = dict(was, **there)
+            own[str(key)] = there if there is not None and not isinstance(was, dict) else was
+        self._touch()
+        return len(by_user)
 
     def changed(self, section: str) -> list:
         """The keys of a section that differ from the file as last read: what the next save writes."""

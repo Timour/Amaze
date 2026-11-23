@@ -288,7 +288,7 @@ def _rekey_into_new_location(preferences, path: str, lid: str) -> None:
         fresh = _ident_under(inside, path_identity(full)) if full else ""
         if fresh and fresh != key and fresh != LOC_PREFIX + lid:
             moves[key] = fresh
-    if moves and files_moved(preferences, moves, everyone=True):
+    if moves and files_moved(preferences, moves):
         _move_captures(preferences, moves)
         debug.event("file", "a new location took over the keys of the files under it",
                     moved=len(moves))
@@ -457,8 +457,8 @@ def fold_duplicate_ids(preferences) -> int:
     return len(pairs) if saved else 0
 
 
-def files_moved(preferences, keys: dict, everyone: bool = False) -> bool:
-    """Re-key `{old: new}`: comments, icons, this user's stars; `everyone` moves every user's."""
+def files_moved(preferences, keys: dict) -> bool:
+    """Re-key `{old: new}`: the file's comments, icon and every user's favorite follow it."""
     held = _files(preferences)
     if not keys or not held.writable or not held.user():
         return not keys
@@ -470,11 +470,7 @@ def files_moved(preferences, keys: dict, everyone: bool = False) -> bool:
                 if entry is not None:
                     held.put(section, new, entry)    # a moved file's entry overwrites an old one at the new key
                     held.drop(section, old)
-            if everyone:    # a location changed, which changes the key for every user of the library
-                held.rekey_everyones(FAVORITES, old, new)
-            elif held.mine(FAVORITES).get(old):
-                held.put_mine(FAVORITES, new, True)
-                held.put_mine(FAVORITES, old, None)
+            held.rekey_everyones(FAVORITES, old, new)
     saved = library_db.save(preferences, FILES)
     return bool(saved) or saved.reason == "unchanged"
 
@@ -526,7 +522,7 @@ def rekey_to_covering_location(preferences, path: str) -> bool:
                if path_identity(str((row or {}).get("path") or "")) == gone}
     owners = {base: lid for base, lid in _id_table(preferences).items() if base != gone}
     moves = {}
-    for key in list(held.table(COMMENTS)) + list(held.table(ICONS)) + list(held.mine(FAVORITES)):
+    for key in list(held.table(COMMENTS)) + list(held.table(ICONS)) + _everyones_favorite_keys(held):
         if key.startswith(LOC_PREFIX):
             head, _, rel = key[len(LOC_PREFIX):].partition("/")
             full = gone + "/" + rel if head in leaving and rel else ""

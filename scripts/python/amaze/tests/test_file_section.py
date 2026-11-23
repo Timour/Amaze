@@ -2212,10 +2212,6 @@ class RemovingANestedLocationTest(unittest.TestCase):
         inner_id = locations_mod.location_id(prefs, self.inner)
         self.assertTrue(key.startswith("loc:" + inner_id + "/"),
                         "premise: the nested location does not own the file")
-        from amaze.core import library_db
-        prefs.library_user = self.OTHER
-        locations_mod.set_favourite(prefs, key, True)
-        prefs.library_user = test_support.FIXTURE_USER
 
         self._remove(prefs, self.inner)
 
@@ -2223,9 +2219,6 @@ class RemovingANestedLocationTest(unittest.TestCase):
             (True, True, "activity"), self._shown(prefs, self.inner),
             "removing the nested location retired the star, comment or "
             "icon of a file the outer location still covers")
-        stars = library_db.document(prefs, locations_mod.FILES).everyones(locations_mod.FAVORITES)
-        self.assertIn(key, stars.get(self.OTHER, {}),
-                      "another user's star on that file was retired")
 
     def test_a_location_nothing_else_covers_still_loses_them(self):
         from amaze.core import notes

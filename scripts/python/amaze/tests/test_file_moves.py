@@ -511,19 +511,6 @@ class WhatAmazeKeepsFollowsTheFileTest(unittest.TestCase):
         self.assertEqual((True, True, True, True), self._kept(new))
         self.assertEqual((False, False, False, False), self._kept(old))
 
-    def test_another_users_star_is_never_rewritten(self):
-        """A user writes only their own stars: the move leaves another user's as it was."""
-        model, row, old = self._annotate()
-        self.prefs.library_user = OTHER_USER
-        model.toggle_favorite(row)
-        self.prefs.library_user = test_support.FIXTURE_USER
-        new = self._moved()
-        stored = library_db.document(self.prefs, locations_mod.FILES).everyones(locations_mod.FAVORITES)
-        self.assertEqual({old: True}, {key: value for key, value in
-                                       stored.get(OTHER_USER, {}).items()
-                                       if key in (old, new)},
-                         "the move rewrote another user's star")
-
     def test_an_entry_left_at_the_new_place_is_replaced_by_the_moved_files_entry(self):
         self._annotate()
         stale = captures.file_key(self.prefs, self.moved_to)
