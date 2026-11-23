@@ -565,6 +565,24 @@ class PaneView(qmlviews.BaseQmlWidget):
         self._log_key("press", event, self._route(event, lambda: super(PaneView, self).keyPressEvent(event),
                                                   act=True))
 
+    def focusInEvent(self, event) -> None:
+        _log_focus_reason("pane focus in", event)
+        super().focusInEvent(event)
+
+    def focusOutEvent(self, event) -> None:
+        _log_focus_reason("pane focus out", event)
+        super().focusOutEvent(event)
+
+    def mousePressEvent(self, event) -> None:
+        debug.event("keys", "pane mouse press")
+        super().mousePressEvent(event)
+        debug.event("keys", "pane mouse press handled", pane_has_focus=self.hasFocus())
+
+    def mouseReleaseEvent(self, event) -> None:
+        debug.event("keys", "pane mouse release")
+        super().mouseReleaseEvent(event)
+        debug.event("keys", "pane mouse release handled", pane_has_focus=self.hasFocus())
+
     def _log_key(self, step: str, event, taken: bool) -> None:
         """Debug Mode: where a key went in the pane, to find where Houdini's hotkeys take it."""
         if debug.is_on():
@@ -606,11 +624,28 @@ def _log_focus_changes() -> None:
     global _focus_logged
     if not _focus_logged:
         _focus_logged = True
-        QtWidgets.QApplication.instance().focusChanged.connect(_log_focus)
+        app = QtWidgets.QApplication.instance()
+        app.focusChanged.connect(_log_focus)
+        app.focusWindowChanged.connect(_log_focus_window)
+        app.focusObjectChanged.connect(_log_focus_object)
 
 
 def _log_focus(old, new) -> None:
     debug.event("keys", "focus %s -> %s" % (_name_of(old), _name_of(new)))
+
+
+def _log_focus_window(window) -> None:
+    debug.event("keys", "focus window %s" % _name_of(window))
+
+
+def _log_focus_object(thing) -> None:
+    debug.event("keys", "focus object %s" % _name_of(thing))
+
+
+def _log_focus_reason(step: str, event) -> None:
+    """Debug Mode: Qt's reason for a focus change: a click, the window, a popup, or code."""
+    debug.event("keys", "%s, %s" % (step, event.reason().name),
+                focus_window=_name_of(QtGui.QGuiApplication.focusWindow()))
 
 
 def _name_of(thing) -> str:
