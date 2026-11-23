@@ -1,6 +1,8 @@
 """The Amaze pane's keys as Houdini hotkeys, in Edit > Hotkeys under Houdini > Panes > Amaze."""
 import hou
 
+from amaze.core import debug
+
 CONTEXT = "h.pane.amaze"    # under Houdini's pane contexts, so its keys override the top-level ones
 MOVES = (    # (name, label, key): each also with Shift, which extends the selection, as Qt's views do
     ("left", "Left", "LeftArrow"),
@@ -48,6 +50,7 @@ def watch(widget) -> None:
         hou.hotkeys.installDefinitions(_definitions())
         _installed = True
     hou.qt.registerKeyResolveInfoCallback(widget, _resolve_info)
+    debug.event("keys", "hotkey context registered", context=CONTEXT)
 
 
 def unwatch(widget) -> None:
@@ -61,6 +64,7 @@ def action(event):
     if not hou.isUIAvailable():
         return None
     symbol = hou.qt.resolveKeyEvent(event)
+    debug.event("keys", "resolved to %s" % (symbol or "nothing"), key=event.key())
     if not symbol.startswith(CONTEXT + "."):
         return None
     name = symbol[len(CONTEXT) + 1:]

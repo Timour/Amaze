@@ -545,6 +545,7 @@ class PaneView(qmlviews.BaseQmlWidget):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         hotkeys.watch(self)    # Amaze's hotkey context is active for this pane
+        _log_focus_changes()
 
     def _makeSharedState(self) -> PaneState:
         return PaneState()
@@ -555,11 +556,21 @@ class PaneView(qmlviews.BaseQmlWidget):
     def event(self, event) -> bool:
         """Qt's shortcut override: the pane claims the keys it acts on, or Houdini's hotkey takes them."""
         if event.type() == QtCore.QEvent.Type.ShortcutOverride:
-            return self._route(event, lambda: super(PaneView, self).event(event), act=False)
+            claimed = self._route(event, lambda: super(PaneView, self).event(event), act=False)
+            self._log_key("override", event, claimed)
+            return claimed
         return super().event(event)
 
     def keyPressEvent(self, event) -> None:
-        self._route(event, lambda: super(PaneView, self).keyPressEvent(event), act=True)
+        self._log_key("press", event, self._route(event, lambda: super(PaneView, self).keyPressEvent(event),
+                                                  act=True))
+
+    def _log_key(self, step: str, event, taken: bool) -> None:
+        """Debug Mode: where a key went in the pane, to find where Houdini's hotkeys take it."""
+        if debug.is_on():
+            debug.event("keys", "%s %s %s" % (step, QtGui.QKeySequence(event.key()).toString(),
+                                              "taken" if taken else "left to Houdini"),
+                        focus=_name_of(self.quickWindow().activeFocusItem()), pane_has_focus=self.hasFocus())
 
     def _route(self, event, to_qt_quick, act: bool) -> bool:
         """In the grid or list Amaze's hotkeys first, elsewhere the focused item; what is left to Houdini."""
@@ -585,6 +596,29 @@ class PaneView(qmlviews.BaseQmlWidget):
             self.sharedState().run_key(*found)
         event.accept()
         return True
+
+
+_focus_logged = False    # one connection for the session, whatever number of panes
+
+
+def _log_focus_changes() -> None:
+    """Debug Mode: every keyboard focus change in Houdini, to see whether a click gives the pane keys."""
+    global _focus_logged
+    if not _focus_logged:
+        _focus_logged = True
+        QtWidgets.QApplication.instance().focusChanged.connect(_log_focus)
+
+
+def _log_focus(old, new) -> None:
+    debug.event("keys", "focus %s -> %s" % (_name_of(old), _name_of(new)))
+
+
+def _name_of(thing) -> str:
+    """A widget's or item's class, and its object name when it has one, for the log."""
+    if thing is None:
+        return "none"
+    name = thing.objectName()
+    return thing.metaObject().className() + ("#" + name if name else "")
 
 
 def _takes_hotkeys_first(item) -> bool:
