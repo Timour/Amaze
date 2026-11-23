@@ -2,6 +2,7 @@
 
 import ast
 import os
+import re
 import sys
 import unittest
 
@@ -30,6 +31,11 @@ RETIRED = {    # retired label -> current name, quoted on failure ▸p/quoted-st
 }
 
 DEFERRED = set()    # (module, label) pairs waived for now ▸p/line-keyed-register
+
+
+def _names(text, old) -> bool:
+    """Whether `text` names `old` whole, not as the start of a longer live label."""
+    return re.search(re.escape(old) + r"(?![A-Za-z])", text) is not None
 
 
 def _literals(path):
@@ -87,7 +93,7 @@ class RetiredLabelsAreGone(unittest.TestCase):
         hits = [(path, line, old)
                 for path in _package_modules()
                 for line, text in _literals(path)
-                for old in RETIRED if old in text]
+                for old in RETIRED if _names(text, old)]
         live = [h for h in hits if _waiver(h[0], h[2]) not in DEFERRED]
         with self.subTest(source="package"):
             self.assertEqual(
@@ -100,7 +106,7 @@ class RetiredLabelsAreGone(unittest.TestCase):
         with open(manual, encoding="utf-8") as handle:
             hits = [(manual, number, old)
                     for number, text in enumerate(handle, 1)
-                    for old in RETIRED if old in text]
+                    for old in RETIRED if _names(text, old)]
         with self.subTest(source="MANUAL.md"):
             self.assertEqual(
                 [], hits,
