@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.48.1
+
+- A render, viewport capture or download that is stopped or fails leaves the library as it was: tile pictures, downloaded materials, package files and copied textures are written whole or not at all.
+- Saving a material whose save fails leaves no copied texture files behind.
+
 ## 1.48.0
 
 - Preferences: Houdini's own Preferences window, with the pages listed on the left, the settings in groups, and Search, which finds a setting on every page.
