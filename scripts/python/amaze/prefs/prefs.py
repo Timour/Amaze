@@ -472,6 +472,15 @@ class Prefs(_Persistence):
         self._hide_empty_categories = bool(val)
 
     @property
+    def qt_wheel_fix(self) -> bool:
+        """Whether the QML views take the wheel as Houdini's Context Options list does; off, Qt's own."""
+        return self._qt_wheel_fix
+
+    @qt_wheel_fix.setter
+    def qt_wheel_fix(self, val: bool) -> None:
+        self._qt_wheel_fix = bool(val)
+
+    @property
     def enabled_sections(self) -> list:
         return self._enabled_sections
 

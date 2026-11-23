@@ -13,6 +13,7 @@ Item {
     property int sortColumn: -1    // the heading drawn sorted; -1 for none
     property bool descending: false
     property var ink: colour => colour    // a cell's own text colour as it is drawn
+    property bool wheelFix: false    // the wheel as Houdini's Context Options list takes it; off, Qt's
     signal rowClicked(int row, int modifiers)    // the user's click; row -1 is the space below the rows
     signal headingClicked(int column)
 
@@ -72,6 +73,7 @@ Item {
 
             WheelScroll {
                 view: view
+                enabled: root.wheelFix
             }
             RowStripes {
                 view: view

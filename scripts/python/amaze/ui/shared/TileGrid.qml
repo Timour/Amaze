@@ -11,6 +11,7 @@ ScrollView {
     property real tileSize: 128    // the slider's size: the picture is this plus T01's width extra, less its pad
     property var drawn: ({})    // `drawn_tile`
     property var badges: []    // `badge_rows`
+    property bool wheelFix: false    // the wheel as Houdini's Context Options list takes it; off, Qt's
     signal tileClicked(int row, int modifiers)    // the user's click; row -1 is the grid's empty space
     signal badgeClicked(int row, string name)
 
@@ -36,6 +37,7 @@ ScrollView {
 
         WheelScroll {
             view: view
+            enabled: root.wheelFix
         }
 
         Connections {

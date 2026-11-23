@@ -32,6 +32,10 @@ PrefsPage {
                 {text: "Regular (Feather)", value: "feather"},
             ]
         }
+        TogglePref {
+            label: "Qt Mouse Scroll Wheel Fix"
+            pref: "qt_wheel_fix"
+        }
     }
     Group {
         text: "File Tab"

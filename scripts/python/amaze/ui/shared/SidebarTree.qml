@@ -9,6 +9,7 @@ TreeView {
 
     property bool counts: true    // each row's count after its name; All always shows its total
     property var drawn: ({})    // `amazetheme.drawn_sidebar`: the colour bar's place, off G01
+    property bool wheelFix: false    // the wheel as Houdini's Context Options list takes it; off, Qt's
     signal stepped()    // a key that Qt's own navigation moves the current row by; no other key
     readonly property var steps: [Qt.Key_Up, Qt.Key_Down, Qt.Key_Left, Qt.Key_Right,
                                   Qt.Key_PageUp, Qt.Key_PageDown, Qt.Key_Home, Qt.Key_End]
@@ -28,6 +29,7 @@ TreeView {
     }
     WheelScroll {
         view: root
+        enabled: root.wheelFix
     }
 
     function open(index) {    // the folder at `index` and every folder above it

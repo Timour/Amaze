@@ -139,6 +139,7 @@ USER_KEYS = {  # per-user view state under `users.<uid>`: stored key -> (propert
     "hide_empty_categories":
         ("hide_empty_categories", "_hide_empty_categories", True),
     "step_size": ("step_size", "_step_size", True),
+    "qt_wheel_fix": ("qt_wheel_fix", "_qt_wheel_fix", False),
     "accent_color": ("accent_color", "_accent_color", "#5d7abd"),
     "icon_line_weight":
         ("icon_line_weight", "_icon_line_weight", "template"),

@@ -196,12 +196,9 @@ class TheQmlPaneOpensAndCloses(unittest.TestCase):
         self.assertIs(selection, table.property("selectionModel"), "the list keeps a selection of its own")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class TheWheelScrollsAsHoudinisOwnList(unittest.TestCase):
-    """One wheel event moves a view by its pixel distance, else by its wheel step, never past the end."""
+    """With the fix on, a wheel event moves a view by its pixels, else by its step, never past the end."""
 
     def test_pixels_first_then_the_step_and_the_end_holds(self):
         from PySide6 import QtGui
@@ -213,6 +210,8 @@ class TheWheelScrollsAsHoudinisOwnList(unittest.TestCase):
         panel.setAttribute(QtCore.Qt.WidgetAttribute.WA_DontShowOnScreen)
         panel.resize(840, 420)
         panel.show()
+        panel.pane.prefs.qt_wheel_fix = True    # Qt Mouse Scroll Wheel Fix, off at first
+        panel.state._show_settings()    # what Apply runs
         panel.state.chooseTab([tab["label"] for tab in panel.state.tabs].index("Color"))    # the most tiles
         QtWidgets.QApplication.processEvents()
         panel.view.grabFramebuffer()
@@ -240,3 +239,7 @@ class TheWheelScrollsAsHoudinisOwnList(unittest.TestCase):
         self.assertEqual(180, wheel(0, -120), "a step with no pixels did not move 120 px")
         grid.setProperty("contentY", end - 50)
         self.assertEqual(end, wheel(0, -120), "the wheel scrolled past the last row")
+
+
+if __name__ == "__main__":
+    unittest.main()

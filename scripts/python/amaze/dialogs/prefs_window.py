@@ -72,6 +72,7 @@ SETTINGS = {    # a row's `pref` -> (the Prefs value as Houdini's rows' text, th
     **{renderer.switch: SWITCH for renderer in renderers.ALL},
     "sidebar_counts": SWITCH,
     "hide_empty_categories": SWITCH,
+    "qt_wheel_fix": SWITCH,
     "step_size": SWITCH,
     "render_rat_files": SWITCH,
     "system_file_icons": NOT_SWITCH,    # the Show Generic File Icons switch
@@ -116,6 +117,7 @@ TIPS = {    # a row's or a button's `tipID` -> the text Houdini's tip window sho
     **{pref: tooltips.PREFS_SECTION_SWITCH for pref in SECTION_PREFS},
     "sidebar_counts": tooltips.PREFS_SIDEBAR_COUNTS,
     "hide_empty_categories": tooltips.PREFS_HIDE_EMPTY_CATEGORIES,
+    "qt_wheel_fix": tooltips.PREFS_QT_WHEEL_FIX,
     "step_size": tooltips.PREFS_STEP_SIZE,
     "render_rat_files": tooltips.PREFS_RENDER_RAT_FILES,
     "system_file_icons": tooltips.PREFS_GENERIC_FILE_ICONS,

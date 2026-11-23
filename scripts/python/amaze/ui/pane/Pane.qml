@@ -65,6 +65,7 @@ PaneRoot {
                     model: SharedState.sidebarModel
                     selectionModel: SharedState.sidebarSelection
                     counts: SharedState.sidebarCounts
+                    wheelFix: SharedState.wheelFix
                     drawn: SharedState.sidebar
                     onStepped: SharedState.stepSidebar()
 
@@ -87,6 +88,7 @@ PaneRoot {
                         model: SharedState.gridModel
                         selectionModel: SharedState.gridSelection
                         tileSize: SharedState.tileSize
+                        wheelFix: SharedState.wheelFix
                         drawn: SharedState.tile
                         badges: SharedState.badges
                         onTileClicked: (row, modifiers) => SharedState.clickTile(row, modifiers)
@@ -101,6 +103,7 @@ PaneRoot {
                         model: SharedState.gridModel    // first: a selection set before it is cleared by Qt
                         selectionModel: SharedState.gridSelection
                         columns: SharedState.listColumns
+                        wheelFix: SharedState.wheelFix
                         drawn: SharedState.table
                         sortColumn: SharedState.sortColumn
                         descending: SharedState.sortDescending
