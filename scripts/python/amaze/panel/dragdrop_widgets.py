@@ -36,7 +36,6 @@ class GridGestureMixin:
         self._preview = None
         super().__init__(parent)
 
-    SCROLL_SPEED = 0.75    #: fallback only, used when no panel/prefs is reachable
     INDICATOR_MS = 167    #: how long an outcome icon stays on screen (ms) ▸r/qt-windows-macos
     WHEEL_NOTCH_PX = theme.ui_px(60)    #: classic wheel px per notch, through the UI scale
 
@@ -58,12 +57,10 @@ class GridGestureMixin:
         if panel is None:
             panel = _find_panel(self)
             self._wheel_panel = panel
-        prefs = panel.pane.prefs if panel is not None else None
-        speed = getattr(prefs, "scroll_speed", None) or self.SCROLL_SPEED
         bar = (self.horizontalScrollBar() if horizontal
                else self.verticalScrollBar())
         before = bar.value()
-        bar.setValue(before - round(delta * speed))
+        bar.setValue(before - round(delta))    # the system's own distance, as Qt's views take it
         self._log_scroll_geometry(panel, bar, before, delta)
         event.accept()
 

@@ -226,7 +226,6 @@ class EveryRowFollowsAUserOrLibraryChange(SharedPrefsCase):
         "sidebar_counts": False,
         "hide_empty_categories": False,
         "icon_line_weight": "feather",
-        "scroll_speed": 1.5,
         "debug_mode": True,
     }
 
@@ -256,7 +255,6 @@ class EveryRowFollowsAUserOrLibraryChange(SharedPrefsCase):
             "sidebar_counts": s.getBool("sidebar_counts"),
             "hide_empty_categories": s.getBool("hide_empty_categories"),
             "icon_line_weight": s.getPref("icon_line_weight"),
-            "scroll_speed": float(s.getPref("scroll_speed")) / 100.0,
             "debug_mode": s.getBool("debug_mode"),
         }
 

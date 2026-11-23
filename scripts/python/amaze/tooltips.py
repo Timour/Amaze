@@ -69,7 +69,6 @@ PREFS_WRITE_PATHS_AS ='How Amaze writes paths in Copy Path, the File section and
 
 PREFS_TILE_ICON_LINE = 'Line weight of the tile icons: thin or regular.'
 
-PREFS_SCROLL_SPEED = 'How fast the grid scrolls. 100 is the default.'
 
 PREFS_ADDON_SWITCH = 'On or off from the next Houdini start. Off keeps Houdini from loading these nodes; a scene that uses them keeps their values and shows them incomplete until they are on again.'   # ▸ Preferences - Add-On tab (P05)
 

@@ -18,7 +18,6 @@ RENDERSIZE_RANGE = (64, 1024)  # the setter clamps to it, and the Preferences ro
 RAM_CACHE_RANGE = (64, 4096)
 CONVERSIONS_RANGE = (1, 8)
 DOWNLOADS_RANGE = (1, 16)
-SCROLL_SPEED_RANGE = (0.1, 3.0)  # a factor; its row shows it as a percent
 LIBRARY_LIST_LIMIT = 20  # Add stops here; only Manage removes a library from the list
 
 
@@ -500,15 +499,6 @@ class Prefs(_Persistence):
     @texture_parallel_conversions.setter
     def texture_parallel_conversions(self, val: int) -> None:
         self._texture_parallel_conversions = _clamped(val, CONVERSIONS_RANGE)
-
-    @property
-    def scroll_speed(self) -> float:
-        return self._scroll_speed
-
-    @scroll_speed.setter
-    def scroll_speed(self, val: float) -> None:
-        low, high = SCROLL_SPEED_RANGE
-        self._scroll_speed = max(low, min(high, float(val)))
 
     @property
     def step_size(self) -> bool:

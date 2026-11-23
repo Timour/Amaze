@@ -33,14 +33,6 @@ def _number_value(text: str) -> int:
     return round(float(text))
 
 
-def _percent_text(value: float) -> str:
-    return str(round(value * 100))
-
-
-def _percent_value(text: str) -> float:
-    return float(text) / 100
-
-
 def _chooser_path(path: str) -> str:
     """A folder path for `selectFile` and prefs: forward slashes, trailing one only at a root."""
     return hostos.canonical_path_key(path) if path else ""   # empty stays empty: not `"."`
@@ -56,7 +48,6 @@ NOT_SWITCH = (lambda value: _switch_text(not value),    # a switch on while its 
               lambda text: not _switch_value(text))
 WORD = (str, str)
 NUMBER = (str, _number_value)    # Houdini's number rows write "256"; Prefs holds the whole number
-PERCENT = (_percent_text, _percent_value)    # a factor in Prefs, a percent on its row
 
 SECTION = "enabled_sections."    # a Sections switch's `pref`: this, then the section's key
 SECTION_PREFS = tuple(SECTION + key for key in section_list.keys())
@@ -87,7 +78,6 @@ SETTINGS = {    # a row's `pref` -> (the Prefs value as Houdini's rows' text, th
     "system_file_icons": NOT_SWITCH,    # the Show Generic File Icons switch
     "path_style": WORD,
     "icon_line_weight": WORD,
-    "scroll_speed": PERCENT,
     "debug_mode": SWITCH,
     "addon_betas": SWITCH,
     CACHE: WORD,
@@ -99,7 +89,6 @@ RANGES = {    # a slider row's `pref` -> the [from, to] it offers, the old dialo
     "ram_cache_mb": list(prefs_mod.RAM_CACHE_RANGE),
     "texture_parallel_conversions": list(prefs_mod.CONVERSIONS_RANGE),
     "matx_parallel_downloads": list(prefs_mod.DOWNLOADS_RANGE),
-    "scroll_speed": [round(end * 100) for end in prefs_mod.SCROLL_SPEED_RANGE],
 }
 
 TIPS = {    # a row's or a button's `tipID` -> the text Houdini's tip window shows over it
@@ -135,7 +124,6 @@ TIPS = {    # a row's or a button's `tipID` -> the text Houdini's tip window sho
     "system_file_icons": tooltips.PREFS_GENERIC_FILE_ICONS,
     "path_style": tooltips.PREFS_WRITE_PATHS_AS,
     "icon_line_weight": tooltips.PREFS_TILE_ICON_LINE,
-    "scroll_speed": tooltips.PREFS_SCROLL_SPEED,
     "addons_check": tooltips.PREFS_ADDONS_CHECK,
     "addons_update": tooltips.PREFS_ADDONS_UPDATE,
     "addon_betas": tooltips.PREFS_ADDON_BETAS,

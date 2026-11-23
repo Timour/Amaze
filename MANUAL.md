@@ -825,9 +825,8 @@ snippets.
 
 - **Categories**: **Show Counts on Categories** and **Hide Empty
   Categories**.
-- **Grid**: **Step Size** (the size slider moves in steps of 64 px),
-  **Tile Icon Line** (Thin, or Feather's Regular) and **Scroll Speed
-  (%)**.
+- **Grid**: **Step Size** (the size slider moves in steps of 64 px) and
+  **Tile Icon Line** (Thin, or Feather's Regular).
 - **File Tab**: **Render RAT Files** (off: RAT files in the File tab
   show a rat and are not converted) and **System File Icons** (off:
   files with no preview show the generic file icon).

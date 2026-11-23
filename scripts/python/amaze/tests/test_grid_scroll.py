@@ -21,11 +21,10 @@ from amaze.tests import test_support  # noqa: E402 - redirects the log
 
 
 class OneWheelHandlerServesBothViews(unittest.TestCase):
-    """One wheel handler for both views and axes; a view without prefs uses `SCROLL_SPEED`."""
+    """One wheel handler for both views and axes, at the system's own scroll distance."""
 
     VIEWS = ("DragDropListView", "DragDropRowsView")
 
-    SPEED = dragdrop_widgets.GridGestureMixin.SCROLL_SPEED
     NOTCH = dragdrop_widgets.GridGestureMixin.WHEEL_NOTCH_PX
 
     def _view(self, name):
@@ -54,7 +53,7 @@ class OneWheelHandlerServesBothViews(unittest.TestCase):
             QtCore.Qt.KeyboardModifier.NoModifier,
             QtCore.Qt.ScrollPhase.NoScrollPhase, False)
 
-    def test_a_TRACKPAD_delta_moves_the_bar_by_the_scroll_speed(self):
+    def test_a_TRACKPAD_delta_moves_the_bar_by_that_delta(self):
         for name in self.VIEWS:
             with self.subTest(view=name):
                 view = self._view(name)
@@ -65,13 +64,13 @@ class OneWheelHandlerServesBothViews(unittest.TestCase):
                 bar.setValue(0)
                 view.wheelEvent(self._wheel(pixel=(0, -40)))
                 self.assertEqual(
-                    round(40 * self.SPEED), bar.value(),
-                    "a pixel delta did not move the bar by delta times the scroll speed")
+                    40, bar.value(),
+                    "a pixel delta did not move the bar by that delta")
                 bar.setValue(0)    # a mouse with no pixel data: 120-unit notches only
                 view.wheelEvent(self._wheel(angle=(0, -120)))
                 self.assertEqual(
-                    round(self.NOTCH * self.SPEED), bar.value(),
-                    "one notch is not WHEEL_NOTCH_PX at the user's speed")
+                    round(self.NOTCH), bar.value(),
+                    "one notch is not WHEEL_NOTCH_PX")
 
     def test_a_SIDEWAYS_gesture_never_moves_the_view_DOWN(self):
         """The gesture's axis decides which scrollbar moves; checked on both views."""
@@ -91,9 +90,9 @@ class OneWheelHandlerServesBothViews(unittest.TestCase):
                     "a sideways gesture scrolled the view downwards")
                 if horizontal.maximum():
                     self.assertEqual(
-                        round(40 * self.SPEED), horizontal.value(),
+                        40, horizontal.value(),
                         "a sideways gesture did not move the sideways "
-                        "bar by the user's speed")
+                        "bar by its delta")
 
 
 class SelectingNeverScrollsTheGridTest(unittest.TestCase):

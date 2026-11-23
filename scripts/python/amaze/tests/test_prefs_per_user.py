@@ -83,14 +83,14 @@ class TwoUsersKeepTheirOwnViewState(PerUserCase):
         self.write_settings({
             "library_user": UID_A,
             "users": {
-                UID_A: {"thumbsize": 256, "scroll_speed": 2.0},
+                UID_A: {"thumbsize": 256, "sidebar_width": 240},
                 UID_B: {"thumbsize": 96},
             }})
         p = self.prefs()
         p.load()
-        self.assertEqual(2.0, p.scroll_speed)
+        self.assertEqual(240, p.sidebar_width)
         p.library_user = UID_B
-        self.assertEqual(0.75, p.scroll_speed,
+        self.assertEqual(0, p.sidebar_width,
                          "a key the incoming block lacks kept the "
                          "previous user's value - one user's layout "
                          "leaked into another's")
@@ -163,13 +163,13 @@ class OneLayoutIsReadAndWritten(PerUserCase):
             "library_user": UID_A,
             "view_mode": "list",
             "thumbsize": 300,
-            "users": {UID_A: {"scroll_speed": 1.5}},
+            "users": {UID_A: {"sidebar_width": 180}},
         })
         p = self.prefs()
         p.load()
         self.assertEqual("grid", p.view_mode, "a flat key was read as the user's")
         self.assertEqual(128, p.thumbsize)
-        self.assertEqual(1.5, p.scroll_speed)
+        self.assertEqual(180, p.sidebar_width)
 
     def test_no_older_key_is_read_and_each_stays_in_the_file(self):
         older = {"version_author": "Plum", "rendersize": 512, "texture_folders": ["/tex/a/"],

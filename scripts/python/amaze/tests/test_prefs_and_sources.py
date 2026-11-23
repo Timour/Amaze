@@ -196,7 +196,6 @@ class SharedDefaultsAreInOneTable(unittest.TestCase):
 class LoadNeverRaisesAndAlwaysValidates(unittest.TestCase):
 
     POISON = {  # every key with a validating setter, against the value that breaks it
-        "scroll_speed": None,
         "ram_cache_mb": None,
         "texture_parallel_conversions": "eight",
         "karma_rendersamples": None,
@@ -223,9 +222,7 @@ class LoadNeverRaisesAndAlwaysValidates(unittest.TestCase):
         p.path = folder
         p.load()          # must not raise: panel._build re-raises
 
-        self.assertIsInstance(p.scroll_speed, float)  # and USABLE: Preferences does arithmetic on these inside a slot where PySide swallows the error
-        round(p.scroll_speed * 100)
-        self.assertIsInstance(p.ram_cache_mb, int)
+        self.assertIsInstance(p.ram_cache_mb, int)  # and USABLE: Preferences does arithmetic on these inside a slot where PySide swallows the error
         self.assertIsInstance(p.texture_parallel_conversions, int)
         self.assertIsInstance(p.karma_rendersamples, int)
         self.assertEqual(256, p.octane_rendersamples)
@@ -278,8 +275,7 @@ class LoadNeverRaisesAndAlwaysValidates(unittest.TestCase):
                 ("octane_rendersamples", 1),
                 ("ram_cache_mb", 1),
                 ("texture_parallel_conversions", 1),
-                ("matx_parallel_downloads", 1),
-                ("scroll_speed", 100)):
+                ("matx_parallel_downloads", 1)):
             low, high = prefs_window.RANGES[name]    # what the slider row offers
             for end, past in ((low, low - 1), (high, high + 1)):
                 with self.subTest(setting=name, value=past):

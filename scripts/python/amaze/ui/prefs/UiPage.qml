@@ -32,13 +32,6 @@ PrefsPage {
                 {text: "Regular (Feather)", value: "feather"},
             ]
         }
-        SliderPref {
-            label: "Scroll Speed"
-            pref: "scroll_speed"
-            from: SharedState.ranges.scroll_speed[0]
-            to: SharedState.ranges.scroll_speed[1]
-            isInt: true
-        }
     }
     Group {
         text: "File Tab"
