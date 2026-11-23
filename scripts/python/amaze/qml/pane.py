@@ -356,6 +356,12 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         self._grid_anchor = QtCore.QPersistentModelIndex(index)
 
     @QtCore.Slot(int)
+    def doubleClickTile(self, row: int) -> None:
+        """The user's double-click on tile or row `row`: the pane's, as the widget grid's."""
+        if self.gridModel is not None and row >= 0:
+            self.pane.double_click(self.gridModel.index(row, 0))
+
+    @QtCore.Slot(int)
     def sortList(self, column: int) -> None:
         """A heading's click: the proxy's own sort, by Qt's header rule; the same heading reverses it."""
         model = self.gridModel.sourceModel() if self.gridModel is not None else None

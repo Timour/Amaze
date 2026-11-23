@@ -92,6 +92,7 @@ PaneRoot {
                         drawn: SharedState.tile
                         badges: SharedState.badges
                         onTileClicked: (row, modifiers) => SharedState.clickTile(row, modifiers)
+                        onTileDoubleClicked: row => SharedState.doubleClickTile(row)
                         onBadgeClicked: (row, name) => SharedState.clickBadge(row, name)
                     }
                 }
@@ -109,6 +110,7 @@ PaneRoot {
                         descending: SharedState.sortDescending
                         ink: colour => SharedState.listInk(colour)
                         onRowClicked: (row, modifiers) => SharedState.clickTile(row, modifiers)
+                        onRowDoubleClicked: row => SharedState.doubleClickTile(row)
                         onHeadingClicked: column => SharedState.sortList(column)
                     }
                 }

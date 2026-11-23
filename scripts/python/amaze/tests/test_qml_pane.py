@@ -197,6 +197,61 @@ class TheQmlPaneOpensAndCloses(unittest.TestCase):
 
 
 
+class ADoubleClickRunsTheSectionsAction(unittest.TestCase):
+    """A double-click on a tile or a list row runs the active section's double-click on that row."""
+
+    def test_on_a_tile_and_on_a_list_row(self):
+        from unittest import mock
+        from PySide6 import QtGui
+        test_support.fixture_panel(self)
+        panel = qml_pane.QmlPanel()
+        self.addCleanup(test_support.stop_panel_workers, panel)
+        self.addCleanup(QtCore.QCoreApplication.sendPostedEvents, None, QtCore.QEvent.Type.DeferredDelete)
+        self.addCleanup(panel.deleteLater)
+        self.addCleanup(panel.pane.set_view_mode, "grid")    # the prefs the fixture's panels share
+        panel.setAttribute(QtCore.Qt.WidgetAttribute.WA_DontShowOnScreen)
+        panel.resize(840, 420)
+        panel.show()
+
+        def items(kind):
+            found, todo = [], [panel.view.rootObject()]
+            while todo:
+                item = todo.pop()
+                found += [item] if item.metaObject().className().startswith(kind) else []
+                todo += item.childItems()
+            return found
+
+        def double_click(item, x, y):    # two clicks 80 ms apart; QTest's double-click is no tap to Qt Quick
+            at = item.mapToScene(QtCore.QPointF(x, y))
+            left, kind = QtCore.Qt.MouseButton.LeftButton, QtCore.QEvent.Type
+            for ms, press in ((0, True), (20, False), (80, True), (100, False)):
+                event = QtGui.QMouseEvent(kind.MouseButtonPress if press else kind.MouseButtonRelease, at,
+                                          panel.view.mapToGlobal(at), left,
+                                          left if press else QtCore.Qt.MouseButton.NoButton,
+                                          QtCore.Qt.KeyboardModifier.NoModifier)
+                event.setTimestamp(900000 + ms)
+                QtWidgets.QApplication.sendEvent(panel.view, event)
+                QtWidgets.QApplication.processEvents()
+
+        section = panel.pane.active_section()
+        for mode in ("grid", "list"):
+            with self.subTest(view=mode), mock.patch.object(section, "double_click") as action:
+                panel.state.setViewMode(mode)
+                QtWidgets.QApplication.processEvents()
+                panel.view.grabFramebuffer()
+                if mode == "grid":
+                    tile = sorted(items("Tile_"), key=lambda t: (t.y(), t.x()))[1]
+                    double_click(tile, tile.width() / 2, tile.height() * 0.3)
+                    row = 1
+                else:
+                    row = 2
+                    cell = min((cell for cell in items("RowGround") if cell.property("row") == row
+                                and cell.property("column") is not None), key=lambda c: c.property("column"))
+                    double_click(cell, cell.width() / 2, cell.height() / 2)
+                self.assertEqual([row], [call.args[0].row() for call in action.call_args_list],
+                                 "the %s view's double-click did not reach the section with its row" % mode)
+
+
 class TheWheelScrollsAsHoudinisOwnList(unittest.TestCase):
     """With the fix on, a wheel event moves a view by its pixels, else by its step, never past the end."""
 

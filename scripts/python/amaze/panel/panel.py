@@ -1598,12 +1598,8 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
             self.pane.sidebar.show_row(QtCore.QModelIndex(index))
 
     def import_asset_auto(self, index: QtCore.QModelIndex | None = None):
-        """The grid's double-click, handled by the active section's `double_click`."""
-        if index is not None and index.isValid():
-            index = index.siblingAtColumn(0)    # the row, not the clicked cell ▸r/row-selection
-        section = self.pane.active_section()
-        if section is not None:
-            section.double_click(index)
+        """The grid's double-click: the pane's, as the QML pane's."""
+        self.pane.double_click(index)
 
     def slide(self) -> None:
         """The slider's value as the grid's persisted tile size; list mode ignores it."""

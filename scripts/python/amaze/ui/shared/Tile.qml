@@ -14,6 +14,7 @@ Item {
     property real nameHeight: 15    // the two lines' heights, by the font, as the cell reserves them
     property real subtitleHeight: 15
     signal clicked(int modifiers)    // the user's click on the tile, away from a badge that takes clicks
+    signal doubleClicked()
     signal badgeClicked(string name)
 
     readonly property real side: width - 2 * root.drawn.pad    // the picture's side; the card is as wide
@@ -46,6 +47,7 @@ Item {
     TapHandler {    // exclusive, so a badge's own click is not also a click on the tile
         gesturePolicy: TapHandler.WithinBounds
         onTapped: root.clicked(point.modifiers)
+        onDoubleTapped: root.doubleClicked()
     }
 
     Rectangle {    // a selected tile is Houdini's selection around its picture and under its text

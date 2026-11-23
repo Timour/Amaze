@@ -15,6 +15,7 @@ Item {
     property var ink: colour => colour    // a cell's own text colour as it is drawn
     property bool wheelFix: false    // the wheel as Houdini's Context Options list takes it; off, Qt's
     signal rowClicked(int row, int modifiers)    // the user's click; row -1 is the space below the rows
+    signal rowDoubleClicked(int row)
     signal headingClicked(int column)
 
     readonly property int last: {    // the last shown column, which takes the rest of the width
@@ -85,6 +86,7 @@ Item {
                 height: Math.max(view.height, view.contentHeight)
                 TapHandler {
                     onTapped: root.rowClicked(view.cellAtPosition(point.position).y, point.modifiers)
+                    onDoubleTapped: root.rowDoubleClicked(view.cellAtPosition(point.position).y)
                 }
             }
 

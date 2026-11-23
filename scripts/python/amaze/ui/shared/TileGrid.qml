@@ -13,6 +13,7 @@ ScrollView {
     property var badges: []    // `badge_rows`
     property bool wheelFix: false    // the wheel as Houdini's Context Options list takes it; off, Qt's
     signal tileClicked(int row, int modifiers)    // the user's click; row -1 is the grid's empty space
+    signal tileDoubleClicked(int row)
     signal badgeClicked(int row, string name)
 
     ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
@@ -78,6 +79,7 @@ ScrollView {
             selected: view.selectionChanges >= 0 && root.selectionModel !== null
                       && root.selectionModel.isSelected(view.model.index(index, 0))
             onClicked: modifiers => root.tileClicked(index, modifiers)
+            onDoubleClicked: root.tileDoubleClicked(index)
             onBadgeClicked: name => root.badgeClicked(index, name)
         }
     }

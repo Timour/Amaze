@@ -261,6 +261,14 @@ class Pane(QtCore.QObject):
         if section is not None:
             section.filter_favorites(self.favourites_only)
 
+    def double_click(self, index) -> None:
+        """A tile or list row double-clicked: the active section's own action on that row."""
+        if index is not None and index.isValid():
+            index = index.siblingAtColumn(0)    # the row, not the clicked cell ▸r/row-selection
+        section = self.active_section()
+        if section is not None:
+            section.double_click(index)
+
     def filter_entries(self) -> tuple:
         """The active section's FilterEntry rows, everything-entry first; () for none."""
         section = self.active_section()
