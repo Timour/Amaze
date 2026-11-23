@@ -34,6 +34,10 @@ ScrollView {
         cellHeight: root.drawn.pad + cellWidth - 2 * root.drawn.pad + root.drawn.img_text_gap
                     + nameHeight + root.drawn.line_gap + subtitleHeight + root.drawn.bottom_pad
 
+        WheelScroll {
+            view: view
+        }
+
         Connections {
             target: root.selectionModel
             function onSelectionChanged() {

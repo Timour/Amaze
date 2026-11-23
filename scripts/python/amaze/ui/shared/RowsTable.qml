@@ -70,6 +70,9 @@ Item {
             columnWidthProvider: column => root.widthOf(column)
             onWidthChanged: forceLayout()
 
+            WheelScroll {
+                view: view
+            }
             RowStripes {
                 view: view
             }

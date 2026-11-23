@@ -26,6 +26,9 @@ TreeView {
     RowStripes {
         view: root
     }
+    WheelScroll {
+        view: root
+    }
 
     function open(index) {    // the folder at `index` and every folder above it
         expandToIndex(index)

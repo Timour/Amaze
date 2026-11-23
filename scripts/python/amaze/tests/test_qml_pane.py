@@ -198,3 +198,45 @@ class TheQmlPaneOpensAndCloses(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheWheelScrollsAsHoudinisOwnList(unittest.TestCase):
+    """One wheel event moves a view by its pixel distance, else by its wheel step, never past the end."""
+
+    def test_pixels_first_then_the_step_and_the_end_holds(self):
+        from PySide6 import QtGui
+        test_support.fixture_panel(self)
+        panel = qml_pane.QmlPanel()
+        self.addCleanup(test_support.stop_panel_workers, panel)
+        self.addCleanup(QtCore.QCoreApplication.sendPostedEvents, None, QtCore.QEvent.Type.DeferredDelete)
+        self.addCleanup(panel.deleteLater)
+        panel.setAttribute(QtCore.Qt.WidgetAttribute.WA_DontShowOnScreen)
+        panel.resize(840, 420)
+        panel.show()
+        panel.state.chooseTab([tab["label"] for tab in panel.state.tabs].index("Color"))    # the most tiles
+        QtWidgets.QApplication.processEvents()
+        panel.view.grabFramebuffer()
+
+        def walk(item):
+            yield item
+            for child in item.childItems():
+                yield from walk(child)
+        grid = next(item for item in walk(panel.view.rootObject())
+                    if item.metaObject().className().startswith("QQuickGridView"))
+        end = grid.property("contentHeight") - grid.height()
+        self.assertGreater(end, 300, "premise: the Color grid is too short to scroll")
+        at = grid.mapToScene(QtCore.QPointF(grid.width() / 2, grid.height() / 2))
+
+        def wheel(pixels, steps):
+            event = QtGui.QWheelEvent(at, QtCore.QPointF(panel.view.mapToGlobal(at.toPoint())),
+                                      QtCore.QPoint(0, pixels), QtCore.QPoint(0, steps),
+                                      QtCore.Qt.MouseButton.NoButton, QtCore.Qt.KeyboardModifier.NoModifier,
+                                      QtCore.Qt.ScrollPhase.NoScrollPhase, False)
+            QtWidgets.QApplication.sendEvent(panel.view, event)
+            QtWidgets.QApplication.processEvents()
+            return grid.property("contentY")
+
+        self.assertEqual(60, wheel(-60, -120), "a Mac mouse's pixels, its speed-up in them, were not used")
+        self.assertEqual(180, wheel(0, -120), "a step with no pixels did not move 120 px")
+        grid.setProperty("contentY", end - 50)
+        self.assertEqual(end, wheel(0, -120), "the wheel scrolled past the last row")
