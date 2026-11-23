@@ -108,16 +108,20 @@ if command -v shellcheck >/dev/null 2>&1; then
         exit 1
     fi
 fi
+if ! "$python" "$tests_dir/../../../../tools/check-requirements.py"; then
+    echo "requirements check FAILED - fix before the suite runs" >&2
+    exit 1
+fi
 
 MODULES="test_category test_library test_generator \
 test_roundtrip test_thumbnail_shutdown test_addons test_addon_tab test_debug_log_repeats \
-test_guard test_documents test_lop_assign test_drag_gesture test_houdini_operations \
+test_library_storage test_lop_assign test_drag_gesture test_houdini_operations \
 test_drop_targets test_drop_resolution test_cop_root \
 test_prefs_equality test_karma_batch \
 test_nodes_section test_tile_icons test_category_colors \
 test_shell_gates test_delegates test_folder_sections test_folder_tree test_file_moves \
 test_viewport_pick test_host_engines test_log_export \
-test_hip_section test_library_settings test_library_list test_library_tab test_prefs_window test_atomic_write \
+test_hip_section test_library_list test_library_tab test_prefs_window test_atomic_write \
 test_gradient_guard test_cleanup_counts test_check_library test_harness_reset \
 test_stale_proxy_index test_alert_sink \
 test_headless_dialogs test_save_from_node test_node_menu \

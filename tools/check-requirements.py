@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+"""Refuses a test that proves no listed requirement, or a second test for one. ▸docs/requirements"""
+import ast
+import os
+import re
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+LISTS = os.path.join(ROOT, "docs", "requirements")
+TESTS = os.path.join(ROOT, "scripts", "python", "amaze", "tests")
+LEVELS = ("Catastrophe", "Severe", "Wrong output")
+LINE = re.compile(r"^- ([A-Z]{2,3})-(\d{2}) (%s): \S" % "|".join(LEVELS))
+NAMED = re.compile(r"^test_([a-z]{2,3})(\d{2})_")
+
+
+def requirements() -> tuple:
+    """({id: (level, list file)}, [problems]) from every list."""
+    found, problems = {}, []
+    for name in sorted(os.listdir(LISTS)) if os.path.isdir(LISTS) else ():
+        if not name.endswith(".md"):
+            continue
+        with open(os.path.join(LISTS, name), encoding="utf-8") as handle:
+            for number, line in enumerate(handle, 1):
+                if not re.match(r"^- [A-Z]{2,3}-\d", line):
+                    continue
+                match = LINE.match(line)
+                if match is None:
+                    problems.append("%s:%d is no `- XX-NN Level: text` line" % (name, number))
+                    continue
+                rid = "%s-%s" % match.group(1, 2)
+                if rid in found:
+                    problems.append("%s:%d lists %s again (first in %s)" % (
+                        name, number, rid, found[rid][1]))
+                found[rid] = (match.group(3), name)
+    return found, problems
+
+
+def tests() -> list:
+    """(file, test name, requirement id or "") of every test method in the suite."""
+    found = []
+    for name in sorted(os.listdir(TESTS)):
+        if not (name.startswith("test_") and name.endswith(".py")):
+            continue
+        with open(os.path.join(TESTS, name), encoding="utf-8") as handle:
+            tree = ast.parse(handle.read(), name)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name.startswith("test"):
+                match = NAMED.match(node.name)
+                rid = "%s-%s" % (match.group(1).upper(), match.group(2)) if match else ""
+                found.append((name, node.name, rid))
+    return found
+
+
+def main() -> int:
+    listed, refused = requirements()
+    proved, files, every = {}, {}, tests()
+    for name, test, rid in every:
+        files.setdefault(name, set()).add(bool(rid))
+        if not rid:
+            continue
+        if rid not in listed:
+            refused.append("%s ▸ %s proves %s, which no list holds" % (name, test, rid))
+        elif rid in proved:
+            refused.append("%s ▸ %s is a second test for %s (first: %s)" % (
+                name, test, rid, proved[rid]))
+        else:
+            proved[rid] = "%s ▸ %s" % (name, test)
+    refused += ["%s mixes tests with and without a requirement id" % name
+                for name, kinds in sorted(files.items()) if kinds == {True, False}]
+    untested = sorted(rid for rid, (level, _list) in listed.items()
+                      if level != "Wrong output" and rid not in proved)
+    waiting = sum(1 for _name, _test, rid in every if not rid)
+    for line in refused:
+        print("requirements: REFUSED - " + line, file=sys.stderr)
+    if untested:
+        print("requirements: Catastrophe or Severe with no test: " + ", ".join(untested))
+    print("requirements: %d listed, %d proved by a test, %d tests still without one (the cut)"
+          % (len(listed), len(proved), waiting))
+    return 1 if refused else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
