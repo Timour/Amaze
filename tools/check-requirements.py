@@ -88,4 +88,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    if sys.argv[1:] == ["--modules"]:    # the test modules of the requirements, for CI
+        print(" ".join(sorted({name[:-3] for name, _test, rid in tests() if rid})))
+        sys.exit(0)
     sys.exit(main())

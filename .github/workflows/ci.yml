@@ -16,3 +16,22 @@ jobs:
           python-version: "3.12"
       - run: pip install PySide6
       - run: python tools/ci-tests.py
+
+  requirements:    # the requirement lists' tests, on every system Amaze runs on
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install PySide6
+      - run: python tools/check-requirements.py
+      - run: python tools/ci-tests.py $(python tools/check-requirements.py --modules)
