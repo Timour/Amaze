@@ -10,6 +10,7 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 import hou  # noqa: E402,F401
 from amaze.core import grid_columns  # noqa: E402
+from amaze.core.grid_engine import NAME  # noqa: E402
 from amaze.qml import pane as qml_pane  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
@@ -221,10 +222,11 @@ class ADoubleClickRunsTheSectionsAction(unittest.TestCase):
                 todo += item.childItems()
             return found
 
-        def double_click(item, x, y):    # two clicks 80 ms apart; QTest's double-click is no tap to Qt Quick
+        def double_click(item, x, y):    # Qt's TapHandler: two taps within the system's double-click time
             at = item.mapToScene(QtCore.QPointF(x, y))
             left, kind = QtCore.Qt.MouseButton.LeftButton, QtCore.QEvent.Type
-            for ms, press in ((0, True), (20, False), (80, True), (100, False)):
+            step = QtGui.QGuiApplication.styleHints().mouseDoubleClickInterval() // 4
+            for ms, press in ((0, True), (step, False), (2 * step, True), (3 * step, False)):
                 event = QtGui.QMouseEvent(kind.MouseButtonPress if press else kind.MouseButtonRelease, at,
                                           panel.view.mapToGlobal(at), left,
                                           left if press else QtCore.Qt.MouseButton.NoButton,
@@ -245,8 +247,10 @@ class ADoubleClickRunsTheSectionsAction(unittest.TestCase):
                     row = 1
                 else:
                     row = 2
-                    cell = min((cell for cell in items("RowGround") if cell.property("row") == row
-                                and cell.property("column") is not None), key=lambda c: c.property("column"))
+                    table, = items("QQuickTableView")
+                    cell = QtCore.QMetaObject.invokeMethod(    # Qt's own lookup: the row's Name cell
+                        table, "itemAtCell", QtCore.Qt.ConnectionType.DirectConnection,
+                        QtCore.Q_RETURN_ARG("QQuickItem*"), QtCore.Q_ARG("QPoint", QtCore.QPoint(NAME, row)))
                     double_click(cell, cell.width() / 2, cell.height() / 2)
                 self.assertEqual([row], [call.args[0].row() for call in action.call_args_list],
                                  "the %s view's double-click did not reach the section with its row" % mode)
