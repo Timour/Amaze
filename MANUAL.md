@@ -769,10 +769,10 @@ Buttons such as **Reload** or **Check for Updates** act at once.
 
 ### Library
 
-The **Library** group holds the settings of the library.
+**Libraries**
 
-**Library** lists the libraries this computer has opened, the most
-recent first. Picking one shows its users and its format; **Apply**
+**Active Library** lists the libraries this computer has opened, the
+most recent first. Picking one shows its users and its format; **Apply**
 opens it with the user picked, and **Accept** does the same and closes
 Preferences. Until then the open library stays open. A pick that cannot
 be opened stays picked after **Apply**, and **Accept** keeps the window
@@ -781,25 +781,35 @@ folder for a new library. The list holds 20 libraries; **Manage** takes
 libraries off it. **Reload** and **Show Folder** act on the open
 library.
 
-**Format** is the library's version: v2.0 for a library this Amaze
-writes. For a library from an older Amaze, the line at the end of the
-group says that applying updates it; Amaze converts it to 2.0 when it
-opens, after a confirmation. A library from a newer Amaze cannot be
-applied, and the line says to update Amaze.
+**Check Database** checks the open library's databases and folders. The
+light beside it shows the result, and its tooltip lists what the check
+found. Before a check, the line beside the button shows the library's
+format: 2.0 for a library this Amaze writes. After a check, it shows the
+first finding, or that there is nothing to repair. When a check has
+found something it can fix, the button is **Repair**, which opens
+[Check Library](#housekeeping-and-troubleshooting).
 
-**Databases** shows the state of the open library's databases. **Check**
-opens [Check Library](#housekeeping-and-troubleshooting); when a check
-has found something it can fix, the button is **Repair**.
+For a library from an older Amaze, the line at the bottom of the page
+says that applying updates it; Amaze converts it to 2.0 when it opens,
+after a confirmation. A library from a newer Amaze cannot be applied,
+and the line says to update Amaze.
 
-**User** lists the users in the picked library. Favorites, File folders
-and saved versions belong to the user, so the same user on another
-computer sees the same items. Pick one, or **Create a new user...**. Two
-users in one library cannot share a name.
-**Rename** renames the user shown, and **Delete** removes them from the
-library, after a confirmation. Amaze opens a library only with a user
-picked: when it starts without one, it shows a message with **Open
+**Users**
+
+**Active User** lists the users in the picked library. Favorites, File
+folders and saved versions belong to the user, so the same user on
+another computer sees the same items. Pick one, or **Create a new
+user...**. Two users in one library cannot share a name. **Rename**
+renames the user shown, and **Delete** removes them from the library,
+after a confirmation. Amaze opens a library only with a user picked:
+when it starts without one, it shows a message with **Open
 Preferences**, which opens this page. A computer still signed in as a
 deleted user shows the same message the next time Amaze opens.
+
+**Enable Asset Versions** turns [versions](#versions) on and off, for
+materials and snippets.
+
+**Paths**
 
 **Cache Path** is the thumbnail cache on this machine, the cache and log
 of Redshift's preview renders included. **...** picks another folder and
@@ -809,31 +819,34 @@ of Redshift's preview renders included. **...** picks another folder and
 **Write Paths As** sets how Amaze writes paths; see [Write Paths
 As](#write-paths-as).
 
-**Versions** turns [versions](#versions) on and off, for materials and
-snippets.
-
 ### Render
 
-- **Thumbnails**: **RenderSize**, **Samples (Redshift)**, **Samples
-  (Karma)**, **Samples (Octane)**, **RAM Cache (MB)**, **Geometry
-  Shading**, **Geometry Background** and **Render Thumbs on Import**.
-- **Textures**: **Conversion Threads**, for texture conversion.
+- **Thumbnails**: **Size in Pixels**, a **Samples** row for each
+  renderer switched on (**Karma Samples**, **Octane Samples**,
+  **Redshift Samples**), **Geometry Style**, **Geometry Background** and
+  **Render Thumbnails on Import**.
+- **Image Generation**: **Conversion Threads**, for texture conversion.
 - **Downloads**: **Download Resolution** and **Parallel Downloads**, for
   the online sources.
 
 ### UI
 
 - **Categories**: **Show Counts on Categories** and **Hide Empty
-  Categories**.
-- **Grid**: **Step Size** (the size slider moves in steps of 64 px) and
-  **Tile Icon Line** (Thin, or Feather's Regular).
+  Categories**. With a [Filter](#the-panel-at-a-glance) choice other
+  than All, Hide Empty Categories hides the categories that have nothing
+  to show; under All, every category shows.
+- **Grid**: **Step Size** (the size slider moves in steps of 64 px),
+  **Custom Icons Line Width** (Thin, or Regular (Feather)) and **Qt
+  Mouse Scroll Wheel Fix** (on: the mouse wheel moves the grid, list and
+  sidebar the distance the system reports; off: Qt's fixed step).
 - **File Tab**: **Render RAT Files** (off: RAT files in the File tab
-  show a rat and are not converted) and **System File Icons** (off:
+  show a rat and are not converted) and **Show Generic File Icons** (on:
   files with no preview show the generic file icon).
 - **Renderer** has a switch for each renderer. A renderer that is
   switched off is removed from the [Filter](#the-panel-at-a-glance)
-  menu, Convert, Import to Materials and Import to Scene, and its
-  Samples row is removed from the Render page.
+  menu, Convert, Import to Materials and Import to Scene, its Samples
+  row is removed from the Render page, and its materials are hidden,
+  under All too.
 - **Sections** has a switch for each section. A section that is
   switched off has no tab in the panel. At least one section stays on.
 
@@ -847,18 +860,18 @@ the Amaze store. See [Add-ons](#add-ons).
 
 Credits and licenses, then two groups.
 
-**Version**: the version line shows the running version and the answer
+**Updates**: the version line shows the running version and the answer
 to each update check. **Check for Updates** checks for a newer Amaze;
 when there is one, the button changes to **Install Update**, which
 installs it. When the newer Amaze also updates the library, **Install
 Update** is shown in red, the version line names the library version it
 updates to, and installing asks to **Continue** or **Cancel** first. The
-**Updates** tool on the shelf asks the same. **Report a Bug...** opens
-the Amaze bug page in the browser with the Amaze, Houdini and OS
-versions filled in; the report is sent with **Submit** on that page.
+**Updates** tool on the shelf asks the same.
 
 **Developer**: **Debug Mode**, **Open Log**, **Save Log...** and **Clear
-Log** control the debug log.
+Log** control the debug log. **Report a Bug...** opens the Amaze bug
+page in the browser with the Amaze, Houdini and OS versions filled in;
+the report is sent with **Submit** on that page.
 
 > **Where settings are stored.** Render settings, renderer choices,
 > conversion and download settings, and Write Paths As are stored in the
@@ -873,9 +886,11 @@ Log** control the debug log.
 
 ## Housekeeping and troubleshooting
 
-**Check** (Preferences ▸ Library) opens Check Library on the open
-library. It reads every database and folder in the library and shows a
-report, with a button for each fix that applies. The report covers:
+**Check Database** (Preferences ▸ Library) checks the open library;
+when the check finds something it can fix, **Repair** opens Check
+Library. Check Library reads every database and folder in the library
+and shows a report, with a button for each fix that applies. The report
+covers:
 
 - **The databases.** The library keeps six: one for each section
   (`materials.json`, `nodes.json`, `code.json`, `colors.json` and
