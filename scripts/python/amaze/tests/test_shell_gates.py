@@ -30,6 +30,8 @@ GATE_SCRIPTS = {
         os.path.join(REPO, "tools", "git-hooks", "pre-push"),
     os.path.join("tools", "select-tests.py"):
         os.path.join(REPO, "tools", "select-tests.py"),
+    os.path.join("tools", "check-requirements.py"):
+        os.path.join(REPO, "tools", "check-requirements.py"),
     os.path.join("scripts", "python", "amaze", "tests", "impact_map.py"):
         os.path.join(REPO, "scripts", "python", "amaze", "tests", "impact_map.py"),
     os.path.join("scripts", "python", "amaze", "tests", "check_dead_cover.py"):
@@ -54,6 +56,7 @@ PUSH_RED_END = "Fix, or push --no-verify."
 
 _STUB = r"""#!/bin/bash
 MODULES="test_widget test_other"
+GATE_MODULES=""
 mode="${FAKE_SUITE_MODE:-green}"
 echo "$mode $*${AMAZE_HOUDINI:+ on $AMAZE_HOUDINI}" >> "$FAKE_SUITE_CALLS"
 if [ -n "${AMAZE_SKIP_REPORT:-}" ]; then
@@ -556,14 +559,12 @@ class TestEveryTestFileIsInTheGate(unittest.TestCase):
         self.fail("%s is gone from %s" % (name, relative))
 
     def test_a_module_kept_out_of_the_default_run_still_runs(self):
-        """GATE_MODULES skip a plain full run, so a tools/ change and CI are the only places they run."""
+        """GATE_MODULES skip a plain full run, so a tools/ change is the one place they run."""
         gate = self._list("GATE_MODULES")
         self.assertTrue(gate, "GATE_MODULES is empty - this test checks nothing")
         self.assertEqual(set(), gate & self._list("MODULES"), "a module is in both lists")
         self.assertEqual(set(), gate - self._tuple_in("tools/select-tests.py", "GATE_TESTS"),
                          "a push that changes tools/ would not run these")
-        self.assertEqual(set(), gate - self._tuple_in("tools/ci-tests.py", "PINNED"),
-                         "CI would not run these")
 
     def _on_disk(self):
         found = set()

@@ -143,8 +143,7 @@ test_impact_map"
 
 # NOT in a default run: the gate scripts' slower cases, each a hook in a
 # throwaway repo, 5-20 s a test on Windows. A push that changes tools/ runs
-# them (GATE_TESTS in tools/select-tests.py), CI runs them every time, and
-# naming one runs it by hand.
+# them (GATE_TESTS in tools/select-tests.py), and naming one runs it by hand.
 # shellcheck disable=SC2034  # read by test_shell_gates and select-tests.py
 GATE_MODULES="test_shell_gates_more"
 

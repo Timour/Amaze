@@ -38,10 +38,13 @@ def map_path():
 
 
 def suite_modules():
-    """The module list start_test.sh runs, read from it."""
+    """start_test.sh's modules: its default run, then the GATE_MODULES only a selection runs."""
     with open(os.path.join(REPO, TESTS, "start_test.sh"), encoding="utf-8") as handle:
-        body = handle.read().split('MODULES="', 1)[1].split('"', 1)[0]
-    return body.replace("\\", " ").split()
+        text = "\n" + handle.read()
+    found = []
+    for start in ('\nMODULES="', '\nGATE_MODULES="'):
+        found += text.split(start, 1)[1].split('"', 1)[0].replace("\\", " ").split()
+    return found
 
 
 def load(path):

@@ -52,6 +52,11 @@ def tests() -> list:
     return found
 
 
+def modules() -> list:
+    """The test modules that hold the requirements' tests."""
+    return sorted({name[:-3] for name, _test, rid in tests() if rid})
+
+
 def at_every_push() -> list:
     """The ids of the tests proving a Catastrophe or Severe requirement, which every push runs."""
     listed, _problems = requirements()
@@ -88,7 +93,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    if sys.argv[1:] == ["--modules"]:    # the test modules of the requirements, for CI
-        print(" ".join(sorted({name[:-3] for name, _test, rid in tests() if rid})))
-        sys.exit(0)
     sys.exit(main())

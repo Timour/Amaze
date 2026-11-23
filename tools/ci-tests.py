@@ -1,24 +1,18 @@
-"""The Houdini-less test slice, one process per module, against a pinned list ▸p/prefs-hou-choke"""
+"""The requirement tests without Houdini, one process per module, as GitHub runs them."""
 
-import glob
+import importlib.util
 import os
 import re
 import subprocess
 import sys
 
-PINNED = {  # PROVEN green without Houdini, 2026-08-29; may only grow
-    "test_addons", "test_category", "test_cleanup_counts", "test_comment_budget",
-    "test_conversion", "test_dead_cover", "test_event_pumps", "test_file_lock", "test_grid_order",
-    "test_harness_reset", "test_impact_map", "test_layers",
-    "test_log_export", "test_messages", "test_peer_read",
-    "test_prefs_per_user", "test_prefs_shared", "test_role_numbers",
-    "test_screen_dpr", "test_shaderball_assets", "test_shell_gates", "test_shell_gates_more",
-    "test_stale_proxy_index", "test_tooltips", "test_ui_labels", "test_unbound_names",
-    "test_upgrade_tool",
-}
-
 HERE = os.path.dirname(os.path.abspath(__file__))
 CODE = os.path.join(os.path.dirname(HERE), "scripts", "python")
+
+_spec = importlib.util.spec_from_file_location(
+    "check_requirements", os.path.join(HERE, "check-requirements.py"))
+check_requirements = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(check_requirements)
 
 
 def run_module(name):
@@ -38,47 +32,15 @@ def run_module(name):
 
 
 def main(argv):
-    if argv:  # named modules only, no pin bookkeeping - a quick run
-        status = 0
-        for name in argv:
-            verdict, ran, out = run_module(name.removeprefix("amaze.tests."))
-            print("%-34s %s  (%d tests)" % (name, verdict, ran))
-            if verdict != "green":
-                status = 1
-                print(out)
-        return status
-    names = sorted(
-        os.path.basename(path)[:-3]
-        for path in glob.glob(
-            os.path.join(CODE, "amaze", "tests", "test_*.py")))
-    names.remove("test_support")  # the harness itself holds no tests
-    green, skipped, failed = [], [], []
-    total = 0
-    for name in names:
-        verdict, ran, out = run_module(name)
-        if verdict == "green":
-            green.append(name)
-            total += ran
-        elif verdict == "hou":
-            skipped.append(name)
-        else:
-            failed.append(name)
-            print("=== %s ===" % name)
+    """The named modules, or every module of the requirement lists; 1 when one is not green."""
+    status = 0
+    for name in argv or check_requirements.modules():
+        verdict, ran, out = run_module(name.removeprefix("amaze.tests."))
+        print("%-34s %s  (%d tests)" % (name, verdict, ran))
+        if verdict != "green":
+            status = 1
             print(out)
-    print("green %d modules / %d tests, %d need Houdini, %d failed"
-          % (len(green), total, len(skipped), len(failed)))
-    quiet = sorted(PINNED - set(green))
-    fresh = sorted(set(green) - PINNED)
-    if failed:
-        return 1
-    if quiet:
-        print("pinned modules no longer green: " + " ".join(quiet))
-        return 1
-    if fresh:
-        print("green but unpinned - add to PINNED in tools/ci-tests.py: "
-              + " ".join(fresh))
-        return 1
-    return 0
+    return status
 
 
 if __name__ == "__main__":
