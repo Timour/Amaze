@@ -41,6 +41,7 @@ class Library:
     def __init__(self, pane) -> None:
         self.pane = pane
         self.models_dir = None    # the library the models use, for closing Preferences and for a Cancel
+        self.models_user = ""    # the user they show the stars and locations of
         self._save_timer = None
 
     def start(self) -> bool:
@@ -177,13 +178,26 @@ class Library:
     def reread_settings(self) -> bool:
         """Preferences applied: read the settings again, and open the library if it is another."""
         prefs = self.pane.prefs
-        prefs.load()
-        debug.configure(prefs.debug_mode)
-        hostos.set_cache_override(prefs.cache_dir)
+        prefs.load()    # the debug log and the cache folder follow on Apply, where they change
         switched = prefs.dir != self.models_dir
         if switched:    # only a library the models do not hold yet gets a full re-read
             self.open_library()
+        elif str(prefs.library_user or "") != self.models_user:    # the same library, another user
+            self._user_switched()
         return switched
+
+    def _user_switched(self) -> None:
+        """Each model showing one user's rows, stars or locations, reads them for the user now current."""
+        self.models_user = str(self.pane.prefs.library_user or "")
+        shown = list(self.models())
+        for section in self.pane.sections.values():
+            tiles = section.tile_models()[0]
+            if tiles is not None and tiles not in shown:
+                shown.append(tiles)
+        for model in shown:
+            changed = getattr(model, "user_changed", None)
+            if changed is not None:
+                changed()
 
     def _open_models(self) -> str:
         """The models' step of `open_library`: "" once they use `prefs.dir`, else the reason."""
@@ -216,8 +230,9 @@ class Library:
         return False
 
     def _note_models_library(self) -> None:
-        """Record the library the models now use, for closing Preferences and for a Cancel."""
+        """Record the library and user the models now use, for closing Preferences and for a Cancel."""
         self.models_dir = self.pane.prefs.dir
+        self.models_user = str(self.pane.prefs.library_user or "")
 
     def models(self) -> tuple:
         """Every library-backed model that exists now, from each section's `library_model_attrs`."""

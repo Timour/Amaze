@@ -124,6 +124,37 @@ class TheCheckDatabaseLineSaysWhatTheCheckFound(unittest.TestCase):
         self.assertIn(state.checkInfo, shown(), "the line still shows the format, not the result")
 
 
+class AnActiveUserSwitchShowsTheNewUsersStars(unittest.TestCase):
+    """Active User, same library: on Apply every view is told to read each star again, now the new user's."""
+
+    def test_the_stars_are_read_again_for_the_user_switched_to(self):
+        from amaze.core import locations, users
+        panel = test_support.fixture_panel(self)
+        prefs, model = panel.pane.prefs, panel.pane.material_model
+        row = next(row for row in range(model.rowCount()) if model._assets[row].name)
+        index = model.index(row, 0)
+        locations.set_favourites(prefs, {str(model._assets[row].mat_id): True}, model.DB_FILENAME)
+        self.assertTrue(index.data(model.FavoriteRole), "premise: the first user's star is not set")
+        other = users.create(prefs, "Second User")
+        self.assertTrue(other, "premise: no second user could be made")
+
+        from PySide6 import QtTest
+        spy = QtTest.QSignalSpy(model.dataChanged)
+        from amaze.prefs import persistence
+        state = prefs_window.AmazePrefsState(prefs, panel.pane)
+        state.setPref(prefs_window.USER, other)
+        with mock.patch.object(prefs_mod.Prefs, "save", persistence._Persistence.save):    # the fixture saves nothing
+            state.apply()
+            panel.pane.apply_preferences()    # what the pane runs on Apply: it reads the saved settings
+
+        self.assertEqual(other, prefs.library_user, "premise: the user was not switched")
+        self.assertFalse(index.data(model.FavoriteRole), "the first user's star reads as the second user's")
+        told = [spy.at(i) for i in range(spy.count())]    # (top, bottom, roles) per signal
+        self.assertTrue(any(top.row() <= row <= bottom.row() and model.FavoriteRole in roles
+                            for top, bottom, roles in told),
+                        "no view was told the stars changed, so the grid keeps the first user's hearts")
+
+
 class AUiSettingIsAppliedLikeTheOldDialog(unittest.TestCase):
     """A change waits for Apply, as in Houdini's window; then it is saved and its side effect runs."""
 

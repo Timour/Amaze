@@ -297,6 +297,10 @@ class FolderTreeModel(sidebar_model.SidebarModel):
         finally:
             self.endResetModel()
 
+    def user_changed(self) -> None:
+        """Another user's registered locations: the rows are read again, as on a library switch."""
+        self.switch_model_data()
+
     def refresh_counts(self) -> None:
         """Mark every count stale, each shown until a new one arrives; the rows are read again."""
         self._out_of_date(self._known())

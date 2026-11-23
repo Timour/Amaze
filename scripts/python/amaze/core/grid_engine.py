@@ -166,10 +166,18 @@ class GridEngine:
 
     def row_changed(self, row: int, roles=None) -> None:
         """Repaint one row, ACROSS EVERY COLUMN."""
-        if not 0 <= row < self.rowCount():
-            return
-        top = self.index(row, 0)
-        bottom = self.index(row, self.last_column())
+        if 0 <= row < self.rowCount():
+            self._repaint_rows(row, row, roles)
+
+    def user_changed(self) -> None:
+        """Another user is current: every row's star read again, across every column."""
+        role = getattr(self, "FavoriteRole", None)
+        if role is not None and self.rowCount():
+            self._repaint_rows(0, self.rowCount() - 1, [role])
+
+    def _repaint_rows(self, first: int, last: int, roles) -> None:
+        top = self.index(first, 0)
+        bottom = self.index(last, self.last_column())
         if roles is not None and DECORATION in roles:
             roles = list(roles) + [self.PictureRole]    # the same picture, for a view that loads it itself
         if roles is not None and DISPLAY not in roles and any(
