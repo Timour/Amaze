@@ -16,6 +16,10 @@ _spec = importlib.util.spec_from_file_location(
     "impact_map", os.path.join(REPO, TESTS, "impact_map.py"))
 impact_map = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(impact_map)
+_spec = importlib.util.spec_from_file_location(
+    "check_requirements", os.path.join(REPO, "tools", "check-requirements.py"))
+check_requirements = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(check_requirements)
 
 
 class Everything(Exception):
@@ -289,6 +293,7 @@ def main(argv):
         return
     for where in selection.untested:
         print("select-tests: no test runs %s" % where, file=sys.stderr)
+    selection.picked.update(check_requirements.at_every_push())    # Catastrophe and Severe
     found = arguments(selection.picked, impact, suite)
     tests = sum(1 for test_id in impact["tests"]
                 if selection.picked.intersection(_prefixes(test_id)))

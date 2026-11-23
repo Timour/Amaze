@@ -36,19 +36,27 @@ def requirements() -> tuple:
 
 
 def tests() -> list:
-    """(file, test name, requirement id or "") of every test method in the suite."""
+    """(file, `Class.test`, requirement id or "") of every test method in the suite."""
     found = []
     for name in sorted(os.listdir(TESTS)):
         if not (name.startswith("test_") and name.endswith(".py")):
             continue
         with open(os.path.join(TESTS, name), encoding="utf-8") as handle:
             tree = ast.parse(handle.read(), name)
-        for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef) and node.name.startswith("test"):
-                match = NAMED.match(node.name)
-                rid = "%s-%s" % (match.group(1).upper(), match.group(2)) if match else ""
-                found.append((name, node.name, rid))
+        for owner in (node for node in tree.body if isinstance(node, ast.ClassDef)):
+            for node in owner.body:
+                if isinstance(node, ast.FunctionDef) and node.name.startswith("test"):
+                    match = NAMED.match(node.name)
+                    rid = "%s-%s" % (match.group(1).upper(), match.group(2)) if match else ""
+                    found.append((name, "%s.%s" % (owner.name, node.name), rid))
     return found
+
+
+def at_every_push() -> list:
+    """The ids of the tests proving a Catastrophe or Severe requirement, which every push runs."""
+    listed, _problems = requirements()
+    return ["%s.%s" % (name[:-3], test) for name, test, rid in tests()
+            if listed.get(rid, ("",))[0] in ("Catastrophe", "Severe")]
 
 
 def main() -> int:
