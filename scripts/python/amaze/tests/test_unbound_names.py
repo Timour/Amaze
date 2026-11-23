@@ -202,6 +202,37 @@ class AFunctionImportsWhatItReads(unittest.TestCase):
             "raises NameError only when it runs:\n  " + "\n  ".join(offences))
 
 
+def _redefined(tree) -> list:
+    """(line, name) of each function a later one of the same name in its class or module replaces."""
+    found = []
+    for scope in ast.walk(tree):
+        if not isinstance(scope, (ast.Module, ast.ClassDef)):
+            continue
+        seen = set()
+        for item in scope.body:
+            if not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if any(ast.unparse(d).endswith((".setter", ".deleter")) for d in item.decorator_list):
+                continue    # a property's setter takes its getter's name by design
+            if item.name in seen:
+                found.append((item.lineno, item.name))
+            seen.add(item.name)
+    return found
+
+
+class NoFunctionIsDefinedTwiceInOneScope(unittest.TestCase):
+    """A second `def` of one name in a class replaces the first in silence."""
+
+    def test_no_shipped_class_or_module_defines_a_function_twice(self):
+        found = []
+        for path in _source_files():
+            with open(path, encoding="utf-8") as handle:
+                tree = ast.parse(handle.read())
+            found.extend("%s:%d %s" % (os.path.relpath(path, _AMAZE), line, name)
+                         for line, name in _redefined(tree))
+        self.assertEqual([], found, "a later definition replaces each of these in silence")
+
+
 class TheProjectsOldNameIsGoneFromTheCode(unittest.TestCase):
     """Every install sets `$AMAZE`, so no source may still read `$ASSETLIB`. ▸p/updater-shape"""
 

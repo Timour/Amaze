@@ -125,7 +125,7 @@ class TheCheckDatabaseLineSaysWhatTheCheckFound(unittest.TestCase):
 
 
 class AnActiveUserSwitchShowsTheNewUsersStars(unittest.TestCase):
-    """Active User, same library: on Apply every view is told to read each star again, now the new user's."""
+    """Active User, same library: on Apply every view rereads each star, now the new user's."""
 
     def test_the_stars_are_read_again_for_the_user_switched_to(self):
         from amaze.core import locations, users
