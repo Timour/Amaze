@@ -62,7 +62,7 @@ PREFS_SIDEBAR_COUNTS = 'Show how many items each category has.'   # ▸ Preferen
 
 PREFS_HIDE_EMPTY_CATEGORIES = 'Hide categories that have no items. They come back when you add items.'
 PREFS_QT_WHEEL_FIX = ("On, the mouse wheel moves the grid, list and sidebar by the distance the system "
-                      "reports. Off, by Qt's fixed step, as in the Geometry Spreadsheet.")
+                      "reports. Off, by Qt's fixed step.")
 
 PREFS_STEP_SIZE = 'Step the tile size slider from mark to mark.'
 
