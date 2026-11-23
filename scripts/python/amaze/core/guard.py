@@ -401,6 +401,21 @@ class Guard:
         """A change to the library's files, applied whole by its `commit()` or not at all."""
         return Change(self, user)
 
+    def put_whole(self, target: str, written: str = "", data=None) -> None:
+        """One file as its own change: `written`, a finished file, or `data`; OSError when refused."""
+        relative = self.inside(target)
+        if not relative:
+            raise OSError("%s is outside the library %s" % (target, self.dir))
+        change = Change(self, "")
+        try:
+            if data is None:
+                change.take(relative, written)
+            else:
+                change.put_file(relative, data)
+            change.commit()
+        except Refused as exc:
+            raise OSError(str(exc)) from exc
+
     def restore(self, name: str, backup: str) -> None:
         """Restore one backup as its database, keeping the current file as an undo copy."""
         kind = DATABASES.get(name)
@@ -607,3 +622,19 @@ class Change:
             stem, ext = os.path.splitext(clean)
             target = "%s/%s/%s %d%s" % (TRASH_DIR, day, stem, bump, ext)
         return target
+
+
+def put_rendered(target: str, scratch: str) -> bool:
+    """A picture a renderer wrote to `scratch`, put whole at `target` in its library; False: none."""
+    from amaze.core import library_files
+    try:
+        if not os.path.isfile(scratch) or not os.path.getsize(scratch):
+            return False
+        Guard(library_files.library_of_file(target)).put_whole(target, written=scratch)
+        return True
+    except OSError as exc:
+        debug.event("guard", "a rendered picture was not put in place", target=target,
+                    error=str(exc))
+        return False
+    finally:
+        hostos.discard_scratch(scratch)

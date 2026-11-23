@@ -413,7 +413,10 @@ change of several files is being applied.
 
 - **`core/guard.py`** is the only module that reads and writes a library's files: a read
   returns a `Ticket`, a write must pass it back, and a change of several
-  files is applied through a journal.
+  files is applied through a journal. A file another program finishes, a render, a
+  viewport capture or a download, is written to a scratch and taken in by the guard
+  (`Guard.put_whole`, `guard.put_rendered`, or a staged file in the asset's own save).
+  Its requirements and their tests: `docs/requirements/library-storage.md`.
 - **`core/documents.py`** holds each database as keyed sections and
   merges two users' changes per entry and per field.
 - **`core/library_db.py`** keeps one `Library` per open library and

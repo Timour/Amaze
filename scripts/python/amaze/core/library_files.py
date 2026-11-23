@@ -222,6 +222,11 @@ def split(relative: str) -> list:
     return [part for part in relative.replace("\\", "/").split("/") if part]
 
 
+def library_of_file(path: str) -> str:
+    """The library holding a file in one of its folders, `<library>/<folder>/<file>`: two up."""
+    return os.path.dirname(os.path.dirname(os.path.abspath(str(path))))
+
+
 def join(parts) -> str:
     return "/".join(parts)
 

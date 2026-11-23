@@ -641,8 +641,8 @@ class NodeHandler:
     """Save, import and convert, in the user's open scene."""
 
     def save_asset_pair(self, mat_path, write_mat, builder_node=None, asset_id="",
-                        section=MATERIALS) -> None:
-        """Write `.mat` and the `builder` of `<id>.json` as one unit ▸p/asset-write-unit"""
+                        section=MATERIALS, files=()) -> None:
+        """Write `.mat`, `<id>.json`'s builder and the staged `files` as one unit ▸p/asset-write-unit"""
         record_path, builder = "", {}
         preferences = getattr(self, "_preferences", None)    # a partial handler writes no builder
         if builder_node is not None and asset_id and preferences is not None:
@@ -655,7 +655,7 @@ class NodeHandler:
                             asset_id=str(asset_id), error=str(exc))
                 record_path, builder = "", {}
 
-        tmp_mat = ""
+        tmp_mat, handed = "", False
         try:
             for destination in (mat_path, record_path):
                 if destination and preferences is not None:  # the section folder may not exist yet
@@ -666,7 +666,7 @@ class NodeHandler:
                 raise hou.OperationFailed(
                     "the material file was not written (%s)" % mat_path
                 )
-            staged = []    # (target, a completely written file) and (record, its sections): one change
+            staged = list(files)    # (target, a completely written file) and (record, its sections): one change
             pending = getattr(self, "_pending_cop_promote", None)
             if pending:
                 staged.append((asset_record.TAKE, pending[1], pending[0]))
@@ -681,10 +681,12 @@ class NodeHandler:
             else:
                 for kind, target, held in staged:
                     hostos.replace_with_scratch(held, target)
-            tmp_mat = ""
+            tmp_mat, handed = "", True
         finally:
             if tmp_mat:
                 hostos.discard_scratch(tmp_mat)
+            if not handed:
+                asset_record.discard(list(files))
             self._discard_pending_cop_promote()
 
     def after_save_thumbnail(self, update: bool, label: str, asset_id,
@@ -1783,6 +1785,7 @@ class NodeHandler:
         path_map = self.prepare_cop_companion(tuple(sources), asset_id, node.name())
         with hou.undos.disabler():
             staging = hou.node("/obj").createNode("matnet")
+        textures, handed = [], False    # the save owns the staged textures once it is called
         try:    # all after the create, so the copy is always removed
             root = (copy_network(sources, staging) if loose
                     else hou.copyNodesTo((node,), staging)[0])  # type: ignore
@@ -1794,15 +1797,18 @@ class NodeHandler:
             if path_map:
                 self.rewrite_cop_refs((root,), path_map)
             self.texture_inventory = texstore.copy_into_library(    # on the copy: the scene node stays untouched
-                root, self._preferences, texstore.asset_folder(node.name(), asset_id))
+                root, self._preferences, texstore.asset_folder(node.name(), asset_id), textures)
             holder, items = ((staging, (root,)) if whole    # a builder subnet keeps its own data
                              else (root, root.allItems()))    # NOT children(): a dot is no child ▸r/node-items
+            handed = True
             self.save_asset_pair(
                 file_name,
                 lambda path: holder.saveItemsToFile(
                     items, path, save_hda_fallbacks=hda_fallbacks_needed(items)),
-                builder_node=root, asset_id=asset_id)
+                builder_node=root, asset_id=asset_id, files=textures)
         finally:
+            if not handed:
+                asset_record.discard(textures)
             with hou.undos.disabler():
                 staging.destroy()
         self.after_save_thumbnail(

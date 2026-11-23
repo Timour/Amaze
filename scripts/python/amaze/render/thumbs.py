@@ -4,7 +4,7 @@ import shutil
 import tempfile
 import hou
 
-from amaze.core import debug
+from amaze.core import debug, guard
 from amaze.core import material
 from amaze.core import renderers
 import amaze
@@ -370,9 +370,14 @@ class ThumbNailRenderer:
                 debug.note("geometry thumbnail - no output picture parm "
                     "found on the " + rop.type().name() + " ROP, skipped")
                 return False
-            picture_parm.set(out_path)
-            rop.render()
-            if not os.path.exists(out_path):  # an ESC also ends up here: an interrupted flipbook returns without raising
+            scratch = hostos.render_scratch(out_path)
+            try:
+                picture_parm.set(scratch)
+                rop.render()
+                placed = guard.put_rendered(out_path, scratch)
+            finally:
+                hostos.discard_scratch(scratch)
+            if not placed:  # an ESC also ends up here: an interrupted flipbook returns without raising
                 debug.note("geometry thumbnail - render ended without "
                     "an image for " + base + " (interrupted mid-"
                     "render, or the renderer declined the file)")
@@ -514,19 +519,22 @@ class ThumbNailRenderer:
                 debug.note("COP thumbnail - no file parm found on "
                     "rop_image, skipped")
                 return False
-            picture_parm.set(out_path)
-
-            if isinstance(rop, hou.RopNode):  # render(), else press its execute button
-                rop.render()
-            else:
-                execute_parm = rop.parm("execute")
+            execute_parm = None if isinstance(rop, hou.RopNode) else rop.parm("execute")  # render(), else press it
+            if execute_parm is None and not isinstance(rop, hou.RopNode):
+                debug.note("COP thumbnail - rop_image has no "
+                    "execute parm to press, skipped")
+                return False
+            scratch = hostos.render_scratch(out_path)
+            try:
+                picture_parm.set(scratch)
                 if execute_parm is None:
-                    debug.note("COP thumbnail - rop_image has no "
-                        "execute parm to press, skipped")
-                    return False
-                execute_parm.pressButton()
-
-            if not os.path.exists(out_path):
+                    rop.render()
+                else:
+                    execute_parm.pressButton()
+                placed = guard.put_rendered(out_path, scratch)
+            finally:
+                hostos.discard_scratch(scratch)
+            if not placed:
                 debug.note("COP thumbnail - render finished but wrote "
                     "no image at " + out_path)
                 return False

@@ -812,8 +812,8 @@ class MtlxRepairReportTest(unittest.TestCase):
         self.assertEqual("tex_rough_1k.jpg", repairs[0]["fixed_to"])
 
     def test_an_unwritable_document_reports_NO_repair(self):
-        os.chmod(self.mtlx, 0o444)
-        self.addCleanup(os.chmod, self.mtlx, 0o644)
+        os.chmod(self.dest, 0o555)    # a whole-file write needs its scratch beside the document
+        self.addCleanup(os.chmod, self.dest, 0o755)
         with test_support.captured_log() as log:
             repairs = matx_sources.repair_mtlx_references(
                 self.mtlx, self.dest)

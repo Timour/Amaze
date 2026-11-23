@@ -4,7 +4,7 @@ import json
 import os
 import threading
 
-from amaze.core import debug, material
+from amaze.core import debug, library_files, material
 from amaze.helpers import hostos
 
 FORMAT = 1
@@ -66,9 +66,9 @@ def with_sections(path: str, sections: dict) -> bytes:
 
 
 def guard_for(path: str):
-    """The guard of the library holding an `<id>.json`: two folders up, `<library>/<section>/`."""
+    """The guard of the library holding an `<id>.json`, in `<library>/<section>/`."""
     from amaze.core import guard
-    return guard.Guard(os.path.dirname(os.path.dirname(os.path.abspath(path))))
+    return guard.Guard(library_files.library_of_file(path))
 
 
 def unreadable(path: str) -> str:
@@ -92,6 +92,19 @@ def write_section(path: str, section: str, data: dict, user: str = "") -> None:
 
 
 TAKE, RECORD = "take", "record"    # a staged file: (TAKE, target, written) or (RECORD, path, sections)
+
+
+def staged_write(target: str, write) -> tuple:
+    """`write(scratch)` fills a scratch beside `target`, staged as (TAKE, target, scratch)."""
+    hostos.check_sandbox(target)
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    scratch = hostos.unique_scratch(target)
+    try:
+        write(scratch)
+    except BaseException:
+        hostos.discard_scratch(scratch)
+        raise
+    return (TAKE, target, scratch)
 
 
 def add_staged(change, held, staged: list, metadata=None) -> None:

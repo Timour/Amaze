@@ -6,7 +6,7 @@ import time
 import hou
 
 from amaze.core import captures
-from amaze.core import debug
+from amaze.core import debug, guard, library_files
 from amaze.helpers import hostos
 
 MAX_THUMB_EDGE = 1024  # the captured image's long edge, in pixels
@@ -229,7 +229,7 @@ def capture_viewport(out: str, viewer=None) -> str:
             "The captured frame was a single flat colour, so nothing was "
             "stored. The existing thumbnail is untouched.")
     try:
-        os.replace(scratch, out)
+        guard.Guard(library_files.library_of_file(out)).put_whole(out, written=scratch)
     except OSError as exc:
         _discard(scratch)
         raise CaptureRefused(

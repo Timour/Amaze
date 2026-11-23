@@ -411,16 +411,10 @@ def _import_asset(models, prefs, bundle, entry, restore, summary, taken):
 
 def _staged_member(bundle, member, target) -> tuple:
     """`member` written whole into a scratch beside `target`, staged to replace it on commit."""
-    hostos.check_sandbox(target)
-    os.makedirs(os.path.dirname(target), exist_ok=True)
-    scratch = hostos.unique_scratch(target)
-    try:
+    def write(scratch):
         with open(scratch, "wb") as handle:
             copy_member(bundle, member, handle)
-    except BaseException:
-        hostos.discard_scratch(scratch)
-        raise
-    return (asset_record.TAKE, target, scratch)
+    return asset_record.staged_write(target, write)
 
 
 BUILDER_MEMBER_MAX = 16 * 1024 * 1024    # a builder is text; anything larger is not one
@@ -448,7 +442,6 @@ def _staged_builder(model, mat_id, held: dict) -> list:
 def _import_file(prefs, bundle, entry, summary) -> None:
     """One plain-file entry into `<library>/import/`, a numbered suffix avoiding an existing name."""
     folder = os.path.join(prefs.dir, "import")
-    os.makedirs(folder, exist_ok=True)
     name = os.path.basename(str(entry.get("name") or "package_file"))
     target = os.path.join(folder, name)
     stem, ext = os.path.splitext(name)
@@ -456,10 +449,7 @@ def _import_file(prefs, bundle, entry, summary) -> None:
     while os.path.exists(target):
         bump += 1
         target = os.path.join(folder, "%s_%d%s" % (stem, bump, ext))
-    hostos.check_sandbox(target)
-    with hostos.scratch_beside(target) as scratch:
-        with open(scratch, "wb") as handle:
-            copy_member(bundle, entry["arc"], handle)
+    asset_record.commit_staged_files(prefs, [_staged_member(bundle, entry["arc"], target)])
     summary["files"] += 1
 
 

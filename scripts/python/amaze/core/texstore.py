@@ -4,7 +4,7 @@ import filecmp
 import os
 import shutil
 
-from amaze.core import debug
+from amaze.core import asset_record, debug
 from amaze.helpers import hostos
 
 
@@ -84,32 +84,34 @@ def references(node) -> list:
     return refs
 
 
-def copy_file_into_library(source: str, prefs, folder: str) -> str:
-    """Copy one file into `matX/<folder>/textures/`; its token, or "" for a missing file."""
+def copy_file_into_library(source: str, prefs, folder: str, staged=None) -> str:
+    """One file into `matX/<folder>/textures/`, in `staged`'s save or its own; its token, or ""."""
     token = tokenize(source, prefs)
     if token.startswith(TOKEN_PREFIX):
         return token
     if not os.path.isfile(source):
         return ""
     destination = os.path.join(store_dir(prefs), folder, "textures")
-    target = _target_path(destination, source)
-    if not os.path.exists(target):
-        hostos.check_sandbox(target)
-        os.makedirs(destination, exist_ok=True)
-        with hostos.scratch_beside(target) as scratch:
-            shutil.copyfile(source, scratch)
+    waiting = {target: written for _kind, target, written in (staged or ())}
+    target = _target_path(destination, source, waiting)
+    if not os.path.exists(target) and target not in waiting:
+        entry = asset_record.staged_write(target, lambda scratch: shutil.copyfile(source, scratch))
+        if staged is None:
+            asset_record.commit_staged_files(prefs, [entry])
+        else:
+            staged.append(entry)
     return tokenize(target, prefs)
 
 
-def copy_into_library(node, prefs, folder: str) -> list:
-    """Copy every outside file the node references into the store, rewrite its parms; the tokens."""
+def copy_into_library(node, prefs, folder: str, staged=None) -> list:
+    """Every outside file the node references into the store, its parms rewritten; the tokens."""
     import hou
     inventory = []
     for parm, raw in references(node):
         if raw.startswith(TOKEN_PREFIX):
             _remember(inventory, raw)
             continue
-        token = copy_file_into_library(hou.text.expandString(raw), prefs, folder)
+        token = copy_file_into_library(hou.text.expandString(raw), prefs, folder, staged)
         if not token:
             debug.event("texstore", "referenced file missing",
                         parm=parm.path(), raw=raw)
@@ -131,17 +133,18 @@ def resolve_parms(node, prefs, write_path=None) -> int:
     return changed
 
 
-def _target_path(destination: str, source: str) -> str:
-    """The target path for `source`: its basename, numbered when a different file has the name."""
+def _target_path(destination: str, source: str, waiting=None) -> str:
+    """`source`'s basename, numbered while a different file has it, on disk or `waiting` to go."""
     name = hostos.safe_filename(os.path.basename(source))
     target = os.path.join(destination, name)
     stem, ext = os.path.splitext(name)
     bump = 0
-    while os.path.exists(target) and not filecmp.cmp(source, target,
-                                                     shallow=False):
+    while True:
+        there = (waiting or {}).get(target) or (target if os.path.exists(target) else "")
+        if not there or filecmp.cmp(source, there, shallow=False):
+            return target
         bump += 1
         target = os.path.join(destination, "%s_%d%s" % (stem, bump, ext))
-    return target
 
 
 def _set(parm, value: str, root) -> bool:

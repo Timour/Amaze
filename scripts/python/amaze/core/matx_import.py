@@ -125,6 +125,25 @@ def package_dirname(record) -> str:
     return "%s__%s" % (record_name(record), tail)
 
 
+def _place_package(preferences, scratch: str, dest: str) -> None:
+    """Every file downloaded into `scratch` moved into `dest`, as one change; OSError when not."""
+    from amaze.core import guard, library_db
+    held = library_db.guard_of(preferences)
+    change = held.change()
+    for root, _dirs, names in os.walk(scratch):
+        for name in names:
+            written = os.path.join(root, name)
+            relative = held.inside(os.path.join(dest, os.path.relpath(written, scratch)))
+            if not relative:
+                raise OSError("%s is outside the library" % dest)
+            change.take(relative, written)
+    try:
+        change.commit()
+    except guard.Refused as exc:
+        raise OSError(str(exc)) from exc
+    shutil.rmtree(scratch, ignore_errors=True)    # only its emptied folders are left
+
+
 def _producer_for(record, source, resolution, preferences, progress=None):
     """Download and resolve a record to a Karma `produce` callback: (produce, note, error)."""
     name = record_name(record)
@@ -173,7 +192,7 @@ def _producer_for(record, source, resolution, preferences, progress=None):
             debug.exception("download", exc, url=record.payload, dest=dest)
             shutil.rmtree(scratch, ignore_errors=True)
             return (None, "", "Download failed: %s" % exc)
-        scratch_mtlx = (fetched or {}).get("mtlx")   # checked before the rename, so a failure leaves dest unchanged
+        scratch_mtlx = (fetched or {}).get("mtlx")   # checked before the move, so a failure leaves dest unchanged
         if not scratch_mtlx or not os.path.exists(scratch_mtlx):
             shutil.rmtree(scratch, ignore_errors=True)
             debug.event("import", "download held no .mtlx - scratch "
@@ -181,9 +200,11 @@ def _producer_for(record, source, resolution, preferences, progress=None):
                         dest=dest)
             return (None, "", "No .mtlx document in the downloaded package")
         if os.path.isdir(scratch):
-            if os.path.isdir(dest):
-                shutil.rmtree(dest, ignore_errors=True)   # dest is empty here
-            os.rename(scratch, dest)
+            try:
+                _place_package(preferences, scratch, dest)
+            except OSError as exc:
+                shutil.rmtree(scratch, ignore_errors=True)
+                return (None, "", "The download could not be put in the library: %s" % exc)
         fetched = {   # the fetch returned scratch paths; the files are at dest now
             key: (dest + value[len(scratch):]
                   if isinstance(value, str) and value.startswith(scratch)
