@@ -81,8 +81,8 @@ PrefsPage {
                         tipID: "check_library"
                     }
                 }
-                Text {
-                    text: SharedState.libraryFormat
+                Text {    // what the last check found; before a check, the library's format
+                    text: SharedState.checkInfo || SharedState.libraryFormat
                     color: Theme.dimFg
                     elide: Text.ElideRight
                     Layout.fillWidth: true

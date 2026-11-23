@@ -90,6 +90,40 @@ class TheWindowLoads(unittest.TestCase):
                                        for row in rows])
 
 
+class TheCheckDatabaseLineSaysWhatTheCheckFound(unittest.TestCase):
+    """Check Database: after a check, the line beside the button states its result."""
+
+    def test_after_a_check_the_line_shows_the_result_not_the_format(self):
+        panel = test_support.fixture_panel(self)
+        window = prefs_window.AmazePrefsWindow(panel.pane.prefs, pane=panel.pane)
+        self.addCleanup(QtCore.QCoreApplication.sendPostedEvents, None,
+                        QtCore.QEvent.Type.DeferredDelete)
+        self.addCleanup(window.close)
+        window.show()
+        window.setPageName("Library")
+        root = window.rootObject()
+        self.assertTrue(test_support.pump_until(
+            lambda: root.property("currentUrl").endswith("/LibraryPage.qml")
+            and root.property("currentPage") is not None))
+        state = window.sharedState()
+
+        def items(item):
+            yield item
+            for child in item.childItems():
+                yield from items(child)
+
+        def shown():    # every text on screen: QML's own items, walked as the scene holds them
+            return [one.property("text") for one in items(window.contentItem())
+                    if one.inherits("QQuickText")]    # Houdini's `Text` is a QML type over Qt's
+        test_support.pump_until(lambda: state.libraryFormat in shown())
+        self.assertIn(state.libraryFormat, shown(), "premise: before a check the line shows the format")
+
+        state.checkOrRepair()    # the button, as `Check`
+        self.assertTrue(state.checkInfo, "premise: the check found nothing to say")
+        test_support.pump_until(lambda: state.checkInfo in shown())
+        self.assertIn(state.checkInfo, shown(), "the line still shows the format, not the result")
+
+
 class AUiSettingIsAppliedLikeTheOldDialog(unittest.TestCase):
     """A change waits for Apply, as in Houdini's window; then it is saved and its side effect runs."""
 
