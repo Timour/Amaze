@@ -486,7 +486,7 @@ def _under(key: str, lid: str, prefix: str) -> bool:
 
 
 def retire_prefix(preferences, path: str) -> bool:
-    """A location was removed: drop its comments, icons, this user's stars, and its path row if unused."""
+    """A location was removed: drop its comments, icons, every user's favorites, its unused path row."""
     global _generation
     held = _files(preferences)
     if not held.writable or not held.user():
@@ -499,8 +499,8 @@ def retire_prefix(preferences, path: str) -> bool:
             for section in (COMMENTS, ICONS):
                 for key in [k for k in held.table(section) if _under(k, lid, prefix)]:
                     held.drop(section, key)
-            for key in [k for k in held.mine(FAVORITES) if _under(k, lid, prefix)]:
-                held.put_mine(FAVORITES, key, None)
+            for key in [k for k in _everyones_favorite_keys(held) if _under(k, lid, prefix)]:
+                held.take_everyones(FAVORITES, key)
             for key in [k for k in held.mine(LOCATIONS) if _under(k, lid, prefix)]:
                 held.put_mine(LOCATIONS, key, None)
             others = [own for user, own in held.everyones(LOCATIONS).items()
