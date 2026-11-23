@@ -318,6 +318,56 @@ class AnAmazeHotkeyMovesTheOneSelection(unittest.TestCase):
             self.assertEqual([3], press(key.Key_Right), "Right moved the list, which has no columns to move in")
 
 
+class ThePaneClaimsTheKeysItActsOn(unittest.TestCase):
+    """At Qt's shortcut override the pane claims the keys it acts on; any other is Houdini's hotkey."""
+
+    def test_in_the_grid_and_in_the_search_field(self):
+        from unittest import mock
+        from PySide6 import QtGui
+        from amaze.qml import hotkeys
+        key = QtCore.Qt.Key
+
+        def default_bindings(event):    # Houdini's resolver needs its UI: the defaults stand in for it
+            name = {key.Key_Up: "up", key.Key_Right: "right"}.get(event.key())
+            return (name, False) if name else None
+
+        test_support.fixture_panel(self)
+        panel = qml_pane.QmlPanel()
+        self.addCleanup(test_support.stop_panel_workers, panel)
+        self.addCleanup(QtCore.QCoreApplication.sendPostedEvents, None, QtCore.QEvent.Type.DeferredDelete)
+        self.addCleanup(panel.deleteLater)
+        panel.setAttribute(QtCore.Qt.WidgetAttribute.WA_DontShowOnScreen)
+        panel.resize(840, 420)
+        panel.show()
+        QtWidgets.QApplication.processEvents()
+        panel.view.grabFramebuffer()
+
+        def items(kind):
+            found, todo = [], [panel.view.rootObject()]
+            while todo:
+                item = todo.pop()
+                found += [item] if item.metaObject().className().startswith(kind) else []
+                todo += item.childItems()
+            return found
+
+        def claimed(k):    # Qt sends this before a shortcut fires; accepted, the key comes to the pane
+            event = QtGui.QKeyEvent(QtCore.QEvent.Type.ShortcutOverride, k, QtCore.Qt.KeyboardModifier.NoModifier)
+            event.ignore()
+            QtWidgets.QApplication.sendEvent(panel.view, event)
+            return event.isAccepted()
+
+        with mock.patch.object(hotkeys, "action", default_bindings):
+            grid, = items("QQuickGridView")
+            grid.forceActiveFocus()    # as a click on a tile gives it
+            self.assertTrue(claimed(key.Key_Up), "the grid left Up to Houdini's playbar")
+            self.assertFalse(claimed(key.Key_K), "the grid claimed K, a key Amaze does nothing with")
+            search, = [item for item in items("") if item.inherits("QQuickTextInput")]
+            search.forceActiveFocus()
+            self.assertTrue(claimed(key.Key_Left), "the search field left Left, its own key, to Houdini")
+            self.assertTrue(claimed(key.Key_Up), "in the search field Up, an Amaze move, went to Houdini")
+            self.assertFalse(claimed(key.Key_Escape), "the search field claimed Escape for Amaze")
+
+
 class TheWheelScrollsAsHoudinisOwnList(unittest.TestCase):
     """With the fix on, a wheel event moves a view by its pixels, else by its step, never past the end."""
 

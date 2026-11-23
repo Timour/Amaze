@@ -552,26 +552,37 @@ class PaneView(qmlviews.BaseQmlWidget):
     def setupEngine(self) -> None:
         self.engine().addImageProvider(grid_engine.PAINTED, TilePictures(self.sharedState()))
 
+    def event(self, event) -> bool:
+        """Qt's shortcut override: the pane claims the keys it acts on, or Houdini's hotkey takes them."""
+        if event.type() == QtCore.QEvent.Type.ShortcutOverride:
+            return self._route(event, lambda: super(PaneView, self).event(event), act=False)
+        return super().event(event)
+
     def keyPressEvent(self, event) -> None:
+        self._route(event, lambda: super(PaneView, self).keyPressEvent(event), act=True)
+
+    def _route(self, event, to_qt_quick, act: bool) -> bool:
         """In the grid or list Amaze's hotkeys first, elsewhere the focused item; what is left to Houdini."""
         focused = self.quickWindow().activeFocusItem()
         first = focused is None or _takes_hotkeys_first(focused)    # Qt's ScrollView scrolls on arrows
-        if first and self._run_hotkey(event):
-            return
+        if first and self._amaze_key(event, act):
+            return True
         if focused is not None:    # with none, Qt Quick would still mark the key taken
-            super().keyPressEvent(event)
+            to_qt_quick()
             if event.isAccepted():
-                return
-        if not first and self._run_hotkey(event):
-            return
+                return True
+        if not first and self._amaze_key(event, act):
+            return True
         event.ignore()
+        return False
 
-    def _run_hotkey(self, event) -> bool:
-        """Run the Amaze action the key resolves to in Houdini's hotkeys; False when it is none."""
+    def _amaze_key(self, event, act: bool) -> bool:
+        """Whether the key resolves to an Amaze action in Houdini's hotkeys; at the press, it runs."""
         found = hotkeys.action(event)
         if found is None:
             return False
-        self.sharedState().run_key(*found)
+        if act:
+            self.sharedState().run_key(*found)
         event.accept()
         return True
 
