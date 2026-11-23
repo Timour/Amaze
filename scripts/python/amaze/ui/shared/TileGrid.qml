@@ -12,9 +12,16 @@ ScrollView {
     property var drawn: ({})    // `drawn_tile`
     property var badges: []    // `badge_rows`
     property bool wheelFix: false    // the wheel as Houdini's Context Options list takes it; off, Qt's
+    readonly property bool hotkeysFirst: true    // Amaze's hotkeys before this ScrollView's own arrow scrolling
     signal tileClicked(int row, int modifiers)    // the user's click; row -1 is the grid's empty space
     signal tileDoubleClicked(int row)
+    signal tileKeyed(int row, int modifiers)    // the user's move by an Amaze hotkey landed on `row`
     signal badgeClicked(int row, string name)
+
+    function step(name, extend) {    // an Amaze hotkey's move, by Qt's own grid moves and a page of tiles
+        keys.step(name, extend, view.count, Math.max(1, Math.floor(view.height / view.cellHeight))
+                  * Math.max(1, Math.floor(view.width / view.cellWidth)), view.moved)
+    }
 
     ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
     background: Rectangle {
@@ -31,11 +38,31 @@ ScrollView {
 
         clip: true
         cacheBuffer: 0    // tiles, and their pictures, only while on screen
-        keyNavigationEnabled: false    // the keys come with a later step
+        keyNavigationEnabled: false    // keys are Amaze's hotkeys, landing through `step`
         cellWidth: root.tileSize + root.drawn.width_extra
         cellHeight: root.drawn.pad + cellWidth - 2 * root.drawn.pad + root.drawn.img_text_gap
                     + nameHeight + root.drawn.line_gap + subtitleHeight + root.drawn.bottom_pad
 
+        function moved(name, from) {    // Qt's own grid move from tile `from`, -1 for one it does not take
+            view.currentIndex = from
+            switch (name) {
+            case "left": view.moveCurrentIndexLeft(); break
+            case "right": view.moveCurrentIndexRight(); break
+            case "up": view.moveCurrentIndexUp(); break
+            case "down": view.moveCurrentIndexDown(); break
+            default: return -1
+            }
+            return view.currentIndex
+        }
+
+        RowKeys {
+            id: keys
+            selectionModel: root.selectionModel
+            onChose: (row, modifiers) => {
+                root.tileKeyed(row, modifiers)
+                view.positionViewAtIndex(row, GridView.Contain)
+            }
+        }
         WheelScroll {
             view: view
             enabled: root.wheelFix
@@ -65,8 +92,14 @@ ScrollView {
             height: Math.max(view.height, view.contentHeight)
             TapHandler {
                 gesturePolicy: TapHandler.WithinBounds
-                onTapped: root.tileClicked(-1, point.modifiers)
+                onTapped: view.clickedOn(-1, point.modifiers)
             }
+        }
+
+        // a tap handler gives no focus (Qt gives it only to an item taking the press itself): so here
+        function clickedOn(row, modifiers) {
+            view.forceActiveFocus(Qt.MouseFocusReason)
+            root.tileClicked(row, modifiers)
         }
 
         delegate: Tile {
@@ -78,9 +111,12 @@ ScrollView {
             subtitleHeight: view.subtitleHeight
             selected: view.selectionChanges >= 0 && root.selectionModel !== null
                       && root.selectionModel.isSelected(view.model.index(index, 0))
-            onClicked: modifiers => root.tileClicked(index, modifiers)
+            onClicked: modifiers => view.clickedOn(index, modifiers)
             onDoubleClicked: root.tileDoubleClicked(index)
-            onBadgeClicked: name => root.badgeClicked(index, name)
+            onBadgeClicked: name => {
+                view.forceActiveFocus(Qt.MouseFocusReason)
+                root.badgeClicked(index, name)
+            }
         }
     }
 }

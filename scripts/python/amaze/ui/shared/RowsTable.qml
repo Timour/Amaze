@@ -14,9 +14,16 @@ Item {
     property bool descending: false
     property var ink: colour => colour    // a cell's own text colour as it is drawn
     property bool wheelFix: false    // the wheel as Houdini's Context Options list takes it; off, Qt's
+    readonly property bool hotkeysFirst: true    // Amaze's hotkeys before its ScrollView's own arrow scrolling
     signal rowClicked(int row, int modifiers)    // the user's click; row -1 is the space below the rows
     signal rowDoubleClicked(int row)
+    signal rowKeyed(int row, int modifiers)    // the user's move by an Amaze hotkey landed on `row`
     signal headingClicked(int column)
+
+    function step(name, extend) {    // an Amaze hotkey's move, a row at a time or a page of rows
+        keys.step(name, extend, view.rows,
+                  Math.max(1, Math.floor(view.height * view.rows / Math.max(view.contentHeight, 1))), view.moved)
+    }
 
     readonly property int last: {    // the last shown column, which takes the rest of the width
         let found = -1
@@ -68,9 +75,23 @@ Item {
 
             clip: true
             pointerNavigationEnabled: false    // Qt's own click only makes a row current: `rowClicked` selects
-            keyNavigationEnabled: false    // the keys come with a later step, as in the grid
+            keyNavigationEnabled: false    // keys are Amaze's hotkeys, landing through `step`
             columnWidthProvider: column => root.widthOf(column)
             onWidthChanged: forceLayout()
+
+            function moved(name, from) {    // one row up or down, -1 for a move a list does not take
+                return name === "up" ? Math.max(0, from - 1)
+                     : name === "down" ? Math.min(view.rows - 1, from + 1) : -1
+            }
+
+            RowKeys {
+                id: keys
+                selectionModel: root.selectionModel
+                onChose: (row, modifiers) => {
+                    root.rowKeyed(row, modifiers)
+                    view.positionViewAtRow(row, TableView.Contain)
+                }
+            }
 
             WheelScroll {
                 view: view
@@ -84,8 +105,11 @@ Item {
                 z: -2
                 width: Math.max(view.width, view.contentWidth)
                 height: Math.max(view.height, view.contentHeight)
-                TapHandler {
-                    onTapped: root.rowClicked(view.cellAtPosition(point.position).y, point.modifiers)
+                TapHandler {    // a tap handler gives no focus (Qt gives it only to an item taking the press)
+                    onTapped: {
+                        view.forceActiveFocus(Qt.MouseFocusReason)
+                        root.rowClicked(view.cellAtPosition(point.position).y, point.modifiers)
+                    }
                     onDoubleTapped: root.rowDoubleClicked(view.cellAtPosition(point.position).y)
                 }
             }

@@ -1044,6 +1044,10 @@ pane/empty_state.py       EMPTY STATE ENGINE - which empty state the shown
 qml/pane.py               The Amaze (QML) pane, the engine's second host:
                           its pane-tab widget, its QML view (ui/pane/*.qml)
                           and PaneState, what the QML shows and asks
+qml/hotkeys.py            The pane's keys as Houdini hotkeys (context
+                          `h.pane.amaze`, editable in Edit > Hotkeys): installs
+                          them, makes the context active for the pane, and
+                          resolves a key press to an Amaze action
 sections/__init__.py      The Section registry: SECTION_CLASSES in tab order,
                           SECTION_INDEX, save_guess, build_sections
 sections/base.py          Section and AssetSection, the declarations

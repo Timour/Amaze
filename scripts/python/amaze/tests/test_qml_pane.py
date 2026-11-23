@@ -256,6 +256,68 @@ class ADoubleClickRunsTheSectionsAction(unittest.TestCase):
                                  "the %s view's double-click did not reach the section with its row" % mode)
 
 
+class AnAmazeHotkeyMovesTheOneSelection(unittest.TestCase):
+    """An Amaze hotkey's move lands where Qt's own grid or list move lands, on the one selection."""
+
+    def test_in_the_grid_and_in_the_list(self):
+        from unittest import mock
+        from PySide6 import QtGui, QtTest
+        from amaze.qml import hotkeys
+        key = QtCore.Qt.Key
+        names = {key.Key_Right: "right", key.Key_Down: "down", key.Key_End: "end"}
+
+        def default_bindings(event):    # Houdini's resolver needs its UI: the defaults stand in for it
+            name = names.get(event.key())
+            return (name, bool(event.modifiers() & QtCore.Qt.KeyboardModifier.ShiftModifier)) if name else None
+
+        test_support.fixture_panel(self)
+        panel = qml_pane.QmlPanel()
+        self.addCleanup(test_support.stop_panel_workers, panel)
+        self.addCleanup(QtCore.QCoreApplication.sendPostedEvents, None, QtCore.QEvent.Type.DeferredDelete)
+        self.addCleanup(panel.deleteLater)
+        self.addCleanup(panel.pane.set_view_mode, "grid")    # the prefs the fixture's panels share
+        panel.setAttribute(QtCore.Qt.WidgetAttribute.WA_DontShowOnScreen)
+        panel.resize(840, 420)
+        panel.show()
+        panel.state.chooseTab([tab["label"] for tab in panel.state.tabs].index("Color"))    # the most tiles
+        selection = panel.pane.active_section().grid_selection_model()
+
+        def items(kind):
+            found, todo = [], [panel.view.rootObject()]
+            while todo:
+                item = todo.pop()
+                found += [item] if item.metaObject().className().startswith(kind) else []
+                todo += item.childItems()
+            return found
+
+        def press(k, modifiers=QtCore.Qt.KeyboardModifier.NoModifier):
+            QtTest.QTest.keyClick(panel.view, k, modifiers)
+            QtWidgets.QApplication.processEvents()
+            return [index.row() for index in grid_columns.selected_rows(selection)]
+
+        with mock.patch.object(hotkeys, "action", default_bindings):
+            QtWidgets.QApplication.processEvents()
+            panel.view.grabFramebuffer()
+            grid, = items("QQuickGridView")
+            columns = int(grid.width() // grid.property("cellWidth"))
+            panel.state.clickTile(1, 0)
+            grid.forceActiveFocus()    # as a click on a tile gives it
+            self.assertEqual([2], press(key.Key_Right), "Right did not land on the next tile")
+            self.assertEqual([2, 3], press(key.Key_Right, QtCore.Qt.KeyboardModifier.ShiftModifier),
+                             "Shift+Right did not extend the selection")
+            self.assertEqual([3 + columns], press(key.Key_Down), "Down did not land one row of tiles lower")
+            self.assertEqual([grid.property("count") - 1], press(key.Key_End), "End did not land on the last tile")
+
+            panel.state.setViewMode("list")
+            QtWidgets.QApplication.processEvents()
+            panel.view.grabFramebuffer()
+            table, = items("QQuickTableView")
+            panel.state.clickTile(2, 0)
+            table.forceActiveFocus()
+            self.assertEqual([3], press(key.Key_Down), "Down did not land on the next row of the list")
+            self.assertEqual([3], press(key.Key_Right), "Right moved the list, which has no columns to move in")
+
+
 class TheWheelScrollsAsHoudinisOwnList(unittest.TestCase):
     """With the fix on, a wheel event moves a view by its pixels, else by its step, never past the end."""
 

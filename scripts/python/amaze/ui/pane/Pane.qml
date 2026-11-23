@@ -58,6 +58,8 @@ PaneRoot {
                 color: Theme.viewSurface
                 SplitView.preferredWidth: SharedState.sidebarWidth
                 SplitView.maximumWidth: SharedState.sidebar.width    // never wider than G01, as the widget's
+                // Qt 6.8.3's tree leaves its own moves unaccepted (Qt fixed it later): they end here
+                Keys.onPressed: event => event.accepted = sidebar.steps.includes(event.key)
 
                 SidebarTree {
                     id: sidebar
@@ -80,7 +82,14 @@ PaneRoot {
             Item {    // the grid's area: the grid or the list of the same rows and selection, never both
                 SplitView.fillWidth: true
 
+                Connections {    // an Amaze hotkey's move goes to whichever of the two is shown
+                    target: SharedState
+                    function onKeyStepped(name, extend) {
+                        (grid.active ? grid : list).item?.step(name, extend)
+                    }
+                }
                 Loader {    // made only in grid mode, so a hidden grid holds no picture
+                    id: grid
                     anchors.fill: parent
                     active: SharedState.viewMode !== "list"
                     visible: SharedState.emptyHeadline === ""    // an empty category is an empty grid
@@ -93,10 +102,12 @@ PaneRoot {
                         badges: SharedState.badges
                         onTileClicked: (row, modifiers) => SharedState.clickTile(row, modifiers)
                         onTileDoubleClicked: row => SharedState.doubleClickTile(row)
+                        onTileKeyed: (row, modifiers) => SharedState.keyTile(row, modifiers)
                         onBadgeClicked: (row, name) => SharedState.clickBadge(row, name)
                     }
                 }
                 Loader {
+                    id: list
                     anchors.fill: parent
                     active: SharedState.viewMode === "list"
                     visible: SharedState.emptyHeadline === ""    // an empty category is an empty list
@@ -111,6 +122,7 @@ PaneRoot {
                         ink: colour => SharedState.listInk(colour)
                         onRowClicked: (row, modifiers) => SharedState.clickTile(row, modifiers)
                         onRowDoubleClicked: row => SharedState.doubleClickTile(row)
+                        onRowKeyed: (row, modifiers) => SharedState.keyTile(row, modifiers)
                         onHeadingClicked: column => SharedState.sortList(column)
                     }
                 }

@@ -9,6 +9,7 @@ from amaze.core import debug, grid_columns, grid_engine
 from amaze.helpers import ui_helpers
 from amaze.pane import asks, pane as pane_mod, sidebar as pane_sidebar
 from amaze.panel import delegates
+from amaze.qml import hotkeys
 from amaze.utils import rc_calls
 from hutil.qt.common import qmlviews    # Houdini's own QML panels' base ▸r/houdini-qml-tabs
 
@@ -129,6 +130,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
     sortDescending: bool = False
 
     searchCleared = QtCore.Signal()    # the empty state's Clear Search: the QML empties its field
+    keyStepped = QtCore.Signal(str, bool)    # a move by Houdini's hotkey: its name, and if Shift extends
     sidebarOpened = QtCore.Signal(QtCore.QModelIndex)    # the tree opens this folder and those above it
 
     pane = None    # the engine, built by `start`
@@ -335,6 +337,31 @@ class PaneState(qmlviews.SharedState, asks.Asks):
     @QtCore.Slot(int, int)
     def clickTile(self, row: int, modifiers: int) -> None:
         """The user's click on tile or row `row`, -1 for none, as Qt's views take it; Ctrl/Cmd, Shift."""
+        self._choose(row, modifiers, by_key=False)
+
+    @QtCore.Slot(int, int)
+    def keyTile(self, row: int, modifiers: int) -> None:
+        """The user's move by key landing on `row`, as Qt's views take it."""
+        self._choose(row, modifiers, by_key=True)
+
+    def run_key(self, name: str, extend: bool) -> None:
+        """An Amaze hotkey: select all here; a move goes to the shown grid or list, which knows its rows."""
+        if name == hotkeys.SELECT_ALL:
+            self.selectAllTiles()
+        else:
+            self.keyStepped.emit(name, extend)
+
+    @QtCore.Slot()
+    def selectAllTiles(self) -> None:
+        """Ctrl/Cmd+A: every row of the shown section, as Qt's views select all."""
+        rows = self.gridModel.rowCount() if self.gridModel is not None else 0
+        if self.gridSelection is not None and rows:
+            flag = QtCore.QItemSelectionModel.SelectionFlag
+            self.gridSelection.select(QtCore.QItemSelection(self.gridModel.index(0, 0), self.gridModel.index(rows - 1, 0)),
+                                      flag.Select | flag.Rows)
+
+    def _choose(self, row: int, modifiers: int, by_key: bool) -> None:
+        """Qt's extended selection: Shift spans from the anchor; Ctrl/Cmd toggles a click, moves a key."""
         selection = self.gridSelection
         if selection is None or self.gridModel is None:
             return
@@ -350,6 +377,9 @@ class PaneState(qmlviews.SharedState, asks.Asks):
             anchor = QtCore.QModelIndex(self._grid_anchor)
             anchor = anchor if anchor.isValid() else index
             selection.select(QtCore.QItemSelection(anchor, index), flag.SelectCurrent | flag.Rows)
+            selection.setCurrentIndex(index, flag.NoUpdate)
+            return
+        if toggle and by_key:
             selection.setCurrentIndex(index, flag.NoUpdate)
             return
         selection.setCurrentIndex(index, (flag.Toggle if toggle else flag.ClearAndSelect) | flag.Rows)
@@ -512,11 +542,47 @@ class PaneView(qmlviews.BaseQmlWidget):
 
     SOURCE_URL = QtCore.QUrl.fromLocalFile(PANE_QML).toString()
 
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        hotkeys.watch(self)    # Amaze's hotkey context is active for this pane
+
     def _makeSharedState(self) -> PaneState:
         return PaneState()
 
     def setupEngine(self) -> None:
         self.engine().addImageProvider(grid_engine.PAINTED, TilePictures(self.sharedState()))
+
+    def keyPressEvent(self, event) -> None:
+        """In the grid or list Amaze's hotkeys first, elsewhere the focused item; what is left to Houdini."""
+        focused = self.quickWindow().activeFocusItem()
+        first = focused is None or _takes_hotkeys_first(focused)    # Qt's ScrollView scrolls on arrows
+        if first and self._run_hotkey(event):
+            return
+        if focused is not None:    # with none, Qt Quick would still mark the key taken
+            super().keyPressEvent(event)
+            if event.isAccepted():
+                return
+        if not first and self._run_hotkey(event):
+            return
+        event.ignore()
+
+    def _run_hotkey(self, event) -> bool:
+        """Run the Amaze action the key resolves to in Houdini's hotkeys; False when it is none."""
+        found = hotkeys.action(event)
+        if found is None:
+            return False
+        self.sharedState().run_key(*found)
+        event.accept()
+        return True
+
+
+def _takes_hotkeys_first(item) -> bool:
+    """Whether `item` is in a view that declares `hotkeysFirst`: the grid and the list."""
+    while item is not None:
+        if item.property("hotkeysFirst"):
+            return True
+        item = item.parentItem()
+    return False
 
 
 class QmlPanel(QtWidgets.QFrame):
@@ -557,4 +623,5 @@ class QmlPanel(QtWidgets.QFrame):
         """At the close, a tile size the slider set is saved; the children get no event of their own."""
         if event.type() == QtCore.QEvent.Type.DeferredDelete:
             self.state.save_size()
+            hotkeys.unwatch(self.view)
         return super().event(event)
