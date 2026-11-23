@@ -13,7 +13,7 @@ from amaze import messages
 from amaze.actions import files as files_actions
 from amaze.actions import library as library_actions
 from amaze.actions import materials as material_actions
-from amaze.core import (category, debug, documents, gradient_library, grid_engine, library_db,
+from amaze.core import (category, debug, documents, gradient_library, library_db,
                         library_files, locations, matx_library, model_registry,
                         multifilterproxy_model, texstore, texture_library, users)
 from amaze.helpers import hostos
@@ -255,11 +255,10 @@ class Library:
         if not models:
             return
         pane.prefs.load()    # the switch's one read of the settings; every model takes this Prefs
-        with grid_engine.relayout(*models):
-            for m in models:
-                m.preferences = pane.prefs    # a shared model may hold another pane's ▸p/one-model-set
-                m.switch_model_data()
-            model_registry.rebind(pane.prefs, pane.material_model)    # the shared set, re-registered under its library
+        for m in model_registry.sidebars_first(models):    # each resets itself; no layout pair around a reset
+            m.preferences = pane.prefs    # a shared model may hold another pane's ▸p/one-model-set
+            m.switch_model_data()
+        model_registry.rebind(pane.prefs, pane.material_model)    # the shared set, re-registered under its library
         pane.library_switched.emit()
         self._note_models_library()
         debug.event("session", "library switched", dir=self.models_dir)

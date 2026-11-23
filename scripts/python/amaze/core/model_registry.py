@@ -49,6 +49,11 @@ def rebind(preferences, model) -> None:
             return
 
 
+def sidebars_first(models) -> list:
+    """`models` with the sidebar models first: a grid's signal handler may read one."""
+    return sorted(models, key=lambda model: not isinstance(model, sidebar_model.SidebarModel))
+
+
 def apply_merged(preferences, name: str, also=None) -> list:
     """Run `apply_refresh` on each model of this library on database `name`; return those that changed."""
     sharing = [] if also is None else [also]
@@ -56,10 +61,8 @@ def apply_merged(preferences, name: str, also=None) -> list:
         if getattr(model, "DB_FILENAME", None) == name and not any(
                 model is held for held in sharing):
             sharing.append(model)
-    sharing.sort(key=lambda model: not isinstance(
-        model, sidebar_model.SidebarModel))    # sidebar models first: a grid's signal handler may read one
     moved = []
-    for model in sharing:
+    for model in sidebars_first(sharing):
         apply_refresh = getattr(model, "apply_refresh", None)
         if apply_refresh is None:
             continue
