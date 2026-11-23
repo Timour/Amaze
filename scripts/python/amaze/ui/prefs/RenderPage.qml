@@ -29,13 +29,6 @@ PrefsPage {
                 shown: SharedState.offeredRenderers.includes(modelData.key)
             }
         }
-        SliderPref {
-            label: "MB of RAM Cache"
-            pref: "ram_cache_mb"
-            from: SharedState.ranges.ram_cache_mb[0]
-            to: SharedState.ranges.ram_cache_mb[1]
-            isInt: true
-        }
         MenuPref {
             label: "Geometry Style"
             pref: "geometry_shading_mode"

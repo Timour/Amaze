@@ -332,8 +332,9 @@ on the wrong tile.
   load a PNG), **CONVERT** (one call to the **Conversion Engine** per
   image, off the UI thread), **RENDER** (geometry — Houdini flipbook),
   **PAINT** (colors/code — drawn in memory).
-- **RAM budget:** the `ram_cache_mb` pref; evicted images reload from
-  disk on demand.
+- **RAM budget:** 256 MB, for the widget grid only; evicted images reload
+  from disk on demand. Its Preferences row was removed 2026-11-23: the QML
+  pane keeps no decoded picture.
 - **Storage rule (no exceptions):** a LIBRARY-OWNED asset's thumbnail is part
   of the library — `<library>/img/<id>.png`, copied with it to other
   machines (Material, Node; an online import's preview becomes its

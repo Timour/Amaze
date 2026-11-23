@@ -15,7 +15,6 @@ from amaze.prefs.persistence import (
 
 
 RENDERSIZE_RANGE = (64, 1024)  # the setter clamps to it, and the Preferences row offers it
-RAM_CACHE_RANGE = (64, 4096)
 CONVERSIONS_RANGE = (1, 8)
 DOWNLOADS_RANGE = (1, 16)
 LIBRARY_LIST_LIMIT = 20  # Add stops here; only Manage removes a library from the list
@@ -454,15 +453,6 @@ class Prefs(_Persistence):
     @system_file_icons.setter
     def system_file_icons(self, val: bool) -> None:
         self._system_file_icons = bool(val)
-
-    @property
-    def ram_cache_mb(self) -> int:
-        """Past it, the least recently viewed thumbnails leave memory and reload from disk."""
-        return self._ram_cache_mb
-
-    @ram_cache_mb.setter
-    def ram_cache_mb(self, val: int) -> None:
-        self._ram_cache_mb = _clamped(val, RAM_CACHE_RANGE)
 
     @property
     def cache_dir(self) -> str:

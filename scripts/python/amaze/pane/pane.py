@@ -310,8 +310,6 @@ class Pane(QtCore.QObject):
 
     def settings_applied(self, switched: bool) -> None:
         """Preferences applied: the sidebars, the shown section and the tabs follow the settings."""
-        from amaze.core import thumbnails
-        thumbnails.engine.set_budget_mb(self.prefs.ram_cache_mb)
         for proxy in self.sidebar.proxies():
             proxy.hide_empty = self.prefs.hide_empty_categories
         self.sidebar.refresh()    # selects All if hiding empty categories hid the selected row

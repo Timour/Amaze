@@ -140,14 +140,6 @@ class ThumbnailEngine(QtCore.QObject):
         if self._current(key, token):
             self._unfinished.add(key)
 
-    def set_budget_mb(self, budget_mb) -> None:
-        try:
-            budget_mb = int(budget_mb)
-        except (TypeError, ValueError):
-            return
-        self._budget = max(64, budget_mb) * 1024 * 1024
-        self._evict()
-
     def _evict(self) -> None:
         while self._bytes > self._budget and len(self._lru) > 1:    # the newest entry always stays, so one oversized image cannot evict itself into a reload loop
             _key, (_image, nbytes) = self._lru.popitem(last=False)

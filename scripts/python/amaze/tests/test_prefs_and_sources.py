@@ -196,7 +196,6 @@ class SharedDefaultsAreInOneTable(unittest.TestCase):
 class LoadNeverRaisesAndAlwaysValidates(unittest.TestCase):
 
     POISON = {  # every key with a validating setter, against the value that breaks it
-        "ram_cache_mb": None,
         "texture_parallel_conversions": "eight",
         "karma_rendersamples": None,
         "octane_rendersamples": "many",
@@ -222,8 +221,7 @@ class LoadNeverRaisesAndAlwaysValidates(unittest.TestCase):
         p.path = folder
         p.load()          # must not raise: panel._build re-raises
 
-        self.assertIsInstance(p.ram_cache_mb, int)  # and USABLE: Preferences does arithmetic on these inside a slot where PySide swallows the error
-        self.assertIsInstance(p.texture_parallel_conversions, int)
+        self.assertIsInstance(p.texture_parallel_conversions, int)  # and USABLE: Preferences does arithmetic on these inside a slot where PySide swallows the error
         self.assertIsInstance(p.karma_rendersamples, int)
         self.assertEqual(256, p.octane_rendersamples)
         self.assertIn(p.view_mode, ("grid", "list"))
@@ -273,7 +271,6 @@ class LoadNeverRaisesAndAlwaysValidates(unittest.TestCase):
                 ("rendersamples", 1),
                 ("karma_rendersamples", 1),
                 ("octane_rendersamples", 1),
-                ("ram_cache_mb", 1),
                 ("texture_parallel_conversions", 1),
                 ("matx_parallel_downloads", 1)):
             low, high = prefs_window.RANGES[name]    # what the slider row offers

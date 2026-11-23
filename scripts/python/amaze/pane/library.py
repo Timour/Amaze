@@ -15,7 +15,7 @@ from amaze.actions import library as library_actions
 from amaze.actions import materials as material_actions
 from amaze.core import (category, debug, documents, gradient_library, grid_engine, library_db,
                         library_files, locations, matx_library, model_registry,
-                        multifilterproxy_model, texstore, texture_library, thumbnails, users)
+                        multifilterproxy_model, texstore, texture_library, users)
 from amaze.helpers import hostos
 from amaze import sections
 from amaze.sections import online as online_section
@@ -385,7 +385,6 @@ class Library:
             multifilterproxy_model.MultiFilterProxyModel(pane), pane.material_model)
         pane.file_sorted_model, pane.file_selection_model = self._grid_proxy(
             texture_library.TextureFilterProxyModel(pane), pane.file_files_model)
-        thumbnails.engine.set_budget_mb(pane.prefs.ram_cache_mb)
         pane.file_files_model.progress_changed.connect(
             pane._on_file_folder_progress)    # a bound method, never a lambda: the model outlives a closed pane tab
         pane.gradient_category_sorted_model = self._sidebar_proxy(pane.gradient_categories_model)

@@ -37,7 +37,6 @@ PREFS_SAMPLES_KARMA = 'Render quality for Karma thumbnails. 9 is the Karma defau
 
 PREFS_SAMPLES_OCTANE = 'Render quality for Octane thumbnails.'
 
-PREFS_RAM_CACHE = 'Memory used to keep thumbnails ready. More memory means smoother scrolling.'
 
 PREFS_GEOMETRY_SHADING = 'How geometry thumbnails are drawn: shaded, wireframe, or both.'
 

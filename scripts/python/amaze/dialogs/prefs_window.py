@@ -63,7 +63,6 @@ ADDON = "addon/"    # an add-on switch's `pref`: this, its folder, a slash, its 
 SETTINGS = {    # a row's `pref` -> (the Prefs value as Houdini's rows' text, that text as the value)
     "rendersize": NUMBER,
     **{renderer.samples: NUMBER for renderer in renderers.RENDER_TAB},
-    "ram_cache_mb": NUMBER,
     "geometry_shading_mode": WORD,
     "geometry_bg": WORD,
     "render_on_import": SWITCH,
@@ -86,7 +85,6 @@ SETTINGS = {    # a row's `pref` -> (the Prefs value as Houdini's rows' text, th
 RANGES = {    # a slider row's `pref` -> the [from, to] it offers, the old dialog's ranges
     "rendersize": list(prefs_mod.RENDERSIZE_RANGE),
     **{renderer.samples: list(renderer.samples_range) for renderer in renderers.RENDER_TAB},
-    "ram_cache_mb": list(prefs_mod.RAM_CACHE_RANGE),
     "texture_parallel_conversions": list(prefs_mod.CONVERSIONS_RANGE),
     "matx_parallel_downloads": list(prefs_mod.DOWNLOADS_RANGE),
 }
@@ -108,7 +106,6 @@ TIPS = {    # a row's or a button's `tipID` -> the text Houdini's tip window sho
     "rendersize": tooltips.PREFS_RENDER_SIZE,
     **{renderer.samples: getattr(tooltips, renderer.samples_tip)
        for renderer in renderers.RENDER_TAB},
-    "ram_cache_mb": tooltips.PREFS_RAM_CACHE,
     "geometry_shading_mode": tooltips.PREFS_GEOMETRY_SHADING,
     "geometry_bg": tooltips.PREFS_GEOMETRY_BACKGROUND,
     "render_on_import": tooltips.PREFS_RENDER_ON_IMPORT,

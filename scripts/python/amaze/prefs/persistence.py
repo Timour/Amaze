@@ -106,7 +106,6 @@ SHARED_KEYS = {  # stored in the library's shared settings: stored key -> (prope
     "rendersize": ("rendersize", "_rendersize", 256),
     "render_on_import": ("render_on_import", "_render_on_import", 1),
     "matx_resolution": ("matx_resolution", "_matx_resolution", "2k"),
-    "ram_cache_mb": ("ram_cache_mb", "_ram_cache_mb", 256),
     "matx_parallel_downloads":
         ("matx_parallel_downloads", "_matx_parallel_downloads", 8),
     "texture_parallel_conversions":

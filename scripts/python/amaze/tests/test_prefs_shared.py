@@ -175,11 +175,11 @@ class TheLibraryIsReadWhenDirIsSet(SharedPrefsCase):
         with open(os.path.join(self.lib, STORE), "w",
                   encoding="utf-8") as handle:
             json.dump({"settings": {
-                "ram_cache_mb": {"value": "abc"},
+                "texture_parallel_conversions": {"value": "abc"},
                 "rendersize": {"value": 512},
             }}, handle)
         b = self.machine(self.home_b)
-        self.assertEqual(256, b.ram_cache_mb,
+        self.assertEqual(4, b.texture_parallel_conversions,
                          "junk from the store reached the attribute "
                          "raw - the clamp was bypassed")
         self.assertEqual(512, b.rendersize,
