@@ -700,8 +700,9 @@ class QmlPanel(QtWidgets.QFrame):
         self.view.resize(self.size())
 
     def mousePressEvent(self, event) -> None:
-        debug.event("keys", "panel frame mouse press")    # the view left the press unaccepted
-        super().mousePressEvent(event)
+        """A press in the pane is Amaze's: passed on, Houdini moves the keyboard to its main window."""
+        debug.event("keys", "panel frame mouse press kept")
+        event.accept()
 
     def focusInEvent(self, event) -> None:
         _log_focus_reason("panel frame focus in", event)
