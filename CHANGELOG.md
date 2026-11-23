@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.48.2
+
+- A favorite follows its file for every user of the library: when the file is moved, and when it is deleted or its folder is removed, it goes the same way as the file's comments and tile picture.
+
 ## 1.48.1
 
 - A render, viewport capture or download that is stopped or fails leaves the library as it was: tile pictures, downloaded materials, package files and copied textures are written whole or not at all.
