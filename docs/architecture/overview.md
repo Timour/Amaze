@@ -241,8 +241,7 @@ section, name)` (2026-08-13, ROADMAP line 24): every named handler — the
 release bodies, the click handlers, the creation rules, the holder node
 type — is a method of the declaring Section, and both drag and click
 look it up there. The panel fallback the migration kept is REMOVED; a
-declaration naming a handler its section does not define raises an error,
-and `test_area_bindings` checks every declaration to keep it that way.
+declaration naming a handler its section does not define raises an error.
 The panel keeps the shared release plumbing the handlers call
 (`drop_placement.context_under_cursor`,
 `drop_placement.release_position_in`, `drop_placement.create_holder_node`,
@@ -670,7 +669,7 @@ Engine** and the thumbnail runner (`render/thumbs.py`), its callers.
 - **The scene's lifetime is the CALLER'S:** `thumbs.py` builds inside
   `hou.undos.disabler()` and destroys in a `finally`.
 
-`tests/test_preview_boundary.py` checks that other code imports `amaze.preview`, never its submodules.
+`tools/check-code.py` checks that other code imports `amaze.preview`, never its submodules.
 
 ### 4i. The **Grid Engine** {#o/grid-engine}
 
@@ -762,9 +761,9 @@ copied per dialog.
 | **Versions** | Materials | `dialogs/versions_dialog.py` ✓ AssetDialog — D01: a material's versions, newest first; Select makes the picked one active |
 | **About** | — | a page of Preferences (`ui/prefs/AboutPage.qml`), with its Developer group — there is no separate About dialog |
 
-*Adoption is complete* (R51, 2026-08-21) — every dialog is built on AssetDialog,
-and `test_headless_dialogs` checks it: a new QDialog subclass in `dialogs/`
-either subclasses the base or records its reason in a `HOUSE_STRAY` attribute.
+*Adoption is complete* (R51, 2026-08-21) — every dialog is built on AssetDialog;
+a new QDialog subclass in `dialogs/` either subclasses the base or records its
+reason in a `HOUSE_STRAY` attribute.
 
 ---
 
