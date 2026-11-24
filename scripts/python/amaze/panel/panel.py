@@ -463,17 +463,14 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
                              language=dialog.language))
 
     def open_code(self, question, apply) -> None:
-        """D11, modal: each Apply hands the fields to `apply`, and shows the versions it returns."""
+        """D11, modal: each Apply hands the fields to `apply`, which saves the snippet."""
         from amaze.dialogs import code_dialog
         fields = {name: value for name, value in question._asdict().items() if value is not None}
         dialog = code_dialog.CodeDialog(fields.pop("categories"), parent=self, **fields)
 
         def applied():
-            versions = apply(asks.CodeAnswer(
-                version=dialog.version, code=dialog.code, name=dialog.name,
-                language=dialog.language, category=dialog.category, tags=dialog.tags))
-            if versions:
-                dialog.versions_saved(*versions)
+            apply(asks.CodeAnswer(code=dialog.code, name=dialog.name, language=dialog.language,
+                                  category=dialog.category, tags=dialog.tags))
 
         dialog.applied.connect(applied)
         dialog.exec()

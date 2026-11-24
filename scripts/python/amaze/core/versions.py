@@ -1,4 +1,4 @@
-"""Every section's version store: a folder per asset and its ledger. ▸r/version-store"""
+"""A material's version store: `versions/` in its own folder, and its ledger. ▸r/version-store"""
 
 from __future__ import annotations
 
@@ -24,49 +24,27 @@ SOURCE_KINDS = {    # `asset_files()` kind -> archive suffix; a kind absent here
 
 LEDGER = "versions.json"
 
-CODE_SUFFIX = ".txt"    # a code version is its snippet's text, one file
 
-
-class Section:
-    """One section whose assets keep versions in their own folders, and the files one version holds."""
-
-    __slots__ = ("kinds", "source_kinds", "database")
-
-    def __init__(self, kinds: tuple, source_kinds: dict, database: str) -> None:
-        self.kinds = kinds                  # ((suffix, required), ...)
-        self.source_kinds = source_kinds    # asset_files() kind -> suffix; {}: the caller passes the files in
-        self.database = database            # the section's database, which names its folder
-
-    def payload(self) -> str:
-        """The suffix without which a set of files is not a version."""
-        return next(suffix for suffix, required in self.kinds if required)
-
-
-MATERIAL = Section(_KINDS, SOURCE_KINDS, library_files.MATERIALS)
-NODE = Section(_KINDS, SOURCE_KINDS, library_files.NODES)
-CODE = Section(((CODE_SUFFIX, True),), {}, library_files.CODE)    # its text is in code.json
-
-
-def versions_dir(preferences, mat_id: str, section: Section = MATERIAL) -> str:
+def versions_dir(preferences, mat_id: str) -> str:
     """`<asset folder>/versions/`; contained like every id path."""
-    return os.path.join(material.asset_dir(preferences, section.database, mat_id),
+    return os.path.join(material.asset_dir(preferences, library_files.MATERIALS, mat_id),
                         library_files.VERSIONS)
 
 
-def stored_ids(preferences, section: Section = MATERIAL) -> set:
+def stored_ids(preferences) -> set:
     """The ids whose asset folder holds `versions/`."""
     return {owner for owner, folder in material.asset_ids_with_folders(
-        preferences, section.database).items()
+        preferences, library_files.MATERIALS).items()
         if os.path.isdir(os.path.join(folder, library_files.VERSIONS))}
 
 
-def _ledger_path(preferences, mat_id: str, section: Section = MATERIAL) -> str:
-    return os.path.join(versions_dir(preferences, mat_id, section), LEDGER)
+def _ledger_path(preferences, mat_id: str) -> str:
+    return os.path.join(versions_dir(preferences, mat_id), LEDGER)
 
 
-def read_ledger(preferences, mat_id: str, section: Section = MATERIAL) -> dict:
+def read_ledger(preferences, mat_id: str) -> dict:
     """The ledger, or an empty one; an unreadable one reads as empty and create and switch fail."""
-    path = _ledger_path(preferences, mat_id, section)
+    path = _ledger_path(preferences, mat_id)
     if not os.path.exists(path):
         return {"active": 0, "versions": []}
     try:
@@ -91,46 +69,40 @@ def _commit_files(preferences, writes: dict, removals=(), why: str = "") -> bool
     from amaze.core import library_db
     held = library_db.guard_of(preferences)
     change = held.change(str(getattr(preferences, "library_user", "") or ""))
-    outside = {}    # a caller's own staged copy, as a snippet's text is: written after the commit
     try:
         for path, data in writes.items():
             relative = held.inside(path)
             if not relative:
-                outside[path] = data
-                continue
+                debug.event("versions", "not written - outside the library", why=why, path=path)
+                return False
             change.put_file(relative, data)
         for path in removals:
             change.remove(held.inside(path))
         change.commit()
-        for path, data in outside.items():
-            with open(path, "wb") as handle:
-                handle.write(data)
     except OSError as exc:
         debug.event("versions", "not written - nothing changed", why=why, error=str(exc))
         return False
     return True
 
 
-def _write_ledger(preferences, mat_id: str, ledger: dict,
-                  section: Section = MATERIAL) -> bool:
+def _write_ledger(preferences, mat_id: str, ledger: dict) -> bool:
     return _commit_files(preferences,
-                         {_ledger_path(preferences, mat_id, section): _ledger_bytes(ledger)},
+                         {_ledger_path(preferences, mat_id): _ledger_bytes(ledger)},
                          why="ledger")
 
 
-def version_count(preferences, mat_id: str, section: Section = MATERIAL) -> int:
+def version_count(preferences, mat_id: str) -> int:
     """How many versions exist. The badge shows at > 1."""
-    return len(read_ledger(preferences, mat_id, section).get("versions", []))
+    return len(read_ledger(preferences, mat_id).get("versions", []))
 
 
-def list_versions(preferences, mat_id: str, section: Section = MATERIAL) -> list:
+def list_versions(preferences, mat_id: str) -> list:
     """[{n, name, author, date}] oldest first, plus which is active."""
-    ledger = read_ledger(preferences, mat_id, section)
-    return list(ledger.get("versions", []))
+    return list(read_ledger(preferences, mat_id).get("versions", []))
 
 
-def active_version(preferences, mat_id: str, section: Section = MATERIAL) -> int:
-    return int(read_ledger(preferences, mat_id, section).get("active", 0) or 0)
+def active_version(preferences, mat_id: str) -> int:
+    return int(read_ledger(preferences, mat_id).get("active", 0) or 0)
 
 
 def version_label(entry: dict) -> str:
@@ -138,9 +110,9 @@ def version_label(entry: dict) -> str:
     return str(entry.get("name") or ("Version %d" % int(entry.get("n", 0))))
 
 
-def active_version_name(preferences, mat_id: str, section: Section = MATERIAL) -> str:
+def active_version_name(preferences, mat_id: str) -> str:
     """The name of the version in the base, empty for an asset with none; list mode shows it."""
-    ledger = read_ledger(preferences, mat_id, section)
+    ledger = read_ledger(preferences, mat_id)
     entries = ledger.get("versions", [])
     if not entries:
         return ""
@@ -151,13 +123,10 @@ def active_version_name(preferences, mat_id: str, section: Section = MATERIAL) -
     return version_label(entries[-1])    # active matches no row: return the newest
 
 
-def _base_paths(preferences, mat_id: str, section: Section = MATERIAL) -> dict:
-    """The asset's own files by archive suffix; {} where the caller passes the base in."""
-    if not section.source_kinds:
-        return {}
-    owned = asset_files.asset_files_for(preferences, mat_id, section.database)
-    return {suffix: owned[kind] for kind, suffix in section.source_kinds.items()
-            if kind in owned}
+def _base_paths(preferences, mat_id: str) -> dict:
+    """The material's own files by archive suffix."""
+    owned = asset_files.asset_files_for(preferences, mat_id, library_files.MATERIALS)
+    return {suffix: owned[kind] for kind, suffix in SOURCE_KINDS.items() if kind in owned}
 
 
 def _builder_of(paths: dict) -> dict:
@@ -167,11 +136,8 @@ def _builder_of(paths: dict) -> dict:
 
 
 @contextlib.contextmanager
-def _staged_record(paths: dict, document: dict, section: Section):
+def _staged_record(paths: dict, document: dict):
     """`paths` with its `.json` swapped for a scratch holding `document`; the scratch removed after."""
-    if RECORD_SUFFIX not in dict(section.kinds):
-        yield paths
-        return
     handle, scratch = tempfile.mkstemp(prefix="amaze_version_", suffix=RECORD_SUFFIX)
     try:
         with os.fdopen(handle, "wb") as stream:
@@ -200,19 +166,17 @@ def _row_for(ledger: dict, number: int) -> dict | None:
     return None
 
 
-def _archive_paths(preferences, mat_id: str, number: int,
-                   section: Section = MATERIAL) -> dict:
+def _archive_paths(preferences, mat_id: str, number: int) -> dict:
     """Version `number`'s file set by suffix, each named by `file_stem`."""
-    folder = versions_dir(preferences, mat_id, section)
+    folder = versions_dir(preferences, mat_id)
     stem = file_stem(mat_id, number)
-    return {kind: os.path.join(folder, stem + kind) for kind, _required in section.kinds}
+    return {kind: os.path.join(folder, stem + kind) for kind, _required in _KINDS}
 
 
-def _copy_set(preferences, sources: dict, targets: dict, kinds: tuple = _KINDS,
-              ledger=None) -> bool:
+def _copy_set(preferences, sources: dict, targets: dict, ledger=None) -> bool:
     """Copy every present kind, and `ledger` as (path, document), as ONE commit via guard.py."""
     writes, vacated = {}, []
-    for kind, required in kinds:
+    for kind, required in _KINDS:
         source = sources.get(kind)
         present = source and os.path.exists(source)
         if required and not present:
@@ -234,18 +198,17 @@ def _copy_set(preferences, sources: dict, targets: dict, kinds: tuple = _KINDS,
     return _commit_files(preferences, writes, vacated, why="version files")
 
 
-def create_version(preferences, mat_id: str, name: str = "",
-                   source_paths: dict = None, section: Section = MATERIAL) -> int:
+def create_version(preferences, mat_id: str, name: str = "", source_paths: dict = None) -> int:
     """Archive the base, saved BEFORE the call, as a new active version; its number, 0 on failure."""
-    ledger = read_ledger(preferences, mat_id, section)
+    ledger = read_ledger(preferences, mat_id)
     if ledger.get("unreadable"):
         debug.event("versions", "version not created - ledger unreadable",
                     mat_id=str(mat_id))
         return 0
     number = max([int(v.get("n", 0)) for v in ledger["versions"]] or [0]) + 1
-    sources = source_paths or _base_paths(preferences, mat_id, section)
-    while any(os.path.exists(path) for path    # a leftover file is never overwritten
-              in _archive_paths(preferences, mat_id, number, section).values()):
+    sources = source_paths or _base_paths(preferences, mat_id)
+    while any(os.path.exists(path)    # a leftover file is never overwritten
+              for path in _archive_paths(preferences, mat_id, number).values()):
         debug.event("versions", "a version file is already on disk - taking "
                                 "the next number", mat_id=str(mat_id), n=number)
         number += 1
@@ -263,10 +226,9 @@ def create_version(preferences, mat_id: str, name: str = "",
         "date": time.strftime("%Y-%m-%d %H:%M"),
     })
     ledger["active"] = number
-    with _staged_record(sources, _archive_document(sources), section) as staged:
-        copied = _copy_set(preferences, staged,
-                           _archive_paths(preferences, mat_id, number, section), section.kinds,
-                           ledger=(_ledger_path(preferences, mat_id, section), ledger))
+    with _staged_record(sources, _archive_document(sources)) as staged:
+        copied = _copy_set(preferences, staged, _archive_paths(preferences, mat_id, number),
+                           ledger=(_ledger_path(preferences, mat_id), ledger))
     if not copied:
         return 0
     debug.event("versions", "version created", mat_id=str(mat_id),
@@ -274,17 +236,16 @@ def create_version(preferences, mat_id: str, name: str = "",
     return number
 
 
-def _base_is_archived(preferences, mat_id: str, ledger: dict,
-                      section: Section = MATERIAL, base: dict = None) -> bool:
+def _base_is_archived(preferences, mat_id: str, ledger: dict, base: dict = None) -> bool:
     """Whether the active archive holds the base, byte for byte, except the .png. ▸r/version-store"""
     row = _row_for(ledger, ledger.get("active", 0))
     if row is None:
         return False
-    archive = _archive_paths(preferences, mat_id, row.get("n", 0), section)
-    base = base or _base_paths(preferences, mat_id, section)
-    if RECORD_SUFFIX in dict(section.kinds) and _builder_of(base) != _builder_of(archive):
+    archive = _archive_paths(preferences, mat_id, row.get("n", 0))
+    base = base or _base_paths(preferences, mat_id)
+    if _builder_of(base) != _builder_of(archive):
         return False
-    for kind, _required in section.kinds:
+    for kind, _required in _KINDS:
         if kind in (".png", RECORD_SUFFIX):    # the render is updated separately; the builder is compared above
             continue
         base_path, archive_path = base.get(kind), archive.get(kind)
@@ -301,24 +262,23 @@ def _base_is_archived(preferences, mat_id: str, ledger: dict,
     return True
 
 
-def keep_base(preferences, mat_id: str, section: Section = MATERIAL,
-              base_paths: dict = None, name: str = "") -> bool:
+def keep_base(preferences, mat_id: str, base_paths: dict = None, name: str = "") -> bool:
     """Archive the base as a version unless the active one holds it; False when it could not be."""
-    ledger = read_ledger(preferences, mat_id, section)
+    ledger = read_ledger(preferences, mat_id)
     if ledger.get("unreadable"):
         return False
-    base = base_paths or _base_paths(preferences, mat_id, section)
-    if _base_is_archived(preferences, mat_id, ledger, section, base):
+    base = base_paths or _base_paths(preferences, mat_id)
+    if _base_is_archived(preferences, mat_id, ledger, base):
         return True
-    return bool(create_version(preferences, mat_id, name, base, section))
+    return bool(create_version(preferences, mat_id, name, base))
 
 
-def switch_active(preferences, mat_id: str, number: int, section: Section = MATERIAL,
-                  base_paths: dict = None, base_name: str = "") -> bool:
+def switch_active(preferences, mat_id: str, number: int, base_paths: dict = None,
+                  base_name: str = "") -> bool:
     """Copy version `number` over the base and mark it active; an unarchived base is archived first."""
     from amaze.core import library_db
     library_db.flush(preferences)    # every pending change is saved to the base's record before it is read
-    ledger = read_ledger(preferences, mat_id, section)
+    ledger = read_ledger(preferences, mat_id)
     if ledger.get("unreadable"):
         return False
     row = _row_for(ledger, number)
@@ -326,19 +286,19 @@ def switch_active(preferences, mat_id: str, number: int, section: Section = MATE
         debug.event("versions", "switch not made - no such version",
                     mat_id=str(mat_id), n=number)
         return False
-    base = base_paths or _base_paths(preferences, mat_id, section)
-    if not keep_base(preferences, mat_id, section, base, base_name):
+    base = base_paths or _base_paths(preferences, mat_id)
+    if not keep_base(preferences, mat_id, base, base_name):
         debug.event("versions", "switch not made - the base holds "
                                 "unarchived content and could not "
                                 "be archived",
                     mat_id=str(mat_id), n=number)
         return False
-    ledger = read_ledger(preferences, mat_id, section)    # keep_base may add a row and change `active`
+    ledger = read_ledger(preferences, mat_id)    # keep_base may add a row and change `active`
     row = _row_for(ledger, number)
     if row is None:
         return False
     ledger["active"] = int(number)
-    if not _restore(preferences, mat_id, int(number), base, section, ledger):
+    if not _restore(preferences, mat_id, int(number), base, ledger):
         debug.event("versions", "switch not made - nothing changed", mat_id=str(mat_id),
                     n=int(number))
         return False
@@ -347,15 +307,12 @@ def switch_active(preferences, mat_id: str, number: int, section: Section = MATE
     return True
 
 
-def _restore(preferences, mat_id: str, number: int, base: dict, section: Section,
-             ledger: dict) -> bool:
+def _restore(preferences, mat_id: str, number: int, base: dict, ledger: dict) -> bool:
     """Copy one archive over the base and write the ledger, as one commit; the metadata is kept."""
-    archive = _archive_paths(preferences, mat_id, number, section)
-    named = (_ledger_path(preferences, mat_id, section), ledger)
-    if RECORD_SUFFIX not in dict(section.kinds):
-        return _copy_set(preferences, archive, base, section.kinds, ledger=named)
+    archive = _archive_paths(preferences, mat_id, number)
+    named = (_ledger_path(preferences, mat_id), ledger)
     target = base.get(RECORD_SUFFIX) or asset_record.path_for(
-        preferences, mat_id, section.database)
+        preferences, mat_id, library_files.MATERIALS)
     with asset_record.LOCK:    # no metadata write happens between the read and the copy
         document = {"format": asset_record.FORMAT}
         metadata = asset_record.read(target)[asset_record.METADATA]
@@ -364,32 +321,31 @@ def _restore(preferences, mat_id: str, number: int, base: dict, section: Section
             document[asset_record.METADATA] = metadata
         if builder:
             document[asset_record.BUILDER] = builder
-        with _staged_record(archive, document, section) as staged:
+        with _staged_record(archive, document) as staged:
             return _copy_set(preferences, staged, dict(base, **{RECORD_SUFFIX: target}),
-                             section.kinds, ledger=named)
+                             ledger=named)
 
 
-def record_render(preferences, mat_id: str, section: Section = MATERIAL) -> bool:
+def record_render(preferences, mat_id: str) -> bool:
     """Copy the base thumbnail into the active archive: a version is made before its render exists."""
-    return record_base(preferences, mat_id, ".png", section)
+    return record_base(preferences, mat_id, ".png")
 
 
-def record_base(preferences, mat_id: str, kind: str, section: Section = MATERIAL,
-                source: str = "") -> bool:
+def record_base(preferences, mat_id: str, kind: str, source: str = "") -> bool:
     """Copy one kind of the base over the ACTIVE version's archive; identical bytes are not rewritten."""
     active = 0
     try:
-        ledger = read_ledger(preferences, mat_id, section)
+        ledger = read_ledger(preferences, mat_id)
         if ledger.get("unreadable") or not ledger.get("versions"):
             return False
         active = int(ledger.get("active", 0) or 0)
         active_row = _row_for(ledger, active)
         if active_row is None:
             return False
-        source = source or _base_paths(preferences, mat_id, section).get(kind)
+        source = source or _base_paths(preferences, mat_id).get(kind)
         if not source or not os.path.exists(source):
             return False
-        target = _archive_paths(preferences, mat_id, active, section)[kind]
+        target = _archive_paths(preferences, mat_id, active)[kind]
         if os.path.exists(target) and filecmp.cmp(source, target,
                                                   shallow=False):
             return True
@@ -406,26 +362,24 @@ def record_base(preferences, mat_id: str, kind: str, section: Section = MATERIAL
     return True
 
 
-def rename_version(preferences, mat_id: str, number: int,
-                   name: str, section: Section = MATERIAL) -> bool:
+def rename_version(preferences, mat_id: str, number: int, name: str) -> bool:
     """Rename one version in the ledger; a name is a label, so no file moves."""
     name = str(name or "").strip()
     if not name:
         return False
-    ledger = read_ledger(preferences, mat_id, section)
+    ledger = read_ledger(preferences, mat_id)
     if ledger.get("unreadable"):
         return False
     for version in ledger["versions"]:
         if int(version.get("n", 0)) == int(number):
             version["name"] = name
-            return _write_ledger(preferences, mat_id, ledger, section)
+            return _write_ledger(preferences, mat_id, ledger)
     return False
 
 
-def version_file(preferences, mat_id: str, number: int,
-                 section: Section = MATERIAL) -> str:
-    """Version `number`'s payload file; empty when it has no row or the file is missing."""
-    if _row_for(read_ledger(preferences, mat_id, section), number) is None:
+def version_file(preferences, mat_id: str, number: int) -> str:
+    """Version `number`'s network file; empty when it has no row or the file is missing."""
+    if _row_for(read_ledger(preferences, mat_id), number) is None:
         return ""
-    path = _archive_paths(preferences, mat_id, number, section)[section.payload()]
+    path = _archive_paths(preferences, mat_id, number)[".mat"]
     return path if os.path.exists(path) else ""

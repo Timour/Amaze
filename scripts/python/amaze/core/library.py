@@ -104,7 +104,7 @@ class AssetLibrary(grid_engine.GridEngine,
     }
     GRID_ROWS = ("_assets", "_mat_paths", "_row_keys")
     TILE_FIELDS = ("name", "tags", "category")
-    VERSION_SECTION = versions.MATERIAL    # where this model's versions are stored ▸r/version-store
+    KEEPS_VERSIONS = False    # only Materials keep versions ▸r/version-store
     TILE_FACE = ""      # the section's generic face, `ui/<TILE_FACE>.svg` from its T frame ▸r/tile-faces
     NOTES_SECTION = "" # this model's notes-store key prefix; every subclass names its own
     ROW_NOUN = "material"    # what a message calls one row of this section; counts pluralise it
@@ -256,8 +256,8 @@ class AssetLibrary(grid_engine.GridEngine,
         else:
             self._row_keys.append(key)
         self._thumb_rows[key] = row
-        if base_changed:    # a new base picture is also recorded for the ACTIVE version
-            versions.record_render(self.preferences, mat_id, self.VERSION_SECTION)
+        if base_changed and self.KEEPS_VERSIONS:    # a new base picture also goes to the ACTIVE version
+            versions.record_render(self.preferences, mat_id)
         thumbnails.engine.discard(key)
         self.row_changed(
             row, [QtCore.Qt.ItemDataRole.DecorationRole])
@@ -536,19 +536,17 @@ class AssetLibrary(grid_engine.GridEngine,
 
         if role == self.VersionsRole:
             mat_id = str(asset.mat_id)
-            cached = self._version_count_cache.get(mat_id)
+            cached = self._version_count_cache.get(mat_id) if self.KEEPS_VERSIONS else 0
             if cached is None:
-                cached = versions.version_count(self.preferences, mat_id,
-                                                self.VERSION_SECTION)
+                cached = versions.version_count(self.preferences, mat_id)
                 self._version_count_cache[mat_id] = cached
             return cached
 
         if role == self.ActiveVersionRole:
             mat_id = str(asset.mat_id)
-            cached = self._active_version_cache.get(mat_id)
+            cached = self._active_version_cache.get(mat_id) if self.KEEPS_VERSIONS else ""
             if cached is None:
-                cached = versions.active_version_name(
-                    self.preferences, mat_id, self.VERSION_SECTION)
+                cached = versions.active_version_name(self.preferences, mat_id)
                 self._active_version_cache[mat_id] = cached
             return cached
 
@@ -983,19 +981,18 @@ class AssetLibrary(grid_engine.GridEngine,
 
     def version_list(self, row: int) -> tuple:
         """([{n, name, author, date}] oldest first, the active number) for the asset at `row`."""
-        if not 0 <= row < len(self._assets):
+        if not (self.KEEPS_VERSIONS and 0 <= row < len(self._assets)):
             return [], 0
         mat_id = str(self._assets[row].mat_id)
-        return (versions.list_versions(self.preferences, mat_id, self.VERSION_SECTION),
-                versions.active_version(self.preferences, mat_id, self.VERSION_SECTION))
+        return (versions.list_versions(self.preferences, mat_id),
+                versions.active_version(self.preferences, mat_id))
 
     def switch_version(self, row: int, number: int) -> bool:
         """Make version `number` active for the asset at `row`, and refresh its caches and tile."""
-        if not 0 <= row < len(self._assets):
+        if not (self.KEEPS_VERSIONS and 0 <= row < len(self._assets)):
             return False
         mat = self._assets[row]
-        if not versions.switch_active(self.preferences, mat.mat_id, number,
-                                      self.VERSION_SECTION):
+        if not versions.switch_active(self.preferences, mat.mat_id, number):
             return False
         self._content_state[str(mat.mat_id)] = self._content_stat(
             mat.mat_id)
@@ -1006,11 +1003,10 @@ class AssetLibrary(grid_engine.GridEngine,
 
     def rename_version(self, row: int, number: int, name: str) -> bool:
         """Rename one version, clear the cache and repaint the view."""
-        if not 0 <= row < len(self._assets):
+        if not (self.KEEPS_VERSIONS and 0 <= row < len(self._assets)):
             return False
         mat = self._assets[row]
-        if not versions.rename_version(
-                self.preferences, mat.mat_id, number, name, self.VERSION_SECTION):
+        if not versions.rename_version(self.preferences, mat.mat_id, number, name):
             return False
         self._versions_changed(mat)
         return True
@@ -1041,7 +1037,7 @@ class AssetLibrary(grid_engine.GridEngine,
         }
         self._version_count_cache = {}  # per id, so a paint pass never opens the ledger; invalidated per write
         self._active_version_cache = {}
-        have = versions.stored_ids(self.preferences, self.VERSION_SECTION)    # seeds both caches
+        have = versions.stored_ids(self.preferences) if self.KEEPS_VERSIONS else set()    # seeds both
         for asset in self._assets:
             if str(asset.mat_id) not in have:
                 self._version_count_cache[str(asset.mat_id)] = 0
@@ -1075,6 +1071,7 @@ class MaterialLibrary(AssetLibrary):
 
     NOTES_SECTION = "material"
     TILE_FACE = "face_material"    # T06
+    KEEPS_VERSIONS = True
 
     DB_FILENAME = library_files.MATERIALS
 

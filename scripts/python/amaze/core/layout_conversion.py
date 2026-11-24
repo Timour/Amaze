@@ -52,7 +52,7 @@ def _folder_of(held, section: str, asset_id: str, rows: dict) -> str:
 
 
 def _assets_into_folders(held, change, section: str) -> int:
-    """Every flat `<id>.*` file and `versions/<id>/` of a section moved into `<name>__<id>/`."""
+    """Every flat `<id>.*` file, and a material's `versions/<id>/`, moved into `<name>__<id>/`."""
     base, rows, owners = material.section_folder(held.dir, section), _rows(held, section), set()
     names = sorted(os.listdir(base)) if os.path.isdir(base) else []
     for name in names:
@@ -62,8 +62,8 @@ def _assets_into_folders(held, change, section: str) -> int:
             change.move(held.inside(os.path.join(base, name)),
                         held.inside(os.path.join(_folder_of(held, section, owner, rows), name)))
             owners.add(owner)
-    stores = os.path.join(base, library_files.VERSIONS)
-    for owner in sorted(os.listdir(stores)) if os.path.isdir(stores) else ():
+    stores = os.path.join(base, library_files.VERSIONS)    # any other section's go to the trash
+    for owner in sorted(os.listdir(stores)) if os.path.isdir(stores) and section == library_files.MATERIALS else ():
         if material.is_safe_asset_id(owner) and os.path.isdir(os.path.join(stores, owner)):
             change.move(held.inside(os.path.join(stores, owner)), held.inside(os.path.join(
                 _folder_of(held, section, owner, rows), library_files.VERSIONS)))

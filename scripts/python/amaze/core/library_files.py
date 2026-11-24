@@ -28,7 +28,7 @@ NOUNS = {MASTER: "user", MATERIALS: "material", NODES: "node", CODE: "snippet",
          COLORS: "color", FILES: "location"}    # what one counted entry is called
 ASSET_SECTIONS = (MATERIALS, NODES)    # whose rows have asset files
 
-VERSIONS = "versions"    # an asset folder's sub-folder of archives
+VERSIONS = "versions"    # a material folder's sub-folder of archives: only materials keep versions
 TEXTURES = "textures"    # an asset folder's textures, every one its own copy
 FOLDER_SEPARATOR = "__"    # an asset folder is `<name>__<id>`, found by the id after the last one
 FILES_FOLDER = "files"    # the Files section's: `files/<sha1 of the file's key>.png`, a file's capture
@@ -43,7 +43,6 @@ PICTURE_SUFFIX = ".png"    # `<id>.png`: the asset's one picture, rendered or ca
 ASSET_SUFFIXES = (".mat", RECORD_SUFFIX)    # `repair.ASSET_SIDECARS`
 COMPANION_TAIL = "_cop"    # `<id>_cop.mat`, a material's companion COP network
 VERSION_SUFFIXES = (".mat", RECORD_SUFFIX, PICTURE_SUFFIX)
-CODE_VERSION_SUFFIX = ".txt"
 
 SCRATCH_TAILS = (".writing", ".capturing", ".tmp", ".temp", ".new", ".part",    # a write by Amaze that stopped partway
                  ".partial", ".lock", ".swp", "~", ".repairing", ".rollback")
@@ -166,7 +165,7 @@ def _in_asset_folder(rest: list, owner: str):
     if rest[0] == TEXTURES and len(rest) > 1:
         return TEXTURE, owner
     if len(rest) == 2 and rest[0] == VERSIONS:
-        return _version_folder(name, VERSION_SUFFIXES + (CODE_VERSION_SUFFIX,), owner) or (SOURCE, owner)
+        return _version_folder(name, VERSION_SUFFIXES, owner) or (SOURCE, owner)
     found = _asset_file(name) if len(rest) == 1 else None
     return found if found and found[1] == owner else (SOURCE, owner)    # a download's own files
 

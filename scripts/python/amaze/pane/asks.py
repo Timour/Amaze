@@ -8,10 +8,9 @@ SaveQuestion = collections.namedtuple(    # what the Save dialog opens with
 SaveAnswer = collections.namedtuple("SaveAnswer", "section name categories tags fav language")
 
 CodeQuestion = collections.namedtuple(    # what the code editor opens with; None keeps the editor's own
-    "CodeQuestion", "categories name language category code versions_on "
-                    "tags title versions active load_version saved",
-    defaults=(None,) * 6)
-CodeAnswer = collections.namedtuple("CodeAnswer", "version code name language category tags")
+    "CodeQuestion", "categories name language category code versions_on tags title",
+    defaults=(None,) * 2)
+CodeAnswer = collections.namedtuple("CodeAnswer", "code name language category tags")
 
 CustomizeQuestion = collections.namedtuple(    # what Customize opens with
     "CustomizeQuestion", "icon stroke tile_name tile_name_enabled tile_tags categories "
@@ -43,7 +42,7 @@ class Asks:
         raise NotImplementedError
 
     def open_code(self, question, apply) -> None:
-        """The code editor for a CodeQuestion: each Apply calls `apply(CodeAnswer)`, maybe for versions."""
+        """The code editor for a CodeQuestion: each Apply calls `apply(CodeAnswer)`."""
         raise NotImplementedError
 
     def open_customize(self, question, apply) -> None:

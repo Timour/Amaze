@@ -128,7 +128,7 @@ def _inline_folders(findings: dict, section: str, listing: dict, ids: set) -> No
 def _orphan_versions(library_dir: str, listing: dict) -> list:
     """Each version file its folder's ledger does not list."""
     found = []
-    suffixes = library_files.VERSION_SUFFIXES + (library_files.CODE_VERSION_SUFFIX,)
+    suffixes = library_files.VERSION_SUFFIXES
     for folder, names in listing.items():
         parts = library_files.split(folder)
         if len(parts) != 3:

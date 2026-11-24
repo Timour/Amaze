@@ -224,11 +224,12 @@ class ConversionTest(unittest.TestCase):
             "materials/Brick__A1/comments/" + PASTED: b"pasted",
             "materials/Brick Red__A2/comments/" + PASTED: b"pasted",
             "nodes/Rig__N1/N1.mat": b"nodes of N1",
-            "code/Loop__C1/C1.png": b"picture of C1", "code/Loop__C1/versions/C1_1.txt": b"print(0)",
-            "colors/Sunset__K1/K1.png": b"picture of K1"},
+            "code/Loop__C1/C1.png": b"picture of C1", "colors/Sunset__K1/K1.png": b"picture of K1"},
             {path: data for path, data in own.items() if path not in library_files.DATABASES})
-        self.assertEqual([b"unused"], [data for path, data in whole.items()
-                                       if path.endswith("matX/Unused__z/textures/u.png")])
+        for kept, data in (("matX/Unused__z/textures/u.png", b"unused"),    # in the trash
+                           ("code/versions/C1/C1_1.txt", b"print(0)")):    # only materials keep versions
+            self.assertEqual([data], [found for path, found in whole.items()
+                                      if path.startswith("trash/") and path.endswith(kept)])
         pages = json.loads(whole[MATERIALS])["comments"]
         self.assertEqual({texstore.OWN_PREFIX + "comments/" + PASTED}, {
             item["src"] for page in pages.values() for item in page["items"]})
@@ -399,7 +400,7 @@ class LibraryFilesTest(_Library):
         before = state(self.dir)
         for unsafe in ("..", "../..", "../../outside", "a/b"):
             for path_of in (lambda: material.asset_dir(prefs, CODE, unsafe),
-                            lambda: versions.versions_dir(prefs, unsafe, versions.CODE),
+                            lambda: versions.versions_dir(prefs, unsafe),
                             lambda: material.payload_path(prefs, unsafe, ".mat", MATERIALS),
                             lambda: tile_icons.thumbnail_path(prefs, unsafe, COLORS)):
                 with self.assertRaises(hostos.PathOutsideBase, msg=unsafe):
@@ -640,11 +641,12 @@ class ThroughThePreferencesTest(_Settings):
         self.assertEqual((False, os.path.join(loop, snippet + ".png")),
                          (os.path.exists(loop), snippets.capture_path(row)),
                          "a snippet has no folder before its first file, then one named for it")
-        self.assertTrue(snippets.save_version(row, snippets.NEW_VERSION, "print(2)", "Spin",
-                                              "Python", "", ""))
+        picture = self.pasted(snippets, snippet)
+        self.assertEqual(os.path.join(loop, library_files.COMMENT_FOLDER), os.path.dirname(picture))
+        self.assertTrue(snippets.save_from_editor(snippet, "print(2)", "Spin", "Python", "", ""))
         spin = os.path.join(snippets.preferences.dir, "code", "Spin__" + snippet)
         self.assertEqual((False, True), (os.path.exists(loop), os.path.isfile(
-            os.path.join(spin, library_files.VERSIONS, versions.LEDGER))))
+            os.path.join(spin, library_files.COMMENT_FOLDER, os.path.basename(picture)))))
 
     def snippet(self, name: str) -> tuple:
         """(the Code model on a fixture library, the row and the id of a new snippet `name`)."""
@@ -654,10 +656,18 @@ class ThroughThePreferencesTest(_Settings):
         row = next(row for row, asset in enumerate(model.assets) if asset.name == name)
         return model, row, str(model.assets[row].mat_id)
 
+    def pasted(self, snippets, snippet: str) -> str:
+        """A picture pasted into the snippet's comment: its first file; the picture's path."""
+        from amaze.core import notes
+        shot = put(tempfile.mkdtemp(prefix="amaze_storage_shot_"), "shot.png", b"pasted")
+        self.addCleanup(shutil.rmtree, os.path.dirname(shot), True)
+        key = notes.note_key("code", snippet)
+        src = notes.copy_image_into_library(snippets.preferences, shot, key)
+        return notes.image_path(snippets.preferences.dir, key, src)
+
     def test_ls39_deleting_an_asset_moves_its_whole_folder_to_the_trash(self):
         snippets, row, snippet = self.snippet("Loop")
-        self.assertTrue(snippets.save_version(row, snippets.NEW_VERSION, "print(2)", "Loop",
-                                              "Python", "", ""))
+        self.pasted(snippets, snippet)
         own = material.asset_dir(snippets.preferences, CODE, snippet)
         held = set(os.listdir(own))
         self.assertEqual(1, snippets.remove_rows([row]))

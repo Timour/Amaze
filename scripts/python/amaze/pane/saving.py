@@ -240,7 +240,6 @@ class Saving:
 
     def new_code_snippet(self) -> None:
         """New File: the code editor, empty; its first Apply adds the snippet."""
-        from amaze.core import library_settings
         pane = self.pane
         if not pane.code_model:
             ui = getattr(hou, "ui", None)
@@ -252,8 +251,7 @@ class Saving:
             return
         question = asks.CodeQuestion(
             categories=self.code_category_names(), name="", language="VEX",
-            category=self._current_code_category(), code="",
-            versions_on=library_settings.allow_overwrite(pane.prefs))    # Preferences ▸ Versions
+            category=self._current_code_category(), code="", versions_on=False)    # no versions
         pane.sections["code"].run_code_editor(question, "")    # the first Apply adds the snippet
 
     def import_galleries(self) -> None:

@@ -1239,7 +1239,7 @@ class TextFilesAreTheSameBytesOnEveryOS(unittest.TestCase):
         return found
 
     def test_the_scan_still_finds_the_package_opens(self):
-        self.assertGreaterEqual(len(self._text_opens()), 30,    # ▸p/vacuous-register
+        self.assertGreaterEqual(len(self._text_opens()), 20,    # ▸p/vacuous-register
                                 "the scan stopped matching, so an empty result proves nothing")
 
     def test_every_text_open_names_its_encoding(self):

@@ -6,7 +6,7 @@ import hou
 
 from amaze import messages
 from amaze.actions import code as code_actions
-from amaze.core import debug, library_settings, section_list
+from amaze.core import debug, section_list
 from amaze.helpers import wording
 from amaze.pane import asks
 from amaze.sections import base
@@ -143,21 +143,17 @@ class CodeSection(base.AssetSection):
     def _edit_code_row(self, row: int) -> None:
         pane = self.pane
         asset = pane.code_model.assets[row]
-        model, mat_id = pane.code_model, str(asset.mat_id)
-        on = library_settings.allow_overwrite(pane.prefs)    # Preferences ▸ Versions
-        listed, active = model.version_list(row) if on else ([], 0)
         question = asks.CodeQuestion(
             categories=pane.saving.code_category_names(),
-            name=asset.name,    # the snippet's name is its active version's name
+            name=asset.name,
             language=asset.renderer,
             category=asset.categories[0] if asset.categories else "",
             tags=", ".join(asset.tags),
             code=asset.code,
             title="Edit Snippet",
-            versions=listed, active=active, saved=True, versions_on=on,
-            load_version=lambda n: model.version_text(model.find_asset_row_by_id(mat_id), n),
+            versions_on=False,    # a snippet keeps no versions: Apply saves it
         )
-        self.run_code_editor(question, mat_id)
+        self.run_code_editor(question, str(asset.mat_id))
 
     def run_code_editor(self, question, mat_id: str) -> None:
         """Each Apply saves snippet `mat_id`, a new one while it is empty; the editor stays open."""
@@ -168,13 +164,10 @@ class CodeSection(base.AssetSection):
             if answer.category:
                 pane.code_category_model.check_add_category(answer.category)
             got = pane.code_model.save_from_editor(    # NO layout pair: it emits its own model signals
-                saved["id"], answer.version, answer.code, answer.name, answer.language,
-                answer.category, answer.tags)
+                saved["id"], answer.code, answer.name, answer.language, answer.category, answer.tags)
             pane.sidebar.refresh()
-            if not got:
-                return None
-            saved["id"] = got
-            return pane.code_model.version_list(pane.code_model.find_asset_row_by_id(got))
+            if got:
+                saved["id"] = got
 
         pane.ui.open_code(question, apply)
     library_model_attrs = ("code_model", "code_category_model")

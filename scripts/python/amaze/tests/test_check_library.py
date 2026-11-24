@@ -58,9 +58,9 @@ def lay_out(folder: str) -> None:
     put(folder, "files/comments/%s.png" % ("b" * 32), b"pasted")
     put(folder, "colors/Old__K9/K9.png", b"picture")    # a color's folder no database lists
     put(folder, "materials/Icon\r", b"")
-    put(folder, "code/Snippet__C1/versions/versions.json", json.dumps({"versions": [{"n": 1}]}))
-    put(folder, "code/Snippet__C1/versions/C1_1.txt", b"first")
-    put(folder, "code/Snippet__C1/versions/C1_9.txt", b"no ledger row")
+    put(folder, "materials/Brick__A1/versions/versions.json", json.dumps({"versions": [{"n": 1}]}))
+    put(folder, "materials/Brick__A1/versions/A1_1.mat", b"first")
+    put(folder, "materials/Brick__A1/versions/A1_9.mat", b"no ledger row")
     put(folder, "materials/Brick__A1/A1 2.png", b"picture")    # a sync copy that matches
     put(folder, "materials/Brick__A1/A1 2.mat", b"other nodes")    # a sync copy that differs
     old = put(folder, "materials/Brick__A1/A1.mat.x1" + guard.SCRATCH, b"half")
@@ -169,7 +169,7 @@ class NothingIsLostTest(_Library):
 
     def test_cl07_unknown_and_unlisted_files_are_trashed_only_once_named(self):
         unnamed = ("materials/notes.txt", "stuff/thing.bin", "materials/Bare__U2/U2.mat",
-                   "code/Snippet__C1/versions/C1_9.txt", "colors/Old__K9/K9.png")
+                   "materials/Brick__A1/versions/A1_9.mat", "colors/Old__K9/K9.png")
         self.fix_all(named=False)
         for path in unnamed:
             self.assertTrue(os.path.exists(self.at(*path.split("/"))), path + " went unnamed")
@@ -264,7 +264,7 @@ class NothingIsLostTest(_Library):
         flagged = set(found["leftovers"]) | set(found["unknown"]) | set(found["orphans"])
         for kept in ("import/yarn.lock", "materials/Brick__A1/comments/%s.png" % ("a" * 32),
                      "files/comments/%s.png" % ("b" * 32),
-                     "code/Snippet__C1/versions/C1_1.txt", "code/Snippet__C1/versions/versions.json",
+                     "materials/Brick__A1/versions/A1_1.mat", "materials/Brick__A1/versions/versions.json",
                      "materials/Icon\r"):
             self.assertNotIn(kept, flagged)
 
@@ -302,8 +302,8 @@ class WhatTheReportSaysTest(_Library):
 
     def test_cl24_a_version_file_its_ledger_does_not_list_is_an_orphan(self):
         found = check_library.survey(self.dir)["orphans"]
-        self.assertIn("code/Snippet__C1/versions/C1_9.txt", found)
-        self.assertNotIn("code/Snippet__C1/versions/C1_1.txt", found)
+        self.assertIn("materials/Brick__A1/versions/A1_9.mat", found)
+        self.assertNotIn("materials/Brick__A1/versions/A1_1.mat", found)
 
     def test_cl25_uncategorized_fills_rows_without_a_category_and_their_records(self):
         self.assertEqual(1, check_library.uncategorized(self.dir, USER))

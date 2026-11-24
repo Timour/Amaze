@@ -83,7 +83,7 @@ class MaterialRowsTest(LibraryCase):
 
     def _ledger(self, mat_id: str, ledger: dict) -> None:
         """A version ledger on disk, before the model reads which ids have one."""
-        folder = versions.versions_dir(self.prefs, mat_id, versions.MATERIAL)
+        folder = versions.versions_dir(self.prefs, mat_id)
         _write(os.path.join(folder, versions.LEDGER), json.dumps(ledger).encode("utf-8"))
 
     def test_a_material_without_textures_has_no_textures_row_and_no_read(self):
