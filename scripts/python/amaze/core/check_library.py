@@ -191,6 +191,8 @@ def _ledger_numbers(folder: str):
 def _out_of_place(library_dir: str, out: list, spent: dict) -> dict:
     """Leftovers to trash, conflict copies kept, and what matches no name Amaze writes."""
     now, found = time.time(), {"leftovers": [], "conflicts": [], "unknown": []}
+    found["leftover_folders"] = sorted(folder for folder, when in spent.items()
+                                       if now - when >= SCRATCH_MIN_AGE)
     for relative, kind, detail, info in out:
         if library_files.join(library_files.split(relative)[:2]) in spent:
             continue    # its folder goes whole, once its newest change is an hour old
@@ -206,8 +208,6 @@ def _out_of_place(library_dir: str, out: list, spent: dict) -> dict:
                 found["leftovers"].append(relative)
         else:
             found["unknown"].append(relative)
-    found["leftovers"] += sorted(folder for folder, when in spent.items()
-                                 if now - when >= SCRATCH_MIN_AGE)
     return found
 
 
@@ -298,8 +298,9 @@ def report_lines(findings: dict) -> list:
             wording.count(len(unlisted), "asset folder"), saved))
     if findings["orphans"]:
         lines.append(messages.CHECK_ORPHANS % wording.count(len(findings["orphans"]), "file"))
-    if findings["leftovers"]:
-        lines.append(messages.CHECK_LEFTOVERS_FOUND % wording.count(len(findings["leftovers"]), "file"))
+    if findings["leftovers"] or findings["leftover_folders"]:
+        lines.append(messages.CHECK_LEFTOVERS_FOUND % files_and_folders(
+            len(findings["leftovers"]), len(findings["leftover_folders"])))
     if findings["conflicts"]:
         lines.append(messages.CHECK_CONFLICTS_KEPT % wording.count(
             len(findings["conflicts"]), "copy", "copies"))
@@ -323,6 +324,12 @@ def report_lines(findings: dict) -> list:
     return lines
 
 
+def files_and_folders(files: int, folders: int) -> str:
+    """`3 files`, `1 folder` or `2 files and 1 folder`: what a line counts."""
+    return wording.and_list([wording.count(number, noun) for number, noun
+                             in ((files, "file"), (folders, "folder")) if number])
+
+
 def trash_line(findings: dict) -> str:
     """What the library's trash holds, and when its oldest day is deleted."""
     held = findings["trash"]
@@ -339,7 +346,7 @@ def summary(findings: dict) -> dict:
     errors = sum(1 for entry in findings["databases"] if entry["state"] in TROUBLE)
     files = (sum(len(rows) for rows in findings["missing_files"].values()) + len(findings["unlisted"])
              + len(findings["orphans"]) + len(findings["leftovers"]) + len(findings["unknown"])
-             + len(findings["conflicts"]))
+             + len(findings["leftover_folders"]) + len(findings["conflicts"]))
     refs = len(findings["locations_gone"]) + len(findings["favorites_gone"])
 
     def light(number, checked=True):
@@ -506,24 +513,27 @@ def remove_rows(library_dir: str, keys: list, user: str = "") -> int:
     return removed
 
 
-def trash(library_dir: str, shown: dict, keys: list, user: str = "") -> int:
-    """Leftovers, and the named unknown and unlisted files the check showed and are still so."""
+def trash(library_dir: str, shown: dict, keys: list, user: str = "") -> tuple:
+    """Leftovers, and the named files the check showed and are still so; (files, folders) moved."""
     fresh = survey(library_dir)
     if fresh["holding_back"]:
         raise Refused(fresh["holding_back"])
     named = {key[1] for key in keys if key[0] == "path"}
     still = {key[1] for key, _label in confirmable(fresh) if key[0] == "path"}
-    going = [path for path in fresh["leftovers"] if path in shown["leftovers"]]
+    left = shown["leftovers"] + shown["leftover_folders"]
+    going = [path for path in fresh["leftovers"] + fresh["leftover_folders"] if path in left]
     going += sorted(named & still & {key[1] for key, _label in confirmable(shown)
                                      if key[0] == "path"})
     if not going:
-        return 0
+        return 0, 0
+    folders = sum(1 for path in going
+                  if os.path.isdir(os.path.join(library_dir, *library_files.split(path))))
     held = _guard(library_dir)
     change = held.change(user)
     for relative in going:
         change.trash(relative)
     change.commit()
-    return len(going)
+    return len(going) - folders, folders
 
 
 def uncategorized(library_dir: str, user: str = "") -> int:

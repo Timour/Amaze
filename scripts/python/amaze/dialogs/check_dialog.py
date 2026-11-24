@@ -78,8 +78,8 @@ def done_lines(done: dict) -> list:
         lines.append(messages.FIXED_UNCATEGORIZED % wording.count(done["uncategorized"], "asset"))
     if done.get("removed"):
         lines.append(messages.FIXED_REMOVED % wording.count(done["removed"], "asset"))
-    if done.get("trashed"):
-        lines.append(messages.FIXED_TRASHED % wording.count(done["trashed"], "file"))
+    if any(done.get("trashed") or ()):
+        lines.append(messages.FIXED_TRASHED % check_library.files_and_folders(*done["trashed"]))
     if done.get("favorites"):
         lines.append(messages.FIXED_FAVORITES % wording.count(done["favorites"], "favorite"))
     if done.get("folders"):
