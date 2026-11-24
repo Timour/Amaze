@@ -1,7 +1,6 @@
 """Check Library: a library surveyed, the report it reads as, and its fixes. ▸docs/requirements"""
 
 import filecmp
-import json
 import os
 import time
 
@@ -146,13 +145,13 @@ def _orphan_versions(library_dir: str, listing: dict) -> list:
 
 def _ledger_numbers(folder: str):
     """The version numbers a ledger lists; empty without one, None when it cannot be read."""
-    path = os.path.join(folder, library_files.LEDGER)
-    if not os.path.exists(path):
-        return set()
+    from amaze.core import versions
+    ledger = versions.ledger_in(os.path.join(folder, library_files.LEDGER))
+    if ledger.get("unreadable"):
+        return None
     try:
-        with open(path, encoding="utf-8-sig") as handle:
-            return {int(row.get("n", 0)) for row in json.load(handle).get("versions")}
-    except (OSError, ValueError, TypeError, AttributeError):
+        return {int(row.get("n", 0)) for row in ledger["versions"]}
+    except (TypeError, ValueError, AttributeError):    # a row that is no table, or no number
         return None
 
 
