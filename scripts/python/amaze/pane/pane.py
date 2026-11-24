@@ -8,7 +8,7 @@ from amaze import amazetheme
 from amaze.core import debug, matx_sources, section_list
 from amaze.helpers import hostos
 from amaze.pane import (assets, drop_placement, empty_state, files, library, loading,
-                        online_import, package_import, saving, sidebar, tile_capture)
+                        online_import, package_import, saving, sidebar, tile_capture, toolbar_menus)
 from amaze.prefs import prefs
 from amaze.render import husk_job
 
@@ -71,6 +71,7 @@ class Pane(QtCore.QObject):
         self.drop_placement = drop_placement.DropPlacement(self)
         self.tile_capture = tile_capture.TileCapture(self)
         self.empty_state = empty_state.EmptyState(self)
+        self.toolbar_menus = toolbar_menus.ToolbarMenus(self)
         husk_job.jobs.progressed.connect(self._on_render_progress)    # bound: jobs outlive the pane
         husk_job.jobs.activeChanged.connect(self._on_render_active)
 

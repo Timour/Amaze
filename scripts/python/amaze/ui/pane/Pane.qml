@@ -8,9 +8,15 @@ import "../shared"
 PaneRoot {
     id: root
 
-    function openMenu(rows) {    // every right-click menu of the pane: the engine's rows, at the cursor
-        if (rows.length > 0)
-            menuMaker.createObject(root).show(rows)
+    function openMenu(rows, under) {    // every menu of the pane: the engine's rows, below `under` or at the cursor
+        if (rows.length === 0)
+            return null
+        const menu = menuMaker.createObject(root)
+        if (under)
+            menu.showUnder(rows, under)
+        else
+            menu.show(rows)
+        return menu
     }
     function menuAt(x, y) {    // Qt's context menu request at (x, y), from the pane's widget: the row under it
         if (sidebarArea.visible) {
@@ -45,6 +51,7 @@ PaneRoot {
 
         Toolbar {
             Layout.fillWidth: true
+            onMenuAsked: (rows, under) => under.menu = root.openMenu(rows, under)
         }
 
         Item {    // the strip: the tabs on its bottom row at S01's left edge, Cancel at the right

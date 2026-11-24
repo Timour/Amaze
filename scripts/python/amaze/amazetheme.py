@@ -87,7 +87,8 @@ COMMENT_DIM_ADD_COLOR = "#565656"         # the + art; Houdini's menu triangle k
 ONLINE_ICON_COLOR = "#598c76"    # ▸ the toolbar's Online button while the online world is open
 ABOUT_REPO = {"row": 55, "mark": {"x": 6, "y": 15, "w": 26, "h": 25}, "gap": 10, "text": "#979797"}    # ▸ P06: GitHub's mark, its address
 TOOLBAR_ON = {"fill": "#393939", "border": "#a3abc5", "ring": "#364269"}    # ▸ B01c: a button on or open
-TOOLBAR_SEARCH_END_GAP = 6    # the least space between the Search box and Comments, in a narrow panel
+TOOLBAR_SEARCH_END_GAP = 6    # the least space between the Search box and the right-end buttons, narrow
+TOOLBAR_FIELD_TEXT = 20    # the Search box's text inset, past its magnifier; an empty box shows none of it
 INFO_ICON_COLOR = "#b69c51"      # ▸ the info pane (N02): its header icon, and its toolbar button while open
 INFO_ICON_ART_COLOR = "#5d7abd"  # the colour icon_info.svg is drawn in; INFO_ICON_COLOR replaces it
 INFO_HIDE_PREVIEW = "Hide Preview"    # the header button's tooltip while the picture is shown
@@ -776,7 +777,7 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("tick box ▸ comments", 505, 77, 12, 19, None),
         ),
     },
-    "B01": {   # the toolbar from the live panel - its height, edges, gaps and control sizes are read
+    "B01": {   # the toolbar, the QML frame (list mode, at rest) - its height, edges, gaps and sizes are read
         "frame": (840, 30),
         "nodes": (
             ("bottom border", 0, 29, 840, 1, None),
@@ -784,27 +785,38 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("button ▸ btn_menu_view", 28, 3, 24, 24, None),
             ("button ▸ btn_menu_filter", 54, 3, 24, 24, None),
             ("button ▸ btn_online", 80, 3, 24, 24, None),
-            ("button ▸ cb_viewmode", 106, 3, 24, 24, None),
-            ("button ▸ cb_favsonly", 132, 3, 24, 24, None),
-            ("button ▸ btn_prefs", 158, 3, 24, 24, None),
-            ("button ▸ btn_hip_capture", 184, 3, 24, 24, None),
+            ("button ▸ btn_info", 106, 3, 24, 24, None),
+            ("button ▸ btn_notes", 132, 3, 24, 24, None),
+            ("button ▸ cb_favsonly", 158, 3, 24, 24, None),
+            ("buttons list-grid ▸ cb_viewmode", 184, 3, 50, 24, None),    # Houdini's button strip
+            ("segment 1 ▸ cb_viewmode", 184, 3, 24, 24, None),
+            ("segment 3 ▸ cb_viewmode", 210, 3, 24, 24, None),
             ("slider ▸ click_slider (disabled)", 249, 3, 200, 23, None),
+            ("groove ▸ click_slider", 249, 13, 200, 3, None),
+            ("handle ▸ click_slider", 249, 9, 11, 11, None),
+            ("snap mark ▸ click_slider", 280, 13, 3, 3, None),    # one at every inner step, 27 apart
+            ("snap mark ▸ click_slider", 307, 13, 3, 3, None),
+            ("snap mark ▸ click_slider", 334, 13, 3, 3, None),
+            ("snap mark ▸ click_slider", 361, 13, 3, 3, None),
+            ("snap mark ▸ click_slider", 388, 13, 3, 3, None),
+            ("snap mark ▸ click_slider", 415, 13, 3, 3, None),
             ("label ▸ filter_label", 469, 0, 40, 30, None),
             ("text ▸ filter_label", 471, 7, 35, 15, "Search"),
             ("field ▸ line_filter", 521, 5, 200, 20, None),
-            ("button ▸ btn_notes", 788, 3, 24, 24, None),
-            ("button ▸ btn_info", 814, 3, 24, 24, None),
+            ("button ▸ btn_hip_capture", 790, 3, 24, 24, None),
+            ("button ▸ btn_prefs", 814, 3, 24, 24, None),
             ("icon ▸ btn_categories ▸ icon_categories.svg", 6, 7, 16, 16, None),
             ("icon ▸ btn_menu_view ▸ icon_renderer.svg", 31, 6, 18, 18, None),
             ("icon ▸ btn_menu_filter ▸ icon_view.svg", 57, 6, 18, 18, None),
             ("icon ▸ btn_online ▸ icon_online.svg", 84, 7, 16, 16, None),
-            ("icon ▸ cb_viewmode ▸ list.svg", 110, 7, 16, 16, None),
-            ("icon ▸ cb_favsonly ▸ favourite_on.svg", 136.5, 7, 15, 15, None),
-            ("icon ▸ btn_prefs ▸ icon_library.svg", 161, 6, 18, 18, None),
-            ("icon ▸ btn_hip_capture ▸ icon_screenshot.svg", 187, 6, 18, 18, None),
+            ("icon ▸ btn_info ▸ icon_info.svg", 109, 6, 18, 18, None),
+            ("icon ▸ btn_notes ▸ icon_comments.svg", 135, 6, 18, 18, None),
+            ("icon ▸ cb_favsonly ▸ favourite_on.svg", 162.5, 7, 15, 15, None),
+            ("icon ▸ cb_viewmode ▸ list.svg", 188, 7, 16, 16, None),
+            ("icon ▸ cb_viewmode ▸ grid.svg", 214, 7, 16, 16, None),
             ("icon ▸ line_filter ▸ icon_search.svg", 525, 8, 13, 13, None),
-            ("icon ▸ btn_notes ▸ icon_comments.svg", 791, 6, 18, 18, None),
-            ("icon ▸ btn_info ▸ icon_info.svg", 817, 6, 18, 18, None),
+            ("icon ▸ btn_hip_capture ▸ icon_screenshot.svg", 793, 6, 18, 18, None),
+            ("icon ▸ btn_prefs ▸ icon_library.svg", 817, 6, 18, 18, None),
         ),
     },
     "S01": {   # the section tab strip - its height and tab icons are read
@@ -1246,7 +1258,7 @@ def drawn_toolbar(frame_key: str = "B01") -> dict:
     """The toolbar's height, edges, gaps and control sizes, off its frame. ▸r/toolbar-from-frame"""
     layout = DIALOG_LAYOUT[frame_key]
 
-    def node(kind, owner):
+    def node(kind, owner=None):
         return drawn_node(frame_key, kind, owner)
 
     def right(n):
@@ -1254,22 +1266,31 @@ def drawn_toolbar(frame_key: str = "B01") -> dict:
 
     slider, label = node("slider", "click_slider"), node("label", "filter_label")
     field, search = node("field", "line_filter"), node("icon", "line_filter")
+    switch = node("buttons list-grid")    # grid and list: two segments, one control
+    segments = (node("segment 1"), node("segment 3"))
     buttons = sorted(drawn_by_owner(frame_key, "button").items(), key=lambda item: item[1][1])
-    left = [(owner, n) for owner, n in buttons if n[1] < slider[1]]
-    right_end = [(owner, n) for owner, n in buttons if n[1] > field[1]]
+    controls = sorted(buttons + [(drawn_name(switch)[1], switch)], key=lambda item: item[1][1])
+    left = [(owner, n) for owner, n in controls if n[1] < slider[1]]
+    right_end = [(owner, n) for owner, n in controls if n[1] > field[1]]
     (_, first), (_, second) = left[0], left[1]
     icons = {owner: n[3] for owner, n in drawn_by_owner(frame_key, "icon").items()}
     placed = {owner: {"x": n[1] - dict(buttons)[owner][1], "y": n[2] - dict(buttons)[owner][2]}
               for owner, n in drawn_by_owner(frame_key, "icon").items() if owner in dict(buttons)}
     return {
-        "left": tuple(owner for owner, _n in left),    # the buttons left of the slider, in drawn order
+        "left": tuple(owner for owner, _n in left),    # the controls left of the slider, in drawn order
         "right": tuple(owner for owner, _n in right_end),    # and those right of the search field
         "height": layout["frame"][1],
         "edge": first[1],
         "right_edge": layout["frame"][0] - right(right_end[-1][1]),
         "gap": second[1] - right(first),
+        "right_gap": right_end[1][1][1] - right(right_end[0][1]) if len(right_end) > 1 else 0,
+        "segment": segments[0][3],    # each segment of the grid and list switch
+        "segment_gap": segments[1][1] - right(segments[0]),
         "slider_gap": slider[1] - right(left[-1][1]),
+        "slider_top": slider[2],    # B01 centres it above the bottom border, the buttons in the whole row
         "search_gap": label[1] - right(slider),
+        "label_w": label[3],
+        "label_inset": node("text", "filter_label")[1] - label[1],    # the word inside its label
         "label_gap": field[1] - right(label),
         "button": first[3],
         "icons": icons,    # each button's own drawn icon, by its object name
@@ -1278,6 +1299,8 @@ def drawn_toolbar(frame_key: str = "B01") -> dict:
         "menu_icon": icons["btn_menu_view"],     # a menu button the frame does not draw
         "slider_w": slider[3],
         "slider_h": slider[4],
+        "track": node("groove", "click_slider")[4],    # the groove's thickness
+        "handle": node("handle", "click_slider")[3],
         "field_w": field[3],
         "field_h": field[4],
         "search_icon": search[3],

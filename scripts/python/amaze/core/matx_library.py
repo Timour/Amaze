@@ -231,6 +231,10 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
         self._kind_filter = section
         self._apply_filter()
 
+    def kind_filter(self):
+        """The section key the grid is narrowed to; None for all."""
+        return self._kind_filter
+
     @staticmethod
     def _record_kind(r) -> str:
         if getattr(r, "kind", "") == "amazepkg":
