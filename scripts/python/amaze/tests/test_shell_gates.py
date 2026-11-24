@@ -613,8 +613,16 @@ class EveryAppBuilderPicksOffscreen(unittest.TestCase):
 
     def test_every_app_builder_sets_the_platform_first(self):
         builders = self._builders()
-        self.assertGreater(len(builders), 40,    # a scan that matches nothing passes
-                           "the app-construction pattern no longer matches")
+        tests_dir = os.path.dirname(os.path.abspath(__file__))
+        mentioned = []    # the same files found by plain text, so a pattern that stops matching shows
+        for name in sorted(os.listdir(tests_dir)):
+            if name.startswith("test_") and name.endswith(".py"):
+                with open(os.path.join(tests_dir, name), encoding="utf-8") as fh:
+                    text = fh.read()
+                if "QApplication(" in text or "QGuiApplication(" in text:
+                    mentioned.append(name[:-3])
+        self.assertTrue(mentioned, "no test module builds the app, which the suite needs")
+        self.assertEqual(mentioned, sorted(builders), "the app-construction pattern no longer matches")
         unguarded = sorted(
             name for name, (source, at) in builders.items()
             if not 0 <= source.find(self.GUARD) < at)
@@ -669,8 +677,12 @@ class EveryTestModuleArmsTheSandbox(unittest.TestCase):
             "import test_support")))
         self.assertFalse(self._imports_the_harness(ast.parse(
             "def f():\n    from amaze.tests import test_support\n")))
-        self.assertGreater(len(self._modules()), 40,
-                           "the test directory scan found almost nothing")
+        tests_dir = os.path.dirname(os.path.abspath(__file__))
+        on_disk = [path for path in os.scandir(tests_dir) if path.is_file()
+                   and path.name.startswith("test_") and path.name.endswith(".py")]
+        self.assertGreater(len(on_disk), 1, "the tests directory holds no test module")
+        self.assertEqual(len(on_disk) - 1, len(self._modules()),    # all but test_support itself
+                         "the test directory scan missed modules on disk")
 
 
 def _is_patch_call(node) -> bool:
