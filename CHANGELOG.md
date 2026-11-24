@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.48.3
+
+- Moving files: the scene open in Houdini is still never moved; the move itself now checks it.
+
 ## 1.48.2
 
 - A favorite follows its file for every user of the library: when the file is moved, and when it is deleted or its folder is removed, it goes the same way as the file's comments and tile picture.
