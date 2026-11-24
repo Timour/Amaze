@@ -17,7 +17,6 @@ ScrollView {
     signal tileDoubleClicked(int row)
     signal tileKeyed(int row, int modifiers)    // the user's move by an Amaze hotkey landed on `row`
     signal badgeClicked(int row, string name)
-    signal tileMenu(int row)    // the user's right-click; row -1 is the grid's empty space
 
     function step(name, extend) {    // an Amaze hotkey's move, by Qt's own grid moves and a page of tiles
         keys.step(name, extend, view.count, Math.max(1, Math.floor(view.height / view.cellHeight))
@@ -95,16 +94,6 @@ ScrollView {
                 gesturePolicy: TapHandler.WithinBounds
                 onTapped: view.clickedOn(-1, point.modifiers)
             }
-            TapHandler {
-                acceptedButtons: Qt.RightButton
-                gesturePolicy: TapHandler.WithinBounds
-                onTapped: view.menuOn(-1)
-            }
-        }
-
-        function menuOn(row) {
-            view.forceActiveFocus(Qt.MouseFocusReason)
-            root.tileMenu(row)
         }
 
         // a tap handler gives no focus (Qt gives it only to an item taking the press itself): so here
@@ -124,7 +113,6 @@ ScrollView {
                       && root.selectionModel.isSelected(view.model.index(index, 0))
             onClicked: modifiers => view.clickedOn(index, modifiers)
             onDoubleClicked: root.tileDoubleClicked(index)
-            onMenuRequested: view.menuOn(index)
             onBadgeClicked: name => {
                 view.forceActiveFocus(Qt.MouseFocusReason)
                 root.badgeClicked(index, name)

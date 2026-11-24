@@ -6,19 +6,6 @@ import houdini.ui
 import "../shared"
 
 PaneRoot {
-    id: root
-
-    function openMenu(rows) {    // every right-click menu of the pane: the engine's rows, at the cursor
-        if (rows.length > 0)
-            menuMaker.createObject(root).show(rows)
-    }
-    Component {
-        id: menuMaker
-        AmazeMenu {
-            onPicked: key => SharedState.pickMenu(key)
-        }
-    }
-
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
@@ -116,7 +103,6 @@ PaneRoot {
                         onTileClicked: (row, modifiers) => SharedState.clickTile(row, modifiers)
                         onTileDoubleClicked: row => SharedState.doubleClickTile(row)
                         onTileKeyed: (row, modifiers) => SharedState.keyTile(row, modifiers)
-                        onTileMenu: row => root.openMenu(SharedState.tileMenu(row))
                         onBadgeClicked: (row, name) => SharedState.clickBadge(row, name)
                     }
                 }
@@ -137,7 +123,6 @@ PaneRoot {
                         onRowClicked: (row, modifiers) => SharedState.clickTile(row, modifiers)
                         onRowDoubleClicked: row => SharedState.doubleClickTile(row)
                         onRowKeyed: (row, modifiers) => SharedState.keyTile(row, modifiers)
-                        onRowMenu: row => root.openMenu(SharedState.tileMenu(row))
                         onHeadingClicked: column => SharedState.sortList(column)
                     }
                 }

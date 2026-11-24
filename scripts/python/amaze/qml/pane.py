@@ -7,7 +7,7 @@ import amaze
 from amaze import amazetheme, tooltips
 from amaze.core import debug, grid_columns, grid_engine
 from amaze.helpers import ui_helpers
-from amaze.pane import asks, menus, pane as pane_mod, sidebar as pane_sidebar
+from amaze.pane import asks, pane as pane_mod, sidebar as pane_sidebar
 from amaze.panel import delegates
 from amaze.qml import hotkeys
 from amaze.utils import rc_calls
@@ -157,7 +157,6 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         self._reveal = ""    # a File folder highlighted once the walks have given it a row
         self._rows_followed = None
         self._grid_anchor = QtCore.QPersistentModelIndex()    # where a Shift click's span starts
-        self._menu = None    # the open menu's engine, which runs its picked row
         self.tile = drawn_tile()
         self.table = amazetheme.drawn_list()
         tabs = amazetheme.drawn_tabs()
@@ -391,33 +390,6 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         """The user's double-click on tile or row `row`: the pane's, as the widget grid's."""
         if self.gridModel is not None and row >= 0:
             self.pane.double_click(self.gridModel.index(row, 0))
-
-    @QtCore.Slot(int, result="QVariantList")
-    def tileMenu(self, row: int) -> list:
-        """The rows of the right-click menu on tile or row `row`; as in Qt's views, it selects it first."""
-        context = self.pane.active_section()
-        entries = getattr(context, "GRID_MENU", ()) if context is not None else ()
-        if not entries or self.gridModel is None or self.gridSelection is None:
-            return []
-        index = self.gridModel.index(row, 0) if row >= 0 else QtCore.QModelIndex()
-        if not index.isValid() or not self.gridSelection.isSelected(index):
-            self._choose(row, 0, by_key=False)
-        indexes = context.grid_selection()
-        current = index if index.isValid() and index in indexes else (indexes[0] if indexes else None)
-        self._menu = menus.Menu(context, entries, indexes, current, host=self)
-        return self._menu.rows
-
-    @QtCore.Slot(str)
-    def pickMenu(self, key: str) -> None:
-        """The picked row of the open menu: the engine runs it on the rows still there."""
-        menu, self._menu = self._menu, None
-        if menu is not None:
-            menu.run(key)
-
-    def ask_colour(self, start: str, title: str, then) -> None:
-        """Houdini's colour picker, the one the widget panel opens: `then` gets "#rrggbb", None for Cancel."""
-        chosen = ui_helpers.pick_color(start, None, title)
-        then(chosen.name() if chosen is not None else None)
 
     @QtCore.Slot(int)
     def sortList(self, column: int) -> None:

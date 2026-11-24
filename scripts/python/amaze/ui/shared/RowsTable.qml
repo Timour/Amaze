@@ -17,7 +17,6 @@ Item {
     readonly property bool hotkeysFirst: true    // Amaze's hotkeys before its ScrollView's own arrow scrolling
     signal rowClicked(int row, int modifiers)    // the user's click; row -1 is the space below the rows
     signal rowDoubleClicked(int row)
-    signal rowMenu(int row)    // the user's right-click; row -1 is the space below the rows
     signal rowKeyed(int row, int modifiers)    // the user's move by an Amaze hotkey landed on `row`
     signal headingClicked(int column)
 
@@ -112,13 +111,6 @@ Item {
                         root.rowClicked(view.cellAtPosition(point.position).y, point.modifiers)
                     }
                     onDoubleTapped: root.rowDoubleClicked(view.cellAtPosition(point.position).y)
-                }
-                TapHandler {    // the right button, as Houdini's own QML lists take it
-                    acceptedButtons: Qt.RightButton
-                    onTapped: {
-                        view.forceActiveFocus(Qt.MouseFocusReason)
-                        root.rowMenu(view.cellAtPosition(point.position).y)
-                    }
                 }
             }
 
