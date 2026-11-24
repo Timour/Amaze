@@ -264,7 +264,7 @@ class BothOnlineDestinationsRunOneSequence(unittest.TestCase):
         from amaze.core import matx_import
         destination = hou.node("/mat") or hou.node("/").createNode("mat")
         builder, reason = matx_import.build_in_scene(
-            self._record(), self._source(), "", destination, self.prefs)
+            self._record(), self._source(), "", destination)
         self.assertIsNotNone(builder, reason)
         self.addCleanup(builder.destroy)
 
@@ -304,7 +304,7 @@ class BothOnlineDestinationsRunOneSequence(unittest.TestCase):
         self.addCleanup(hou.undos.clear)
         with hou.undos.group("Amaze Import to Scene"):
             builder, reason = matx_import.build_in_scene(
-                self._record(), self._source(), "", destination, self.prefs)
+                self._record(), self._source(), "", destination)
         self.assertIsNotNone(builder, reason)
         name = builder.name()
         self.addCleanup(lambda: destination.node(name) and destination.node(name).destroy())
@@ -464,7 +464,7 @@ class TheCreditCommentClaimsNoRequirement(unittest.TestCase):
         from amaze.core import matx_import
         destination = hou.node("/mat") or hou.node("/").createNode("mat")
         builder, reason = matx_import.build_in_scene(
-            self._record(), self._source(), "", destination, self.prefs)
+            self._record(), self._source(), "", destination)
         self.assertIsNotNone(builder, reason)
         self.addCleanup(builder.destroy)
         comment = builder.comment()

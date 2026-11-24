@@ -9,16 +9,13 @@ import tempfile
 
 import hou
 
-from amaze.core import debug, material, matx_sources, matx_translate, renderers
+from amaze.core import debug, library_files, material, matx_sources, matx_translate, renderers
+from amaze.core import texstore
 from amaze.helpers import helpers, hostos, wording
 from amaze.render import nodes as nodes_mod
 from amaze.render.material_conversion import engine as conversion_engine
 
-MATX_DIRNAME = "matX"   # library folder of downloaded MaterialX sources; imported materials read it
-
-
-def matx_dir(library_dir: str) -> str:
-    return os.path.join(library_dir, MATX_DIRNAME)
+SCENE_DOWNLOADS = "downloads"    # in the cache: the packages built in the scene, which reads them there
 
 
 def _credit_text(record, source) -> str:
@@ -119,33 +116,40 @@ def record_name(record) -> str:
 
 
 def package_dirname(record) -> str:
-    """The matX/<name> directory a record's package extracts into: title, then source and uid."""
+    """The folder a record's package is downloaded into: title, then source and uid."""
     tail = hostos.safe_filename(
         "%s-%s" % (record.source or "src", record.uid or "0"))
     return "%s__%s" % (record_name(record), tail)
 
 
-def _place_package(preferences, scratch: str, dest: str) -> None:
-    """Every file downloaded into `scratch` moved into `dest`, as one change; OSError when not."""
-    from amaze.core import guard, library_db
-    held = library_db.guard_of(preferences)
-    change = held.change()
-    for root, _dirs, names in os.walk(scratch):
-        for name in names:
-            written = os.path.join(root, name)
-            relative = held.inside(os.path.join(dest, os.path.relpath(written, scratch)))
-            if not relative:
-                raise OSError("%s is outside the library" % dest)
-            change.take(relative, written)
+def _scene_download(record) -> str:
+    """Where a package built in the scene is downloaded and kept: the cache, never the library."""
+    return os.path.join(hostos.cache_root(), SCENE_DOWNLOADS, package_dirname(record))
+
+
+@contextlib.contextmanager
+def _download_folder(record):
+    """A temporary folder for one record's download; it is removed with all it holds."""
+    folder = tempfile.mkdtemp(prefix="amaze_download_")
     try:
-        change.commit()
-    except guard.Refused as exc:
-        raise OSError(str(exc)) from exc
-    shutil.rmtree(scratch, ignore_errors=True)    # only its emptied folders are left
+        yield os.path.join(folder, package_dirname(record))
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
 
 
-def _producer_for(record, source, resolution, preferences, progress=None):
-    """Download and resolve a record to a Karma `produce` callback: (produce, note, error)."""
+def _downloaded_sources(folder: str, builder) -> list:
+    """Each file downloaded into `folder` that `builder` does not read; the save copies the rest."""
+    read = {os.path.normcase(os.path.normpath(hou.text.expandString(raw)))
+            for _parm, raw in texstore.references(builder)}
+    found = []
+    for root, _dirs, names in os.walk(folder):
+        found += [os.path.join(root, name) for name in names if not library_files.is_os_noise(name)
+                  and os.path.normcase(os.path.normpath(os.path.join(root, name))) not in read]
+    return sorted(found)
+
+
+def _producer_for(record, source, resolution, dest, progress=None):
+    """Download a record into `dest`, resolved to a Karma `produce` callback: (produce, note, error)."""
     name = record_name(record)
     if record.kind == "values":   # may download too: a measurement the shipped table lacks
         try:
@@ -168,7 +172,6 @@ def _producer_for(record, source, resolution, preferences, progress=None):
 
         return (produce, note, "")
 
-    dest = os.path.join(matx_dir(preferences.dir), package_dirname(record))
     if os.path.isdir(dest) and os.listdir(dest):   # already downloaded: reused, never extracted over
         debug.event("import", "package already on disk - reusing",
                     dest=dest)
@@ -200,11 +203,13 @@ def _producer_for(record, source, resolution, preferences, progress=None):
                         dest=dest)
             return (None, "", "No .mtlx document in the downloaded package")
         if os.path.isdir(scratch):
+            if os.path.isdir(dest):
+                shutil.rmtree(dest, ignore_errors=True)   # dest is empty here
             try:
-                _place_package(preferences, scratch, dest)
+                os.rename(scratch, dest)
             except OSError as exc:
                 shutil.rmtree(scratch, ignore_errors=True)
-                return (None, "", "The download could not be put in the library: %s" % exc)
+                return (None, "", "The download could not be put in place: %s" % exc)
         fetched = {   # the fetch returned scratch paths; the files are at dest now
             key: (dest + value[len(scratch):]
                   if isinstance(value, str) and value.startswith(scratch)
@@ -252,12 +257,12 @@ def to_renderer(builder, scratch, name: str, renderer: str):
 
 
 @contextlib.contextmanager
-def _staged_build(record, source, resolution, preferences, progress,
+def _staged_build(record, source, resolution, dest, progress,
                   renderer):
-    """Download, build in a staging matnet in /obj, convert, warn: yields (builder, note, error)."""
+    """Download into `dest`, build in a staging matnet, convert, warn: yields (builder, note, error)."""
     name = record_name(record)
     produce, note, error = _producer_for(
-        record, source, resolution, preferences, progress)
+        record, source, resolution, dest, progress)
     if error:
         yield None, note, error
         return
@@ -290,7 +295,7 @@ def _staged_build(record, source, resolution, preferences, progress,
             pass
 
 
-def build_in_scene(record, source, resolution, destination, preferences,
+def build_in_scene(record, source, resolution, destination,
                    progress=None, renderer: str = renderers.INTERMEDIATE.key):
     """One online record built under `destination` in the scene, the library untouched: (builder, why)."""
     if destination is None:
@@ -299,7 +304,7 @@ def build_in_scene(record, source, resolution, destination, preferences,
     debug.event("import", "start to scene", title=record.title, name=name,
                 source=record.source, kind=record.kind,
                 destination=destination.path(), resolution=resolution)
-    with _staged_build(record, source, resolution, preferences, progress,
+    with _staged_build(record, source, resolution, _scene_download(record), progress,
                        renderer) as (builder, note, error):
         if error:
             return (None, error)
@@ -345,23 +350,25 @@ def hosted_picture(record, source, renderer) -> str:
 
 def import_record(record, source, resolution, library, preferences,
                   progress=None, renderer: str = renderers.INTERMEDIATE.key, *, save, render=True):
-    """One record saved by `save` into `library`: (ok, why); on ok, why is its name if not listed."""
+    """One record and its download saved by `save` into `library`: (ok, why); why names it if unlisted."""
     name = record_name(record)
     debug.event("import", "start", title=record.title, name=name,
                 source=record.source, kind=record.kind,
                 category=record.category, resolution=resolution)
-    with hou.undos.disabler(), \
-            _staged_build(record, source, resolution, preferences, progress,
+    with hou.undos.disabler(), _download_folder(record) as dest, \
+            _staged_build(record, source, resolution, dest, progress,
                           renderer) as (builder, measurement_note, error):    # all scratch ▸r/undo-groups
         if error:
             return (False, error)
         picture = hosted_picture(record, source, renderer)
+        sources = _downloaded_sources(dest, builder)    # the save copies each file the network reads
         save(   # the new row is found by its stamped id, never by position
             builder,
             record.category,
             ",".join(record.tags or []),
             False,
             **({"picture": picture} if picture else {}),
+            **({"sources": sources} if sources else {}),
             **({} if render else {"render": False}),    # its caller renders the batch once
         )
         if picture:

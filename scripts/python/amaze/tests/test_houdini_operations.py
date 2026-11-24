@@ -132,7 +132,7 @@ class TheSceneImportRunsInsideHoudinisOperation(_OnThePanel):
         from amaze.render import nodes
         built = []
 
-        def build(rec, source, resolution, destination, prefs, progress=None, renderer=None):
+        def build(rec, source, resolution, destination, progress=None, renderer=None):
             progress(1.0)
             builder = hou.node("/mat").createNode("subnet", "esc_probe_" + rec.title)
             self.addCleanup(test_support.drop_node, builder)
@@ -199,11 +199,11 @@ class AnEscInsideOneRecordReachesTheBatch(_OnThePanel):
         def import_reader(self, *args, **kwargs):
             raise hou.OperationInterrupted()
 
-    def _prefs(self):
-        """Prefs naming a throwaway library folder, removed after the test."""
+    def _folder(self):
+        """A throwaway download folder, removed after the test."""
         folder = test_support.scratch_dir("amaze_esc_")
         self.addCleanup(shutil.rmtree, folder, True)
-        return types.SimpleNamespace(dir=folder)
+        return folder
 
     def _record(self, kind, payload="https://example.invalid/p.zip"):
         return types.SimpleNamespace(title="Bricks", kind=kind, source="test", uid="1",
@@ -211,17 +211,17 @@ class AnEscInsideOneRecordReachesTheBatch(_OnThePanel):
 
     def test_an_esc_in_a_measurement_download_is_not_a_failed_record(self):
         from amaze.core import matx_import
-        prefs = self._prefs()
         with self.assertRaises(hou.OperationInterrupted,
                                msg="the Esc in a measurement download became a failed record"):
-            matx_import._producer_for(self._record("values"), self._Interrupting(), None, prefs)
+            matx_import._producer_for(self._record("values"), self._Interrupting(), None,
+                                      self._folder())
 
     def test_an_esc_in_a_package_download_is_not_a_download_failed(self):
         from amaze.core import matx_import
-        prefs = self._prefs()
         with self.assertRaises(hou.OperationInterrupted,
                                msg="the Esc in a package download became a Download failed"):
-            matx_import._producer_for(self._record("material"), self._Interrupting(), "1k", prefs)
+            matx_import._producer_for(self._record("material"), self._Interrupting(), "1k",
+                                      self._folder())
 
     def test_an_esc_in_a_store_package_download_is_not_a_failed_tile(self):
         record = self._record("package", payload={"package": "https://example.invalid/p.amazepkg",

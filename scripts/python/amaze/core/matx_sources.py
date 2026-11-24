@@ -19,7 +19,7 @@ import zipfile
 import zlib
 
 import amaze
-from amaze.core import debug, guard, library_files
+from amaze.core import debug
 from amaze.helpers import hostos, wording
 from amaze import messages
 
@@ -178,9 +178,10 @@ def repair_mtlx_references(mtlx_path: str, dest_dir: str) -> list:
         changed = True
 
     if changed:
-        try:    # `dest_dir` is `<library>/matX/<package>`
-            guard.Guard(library_files.library_of_file(dest_dir)).put_whole(
-                mtlx_path, data=text.encode("utf-8"))
+        try:    # `dest_dir` is a download folder outside the library, until the save takes its files
+            with hostos.scratch_beside(mtlx_path) as scratch, \
+                    open(scratch, "w", encoding="utf-8", newline="\n") as handle:
+                handle.write(text)
         except OSError as exc:
             debug.event("online", "mtlx repair could not be written",
                         path=mtlx_path, error=str(exc))
