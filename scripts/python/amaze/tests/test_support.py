@@ -485,21 +485,6 @@ def plain_python() -> str:
     return sys.executable
 
 
-def live_library_to_rehearse_on(testcase):
-    """The configured library, or a skip. ▸p/harness-isolation"""
-    live = prefs.Prefs()
-    live.path = hostos.real_config_root()    # the user's own settings, read only - the sandbox blocks writes
-    live.load()
-    directory = live.dir
-    if not directory or not os.path.isdir(directory):
-        testcase.skipTest("no library configured on this machine")
-    from amaze.core import guard
-    reading = guard.Guard(directory).read("materials.json")
-    if reading.verdict != guard.FINE or not (reading.document or {}).get("assets"):
-        testcase.skipTest("the configured library is empty or could not be read")
-    return live
-
-
 def fixture_prefs(testcase):
     """Preferences with .dir and .path on a fresh fixture copy, user set. ▸p/harness-isolation"""
     p = prefs.Prefs()
@@ -737,16 +722,6 @@ def apply_library(testcase, panel, folder, user: str = "", state=None) -> bool:
     with mock.patch.object(prefs.Prefs, "save", persistence._Persistence.save):    # a switch re-reads it
         state.apply()
     return state.changeCount == 0    # a pick Apply could not open stays pending
-
-
-def close_window(window) -> None:
-    """Close a QML window and delete it now, on this thread, as Houdini's own windows are."""
-    from PySide6 import QtCore
-    try:
-        window.close()
-    except RuntimeError:    # already deleted
-        return
-    QtCore.QCoreApplication.sendPostedEvents(None, QtCore.QEvent.Type.DeferredDelete)
 
 
 def fixture_unconfigured_panel(testcase):

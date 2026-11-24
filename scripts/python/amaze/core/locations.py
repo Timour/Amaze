@@ -392,9 +392,9 @@ def set_favourite(preferences, key, on: bool, database: str = FILES) -> bool:
 
 def set_favourites(preferences, wanted: dict, database: str = FILES) -> bool:
     """Star or unstar every `{key: on}` as ONE change of this user's stars; a later key overrides."""
-    held = library_db.document(preferences, database)
-    if not held.writable or not held.user():
+    if not library_db.accepts(preferences, database):
         return False
+    held = library_db.document(preferences, database)
     with library_db.library_for(preferences).holding():
         for key, on in wanted.items():
             star_key = str(key) if database != FILES else _file_star_key(preferences, key)

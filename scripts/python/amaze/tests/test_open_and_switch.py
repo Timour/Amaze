@@ -55,6 +55,12 @@ class _Pane(unittest.TestCase):
         holder = types.SimpleNamespace(pane=self.pane)
         return test_support.apply_library(self, holder, folder, user=user, state=state_)
 
+    def switch_settings(self) -> tuple:
+        """The library, user and Library list settings.json names now."""
+        with open(os.path.join(self.pane.prefs.path, "settings.json"), encoding="utf-8") as handle:
+            stored = json.load(handle)
+        return stored.get("directory"), stored.get("library_user"), stored.get("libraries")
+
     def rows(self, folder: str, name: str = MATERIALS) -> dict:
         return guard.Guard(folder).read(name).document.get("assets") or {}
 
@@ -157,18 +163,22 @@ class OpenTest(_Pane):
 
     def test_sw21_a_library_that_does_not_open_leaves_everything_as_it_was(self):
         other, _made = self.library("Sage")
-        settings = os.path.join(self.pane.prefs.path, "settings.json")
         user = self.pane.prefs.library_user
         with mock.patch.object(prefs_mod.Prefs, "save", persistence._Persistence.save):
             self.pane.prefs.save()
-        kept, before = test_support.library_state(os.path.dirname(settings)), state(other)
+        kept, before = self.switch_settings(), state(other)
+        picked = prefs_window.AmazePrefsState(self.pane.prefs, pane=self.pane)
+        picked.pick_library(other)
+        test_support.pick_user(picked, "Sage")
         with test_support.refused_at_open(os.path.join(other, guard.MASTER)), \
                 mock.patch.object(hou, "ui", mock.MagicMock(), create=True), \
+                mock.patch.object(prefs_mod.Prefs, "save", persistence._Persistence.save), \
                 test_support.captured_log():
-            self.assertFalse(self.apply(other, "Sage"))
+            picked.apply()
+        self.assertTrue(picked.changeCount, "a pick that did not open was not left pending")
         self.assertEqual((self.first, user), (self.pane.prefs.dir, self.pane.prefs.library_user))
         self.assertEqual(self.first, self.pane.library.models_dir)
-        self.assertEqual(kept, test_support.library_state(os.path.dirname(settings)))
+        self.assertEqual(kept, self.switch_settings(), "the settings name the library that failed")
         self.assertEqual(before, state(other), "the library that did not open was written")
 
     def test_sw22_nothing_switches_before_apply_and_apply_switches_both_once(self):

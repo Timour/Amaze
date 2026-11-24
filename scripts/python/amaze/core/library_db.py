@@ -75,7 +75,7 @@ def accepts(preferences, name: str) -> bool:
 
 
 def takes_changes(model) -> bool:
-    """Whether a model may write: its rows are of the library its Prefs names, which takes changes."""
+    """Whether a model may write: its rows are of the library its Prefs names, taking changes."""
     preferences = model.preferences
     if getattr(model, "read_from", None) not in (None, key_of(preferences)):
         debug.event("library", "change refused - the rows are from another library",
@@ -325,6 +325,11 @@ def preferences_of(key: str):
 def use(preferences) -> None:
     """A panel's models now use this library: it stays in `_in_use` until `release`."""
     _in_use.add(key_of(preferences))
+
+
+def unuse(key: str) -> None:
+    """No panel's models use the library at `key` any more; its databases stay until `release`."""
+    _in_use.discard(key)
 
 
 def held_libraries() -> list:

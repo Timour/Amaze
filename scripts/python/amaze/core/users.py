@@ -97,12 +97,12 @@ def create(preferences, name: str, library: str = "") -> str:
 
 
 def delete(preferences, uid) -> bool:
-    """Remove a user, their favourites and folder list; their comments and all else they made stay."""
+    """Remove a user, their favourites and folder list; their comments and all they made stay."""
     uid = str(uid)
     held = _master(preferences)
     if not held.get(SECTION, uid):
         return False
-    library_db.flush(preferences)    # changes still waiting are saved first, as the user who made them
+    library_db.flush(preferences)    # changes still waiting are saved first, by who made them
     for name, kind in guard.DATABASES.items():
         own = library_db.document(preferences, name)
         dropped = [section for section, how in kind.sections.items()
