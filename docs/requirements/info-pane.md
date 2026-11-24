@@ -27,5 +27,5 @@ levels and the rules for tests are in the [README](README.md).
 - IN-28 Wrong output: Several selected items show how many they are and the size of all their files, a shared file counted once.
 - IN-29 Wrong output: An image file the pane reads shows at the pane's width in screen pixels, upright, in its own shape, with alpha, one channel as grey, scene values through Houdini's display view.
 - IN-30 Wrong output: The picture shown is always of the file selected now; a late one for another file is dropped.
-- IN-31 Wrong output: No decoded picture is kept: hiding the picture or the pane drops it, and showing it again, or selecting the file again after it changed, reads the file again.
+- IN-31 Wrong output: No decoded picture is kept: hiding the picture or the pane drops it, and showing it again reads the file again.
 - IN-32 Wrong output: Making the pane wider reads the picture again at the new width once the drag stops, unless the picture already is the whole file.

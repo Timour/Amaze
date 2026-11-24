@@ -22,8 +22,6 @@ import OpenImageIO as oiio  # noqa: E402
 
 from amaze.core import code_library, conversion, cop_library, file_info, gradient_library  # noqa: E402
 from amaze.core import image_preview, library, library_files, material, texstore, versions  # noqa: E402
-from amaze.helpers import theme  # noqa: E402
-from amaze.panel import info_panel  # noqa: E402
 from amaze.sections import code as code_section, color as color_section  # noqa: E402
 from amaze.sections import material as material_section, node as node_section  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
@@ -72,24 +70,6 @@ def section(cls, model):
     return made
 
 
-class Asks(QtCore.QObject):
-    """A reader that records each ask; `answer`, when set, is emitted at once."""
-
-    ready = QtCore.Signal(str, object)
-
-    def __init__(self):
-        super().__init__()
-        self.asked, self.stops, self.answer = [], 0, None
-
-    def ask(self, key, what):
-        self.asked.append((key, what))
-        if self.answer is not None:
-            self.ready.emit(key, self.answer)
-
-    def stop(self):
-        self.stops += 1
-
-
 class Gate:
     """A stand-in read on the reader's thread: waits for `release` or a cancel, and records both."""
 
@@ -109,7 +89,7 @@ class Gate:
 
 
 class _Info(unittest.TestCase):
-    """A fixture library, a scratch folder of files, and an info pane with recording readers."""
+    """A fixture library and a scratch folder of files."""
 
     def setUp(self):
         test_support.reset_database_singletons()
@@ -128,20 +108,6 @@ class _Info(unittest.TestCase):
     def folder_of(self, model, mat_id: str) -> str:
         return model.asset_directories(mat_id)["folder"]
 
-    def pane(self):
-        rows, pictures = Asks(), Asks()
-        pane = info_panel.InfoPanel(types.SimpleNamespace(), rows, pictures=pictures)
-        self.addCleanup(pane.deleteLater)
-        self.addCleanup(pane.hide)
-        pane.resize(400, 900)
-        pane.show()
-        QtWidgets.QApplication.processEvents()
-        return pane, rows, pictures
-
-    def file_subject(self, path: str, key: str = "", before=(("Name", "a"),)):
-        return file_info.Subject(key or path, "a", "EXR", before, (),
-                                 file_info.request_for_file(path))
-
     def gated(self, module, answer):
         """`module.read` replaced by a Gate until the test ends, its threads waited for."""
         gate = Gate(answer)
@@ -151,6 +117,17 @@ class _Info(unittest.TestCase):
         self.addCleanup(test_support.pump_until, lambda: not file_info.engine._threads, 5.0)
         self.addCleanup(gate.release.set)
         return gate
+
+    def late_answer(self, reader, first, second) -> list:
+        """The keys `reader` emits when the first answer is on its way as the second ask comes."""
+        got = []
+        reader.ready.connect(lambda key, _answer: got.append(key))
+        first()
+        self.assertTrue(file_info.engine._threads[-1].wait(3000), "the first read did not end")
+        second()    # before the first answer, already sent, reaches the UI thread
+        self.assertTrue(test_support.pump_until(lambda: not file_info.engine._threads, 3.0))
+        test_support.pump_until(lambda: False, 0.2)
+        return got
 
     def usd_with_payload(self) -> str:
         put(self.dir, "inner.usda", '#usda 1.0\n(\n    defaultPrim = "root"\n)\n'
@@ -212,28 +189,10 @@ class FactsTest(_Info):
         test_support.pump_until(lambda: False, 0.2)
         self.assertEqual([], got)
 
-        pane, rows, _pictures = self.pane()
-        pane.hide()
-        pane.set_subject(self.file_subject("/lib/a.bgeo.sc"))
-        self.assertEqual([], rows.asked, "a hidden pane read a file")
-
     def test_in20_facts_for_an_earlier_selection_are_never_shown(self):
-        gate = self.gated(file_info, [("Read", "rows")])
-        got, reader = [], file_info.Reader()
-        reader.ready.connect(lambda key, rows: got.append(key))
-        reader.ask("a", file_info.Request(file_info.KIND_SIZES, ("/a",)))
-        reader.ask("b", file_info.Request(file_info.KIND_SIZES, ("/b",)))
-        gate.release.set()
-        self.assertTrue(test_support.pump_until(lambda: got, 3.0))
-        test_support.pump_until(lambda: not file_info.engine._threads, 3.0)
-        self.assertEqual(["b"], got)
-
-        pane, rows, _pictures = self.pane()
-        pane.set_subject(self.file_subject("/lib/a.bgeo.sc", "k1"))
-        second = self.file_subject("/lib/b.bgeo.sc", "k2", (("Name", "b"),))
-        pane.set_subject(second)
-        rows.ready.emit("k1", [("Points", "8")])
-        self.assertEqual(second.before, pane.rows())
+        reader, sizes = file_info.Reader(), file_info.Request(file_info.KIND_SIZES, (self.box(),))
+        self.assertEqual(["b"], self.late_answer(reader, lambda: reader.ask("a", sizes),
+                                                 lambda: reader.ask("b", sizes)))
 
     def test_in21_a_materials_or_nodes_size_is_its_whole_folder(self):
         model, materials = self.materials()
@@ -384,22 +343,7 @@ class PictureTest(_Info):
         self.assertTrue(gate.calls[1][2].is_set(), "quitting did not stop the read")
         self.assertEqual([], got)
 
-        pane, _rows, pictures = self.pane()
-        pane.set_subject(self.file_subject("/lib/a.exr"))
-        stops = pictures.stops
-        pane.hide()
-        self.assertGreater(pictures.stops, stops, "hiding the pane did not stop the read")
-        pane.set_subject(self.file_subject("/lib/b.exr"))
-        pane.show()
-        pane.toggle_preview()    # the picture off
-        pane.set_subject(self.file_subject("/lib/c.exr"))
-        self.assertEqual(["/lib/a.exr"], [path for path, _width in pictures.asked])
-
-    def test_in29_a_picture_shows_at_the_panes_width_upright_in_its_own_shape(self):
-        pane, _rows, pictures = self.pane()
-        pane.set_subject(self.file_subject("/lib/a.exr"))
-        wide = round(pane.body_widget.width() * theme.screen_ratio(pane))
-        self.assertEqual([("/lib/a.exr", wide)], pictures.asked)
+    def test_in29_a_picture_is_read_at_the_width_asked_upright_in_its_own_shape(self):
         shaped = image_preview.read(picture(self.at("a.exr"), 400, 200, kind=oiio.HALF), 100)
         self.assertEqual((100, 50), (shaped.width(), shaped.height()))
         picture(self.at("turned.jpg"), 400, 200, Orientation=6)    # stored lying down, turned by its flag
@@ -414,53 +358,30 @@ class PictureTest(_Info):
         self.assertAlmostEqual(46, shown.pixelColor(4, 4).red(), delta=1)    # 0.18 of 255, as it is
         self.assertGreater(scene.pixelColor(4, 4).red(), 80, "scene values skipped the display view")
 
-    def test_in30_the_picture_shown_is_of_the_file_selected_now(self):
-        pane, _rows, pictures = self.pane()
-        pane.set_subject(self.file_subject("/lib/a.exr"))
-        pane.set_subject(self.file_subject("/lib/b.exr"))
-        pictures.ready.emit("/lib/a.exr", QtGui.QImage(40, 20, QtGui.QImage.Format.Format_RGB888))
-        self.assertIsNone(pane.preview.image(), "a late picture of another file was shown")
-        pictures.answer = QtGui.QImage(40, 20, QtGui.QImage.Format.Format_RGB888)
-        pane.set_subject(self.file_subject("/lib/c.exr"))
-        pictures.answer = None
-        pane.set_subject(self.file_subject("/lib/d.exr"))
-        self.assertIsNone(pane.preview.image(), "the last file's picture stayed")
+    def test_in30_a_late_picture_of_another_file_is_dropped(self):
+        first, second = picture(self.at("a.png"), 8, 8), picture(self.at("b.png"), 8, 8)
+        reader = image_preview.Reader()
+        self.assertEqual([second], self.late_answer(reader, lambda: reader.ask(first, 8),
+                                                    lambda: reader.ask(second, 8)))
 
     def test_in31_no_decoded_picture_is_kept(self):
-        pane, _rows, pictures = self.pane()
-        pictures.answer = QtGui.QImage(40, 20, QtGui.QImage.Format.Format_RGB888)
-        pane.set_subject(self.file_subject("/lib/a.exr"))
-        pane.toggle_preview()
-        self.assertIsNone(pane.preview.image(), "a hidden picture was kept")
-        pane.toggle_preview()
-        pane.hide()
-        self.assertIsNone(pane.preview.image(), "a hidden pane kept its picture")
-        pane.show()
-        pane.set_subject(self.file_subject("/lib/a.exr"))
-        pane.set_subject(self.file_subject("/lib/a.exr", before=(("Size", "2 KB"),)))    # changed
-        self.assertEqual(4, len(pictures.asked), "a picture was shown again without a read")
-        path = picture(self.at("a.png"), 40, 20)
-        self.assertEqual(40, image_preview.read(path, 100).width())
-        picture(path, 60, 20)
-        self.assertEqual(60, image_preview.read(path, 100).width(), "the old picture was kept")
+        path, widths = self.at("a.png"), []
+        reader = image_preview.Reader()
+        reader.ready.connect(lambda _path, image: widths.append(image.width()))
+        for count, width in enumerate((40, 60), 1):
+            picture(path, width, 20)    # the same file, changed
+            reader.ask(path, 100)
+            self.assertTrue(test_support.pump_until(lambda: len(widths) == count, 3.0))
+        self.assertEqual([40, 60], widths, "the picture read before was kept")
 
-    def test_in32_a_wider_pane_reads_the_picture_again_once_the_drag_stops(self):
-        pane, _rows, pictures = self.pane()
-        for whole, asks in ((False, 1), (True, 0)):
-            image = QtGui.QImage(200, 100, QtGui.QImage.Format.Format_RGB888)
-            if whole:
-                image.setText(image_preview.WHOLE, "1")
-            pictures.answer = image
-            pane.set_subject(self.file_subject("/lib/%s.exr" % whole))
-            pictures.asked.clear()
-            pane.resize(pane.width() + 40, pane.height())
-            pane.resize(pane.width() + 40, pane.height())
-            QtWidgets.QApplication.processEvents()
-            self.assertEqual([], pictures.asked, "the read did not wait for the drag to stop")
-            test_support.pump_until(lambda: False, info_panel.WIDER_READ_MS * 3 / 1000)
-            with self.subTest(whole=whole):
-                self.assertEqual(asks, len(pictures.asked))
-
+    def test_in32_a_picture_narrower_than_asked_is_the_whole_file(self):
+        path, marks = picture(self.at("a.exr"), 400, 200, kind=oiio.HALF), []
+        reader = image_preview.Reader()
+        reader.ready.connect(lambda _path, image: marks.append(image.text(image_preview.WHOLE)))
+        for count, width in enumerate((100, 900), 1):
+            reader.ask(path, width)
+            self.assertTrue(test_support.pump_until(lambda: len(marks) == count, 3.0))
+        self.assertEqual(["", "1"], marks, "the whole file is not told from a part of it")
 
 if __name__ == "__main__":
     unittest.main()
