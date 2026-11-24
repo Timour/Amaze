@@ -70,6 +70,11 @@ def targets() -> tuple:
     return tuple(apis())
 
 
+def label_of(sources) -> str:
+    """The renderers in `sources`, in menu order, as a summary names them."""
+    return " and ".join(renderers.label(source) for source in targets() if source in sources)
+
+
 def api(renderer):
     """The API for a stored renderer value, the MaterialX family as MaterialX; None if none."""
     return apis().get(renderers.normalized(renderer))

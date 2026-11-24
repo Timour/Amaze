@@ -381,8 +381,6 @@ class GridGestureMixin:
         super().mouseReleaseEvent(event)
 
     def _release(self, event: QtGui.QMouseEvent) -> None:
-        from amaze.core import dragengine
-        from amaze.helpers import helpers
         if self._dragging and event.button() != QtCore.Qt.MouseButton.LeftButton:    # a right or middle release mid-drag cancels the drag and removes the tag
             self._end_drag(miss=True)
             self._ended_early = True    # the left button is still down
@@ -403,16 +401,10 @@ class GridGestureMixin:
                         outcome = True
                     elif folder is not None:    # File: the tiles' files move into that folder, on disk
                         outcome = panel.pane.files.move_files(folder)
-                    else:    # apply the section's DropRule; no rule or no target shows only the red X
-                        rule = self._drop_rule(panel, section, idx)
-                        if rule is not None:
-                            helpers.forget_placed()
-                            live = panel.pane.sections.get(section)
-                            with dragengine.holding_drop_group():    # one undo group: the handler, its placement and the wire insert
-                                outcome = self._apply_drop_rule(
-                                    rule, panel, live, idx, event)
-                                if outcome:
-                                    self._splice_if_on_a_wire(panel, event)
+                    else:    # the shared release; no rule or no target shows only the red X
+                        model, proxy = panel.pane.sections.get(section).tile_models()
+                        outcome = panel.pane.drop_placement.release(
+                            section, model.tile_key(proxy.mapToSource(idx).row()))
             except hou.PermissionError as refusal:    # only this class: a locked network raises it; any other error propagates
                 debug.exception("drop failed - permission error", refusal,
                                 section=self._drag_section)
@@ -492,45 +484,6 @@ class GridGestureMixin:
         """This row's declared drop behaviour by section key, resolved by `section_base.drop_rule`."""
         return section_base.drop_rule(
             sections.SECTION_INDEX.get(section), panel.pane, idx)
-
-    @staticmethod
-    def _apply_drop_rule(rule, panel, section, idx, event) -> bool:
-        """One order for every DropRule: on_node (result final), resolve, on_space ▸o/section-api"""
-        if rule.on_node is not None:
-            node = panel.pane.drop_placement.node_under_cursor()
-            if node is not None:
-                apply_to_node = section_base.drop_handler(section, rule.on_node)
-                return bool(apply_to_node(idx, node))
-        if rule.resolve is not None:
-            resolve = section_base.drop_handler(section, rule.resolve)
-            return bool(resolve(idx))
-        if rule.on_space is not None:
-            net = panel.pane.drop_placement.network_under_release()
-            if net is None:
-                return section.reject_drop()
-            create = section_base.drop_handler(section, rule.on_space)    # the position is used only when the editor under the cursor shows that network
-            return bool(create(idx, net, panel.pane.drop_placement.release_position_in(net)))
-        return section.reject_drop()
-
-    @staticmethod
-    def _splice_if_on_a_wire(panel, event) -> None:
-        """Insert the nodes `helpers.placed_nodes` returns into the wire under the cursor."""
-        from amaze.core import dragengine
-        from amaze.helpers import helpers
-        placed = helpers.placed_nodes()
-        if not placed:
-            return
-        editor = dragengine.pane_tab_under_cursor()
-        net = panel.pane.drop_placement.network_under_release()
-        spot = panel.pane.drop_placement.release_position_in(net) if net is not None else None
-        wire, _name, _index = dragengine.wire_under_cursor(    # the placed nodes are excluded: they are already under the cursor
-            editor, spot, exclude=placed)
-        if wire is not None:
-            dragengine.splice_into_wire(wire, placed, editor)
-            return
-        dragengine.connect_to_neighbour(    # no wire, but a lone node or the end of a chain has a connector near the cursor
-            dragengine.connector_under_cursor(
-                editor, spot, exclude=placed), placed, editor)
 
 
 def _node_paths_from_mime(mime) -> list:

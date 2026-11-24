@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import hou
+from PySide6 import QtGui
 
-from amaze import messages
 from amaze.actions import code as code_actions
 from amaze.core import debug, section_list
 from amaze.helpers import wording
@@ -77,23 +77,15 @@ class CodeSection(base.AssetSection):
 
     def create_code_node_in(self, index, dest, position=None) -> bool:
         """A holder node for the snippet in `dest`, where that network kind has one, loaded with it."""
-        from amaze.core import dragengine
-        pane = self.pane
-        row, asset = self._code_asset(index)
+        from amaze.helpers import helpers
+        _row, asset = self._code_asset(index)
         type_name = self._holder_node_type_for(asset, dest)
         if not type_name:
             return False
-        name = wording.sanitize_usd_path(
-            str(getattr(asset, "name", "") or "")) or "snippet"
-        with dragengine.drop_group("Amaze Create Code Node"):
-            node = pane.drop_placement.create_holder_node(dest, type_name, name, position)
-            if node is None:
-                return False
-            ok, _reason = code_actions.apply_to_node(pane.code_model, row, node)
-            if not ok:
-                node.destroy()
-                return False
-        return True
+        name = wording.sanitize_usd_path(str(getattr(asset, "name", "") or "")) or "snippet"
+        return self.pane.drop_placement.create_holder_node(
+            dest, type_name, name, position, helpers.find_code_parm, asset.code,
+            "Amaze Create Code Node")
 
     def drop_code_at_release(self, index, node: hou.Node) -> bool:
         """Apply a dropped snippet to the node under the cursor; no code parm shows a reason."""
@@ -131,14 +123,15 @@ class CodeSection(base.AssetSection):
             self._edit_code_row(row)
 
     def menu_run(self, indexes, current, payload=None) -> None:
-        """Run the snippet in this Houdini; a failure is shown on the status line."""
+        """Run the snippet in this Houdini; why it did not run or stopped is on the status line."""
         row = self._code_row(current)
         if row is None:
             return
         asset = self.pane.code_model.assets[row]
-        problem = code_actions.run_python(asset.name, asset.code)
+        problem = code_actions.run(asset.name, asset.code, asset.renderer,
+                                   QtGui.QGuiApplication.keyboardModifiers())
         if problem:
-            debug.refuse(messages.SNIPPET_RUN_FAILED % (asset.name, problem))
+            debug.refuse(problem)
 
     def _edit_code_row(self, row: int) -> None:
         pane = self.pane

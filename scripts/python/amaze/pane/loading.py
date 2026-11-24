@@ -27,8 +27,8 @@ class Loading:
         try:
             applied = self._apply_click_rule(section, rule, index,
                                              payload)    # the menu entry's extra argument
-        except hou.PermissionError as refusal:    # only this class; anything else still raises
-            debug.exception("click failed - permission error", refusal,
+        except hou.Error as refusal:    # Houdini refused, a locked network included; a bug still raises
+            debug.exception("click failed - Houdini refused", refusal,
                             section=getattr(section, "key", ""))
             debug.refuse(str(refusal),    # ▸p/refuse-vs-alert
                          section=getattr(section, "key", ""))
@@ -65,12 +65,10 @@ class Loading:
 
     def _visible_selected_nodes(self) -> list:
         """Selected nodes in a visible editor's network, for the click actions ▸r/matlib-entries"""
+        from amaze.helpers import helpers
         networks = self._view_create_networks()
-        every = hou.selectedNodes()
-        sel = [node for node in every if node.parent() in networks]
-        debug.event("interact", "click_on_row selection",
-                    visible=len(sel), total=len(every),
-                    networks=len(networks))
+        sel = helpers.selected_in(networks)
+        debug.event("interact", "click_on_row selection", visible=len(sel), networks=len(networks))
         return sel
 
     def _view_create_networks(self) -> list:
@@ -136,12 +134,12 @@ class Loading:
             ui.displayMessage(summary, details="\n".join(failures),
                               title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
 
-    def import_geo_asset(self, index) -> None:
-        """Import a geometry file into the network editor's current network, per its kind."""
-        path = index.data(self.pane.file_files_model.PathRole)
-        if not path:
-            return
-        self.pane.drop_placement.import_geo_in_context(path, self._active_network_pwd())
+    def import_geo_assets(self, indexes) -> None:
+        """Import geometry files into the network editor's current network, as one undo step."""
+        paths = [index.data(self.pane.file_files_model.PathRole) for index in indexes]
+        with hou.undos.group("Amaze Import Geometry"):
+            for path in filter(None, paths):
+                self.pane.drop_placement.import_geo_in_context(path, self._active_network_pwd())
 
     def _import_material_builder(self, asset_id, target, context_node=None):
         """Import a library material by id on a drop; the builder VOP, or None once reported."""
@@ -172,20 +170,18 @@ class Loading:
         )
 
     def assign_material_to_obj(self, asset_ids, obj_node) -> bool:
-        """Drop in an OBJ viewport: import to /mat, assigning the first material to `obj_node`."""
+        """Drop in an OBJ viewport: import to /mat, assigning the pressed material to `obj_node`."""
         if not self.pane.material_model or not asset_ids:
             return False
-        builder = None
-        for i, aid in enumerate(asset_ids):
-            vop = self._import_material_builder(aid, "mat")
-            if i == 0 and vop is not None:
-                builder = vop
-        if builder is None:
-            return False
         parm = obj_node.parm("shop_materialpath")
-        if parm is None:
+        if parm is None:    # checked first: an object that takes no material gets no import either
             debug.refuse(messages.OBJECT_HAS_NO_MATERIAL_PARM % obj_node.name())
             return False
+        builder = self._import_material_builder(asset_ids[0], "mat")
+        if builder is None:    # the pressed one failed, its reason shown: the rest are not imported
+            return False
+        for aid in asset_ids[1:]:
+            self._import_material_builder(aid, "mat")
         parm.set(builder.path())
         return True
 

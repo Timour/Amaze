@@ -8,6 +8,7 @@ import hou
 from amaze import messages
 from amaze.actions import files as files_actions
 from amaze.core import debug, folders, locations
+from amaze.helpers import wording
 
 
 def reveal(path: str) -> None:
@@ -88,18 +89,25 @@ class Files:
         self.pane.file_folders_model.add_folder(path)
 
     def remove_locations(self) -> list:
-        """Unregister the selected location(s), returning the removed paths; disk is untouched."""
+        """Unregister the selected location(s) once the user says Remove; the removed paths."""
         folders_model = self.pane.file_folders_model
         rows = sorted(    # top rows only: a subfolder's row number is not a location's
             (i.row() for i in self.pane.sidebar.rows() if not i.parent().isValid()),
             reverse=True
         )
-        removed = []
-        for row in rows:
-            path = folders_model.data(folders_model.index(row, 0), folders_model.PathRole)
-            if folders_model.remove_folder(row):
-                removed.append(path)
-        return removed
+        paths = {row: folders_model.registered_at(row) for row in rows}
+        rows = [row for row in rows if paths[row]]    # All and the scene row are not locations
+        if not rows:
+            return []
+        names = wording.and_list('"%s"' % folders_model.display_name(paths[row])
+                                 for row in reversed(rows))
+        ui = getattr(hou, "ui", None)
+        if ui is None or ui.displayMessage(
+                messages.REMOVE_LOCATION_CONFIRM % names, buttons=messages.BUTTONS_REMOVE,
+                default_choice=1, close_choice=1,
+                title=messages.TITLE_AMAZE, severity=hou.severityType.Warning) != 0:
+            return []
+        return [paths[row] for row in rows if folders_model.remove_folder(row)]
 
     def locate_folder(self, folders_model) -> None:
         """Sidebar "Locate Folder...": re-point the selected registered folder at a new location."""

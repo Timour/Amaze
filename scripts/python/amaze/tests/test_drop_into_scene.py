@@ -1,0 +1,314 @@
+"""Drop into the scene: one test per requirement in docs/requirements/drop-into-scene.md."""
+
+import os
+import shutil
+import sys
+import types
+import unittest
+from unittest import mock
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+from PySide6 import QtCore, QtWidgets  # noqa: E402
+
+_app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
+from amaze import messages  # noqa: E402
+from amaze.tests import test_support  # noqa: E402
+
+try:    # without Houdini every test here skips
+    import hou
+    from amaze.core import debug, dragengine, lop_assign
+    from amaze.helpers import helpers
+    from amaze.pane import drop_placement, loading
+    from amaze.sections import code as code_section, file as file_section
+except ImportError:
+    hou = None
+
+CUBE = os.path.join(test_support.FILES_FIXTURE_DIR, "cube.bgeo")
+
+
+def _host_insert(conn, chain, _every, remove_existing_connections=False):
+    """What `insertItemsIntoWire` does for one chain, in its own group; the real one needs `hou.ui`."""
+    with hou.undos.group("Insert items"):
+        chain[0].setInput(0, conn.inputItem(), conn.inputItemOutputIndex())
+        conn.outputItem().setInput(conn.inputIndex(), chain[-1])
+
+
+class _Snippets(QtCore.QAbstractListModel):
+    """The part of the code model a drop reads: one row per snippet, keyed by its id."""
+
+    def __init__(self, assets):
+        super().__init__()
+        self.assets = assets
+
+    def rowCount(self, parent=QtCore.QModelIndex()):
+        return len(self.assets)
+
+    def data(self, index, role=QtCore.Qt.ItemDataRole.DisplayRole):
+        return self.assets[index.row()].name if role == QtCore.Qt.ItemDataRole.DisplayRole else None
+
+    def tile_key(self, row: int) -> str:
+        return self.assets[row].mat_id
+
+
+class _Stock:
+    """Houdini's own LOP drop helpers, which hython cannot load: a library below the node, an assign."""
+
+    @staticmethod
+    def getMaterialLibraryLop(node):
+        library = node.parent().createNode("materiallibrary")
+        library.setInput(0, node)
+        library.setDisplayFlag(True)
+        return library, library, None
+
+    @staticmethod
+    def getMaterialPrimPathForNode(library, vop):
+        return "/materials/" + vop.name()
+
+    @staticmethod
+    def assignMat(primpath, matpath, node):
+        assign = node.parent().createNode("assignmaterial")
+        assign.setInput(0, node)
+        assign.parm("primpattern1").set(primpath)
+        assign.parm("matspecpath1").set(matpath)
+
+
+@unittest.skipUnless(hou, "Houdini is not loaded")
+class _Drops(unittest.TestCase):
+    """The pane's drop placement over a stub pane, what is refused recorded, a geo and a LOP network."""
+
+    def setUp(self):
+        self.refused, self.imported = [], []
+        patcher = mock.patch.object(debug, "refuse", lambda reason, **k: self.refused.append(str(reason)))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.pane = types.SimpleNamespace(prefs=types.SimpleNamespace(path_style="home"),
+                                          material_model=object())
+        self.pane.loading = types.SimpleNamespace(import_material_into_container=self.material_into)
+        self.placement = drop_placement.DropPlacement(self.pane)
+        self.pane.drop_placement = self.placement
+        self.pane.code_model = _Snippets([types.SimpleNamespace(
+            mat_id="s1", name="tint", renderer="VEX", code="@Cd = {1, 0, 0};")])
+        self.pane.code_sorted_model = QtCore.QIdentityProxyModel()
+        self.pane.code_sorted_model.setSourceModel(self.pane.code_model)
+        self.pane.code_category_model = self.pane.code_selection_model = object()
+        self.pane.sections = {"code": code_section.CodeSection(self.pane)}
+        self.geo = hou.node("/obj").createNode("geo", "dd_geo")
+        self.lopnet = hou.node("/stage").createNode("lopnet", "dd_lop")
+        self.sphere = self.lopnet.createNode("sphere")
+        self.sphere.setDisplayFlag(True)
+        for node in (self.geo, self.lopnet):
+            self.addCleanup(test_support.drop_node, node)
+        self.addCleanup(hou.undos.clear)
+
+    def material_into(self, asset_id, library):
+        """The material import a drop asks for: a material in `library`, or None for `fails`."""
+        self.imported.append(asset_id)
+        if asset_id == "fails":
+            return None
+        made = library.createNode("subnet", asset_id)
+        made.setGenericFlag(hou.nodeFlag.Material, True)
+        return made
+
+    def release(self, node=None, network=None, spot=None, wire=None):
+        """The snippet released over `node`, or network space of `network` at `spot`, or a `wire`."""
+        host = types.ModuleType("nodegraphutils")
+        host.insertItemsIntoWire, host.moveNodesToAvoidOverlap = _host_insert, lambda *a, **k: None
+        under = (wire, "", 0) if wire is not None else (None, "", -1)
+        with mock.patch.object(self.placement, "node_under_cursor", return_value=node), \
+                mock.patch.object(self.placement, "network_under_release", return_value=network), \
+                mock.patch.object(self.placement, "release_position_in", return_value=spot), \
+                mock.patch.object(dragengine, "wire_under_cursor", return_value=under), \
+                mock.patch.object(dragengine, "connector_under_cursor", return_value=(None, "", -1)), \
+                mock.patch.dict(sys.modules, {"nodegraphutils": host}):
+            return self.placement.release("code", "s1", object(), hou.paneTabType.NetworkEditor)
+
+    def lop_drop(self, ids, choice):
+        return self.placement._assign_dropped(_Stock, self.lopnet, self.sphere,
+                                              ids, choice)
+
+    @staticmethod
+    def names(network) -> list:
+        return sorted(child.name() for child in network.children())
+
+
+class ADropIsWholeOrNothingTest(_Drops):
+
+    def test_dd01_one_undo_takes_back_a_whole_drop(self):
+        upstream, downstream = self.geo.createNode("box"), self.geo.createNode("null")
+        downstream.setInput(0, upstream)
+        hou.undos.clear()
+        self.assertTrue(self.release(network=self.geo, spot=hou.Vector2(0, -1),
+                                     wire=downstream.inputConnections()[0]))
+        self.assertEqual("attribwrangle", downstream.inputs()[0].type().name(), "premise: no splice")
+        hou.undos.performUndo()
+        self.assertEqual(([upstream], ["box1", "null1"]), (list(downstream.inputs()), self.names(self.geo)))
+        before = self.names(self.lopnet)
+        hou.undos.clear()
+        self.assertTrue(self.lop_drop(["dd01_mat"], ("assign", "Set as Material", "/sphere1")))
+        self.assertIn("materiallibrary1", self.names(self.lopnet), "premise: no library was made")
+        hou.undos.performUndo()
+        self.assertEqual(before, self.names(self.lopnet), "one undo left part of the drop")
+
+    def test_dd02_a_drop_that_fails_at_any_step_leaves_no_node_and_says_why(self):
+        folder = test_support.scratch_dir("amaze_dd02_")
+        self.addCleanup(shutil.rmtree, folder, True)
+        hda = os.path.join(folder, "dd02.hda")
+        self.addCleanup(hou.hda.uninstallFile, hda)
+        locked = self.geo.createNode("subnet").createDigitalAsset(
+            name="amaze_dd02_locked", hda_file_name=hda, description="dd02")
+        self.addCleanup(test_support.drop_node, locked)
+        locked.matchCurrentDefinition()    # its contents locked, as a saved asset's are
+        inside, before_geo = self.names(locked), self.names(self.geo)
+        wrangle = (locked, "attribwrangle", helpers.find_code_parm, "@Cd = 1;", "Amaze Create Code Node")
+        self.assertFalse(self.placement.create_holder_node(*wrangle[:2], "dd02", None, *wrangle[2:]))
+        self.assertIsNone(self.placement.import_geo_in_context(CUBE, locked))
+        self.assertEqual((inside, 2), (self.names(locked), len(self.refused)))
+        real = hou.Parm.set
+
+        def refused(parm, *args, **kwargs):
+            if parm.name() == "snippet":
+                raise hou.PermissionError("the parameter is locked")
+            return real(parm, *args, **kwargs)
+        with mock.patch.object(hou.Parm, "set", refused):
+            self.assertFalse(self.placement.create_holder_node(
+                self.geo, "attribwrangle", "dd02", None, *wrangle[2:]))
+        self.assertIn("the parameter is locked", self.refused[-1])
+        before = self.names(self.lopnet)
+        self.assertFalse(self.lop_drop(["fails", "dd02_other"], ("assign", "Set", "/sphere1")))
+        self.assertEqual((before, ["fails"]), (self.names(self.lopnet), self.imported))
+        self.assertEqual(before_geo, self.names(self.geo), "a node the failed drops made was left")
+
+
+class _Library:
+    """A LOP network: two spheres, a library of mat_a and mat_b, the shown branch binding mat_b."""
+
+    def __init__(self, test):
+        self.lopnet = hou.node("/stage").createNode("lopnet")
+        test.addCleanup(test_support.drop_node, self.lopnet)
+        a = self.lopnet.createNode("sphere", "sphere_a")
+        b = self.lopnet.createNode("sphere", "sphere_b")
+        b.setFirstInput(a)
+        self.library = self.lopnet.createNode("materiallibrary")
+        self.library.setFirstInput(b)
+        for index, name in enumerate(("mat_a", "mat_b"), 1):
+            self.library.createNode("subnet", name).setGenericFlag(hou.nodeFlag.Material, True)
+            self.library.parm("materials").set(index)
+            self.library.parm("matnode%d" % index).set(name)
+        self.shown = self.assign(self.library, "/sphere_a", "/materials/mat_b")
+        self.shown.setDisplayFlag(True)
+
+    def assign(self, after, prims, material):
+        node = after.parent().createNode("assignmaterial")
+        node.setFirstInput(after)
+        node.parm("nummaterials").set(1)
+        node.parm("primpattern1").set(prims)
+        node.parm("matspecpath1").set(material)
+        return node
+
+    def removed(self) -> bool:
+        return lop_assign.remove_unreferenced_material(self.lopnet, self.library, "/materials/mat_a")
+
+
+class ASwapKeepsAUsedMaterialTest(_Drops):
+
+    def test_dd03_a_swap_never_deletes_a_material_the_scene_still_uses(self):
+        def another_branch(scene):
+            branch = scene.lopnet.createNode("subnet", "other_branch")
+            branch.setFirstInput(scene.library)
+            inside = scene.assign(branch.indirectInputs()[0], "/sphere_b", "/materials/mat_a")
+            branch.node("output0").setFirstInput(inside)
+
+        def an_object(scene):
+            self.geo.parm("shop_materialpath").set(scene.library.node("mat_a").path())
+
+        def a_layer(scene):
+            folder = test_support.scratch_dir("amaze_dd03_")
+            self.addCleanup(shutil.rmtree, folder, True)
+            path = test_support.put(folder, "layer.usda", '#usda 1.0\nover "sphere_b"\n{\n'
+                                    '    rel material:binding = </materials/mat_a>\n}\n')
+            layer = scene.lopnet.createNode("sublayer")
+            layer.setFirstInput(scene.shown)
+            layer.parm("filepath1").set(path)
+        for use in (another_branch, an_object, a_layer):
+            with self.subTest(use.__name__):
+                self.geo.parm("shop_materialpath").set("")
+                scene = _Library(self)
+                use(scene)
+                self.assertFalse(scene.removed(), "a material in use was removed")
+                self.assertEqual(["mat_a", "mat_b"], self.names(scene.library))
+        self.geo.parm("shop_materialpath").set("")
+        self.assertTrue(_Library(self).removed(), "a material nothing uses was kept")
+
+
+class WhereADropGoesTest(_Drops):
+
+    def test_dd20_a_tile_goes_to_the_node_under_it_else_into_the_network_shown_else_nowhere(self):
+        wrangle = self.geo.createNode("attribwrangle")
+        self.assertTrue(self.release(node=wrangle, network=self.geo))
+        self.assertEqual("@Cd = {1, 0, 0};", wrangle.parm("snippet").eval())
+        self.assertTrue(self.release(network=self.geo, spot=hou.Vector2(5, -5)))
+        made, = [node for node in self.geo.children() if node.name() == "tint"]
+        self.assertLess((made.position() - hou.Vector2(5, -5)).length(), 1, "not at the outlined spot")
+        objects = self.names(hou.node("/obj"))
+        self.assertFalse(self.release(network=hou.node("/obj")), "a network that holds no wrangle")
+        self.assertFalse(self.release(), "a release over nothing")
+        self.assertEqual(objects, self.names(hou.node("/obj")))
+
+    def test_dd22_a_file_dropped_on_a_node_sets_its_first_file_parameter(self):
+        pane = types.SimpleNamespace(file_files_model=file_section.file_library.FileFiles,
+                                     drop_placement=self.placement)
+        section = file_section.FileSection(pane)
+        home = hou.text.expandString("$HOME")
+        index = types.SimpleNamespace(data=lambda role: os.path.join(home, "rock.bgeo"))
+        loader = self.geo.createNode("file")
+        self.assertTrue(section.drop_file_path_on_node(index, loader))
+        self.assertEqual("$HOME/rock.bgeo", loader.parm("file").unexpandedString())
+        self.assertFalse(section.drop_file_path_on_node(index, self.geo.createNode("null", "plain")))
+        self.assertEqual([messages.NODE_HAS_NO_FILE_PARM % ("plain", "rock.bgeo")], self.refused)
+
+    def test_dd23_geometry_becomes_a_loader_a_sop_create_or_a_geo_shown_current_and_selected(self):
+        for network, made_in, kind in ((self.geo, self.geo, "file"),
+                                       (self.lopnet, self.lopnet, "sopcreate"),
+                                       (hou.node("/obj"), hou.node("/obj"), "geo")):
+            with self.subTest(kind):
+                made = self.placement.import_geo_in_context(CUBE, network)
+                self.addCleanup(test_support.drop_node, made)
+                self.assertEqual((made_in, kind), (made.parent(), made.type().name()))
+                self.assertTrue(made.isDisplayFlagSet() and made.isCurrent() and made.isSelected())
+        self.assertEqual([self.sphere], list(hou.node("/stage/dd_lop/cube").inputs()),
+                         "the SOP Create is not chained to the display node")
+        self.assertEqual("cube", hou.node("/obj/cube").name())
+
+    def test_dd24_a_prim_offers_a_swap_per_bound_material_then_a_set_per_parent(self):
+        stage = _Library(self).shown.stage()
+        for prim, offered in (("/sphere_a", [("swap", "Swap mat_b"), ("assign", "Set as Material on sphere_a")]),
+                              ("/sphere_b", [("assign", "Set as Material on sphere_b")])):
+            self.assertEqual(offered, [choice[:2] for choice in lop_assign.drop_choices(stage, prim)])
+
+    def test_dd25_an_object_with_no_material_parameter_gets_nothing(self):
+        imported = []
+        pane = types.SimpleNamespace(material_model=object())
+        loads = loading.Loading(pane)
+        loads._import_material_builder = lambda aid, target: imported.append(aid) or hou.node("/mat")
+        takes_none = hou.node("/obj").createNode("cam", "dd25_cam")
+        self.addCleanup(test_support.drop_node, takes_none)
+        self.assertFalse(loads.assign_material_to_obj(["a", "b"], takes_none))
+        self.assertEqual([], imported, "a material was imported for an object that takes none")
+        self.assertTrue(loads.assign_material_to_obj(["a", "b"], self.geo))
+        self.assertEqual((["a", "b"], "/mat"), (imported, self.geo.parm("shop_materialpath").eval()))
+
+    def test_dd26_placing_dropped_nodes_never_moves_the_users_nodes(self):
+        mine = [self.geo.createNode("null") for _ in range(4)]
+        for count, node in enumerate(mine):
+            node.setPosition(hou.Vector2(count * 0.4, 0))
+        before = [node.position() for node in mine]
+        self.placement.create_holder_node(self.geo, "attribwrangle", "dd26", hou.Vector2(0.2, 0),
+                                          helpers.find_code_parm, "", "Amaze Create Code Node")
+        made = self.placement.import_geo_in_context(CUBE, self.geo)
+        self.assertIsNotNone(made)
+        self.assertEqual(before, [node.position() for node in mine])
+
+
+if __name__ == "__main__":
+    unittest.main()

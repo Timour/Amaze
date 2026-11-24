@@ -98,8 +98,7 @@ class Assets:
                 unlisted.append(mat.name)    # the copy keeps its source's name
             lines.extend(report.summary_lines())
         self.render_new_thumbnails(before)
-        shown = " and ".join(renderers.label(source)
-                             for source in conversion_engine.targets() if source in sources)
+        shown = conversion_engine.label_of(sources)
         ui = getattr(hou, "ui", None)
         if ui is not None and eligible:
             ui.displayMessage(

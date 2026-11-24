@@ -133,6 +133,26 @@ def _bound_on_stage(node, matprimpath) -> bool:
     return False
 
 
+def _branch_ends(node) -> list:
+    """The last node of every branch below `node`: the stages that can bind its materials."""
+    ends, seen, todo = [], set(), [node]
+    while todo:
+        each = todo.pop()
+        if each not in seen:
+            seen.add(each)
+            after = list(each.outputs())
+            todo.extend(after)
+            if not after:
+                ends.append(each)
+    return ends
+
+
+def _used_by_a_node(vop) -> bool:
+    """Whether a node outside the material libraries refers to `vop`, as an object's material does."""
+    return any(node.type().name() != "materiallibrary" and not node.path().startswith(vop.path() + "/")
+               for node in vop.dependents())
+
+
 def remove_unreferenced_material(lopnet, liblop,
                                   matprimpath) -> bool:
     """Delete a material's explicit entries and VOP when nothing still uses it; whether it did."""
@@ -175,12 +195,16 @@ def remove_unreferenced_material(lopnet, liblop,
             if spec is not None and spec.eval() == matprimpath \
                     and pat is not None and pat.eval().strip():
                 return False
-    if _bound_on_stage(lopnet.displayNode() or liblop, matprimpath):
-        debug.event("lop", "material kept - the stage still binds it", material=matprimpath)
-        return False    # a file the network loads may bind it; only the cooked stage shows that
+    if any(_bound_on_stage(node, matprimpath)    # a file a branch loads may bind it: only its stage shows it
+           for node in _branch_ends(liblop) + [lopnet.displayNode()] if node is not None):
+        debug.event("lop", "material kept - a stage still binds it", material=matprimpath)
+        return False
     if vop is not None and not vop.path().startswith(
             liblop.path() + "/"):
         vop = None
+    if vop is not None and _used_by_a_node(vop):
+        debug.event("lop", "material kept - a node refers to it", material=matprimpath)
+        return False
     if vop is not None:
         for node in lopnet.children():
             if node.type().name() != "materiallibrary":

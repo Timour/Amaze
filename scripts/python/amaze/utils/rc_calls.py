@@ -132,8 +132,8 @@ def convertible(node, target) -> bool:
 
 
 def _chosen(node) -> list:
-    """The selection when `node` is in it, else `node` alone: the rule Save to Amaze uses."""
-    selected = list(hou.selectedNodes())
+    """The nodes selected in `node`'s network, the one shown, when `node` is one; else `node` alone."""
+    selected = helpers.selected_in((node.parent(),))
     return selected if node in selected else [node]
 
 
@@ -146,20 +146,30 @@ def _refusal(node, renderer, target) -> str:
 
 
 def _convert_one(node, renderer, target, word, swap, report):
-    """One node's converted copy beside it, or with `swap` in its place, current and selected."""
+    """One node's copy beside it, or with `swap` in its place once whole; a failed copy is removed."""
     from amaze.render.material_conversion import engine
-    old_name, old_position = node.name(), node.position()    # read before a swap destroys the node
-    made = engine.convert(node, renderer, target, node.parent(),
-                          "%s_%s" % (old_name, word.lower()), report)
-    if made.builder is not None:
-        made.builder.setPosition(old_position)    # a scripted createNode is placed at the origin
-        helpers.auto_place(made.builder)    # to a free position beside it, moving no other node
-        swapped = swap and made.shader is not None    # no shader: the old node is kept, as a plain convert keeps it
-        if swapped:
-            node.destroy()
-            made.builder.setName(old_name)    # exact: path references now find the copy; a refusal undoes the whole step
-            made.builder.setPosition(old_position)
-        made.builder.setCurrent(True, True)    # current and selected, as a node from the Tab menu is
+    parent, old_name, old_position = node.parent(), node.name(), node.position()
+    before = set(parent.children())
+    try:
+        made = engine.convert(node, renderer, target, parent,
+                              "%s_%s" % (old_name, word.lower()), report)
+    except Exception as exc:                              # noqa: BLE001 - any error skips this node
+        debug.exception("node menu conversion stopped", exc, node=node.path(), target=target)
+        report.skip(messages.CONVERSION_STOPPED % exc)
+        made = engine.Converted(None, None, False, report)
+    if made.shader is None:    # nothing converted: no empty or half-built copy is left
+        for left in set(parent.children()) - before:
+            left.destroy()
+        return engine.Converted(None, None, False, report)
+    made.builder.setPosition(old_position)    # a scripted createNode is placed at the origin
+    helpers.auto_place(made.builder)    # to a free position beside it, moving no other node
+    if swap and made.wired:    # only a whole copy replaces the old node
+        node.destroy()
+        made.builder.setName(old_name)    # exact: path references now find the copy
+        made.builder.setPosition(old_position)
+    elif swap:
+        report.skip(messages.SWAP_KEPT_OLD_NODE)
+    made.builder.setCurrent(True, True)    # current and selected, as a node from the Tab menu is
     return made
 
 
@@ -208,8 +218,7 @@ def convert(node, target, swap=False) -> None:
             HoudiniUI.status(messages.NODE_SWAPPED % (name, word) if swap
                                   else messages.NODE_CONVERTED % (name, word))
     else:
-        shown = " and ".join(renderers.label(source)
-                             for source in engine.targets() if source in sources)
+        shown = engine.label_of(sources)
         lines = skipped + [line for _made, report in reports for line in report.summary_lines()]
         ui.displayMessage(
             messages.CONVERSION_SUMMARY % (made_count, len(chosen), shown, word),

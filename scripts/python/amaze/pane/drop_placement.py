@@ -15,6 +15,74 @@ class DropPlacement:
     def __init__(self, pane) -> None:
         self.pane = pane
 
+    @staticmethod
+    def tile_index(section, key: str):
+        """The section's grid index of the tile `key` names, or None; the rules read that index."""
+        model, proxy = section.tile_models() if section is not None else (None, None)
+        if model is None or proxy is None or not key:
+            return None
+        for row in range(model.rowCount()):
+            if model.tile_key(row) == key:
+                index = proxy.mapFromSource(model.index(row, 0))
+                return index if index.isValid() else None
+        return None
+
+    def release(self, section_key: str, key: str, pane_tab=None, pane_kind=None):
+        """Tile `key` released over Houdini: True, False for a miss, or "menu"; one undo step."""
+        from amaze.core import dragengine
+        from amaze.helpers import helpers
+        from amaze.sections import base as section_base
+        section = self.pane.sections.get(section_key)
+        index = self.tile_index(section, key)
+        rule = section_base.drop_rule(section, self.pane, index) if index is not None else None
+        if rule is None:
+            return False
+        helpers.forget_placed()
+        try:
+            with dragengine.holding_drop_group():    # the handler, its placement and the splice
+                outcome = self._apply_drop_rule(rule, section, index, pane_tab, pane_kind)
+                if outcome:
+                    self._splice_if_on_a_wire(pane_tab)
+        except hou.PermissionError as refusal:    # a locked network; any other error is a bug and raises
+            debug.exception("drop failed - permission error", refusal, section=section_key)
+            debug.refuse(str(refusal), section=section_key)    # Houdini's own words ▸p/refuse-vs-alert
+            return False
+        return outcome
+
+    def _apply_drop_rule(self, rule, section, index, pane_tab, pane_kind):
+        """One order for every DropRule: on_node (result final), resolve, on_space ▸o/section-api"""
+        from amaze.sections import base as section_base
+        if rule.on_node is not None:
+            node = self.node_under_cursor(pane_tab, pane_kind)
+            if node is not None:
+                return bool(section_base.drop_handler(section, rule.on_node)(index, node))
+        if rule.resolve is not None:
+            return section_base.drop_handler(section, rule.resolve)(index)
+        if rule.on_space is not None:
+            net = self.network_under_release()
+            if net is None:
+                return section.reject_drop()
+            create = section_base.drop_handler(section, rule.on_space)
+            return bool(create(index, net, self.release_position_in(net)))
+        return section.reject_drop()
+
+    def _splice_if_on_a_wire(self, pane_tab=None) -> None:
+        """Insert the nodes the drop placed into the wire under the cursor, else a free connector."""
+        from amaze.core import dragengine
+        from amaze.helpers import helpers
+        placed = helpers.placed_nodes()
+        if not placed:
+            return
+        editor = pane_tab or dragengine.pane_tab_under_cursor()
+        net = self.network_under_release()
+        spot = self.release_position_in(net) if net is not None else None
+        wire, _name, _index = dragengine.wire_under_cursor(editor, spot, exclude=placed)
+        if wire is not None:
+            dragengine.splice_into_wire(wire, placed, editor)
+            return
+        dragengine.connect_to_neighbour(    # a lone node or a chain's end has a connector near the cursor
+            dragengine.connector_under_cursor(editor, spot, exclude=placed), placed, editor)
+
     def scene_path(self, path: str) -> str:
         """A path Amaze writes into the scene, spelled per Write Paths As; never for loads."""
         return helpers.houdini_path(
@@ -263,6 +331,7 @@ class DropPlacement:
             else "Amaze Assign Material"
         )
         with hou.undos.group(undo_label):    # the library, the import and the assign revert as one step
+            before = set(lopnet.children())
             try:    # Houdini's own library picker and its own assign ▸r/houdini-after-create
                 if target_lop is not None:
                     node2, liblop, _vop = stock.getMaterialLibraryLop(target_lop)
@@ -279,31 +348,25 @@ class DropPlacement:
                 debug.refuse(messages.NETWORK_REFUSED_MATERIAL_LIBRARY
                              % (lopnet.name(), refusal))
                 return False
-            if swap_targets is not None:
-                ids = list(ids)[:1]    # a swap replaces one material
-            vops = []
-            imported = []    # (asset id, vop) for the imports that succeeded
-            for aid in ids:
-                vop = self.pane.loading.import_material_into_container(aid, liblop)
-                if vop is not None:
-                    imported.append((aid, vop))
-                    vops.append(vop)
-            pressed_vop = None
-            if imported and ids and imported[0][0] == ids[0]:
-                pressed_vop = imported[0][1]
-            elif imported:
-                debug.refuse(messages.DROPPED_MATERIAL_IMPORT_FAILED)
-            debug.event("drag", "lop viewport drop", imported=len(vops),
+            ids = list(ids)[:1] if swap_targets is not None else list(ids)    # a swap replaces one
+            pressed_vop = self.pane.loading.import_material_into_container(ids[0], liblop)
+            if pressed_vop is None:    # its reason is shown; a library made for it goes too
+                for made in set(lopnet.children()) - before:
+                    made.destroy()
+                return False
+            for aid in ids[1:]:
+                self.pane.loading.import_material_into_container(aid, liblop)
+            debug.event("drag", "lop viewport drop", imported=len(ids),
                         amaze=liblop.path(), assign=str(assign_path),
                         swap=bool(swap_targets))
-            if pressed_vop is not None and swap_targets is not None:
+            if swap_targets is not None:
                 reason = lop_assign.swap_assignments(    # lop_assign edits the USD and returns a reason; the pane shows it
                     stock, lopnet, liblop, node2, swap_targets,
                     pressed_vop
                 )
                 if reason:
                     debug.refuse(reason)
-            elif assign_path and pressed_vop is not None:
+            elif assign_path:
                 try:
                     matpath = stock.getMaterialPrimPathForNode(
                         liblop, pressed_vop
@@ -317,7 +380,7 @@ class DropPlacement:
                 except Exception as exc:
                     debug.event("drag", "lop assign failed", error=str(exc))
                     debug.refuse(messages.MATERIAL_ASSIGN_FAILED % exc)
-        return bool(vops)
+        return True
 
     def import_materials_into_context(self, context, ids,
                                       position=None) -> None:
@@ -357,36 +420,42 @@ class DropPlacement:
         except AttributeError:
             return None
 
-    def create_holder_node(self, dest, type_name: str, name: str,
-                           position=None):
-        """Create `type_name` in `dest` if it can hold one, else None; the caller owns the undo group."""
+    def create_holder_node(self, dest, type_name: str, name: str, position, find_parm, value,
+                           label: str) -> bool:
+        """A `type_name` node in `dest` holding `value` in its `find_parm` parm, one undo step."""
+        from amaze.core import dragengine
         from amaze.helpers import helpers
-        if dest is None:
-            return None
         try:
             category = dest.childTypeCategory()
         except (AttributeError, hou.OperationFailed):
-            return None
+            return False
         if category is None or hou.nodeType(category, type_name) is None:
             debug.event("interact", "no holder node type for this network",
                         holder=type_name, dest=dest.path())
-            return None
-        try:
-            node = dest.createNode(type_name)
-        except hou.Error as refusal:    # the hou.Error is logged and None returned
-            debug.event("interact", "holder node not created",
-                        holder=type_name, dest=dest.path(),
-                        error=str(refusal))
-            return None
-        if name:
+            return False
+        with dragengine.drop_group(label):
             try:
-                node.setName(name, unique_name=True)
-            except hou.OperationFailed:
-                pass
-        if position is None:    # auto-place only without a position
-            helpers.auto_place(node)
-        else:
-            helpers.place_nodes([node], position)
-        debug.event("interact", "holder node created", holder=type_name,
-                    dest=dest.path())
-        return node
+                node = dest.createNode(type_name)
+            except hou.Error as refusal:    # a locked network raises PermissionError
+                debug.refuse(messages.HOLDER_NOT_MADE % (type_name, dest.path(), refusal))
+                return False
+            parm = find_parm(node)
+            try:
+                if parm is None:
+                    raise hou.OperationFailed("it has no parameter to hold it")
+                parm.set(value)
+            except hou.Error as refusal:    # the node it made is not left behind
+                node.destroy()
+                debug.refuse(messages.HOLDER_NOT_MADE % (type_name, dest.path(), refusal))
+                return False
+            if name:
+                try:
+                    node.setName(name, unique_name=True)
+                except hou.OperationFailed:
+                    pass
+            if position is None:    # auto-place only without a position
+                helpers.auto_place(node)
+            else:
+                helpers.place_nodes([node], position)
+        debug.event("interact", "holder node created", holder=type_name, dest=dest.path())
+        return True
