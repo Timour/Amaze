@@ -9,9 +9,8 @@ from collections import OrderedDict
 from PySide6 import QtCore, QtGui
 
 import amaze
-from amaze import amazetheme, messages
-from amaze.core import debug, material
-from amaze.helpers import hostos
+from amaze import amazetheme
+from amaze.core import library_files, material
 
 ICON_DIR = amaze.package_file("ui", "feather")  # the icon set, joined by amaze.package_file
 
@@ -247,32 +246,6 @@ def compose(name: str, background: str, size: int = CANVAS,
     return image
 
 
-def write(path: str, name: str, background: str, size: int = CANVAS,
-          stroke_units: float = 0.0, ink: str = DEFAULT_INK) -> bool:
-    """Compose and save; False, logged, on any failure; never raises."""
-    image = compose(name, background, size, stroke_units, ink)
-    if image is None:
-        debug.event("icons", "no such tile icon", icon=name)  # an event: the tile keeps its icon
-        return False
-    why = ""  # the OSError cause when there is one; Qt's False return gives none ▸r/failed-write
-    try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        if not image.save(path, "PNG"):
-            debug.event("icons", "could not write the tile icon image",
-                        path=path)
-            why = "the picture could not be written."
-    except OSError as exc:
-        _cause, why = hostos.why_failed(exc, path)
-        debug.event("icons", "could not write the tile icon image",
-                    path=path, error=str(exc))
-    if why:
-        debug.alert(
-            messages.TILE_ICON_NOT_SAVED % why,
-            key="icons-not-saved")
-        return False
-    return True
-
-
 def is_valid_colour(value: str) -> bool:
     """True for a colour the composer can use; check before storing one."""
     return bool(value) and QtGui.QColor.isValidColorName(str(value))
@@ -308,14 +281,9 @@ def stroke_for(preferences) -> float:
     return FEATHER_STROKE_UNITS if weight == "feather" else STROKE_UNITS
 
 
-def _picture_name(preferences, asset_id) -> str:
-    return str(asset_id) + (getattr(preferences, "img_ext", "") or ".png")
-
-
 def thumbnail_path(preferences, asset_id: str, section: str, name: str = "") -> str:
     """The asset's one picture, `<id>.png` in its folder, render or capture; `name` names a new one."""
-    return material.payload_path(preferences, asset_id,
-                                 getattr(preferences, "img_ext", "") or ".png", section, name)
+    return material.payload_path(preferences, asset_id, library_files.PICTURE_SUFFIX, section, name)
 
 
 def tile_read_path(preferences, asset_id: str, section: str) -> str:
@@ -323,7 +291,7 @@ def tile_read_path(preferences, asset_id: str, section: str) -> str:
     if not material.is_safe_asset_id(asset_id):
         return ""
     return os.path.join(material.listed_dir(preferences.dir, section, asset_id),
-                        _picture_name(preferences, asset_id))
+                        str(asset_id) + library_files.PICTURE_SUFFIX)
 
 
 def render_size(preferences) -> int:

@@ -1,13 +1,11 @@
 """What the grid does to library assets: favourite, delete, render, convert, edit, export."""
 
-import os
-
 from PySide6 import QtCore
 import hou
 
 from amaze import messages
 from amaze.actions import materials as material_actions
-from amaze.core import grid_columns, library, renderers, tile_icons
+from amaze.core import captures, grid_columns, library, renderers, tile_icons
 from amaze.pane import asks
 
 
@@ -119,7 +117,7 @@ class Assets:
             if str(mat.mat_id) in before:
                 continue
             path = tile_icons.tile_read_path(model.preferences, str(mat.mat_id), model.DB_FILENAME)
-            if path and not os.path.exists(path):    # a hosted image is already the thumbnail
+            if path and not captures.exists(path):    # a hosted image is already the thumbnail
                 rows.append(row)
         material_actions.render_thumbnails(model, rows)    # one husk per renderer ▸r/husk-startup
 
