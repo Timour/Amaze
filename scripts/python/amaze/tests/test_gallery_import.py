@@ -103,16 +103,10 @@ class GalleryImportTest(unittest.TestCase):
         entry.categories.return_value = []
         self.assertEqual("Gallery", gallery_import._category_of(entry))
 
-    def test_gi22_a_failed_entry_is_counted_and_an_unlisted_one_is_named(self):
-        from amaze.actions import materials as material_actions
-        from amaze.core import library as library_mod
-        answers = iter(["", library_mod.ListNotSaved("unlisted"), "ok"])
-        unlisted = []
-        with mock.patch.object(material_actions, "add_asset", lambda *a, **k: next(answers)):
-            summary = gallery_import.import_entries(
-                material_actions.adding_into(None, unlisted), _entries(3))
+    def test_gi22_a_failed_entry_is_counted_and_the_rest_go_on(self):
+        answers = iter(["", "ok", "ok"])
+        summary = gallery_import.import_entries(lambda *a, **k: next(answers), _entries(3))
         self.assertEqual((2, 1), (summary["imported"], summary["failed"]))
-        self.assertEqual(["entry1"], unlisted)
 
     def test_gi24_one_render_batch_at_the_end_after_esc_too_and_none_when_off(self):
         def esc_at_third(index, total, name):

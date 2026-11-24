@@ -522,7 +522,7 @@ class NotesPanel(side_pane.SidePage):
             note = notes.note_for(self.preferences, key)
             self.text_edit.library_dir = library    # what an image's relative src resolves against ▸p/comment-images
             self.text_edit.note_key = key
-            self.text_edit.load_items(note.get("items", []))
+            self.text_edit.load_items(notes.normalise_items(note.get("items")))    # the save keeps the rest
         finally:
             self._loading = False
         self._dimmed = False

@@ -52,18 +52,12 @@ def file_count(count: int) -> str:
     return "1 file" if count == 1 else "%d files" % count
 
 
-def report_unlisted(names, updated: bool = False) -> None:
-    """One status line for the rows a batch left unlisted: the next successful save lists them."""
-    if not names:
-        return
-    if updated and len(names) == 1:
+def report_unlisted(names) -> None:
+    """One status line for the materials an update left unlisted; a later save lists them."""
+    if len(names) == 1:
         debug.refuse(messages.MATERIAL_UPDATED_LIBRARY_NOT_SAVED % names[0])
-    elif updated:
+    elif names:
         debug.refuse(messages.MATERIALS_UPDATED_LIBRARY_NOT_SAVED % len(names))
-    elif len(names) == 1:
-        debug.refuse(messages.ASSET_ADDED_LIBRARY_NOT_SAVED % names[0])
-    else:
-        debug.refuse(messages.MATERIALS_ADDED_LIBRARY_NOT_SAVED % len(names))
 
 
 class AssetLibrary(grid_engine.GridEngine,

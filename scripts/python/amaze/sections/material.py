@@ -6,7 +6,7 @@ import hou
 
 from amaze import messages
 from amaze.actions import materials as material_actions
-from amaze.core import debug, library, renderers, section_list
+from amaze.core import debug, renderers, section_list
 from amaze.render import cop_nodes, nodes as nodes_mod
 from amaze.sections import base
 
@@ -152,7 +152,6 @@ class MaterialSection(base.AssetSection):
 
         renderers = []
         failures = []
-        unlisted = []
         total, done = len(nodes), 0
         try:
             with hou.InterruptableOperation(    # type: ignore
@@ -178,8 +177,6 @@ class MaterialSection(base.AssetSection):
                         failures.append(messages.SAVE_DID_NOT_COMPLETE_LINE % asset.name())
                         continue
                     renderers.append(renderer)
-                    if isinstance(renderer, library.ListNotSaved):
-                        unlisted.append(answer.name or asset.name())    # the name the add gave it
         except hou.OperationInterrupted:
             debug.status(messages.SAVE_STOPPED % (done, total))
 
@@ -193,7 +190,6 @@ class MaterialSection(base.AssetSection):
         self.pane.prefs.save()
         self.pane.refresh_filter()
         self.pane.sidebar.refresh()
-        library.report_unlisted(unlisted)    # the status line, last, so nothing after it overwrites the line
 
     def update_preview(self, indexes) -> None:
         """Update Render on Material tiles: the whole selection in one render batch."""

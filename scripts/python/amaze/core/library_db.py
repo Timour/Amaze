@@ -26,16 +26,25 @@ def key_of(preferences) -> str:
 
 
 def _user_of(key: str) -> str:
-    """The user making changes at `key`; `""` with no folder; a found folder is not rechecked."""
-    preferences = _preferences.get(key)
+    """The user making changes at `key`, one of its own; `""` for none or no folder."""
+    from amaze.core import users
+    preferences, found = _preferences.get(key), _libraries.get(key)
     if key_of(preferences) != key:    # the Prefs names another library now: the user it had here
         return _users.get(key, "")
     folder = str(getattr(preferences, "dir", "") or "")
-    if not folder or (folder not in _present and not os.path.isdir(folder)):
+    if found is None or not folder or (folder not in _present and not os.path.isdir(folder)):
         return ""
     _present.add(folder)
-    _users[key] = str(getattr(preferences, "library_user", "") or "")
+    named = str(getattr(preferences, "library_user", "") or "")
+    own = users.holds(found.document(library_files.MASTER), named)
+    _users[key] = named if own else ""    # a user of another library, or a deleted one, counts as none
     return _users[key]
+
+
+def user(preferences) -> str:
+    """Who writes to this library now: the user its Prefs names, when it is one of its own."""
+    library_for(preferences)
+    return _user_of(key_of(preferences))
 
 
 def recheck_folders() -> None:
@@ -68,7 +77,7 @@ def guard_of(preferences) -> guard.Guard:
 
 
 def accepts(preferences, name: str) -> bool:
-    """Whether a change to database `name` can be kept now: it is writable and a user is set."""
+    """Whether a change to database `name` can be kept now: it is writable and its user is set."""
     found = document(preferences, name)
     _read_again(key_of(preferences), found)
     return found.writable and bool(found.user())

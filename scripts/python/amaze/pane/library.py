@@ -323,7 +323,7 @@ class Library:
             return
         offered = types.SimpleNamespace(dir=folder, library_user=user)
         try:
-            layout_conversion.convert(library_db.guard_of(offered), user)
+            layout_conversion.convert(library_db.guard_of(offered), library_db.user(offered))
         except OSError as exc:
             debug.event("library", "conversion to 3.0 failed", dir=folder, error=str(exc))
             ui.displayMessage(messages.LIBRARY_CONVERSION_FAILED % exc, title=messages.TITLE_AMAZE,

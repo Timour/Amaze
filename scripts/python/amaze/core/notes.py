@@ -10,6 +10,7 @@ from amaze.core import debug, guard, library_db, library_files, material, texsto
 from amaze.helpers import hostos
 
 SECTION = "comments"
+KINDS = ("text", "todo", "image")    # the item kinds this Amaze shows and edits
 
 DATABASE_OF = {    # a note key's section prefix -> the database its comments are stored in
     "material": library_files.MATERIALS,
@@ -94,24 +95,36 @@ def has_note(preferences, key: str) -> bool:
     return bool(_items(preferences, key))
 
 
+def _newer(item: dict) -> bool:
+    """Whether an item is of a kind only a newer Amaze knows: kept as it is, never edited here."""
+    kind = item.get("t")
+    return isinstance(kind, str) and bool(kind) and kind not in KINDS
+
+
 def _stage(held, ident: str, items) -> bool:
     """Put one page into a document; an empty page removes it. Whether the document accepted it."""
     author = held.user()
     if not author or not held.writable:
         return False
-    pool = [item for item in ((held.get(SECTION, ident) or {}).get("items") or [])
-            if isinstance(item, dict)]
-    kept = []
+    stored = [item for item in ((held.get(SECTION, ident) or {}).get("items") or [])
+              if isinstance(item, dict)]
+    pool, kept = list(stored), []
     for item in normalise_items([dict(item) for item in (items or [])
                                  if isinstance(item, dict)]):
-        if not item.get("author"):    # an unchanged item takes back its stored id and author; a new one gets this user
+        if not item.get("author"):    # an unchanged item keeps its stored id, author and fields
             same = next((old for old in pool if _same_item(old, item)), None)
             if same is not None:
                 pool.remove(same)
+                item = dict(same, **item)    # a field only a newer Amaze knows stays
                 item["id"], item["author"] = str(same.get("id")), str(same.get("author") or "")
             else:
                 item["author"] = author
         kept.append(item)
+    for at, old in enumerate(stored):    # an item only a newer Amaze knows stays, after its neighbour
+        if _newer(old):
+            before = {str(one.get("id")) for one in stored[:at]}
+            kept.insert(max((n + 1 for n, one in enumerate(kept) if str(one.get("id")) in before),
+                            default=0), old)
     if not kept:
         if held.get(SECTION, ident) is not None:
             held.drop(SECTION, ident)
@@ -201,7 +214,7 @@ def copy_image_into_library(preferences, source: str, key: str) -> str:
             src = texstore.OWN_PREFIX + library_files.COMMENT_FOLDER + "/" + name
         with open(source, "rb") as handle:
             data = handle.read()
-        change = held.change(str(getattr(preferences, "library_user", "")))
+        change = held.change(library_db.user(preferences))
         change.put_file(relative, data)
         change.commit()
     except (OSError, hostos.PathOutsideBase, guard.Refused) as exc:

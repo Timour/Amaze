@@ -136,7 +136,7 @@ def commit_staged_files(preferences, staged: list) -> None:
     """Commit an asset's staged files as one change, its row unchanged; OSError when it fails."""
     from amaze.core import guard, library_db
     held = library_db.guard_of(preferences)
-    change = held.change(str(getattr(preferences, "library_user", "") or ""))
+    change = held.change(library_db.user(preferences))
     try:
         with LOCK:
             add_staged(change, held, staged)

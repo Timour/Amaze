@@ -58,7 +58,6 @@ class _Library(unittest.TestCase):
     def fresh(self) -> None:
         """A new copy of the library, and models over it."""
         self.prefs = test_support.fixture_prefs(self)
-        test_support.with_fixture_user(self.prefs.dir)
         self.lib = self.prefs.dir.rstrip("/")
         self.addCleanup(library_db.release, self.prefs)
         self.models = {"material": library.MaterialLibrary(self.prefs),

@@ -538,7 +538,7 @@ def plain_python() -> str:
 def fixture_prefs(testcase):
     """Preferences with .dir and .path on a fresh fixture copy, user set. ▸p/harness-isolation"""
     p = prefs.Prefs()
-    p.dir = fresh_library(testcase)
+    p.dir = with_fixture_user(fresh_library(testcase))
     p.path = scratch_dir("amaze_fixture_prefs_")
     testcase.addCleanup(shutil.rmtree, p.path, True)
     p.library_user = FIXTURE_USER
@@ -561,14 +561,17 @@ FIXTURE_USER_NAME = "Fixture"    # the fixture user's name, in a library a panel
 
 
 def with_fixture_user(library) -> str:
-    """Add the fixture user to `library`, which a panel opens only with one of its users."""
+    """Add the fixture user to `library`, which takes changes only from one of its own users."""
     import types
-    from amaze.core import library_db, users
-    holder = types.SimpleNamespace(dir=library, library_user=FIXTURE_USER)
-    held = library_db.document(holder, "DataBase.json")
-    held.put(users.SECTION, FIXTURE_USER, {"name": FIXTURE_USER_NAME})
-    library_db.flush(holder)
-    library_db.release(holder)
+    from amaze.core import guard, library_db, users
+    held = guard.Guard(str(library))
+    reading = held.read("DataBase.json")
+    roster = dict((reading.document or {}).get(users.SECTION) or {})
+    roster[FIXTURE_USER] = {"name": FIXTURE_USER_NAME}
+    change = held.change(FIXTURE_USER)    # a new user writes their own entry, as `users.create` does
+    change.put(reading.ticket, dict(reading.document or {}, **{users.SECTION: roster}))
+    change.commit()
+    library_db.release(types.SimpleNamespace(dir=library))
     return library
 
 
