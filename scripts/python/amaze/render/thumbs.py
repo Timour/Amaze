@@ -20,11 +20,11 @@ from amaze.helpers import helpers, hostos
 # (module reloads consolidated into panel.py's single chain)
 
 
-def _without_undo(method):
-    """Run `method` entirely inside one undo disabler: its temporary nodes never reach Ctrl+Z."""
+def _leaves_no_trace(method):
+    """Run `method` in one undo disabler, the selection put back: its nodes leave no trace."""
     @functools.wraps(method)
     def run(*args, **kwargs):
-        with hou.undos.disabler():    # nests safely in a caller's ▸r/undo-groups
+        with helpers.preserving_selection_and_current(), hou.undos.disabler():    # ▸r/undo-groups
             return method(*args, **kwargs)
     return run
 
@@ -126,8 +126,8 @@ class ThumbNailRenderer:
             refused = [messages.THUMBNAIL_RENDERER_NOT_LOADED % (mat.name, renderers.label(renderer))
                        for mat in mats]
             mats = ()    # nothing imported, so render_batch has nothing to stage
-        with hou.undos.disabler():    # the imports and their cleanup are a pair ▸r/undo-groups
-            try:
+        with helpers.preserving_selection_and_current(), hou.undos.disabler():    # ▸r/undo-groups
+            try:    # the imports select what they load, and their cleanup deletes it
                 for mat in mats:
                     handler = nodes.NodeHandler(preferences)
                     ok, reason, _created = handler.import_asset_to_scene(mat, target="mat")
@@ -158,11 +158,11 @@ class ThumbNailRenderer:
         """Fallback picker for assets saved without a recorded source-node name."""
         return helpers.pick_cop_display_child(temp)
 
-    @_without_undo
+    @_leaves_no_trace
     def create_thumb_geo_file(
         self, file_path: str, out_path: str, size: int
     ) -> bool:
-        """Thumbnail for a geometry file via the flipbook ROP; False means no thumbnail, not an error."""
+        """A geometry file's picture at `out_path`, by the flipbook ROP; False: none, no error."""
         from amaze.core import geo_library  # lazy: geo_library imports this module at top level
         loader_type = geo_library.loader_sop_for(file_path)
 
@@ -172,8 +172,7 @@ class ThumbNailRenderer:
         light = None
         rop = None
         try:
-            with hou.undos.disabler():
-                geo = hou.node("/obj").createNode("geo")
+            geo = hou.node("/obj").createNode("geo")
             try:
                 loader = geo.createNode(loader_type)
             except hou.Error:
@@ -208,8 +207,7 @@ class ThumbNailRenderer:
             preview.safe_set(geo, "ry", 35.0)
             rot = hou.hmath.buildRotate(hou.Vector3(-20.0, 35.0, 0.0))  # the same rotation as the container parms above
 
-            with hou.undos.disabler():
-                cam = hou.node("/obj").createNode("cam")
+            cam = hou.node("/obj").createNode("cam")
             preview.safe_set(cam, "resx", size)
             preview.safe_set(cam, "resy", size)
             min_vec = bbox.minvec()  # fit is axis-aligned in world space: world x/y are the image axes
@@ -241,14 +239,12 @@ class ThumbNailRenderer:
             preview.safe_set(cam, "orthowidth", ortho_width)
             preview.safe_set(cam, "near", max(distance * 0.001, 0.00001))  # near/far scale off the fitted distance; Vulkan honours clip planes strictly
             preview.safe_set(cam, "far", distance + half_z * 4.0 + ortho_width)
-            with hou.undos.disabler():
-                light = hou.node("/obj").createNode("envlight")
+            light = hou.node("/obj").createNode("envlight")
 
             rop = None
             renderer_used = ""
             try:
-                with hou.undos.disabler():
-                    candidate = hou.node("/out").createNode("flipbook")  # renders with the viewport's configured renderer
+                candidate = hou.node("/out").createNode("flipbook")  # the viewport's own renderer
                 if candidate.parm("camera") is not None:  # no camera parm: destroyed below, and the Karma CPU ROP is used instead
                     rop = candidate
                     renderer_used = "flipbook ROP (viewport renderer)"
@@ -330,14 +326,12 @@ class ThumbNailRenderer:
                             bg=bg_mode,
                         )
                 else:
-                    with hou.undos.disabler():
-                        candidate.destroy()
+                    candidate.destroy()
             except hou.OperationFailed:
                 rop = None
             if rop is None:
                 try:
-                    with hou.undos.disabler():
-                        rop = hou.node("/out").createNode("karma")
+                    rop = hou.node("/out").createNode("karma")
                     renderer_used = "karma ROP (CPU)"
                 except hou.Error:
                     debug.note("geometry thumbnail - neither flipbook "
@@ -375,27 +369,21 @@ class ThumbNailRenderer:
                 debug.note("geometry thumbnail - no output picture parm "
                     "found on the " + rop.type().name() + " ROP, skipped")
                 return False
-            scratch = hostos.render_scratch(out_path)
-            try:
-                picture_parm.set(scratch)
-                rop.render()
-                placed = guard.put_rendered(out_path, scratch, self._user())
-            finally:
-                hostos.discard_scratch(scratch)
-            if not placed:  # an ESC also ends up here: an interrupted flipbook returns without raising
+            picture_parm.set(out_path)    # the caller's scratch, extension last ▸r/image-extension
+            rop.render()
+            if not os.path.isfile(out_path) or not os.path.getsize(out_path):    # so does an ESC
                 debug.note("geometry thumbnail - render ended without "
                     "an image for " + base + " (interrupted mid-"
                     "render, or the renderer declined the file)")
                 return False
             return True
-        finally:  # creation and deletion both off the undo stack, like create_thumb_sop ▸r/undo-groups
-            with hou.undos.disabler():
-                for node in (rop, light, cam, geo):
-                    if node is not None:
-                        try:
-                            node.destroy()
-                        except hou.ObjectWasDeleted:
-                            pass
+        finally:    # off the undo stack like their creation, by `_leaves_no_trace` ▸r/undo-groups
+            for node in (rop, light, cam, geo):
+                if node is not None:
+                    try:
+                        node.destroy()
+                    except hou.ObjectWasDeleted:
+                        pass
 
     def render_network_thumbnail(self, context, asset_id: str,
                                  thumb_node: str = "") -> bool | None:
@@ -411,7 +399,7 @@ class ThumbNailRenderer:
             return bool(self.create_thumb_cop(str(asset_id),
                                               str(thumb_node)))
 
-    @_without_undo
+    @_leaves_no_trace
     def create_thumb_sop(self, asset_id: str) -> bool:
         """Thumbnail for a saved SOP asset, from the archive; False means no thumbnail, not a failure."""
         out_path = tile_icons.thumbnail_path(self._preferences, asset_id, nodes.NODES)
@@ -423,10 +411,9 @@ class ThumbNailRenderer:
         temp = None
         tmp_geo = ""
         try:
-            with hou.undos.disabler():  # off the undo stack ▸r/undo-groups
-                temp = hou.node("/obj").createNode("geo")
-                for child in temp.children():
-                    child.destroy()      # the default file SOP
+            temp = hou.node("/obj").createNode("geo")
+            for child in temp.children():
+                child.destroy()      # the default file SOP
             try:
                 temp.loadItemsFromFile(file_name)
             except (OSError, hou.Error) as exc:
@@ -452,17 +439,16 @@ class ThumbNailRenderer:
                 debug.note("SOP thumbnail - %s produced no geometry "
                     "(%s)" % (target.name(), exc))
                 return False
-            return self.create_thumb_geo_file(
-                tmp_geo, out_path, int(self._preferences.rendersize)  # rendersize, not thumbsize, which is the grid's size slider
-            )
+            size = int(self._preferences.rendersize)    # not thumbsize, the grid's size slider
+            return guard.put_rendered(out_path, lambda scratch: self.create_thumb_geo_file(
+                tmp_geo, scratch, size), self._user())
         except Exception as exc:                        # noqa: BLE001
             debug.note("SOP thumbnail failed (%s)" % exc)
             return False
         finally:
             if temp is not None:
                 try:
-                    with hou.undos.disabler():
-                        temp.destroy()
+                    temp.destroy()
                 except hou.Error:
                     pass
             if tmp_geo and os.path.exists(tmp_geo):
@@ -471,7 +457,7 @@ class ThumbNailRenderer:
                 except OSError:
                     pass
 
-    @_without_undo
+    @_leaves_no_trace
     def create_thumb_cop(self, asset_id: str, source_name: str = "") -> bool:
         """Thumbnail for a COP asset: its own output image; False means no thumbnail, not a failure."""
         out_path = tile_icons.thumbnail_path(self._preferences, asset_id, nodes.NODES)
@@ -479,8 +465,7 @@ class ThumbNailRenderer:
             self._preferences, str(asset_id), self._preferences.ext, nodes.NODES)
         temp = None
         try:
-            with hou.undos.disabler():  # off the undo stack, like create_thumb_sop's container ▸r/undo-groups
-                temp = hou.node("/obj").createNode("copnet")
+            temp = hou.node("/obj").createNode("copnet")
             temp.loadItemsFromFile(file_name, ignore_load_warnings=True)
 
             out = None
@@ -529,22 +514,18 @@ class ThumbNailRenderer:
                 debug.note("COP thumbnail - rop_image has no "
                     "execute parm to press, skipped")
                 return False
-            scratch = hostos.render_scratch(out_path)
-            try:
+
+            def render(scratch):
                 picture_parm.set(scratch)
                 if execute_parm is None:
                     rop.render()
                 else:
                     execute_parm.pressButton()
-                placed = guard.put_rendered(out_path, scratch, self._user())
-            finally:
-                hostos.discard_scratch(scratch)
-            if not placed:
+            if not guard.put_rendered(out_path, render, self._user()):
                 debug.note("COP thumbnail - render finished but wrote "
                     "no image at " + out_path)
                 return False
             return True
         finally:
             if temp is not None:
-                with hou.undos.disabler():  # off the undo stack at BOTH creation and deletion, like create_thumb_sop
-                    temp.destroy()
+                temp.destroy()

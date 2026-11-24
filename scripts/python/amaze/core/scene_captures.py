@@ -5,8 +5,9 @@ import time
 
 import hou
 
+from amaze import messages
 from amaze.core import captures
-from amaze.core import debug, guard, library_files
+from amaze.core import debug, guard
 from amaze.helpers import hostos
 
 MAX_THUMB_EDGE = 1024  # the captured image's long edge, in pixels
@@ -139,35 +140,22 @@ def _looks_blank(png_path: str) -> bool:
 
 
 def capture_viewport(out: str, viewer=None, user: str = "") -> str:
-    """Save a Scene View screenshot to the PNG `out`; raises CaptureRefused. ▸r/tile-captures"""
+    """Save a Scene View screenshot to the PNG `out`, put whole; raises CaptureRefused."""
     if not out:
-        raise CaptureRefused("No file was given for the capture.")
+        raise CaptureRefused(messages.CAPTURE_NO_FILE)
     try:
-        import toolutils
         from husd import assetutils
     except ImportError as exc:
-        raise CaptureRefused(
-            "This Houdini has no husd.assetutils (%s), so the viewport "
-            "cannot be captured." % exc)
-    try:
-        if viewer is None:  # pass the viewer _viewer_for_capture checked, or the capture may use another
-            viewer = scene_viewer()
-    except Exception as exc:                             # noqa: BLE001
-        raise CaptureRefused(
-            "No scene viewer is available (%s). A capture needs a "
-            "visible viewport." % exc)
+        raise CaptureRefused(messages.CAPTURE_NO_ASSETUTILS % exc)
+    viewer = viewer or scene_viewer()    # pass the one _viewer_for_capture checked ▸r/tile-captures
     if viewer is None:
-        raise CaptureRefused(
-            "No scene viewer is open - the capture needs a visible "
-            "viewport to capture.")
+        raise CaptureRefused(messages.CAPTURE_NO_VIEWER)
     try:
         width, height = viewer.curViewport().resolutionInPixels()
     except Exception as exc:                             # noqa: BLE001
-        raise CaptureRefused("Could not measure the viewport: %s" % exc)
+        raise CaptureRefused(messages.CAPTURE_VIEWPORT_UNMEASURED % exc)
     if not width or not height:
-        raise CaptureRefused(
-            "The viewport reports a zero size - it may be hidden or "
-            "collapsed.")
+        raise CaptureRefused(messages.CAPTURE_VIEWPORT_ZERO)
     longest = max(width, height)
     if longest > MAX_THUMB_EDGE:
         scale = MAX_THUMB_EDGE / float(longest)
@@ -182,86 +170,53 @@ def capture_viewport(out: str, viewer=None, user: str = "") -> str:
     debug.event("hip", "capture starting", file=out,
                 renderer=renderer, res=(width, height))
     started = time.time()
-
     folder = os.path.dirname(out)
     try:
-        os.makedirs(folder, exist_ok=True)
+        os.makedirs(folder, exist_ok=True)    # a snippet's or color's first file makes its folder
     except OSError as exc:
-        raise CaptureRefused("Could not create %s: %s" % (folder, exc))
-    scratch = _capture_scratch(out)
-    try:
-        assetutils.saveThumbnailFromViewer(
-            sceneviewer=viewer, output=scratch, croptocamera=False,
-            res=(width, height),
-        )
-    except Exception as exc:                             # noqa: BLE001
-        _discard(scratch)
-        raise CaptureRefused(
-            "Houdini could not write the thumbnail: %s: %s"
-            % (type(exc).__name__, exc))
-    if not os.path.isfile(scratch):
-        detail = {"scratch": scratch, "context": viewer_context(viewer)}  # everything cheap to log
+        raise CaptureRefused(messages.CAPTURE_FOLDER_FAILED % (folder, exc))
+
+    def write(scratch):
         try:
-            detail["frame"] = hou.frame()
-        except Exception:                                # noqa: BLE001
-            pass
-        try:
-            detail["viewport"] = viewer.curViewport().name()
-            detail["camera"] = str(viewer.curViewport().camera())
+            assetutils.saveThumbnailFromViewer(
+                sceneviewer=viewer, output=scratch, croptocamera=False, res=(width, height))
         except Exception as exc:                         # noqa: BLE001
-            detail["viewport_error"] = "%s: %s" % (type(exc).__name__, exc)
-        try:
-            detail["dir_writable"] = os.access(folder, os.W_OK)
-            siblings = [n for n in os.listdir(folder)
-                        if n.startswith(os.path.basename(out)[:12])]
-            detail["siblings"] = siblings[:4]
-        except OSError as exc:
-            detail["dir_error"] = str(exc)
-        debug.event("hip", "capture wrote nothing", **detail)
-        raise CaptureRefused(
-            "Houdini reported the capture finished but no image was "
-            "written.\n\nThe debug log has the "
-            "viewport details - Preferences > Save Log... if you want "
-            "to send them on.")
-    if _looks_blank(scratch):
-        _discard(scratch)
-        raise CaptureRefused(
-            "The captured frame was a single flat colour, so nothing was "
-            "stored. The existing thumbnail is untouched.")
-    try:
-        guard.Guard(library_files.library_of_file(out)).put_whole(out, written=scratch, user=user)
-    except OSError as exc:
-        _discard(scratch)
-        raise CaptureRefused(
-            "The thumbnail could not be put in place: %s" % exc)
-    _discard(out + ".prev")  # removes the scratch files older versions left behind
-    _discard(out + ".new")
-    _discard(_legacy_capture_scratch(out))
+            raise CaptureRefused(messages.CAPTURE_WRITE_FAILED % (type(exc).__name__, exc))
+        if not os.path.isfile(scratch):
+            _log_nothing_written(viewer, scratch, out)
+            raise CaptureRefused(messages.CAPTURE_WROTE_NOTHING)
+        if _looks_blank(scratch):
+            raise CaptureRefused(messages.CAPTURE_FLAT)
+
+    if not guard.put_rendered(out, write, user):
+        raise CaptureRefused(messages.CAPTURE_NOT_STORED)
     debug.event("hip", "thumbnail captured", png=out,
                 res=(width, height), renderer=renderer,
                 seconds=round(time.time() - started, 2))
     return out
 
 
-def _capture_scratch(out: str) -> str:
-    """A unique scratch name beside `out`, the suffix before the extension. ▸r/image-extension"""
-    return hostos.render_scratch(out, "capturing")
-
-
-def _legacy_capture_scratch(out: str) -> str:
-    """The fixed scratch name older versions used, so it can be removed."""
-    root, ext = os.path.splitext(out)
-    return root + ".capturing" + (ext or ".png")
-
-
-def _discard(path: str) -> None:
-    """Remove a scratch file, logging why if it cannot be removed."""
+def _log_nothing_written(viewer, scratch: str, out: str) -> None:
+    """Everything cheap to log when Houdini says it captured but wrote no file."""
+    folder = os.path.dirname(out)
+    detail = {"scratch": scratch, "context": viewer_context(viewer)}
     try:
-        if os.path.isfile(path):
-            os.remove(path)
+        detail["frame"] = hou.frame()
+    except Exception:                                    # noqa: BLE001
+        pass
+    try:
+        detail["viewport"] = viewer.curViewport().name()
+        detail["camera"] = str(viewer.curViewport().camera())
+    except Exception as exc:                             # noqa: BLE001
+        detail["viewport_error"] = "%s: %s" % (type(exc).__name__, exc)
+    try:
+        detail["dir_writable"] = os.access(folder, os.W_OK)
+        siblings = [n for n in os.listdir(folder)
+                    if n.startswith(os.path.basename(out)[:12])]
+        detail["siblings"] = siblings[:4]
     except OSError as exc:
-        debug.event("hip", "could not remove a scratch thumbnail",
-                    error=str(exc), path=path)
+        detail["dir_error"] = str(exc)
+    debug.event("hip", "capture wrote nothing", **detail)
 
 
 def capture_open_scene(preferences, target: str = "") -> str:
@@ -269,23 +224,17 @@ def capture_open_scene(preferences, target: str = "") -> str:
     opened = current_scene_path()
     if not target:
         if not opened:
-            raise CaptureRefused(
-                "No scene is open, so there is nothing to capture.")
+            raise CaptureRefused(messages.CAPTURE_NO_SCENE)
         target = opened
     elif target != opened:
         debug.event("hip", "capture not taken - a different scene is open",
                     wanted=target, open=opened)
-        raise CaptureRefused(
-            "Houdini has a different scene open, so the capture would "
-            "be filed under the wrong name.\n\n"
-            "Open this scene first.")
+        raise CaptureRefused(messages.CAPTURE_OTHER_SCENE)
 
     if not os.path.isfile(target):  # an unsaved scene has no file to file a thumbnail against
         debug.event("hip", "capture not taken - the scene is not on disk",
                     file=target)
-        raise CaptureRefused(
-            "This scene has not been saved yet, so there is nothing to "
-            "file a thumbnail against.\n\nSave the scene first.")
+        raise CaptureRefused(messages.CAPTURE_SCENE_UNSAVED)
 
     key = captures.file_key(preferences, target)
     return capture_tile(captures.file_path(preferences, key), key,
@@ -307,9 +256,9 @@ def _viewer_for_capture():
         debug.event("hip", "capture not taken - viewport is rendering",
                     renderer=state.get("renderer", ""),
                     error=state.get("error", ""))
-        message = "Please stop the viewport render before capturing."
+        message = messages.CAPTURE_VIEWPORT_RENDERING
         if debug.is_on():    # Debug Mode only: the renderer's name is for diagnosing
-            message += "\n\nDetected: %s" % (state.get("renderer") or "unreadable")
+            message += messages.CAPTURE_RENDERER_DETECTED % (state.get("renderer") or "unreadable")
         raise CaptureRefused(message)
     return viewer
 

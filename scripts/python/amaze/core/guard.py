@@ -676,18 +676,21 @@ class Change:
         return target
 
 
-def put_rendered(target: str, scratch: str, user: str = "") -> bool:
-    """A picture a renderer wrote to `scratch`, put whole at `target` in its library; False: none."""
+def put_rendered(target: str, write, user: str = "") -> bool:
+    """A new picture put whole at `target` in its library; `write(scratch)` makes it."""
     from amaze.core import library_files
+    scratch = ""
     try:
         target = library_files.where_now(target)    # its asset renamed meanwhile: there; deleted: nowhere
-        if not target or not os.path.isfile(scratch) or not os.path.getsize(scratch):
+        if not target:
+            return False
+        scratch = hostos.render_scratch(target)
+        if write(scratch) is False or not os.path.isfile(scratch) or not os.path.getsize(scratch):
             return False
         Guard(library_files.library_of_file(target)).put_whole(target, written=scratch, user=user)
         return True
     except OSError as exc:
-        debug.event("guard", "a rendered picture was not put in place", target=target,
-                    error=str(exc))
+        debug.event("guard", "a new picture was not put in place", target=target, error=str(exc))
         return False
     finally:
         hostos.discard_scratch(scratch)

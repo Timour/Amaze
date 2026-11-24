@@ -695,12 +695,11 @@ class NodeHandler:
                 raise OSError("the picture could not be written as a PNG")
         try:
             target = target_of()
-            staged = asset_record.staged_write(target, write)
-            if isinstance(self.staging, list):
-                self.staging.append(staged)    # it arrives with the row, or is discarded with it
-                return True
-            return guard.put_rendered(target, staged[2],
-                                      str(getattr(self._preferences, "library_user", "") or ""))
+            if not isinstance(self.staging, list):
+                return guard.put_rendered(target, write,
+                                          str(getattr(self._preferences, "library_user", "") or ""))
+            self.staging.append(asset_record.staged_write(target, write))    # with the row
+            return True
         except (OSError, hostos.PathOutsideBase) as exc:
             debug.event("save", "picture not written", error=str(exc))
             return False

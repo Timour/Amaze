@@ -11,7 +11,7 @@ import time
 import hou
 from PySide6 import QtCore
 
-from amaze.core import debug, guard, library_files
+from amaze.core import debug, guard
 from amaze.helpers import hostos
 
 DELEGATES ={"Karma": "BRAY_HdKarma", "Octane": "HdOctaneRendererPlugin",
@@ -45,7 +45,6 @@ print("%(done)s %%d" %% _frame, flush=True)
 
 def local_data_path(renderer: str) -> str:
     """A `renderer` husk's own cache and log folder, under Amaze's cache ▸r/redshift-thumbnail-stall"""
-    from amaze.helpers import hostos
     path = os.path.join(hostos.cache_root(), renderer.lower())
     os.makedirs(path, exist_ok=True)
     return path
@@ -328,17 +327,13 @@ class Jobs(QtCore.QObject):
         if not 1 <= frame <= len(job.frames):
             return
         asset_id, png = job.frames[frame - 1]
-        png = library_files.where_now(png)    # renamed since the job started: there; deleted: none
         exr = job.exr(frame)
         from amaze import preview
-        scratch = hostos.render_scratch(png) if png else ""
-        made = bool(png) and os.path.exists(exr) and preview.exr_to_png(
-            exr, scratch, job.batch["ocio"], asset_id)
-        if made and guard.put_rendered(png, scratch, job.batch.get("user", "")):
+        if os.path.exists(exr) and guard.put_rendered(
+                png, lambda scratch: preview.exr_to_png(exr, scratch, job.batch["ocio"], asset_id),
+                job.batch.get("user", "")):
             self.thumbnailWritten.emit(asset_id)
         else:    # the tile keeps its old image: this log record is the only one
-            if scratch:
-                hostos.discard_scratch(scratch)
             debug.event("thumb", "frame done without a picture", asset_id=asset_id,
                         frame=frame, exr_found=os.path.exists(exr), renderer=job.renderer)
         try:

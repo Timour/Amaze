@@ -179,9 +179,10 @@ def _spawn(program: str, args: list, errors, output=subprocess.DEVNULL):
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))    # Windows: no console
 
 
-def _run_process(program: str, args: list, timeout_ms: int = CONVERT_TIMEOUT_MS,
-                 cancelled=None, output=subprocess.DEVNULL) -> tuple:
+def _run_process(program: str, args: list, timeout_ms: int = 0, cancelled=None,
+                 output=subprocess.DEVNULL) -> tuple:
     """(True, "") or (False, why): CANCELLED, one of UNFINISHED, or `exit N: <stderr>`."""
+    timeout_ms = timeout_ms or CONVERT_TIMEOUT_MS    # read when called, not when defined
     _collect_abandoned()
     with tempfile.TemporaryFile() as errors:    # a file, so a converter that writes much never blocks on a pipe
         try:
