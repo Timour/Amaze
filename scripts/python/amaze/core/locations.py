@@ -143,14 +143,11 @@ def _path_of_key(preferences, key: str) -> str:
 
 def _ident_under(owners: dict, stored: str) -> str:
     """The `loc:` key of a stored path under the innermost of `owners` ({path: id}), or empty."""
-    best, found = "", ""
-    for base, lid in owners.items():
-        if (stored == base or stored.startswith(base + "/")) and len(base) > len(best):
-            best, found = base, lid
-    if not found:
+    base = innermost(owners, stored)
+    if not base:
         return ""
-    rel = stored[len(best) + 1:] if len(stored) > len(best) else ""
-    return LOC_PREFIX + found + ("/" + rel if rel else "")
+    rel = stored[len(base.rstrip("/")) + 1:]
+    return LOC_PREFIX + owners[base] + ("/" + rel if rel else "")
 
 
 def innermost(bases, path: str) -> str:

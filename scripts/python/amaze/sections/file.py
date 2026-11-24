@@ -9,7 +9,7 @@ from PySide6 import QtCore
 
 from amaze import amazetheme, messages
 from amaze.core import debug, file_library, file_moves, grid_columns, locations, notes, scene_captures, section_list, sidebar_model
-from amaze.helpers import hostos, wording
+from amaze.helpers import wording
 from amaze.pane import files as pane_files
 from amaze.sections import base
 
@@ -318,11 +318,8 @@ class FolderSection(base.Section):
         selection = self._p(self.selection_attr)
         paths = [self._path_of(index) for index in
                  (grid_columns.selected_rows(selection) if selection is not None else ())]
-        scene = scene_captures.current_scene_path()
-        open_scene = [path for path in paths if path and scene
-                      and hostos.canonical_path_key(path) == hostos.canonical_path_key(scene)]
-        notices = [messages.MOVE_OPEN_SCENE % os.path.basename(path) for path in open_scene]
-        pairs = file_moves.targets([path for path in paths if path not in open_scene], folder)
+        pairs, kept = file_moves.targets(paths, folder, scene_captures.current_scene_path())
+        notices = [messages.MOVE_OPEN_SCENE % os.path.basename(path) for path in kept]
         if not pairs:
             if notices:
                 debug.refuse(" ".join(notices))

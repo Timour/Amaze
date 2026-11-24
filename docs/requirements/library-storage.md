@@ -2,19 +2,8 @@
 
 What the library's storage must do. The engine is `core/guard.py`, `core/documents.py`,
 `core/library_db.py`, `core/library_settings.py` and `core/library_policy.py`.
-Check Library and repair are their own engine, with their own list.
-
-Each line is one requirement: an id, its level, and what must hold, in plain words.
-Each requirement has at most one test, named after its id (`test_ls01_...`).
-
-Levels:
-- **Catastrophe**: the library is corrupted or files are lost. Every one is tested, under every
-  fault the fault simulator makes: a write cut off halfway, a full disk, a crash mid-change,
-  a file locked by another program.
-- **Severe**: scene work is lost, an asset is saved over another one, or Houdini crashes.
-  Every one is tested.
-- **Wrong output**: a wrong result that can be undone. Tested where the engine call is simple.
-- UI errors are not listed: they are judged in Houdini.
+Check Library and repair are their own engine, with their own list. The levels and the rules
+for tests are in the [README](README.md).
 
 ## Catastrophe
 

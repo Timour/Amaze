@@ -23,18 +23,11 @@ class Stopped(Exception):
     """Raised when the move is stopped: the file being copied stays at its source."""
 
 
-def targets(paths, folder: str) -> list:
-    """(source, destination) for each file not already in `folder`, in the order given."""
-    return [(path, os.path.join(folder, os.path.basename(path)))
-            for path in paths if path and not _same_folder(os.path.dirname(path), folder)]
-
-
-def _same_folder(one: str, other: str) -> bool:
-    try:
-        return os.path.samefile(one, other)
-    except OSError:
-        return (hostos.canonical_path_key(one).rstrip("/")
-                == hostos.canonical_path_key(other).rstrip("/"))
+def targets(paths, folder: str, scene: str = "") -> tuple:
+    """(pairs, kept): (source, destination) per file not in `folder`; `kept`, the open `scene`."""
+    kept = [path for path in paths if path and scene and same_file(path, scene)]
+    return [(path, os.path.join(folder, os.path.basename(path))) for path in paths
+            if path and path not in kept and not same_file(os.path.dirname(path), folder)], kept
 
 
 def back(pairs) -> list:
@@ -194,11 +187,12 @@ def copy(pairs, tick=None, stopped=lambda: False, replace=False) -> Result:
 
 
 def same_file(one: str, other: str) -> bool:
-    """Whether both paths are one file on disk; False when either is missing."""
+    """Whether both paths are one file or folder on disk; spelled alike when either is missing."""
     try:
         return os.path.samefile(one, other)
-    except OSError:    # `other` is not there
-        return False
+    except OSError:
+        return (hostos.canonical_path_key(one).rstrip("/")
+                == hostos.canonical_path_key(other).rstrip("/"))
 
 
 def _each(pairs, one, tick, stopped) -> Result:
