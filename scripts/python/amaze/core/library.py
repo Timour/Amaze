@@ -894,6 +894,15 @@ class AssetLibrary(grid_engine.GridEngine,
         if not library_db.accepts(self.preferences, self.DB_FILENAME):
             self._report_refused_delete(going[-1][1])
             return 0
+        trash, taken = self._unlist_for_delete(going)
+        if not library_db.save(self.preferences, self.DB_FILENAME, also=trash):
+            self._restore_unsaved_removals(going, taken)    # nothing on disk changed: the change is all or nothing
+            self._report_refused_delete(going[-1][1])
+            return 0
+        return len(going)
+
+    def _unlist_for_delete(self, going) -> tuple:
+        """Take `(row, record)` pairs out and stage their delete, unsaved: (the save's `also`, taken)."""
         guard = library_db.guard_of(self.preferences)
         owned = [guard.inside(path) for _row, asset in going
                  for path in self._owned_paths(asset.mat_id) if os.path.lexists(path)]
@@ -908,11 +917,7 @@ class AssetLibrary(grid_engine.GridEngine,
             for relative in owned:
                 if relative:
                     change.trash(relative)
-        if not library_db.save(self.preferences, self.DB_FILENAME, also=trash):
-            self._restore_unsaved_removals(going, taken)    # nothing on disk changed: the change is all or nothing
-            self._report_refused_delete(going[-1][1])
-            return 0
-        return len(going)
+        return trash, taken
 
     def _owned_paths(self, mat_id) -> list:
         """What a delete trashes: the asset's whole folder."""

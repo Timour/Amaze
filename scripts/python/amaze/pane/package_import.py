@@ -16,7 +16,7 @@ class PackageImport:
         self.last_summary = None    # the last store tile's summary; the restore batch reads its totals
 
     def import_file(self, path: str, restore: bool = False) -> dict:
-        """Import a whole package; `restore=True` keeps original ids. Returns packages' summary."""
+        """Import a whole package; `restore=True` replaces curated presets. Returns packages' summary."""
         from amaze.core import packages
         summary = packages.import_package(self.models(),
                                           self.pane.prefs, path,
@@ -142,8 +142,6 @@ class PackageImport:
             if summary.get("refused"):
                 return (False, "; ".join(summary.get("problems") or ())
                                or messages.STORE_TILE_NOT_IMPORTED)
-            if restore and summary.get("skipped"):
-                return (True, "")
             if not summary.get("imported") and not summary.get("files"):
                 return (False, messages.STORE_TILE_IMPORTED_NOTHING)
             return (True, "")
@@ -154,8 +152,8 @@ class PackageImport:
             return (False, str(exc))
 
     def restore(self, records) -> dict:
-        """Restore the selected store tiles by original id, with one summary for the batch."""
-        totals = {"imported": 0, "skipped": 0, "files": 0, "refused": 0}
+        """Restore the selected store tiles, each replacing its preset, with one summary for the batch."""
+        totals = {"imported": 0, "replaced": 0, "files": 0, "refused": 0}
         failures = []
         with self.pane.online_import.download_operation(records) as progress_for:
             for i, record in enumerate(records):
@@ -185,7 +183,7 @@ class PackageImport:
         ui = getattr(hou, "ui", None)
         if ui is not None:
             ui.displayMessage(
-                messages.STORE_RESTORE_SUMMARY % (totals["imported"], totals["skipped"]),
+                messages.STORE_RESTORE_SUMMARY % (totals["imported"], totals["replaced"]),
                 details="\n".join(failures[:10]), title=messages.TITLE_AMAZE,
                 severity=hou.severityType.Warning if failures else hou.severityType.Message)
         return totals

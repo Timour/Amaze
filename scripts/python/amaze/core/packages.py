@@ -17,7 +17,9 @@ MANIFEST = "package.json"
 RECORD_KIND = "json"    # `<id>.json` holding the builder alone: the row is stored in the manifest
 DERIVED = (RECORD_KIND,)    # composed for the package, never copied: the library's copy holds the metadata
 MAX_UNPACKED_BYTES = 16 * 1024 ** 3    # the largest one import may unpack, by the sizes the zip declares ▸r/zip-declared-size
-OBJECTS = ("record", "note", "files", "textures")    # what an entry holds as an object, or leaves out
+OBJECTS = ("record", "note", "files", "textures", "comment_pictures")    # an entry's objects, or left out
+MEMBER_MAPS = ("files", "textures", "comment_pictures")    # the objects naming bundle members
+PICTURES = texstore.OWN_PREFIX + library_files.COMMENT_FOLDER + "/"    # a comment's picture in its asset
 
 
 class PackageError(Exception):
@@ -55,13 +57,30 @@ def _collected(model, mat_id) -> dict:
     if sorted(textures) != list(record.get("textures") or ()):
         record = dict(record)    # the packed record lists exactly the textures the package holds
         record["textures"] = sorted(textures)
-    page = notes.note_for(model.preferences,
-                          notes.note_key(model.NOTES_SECTION, mat_id))
+    key = notes.note_key(model.NOTES_SECTION, mat_id)
+    page = notes.note_for(model.preferences, key)
+    pictures = {}
+    for item in page.get("items") or ():
+        src = item.get("src") if item.get("t") == "image" else ""
+        if not _picture_name(src):
+            continue
+        source = notes.image_path(model.preferences.dir, key, src)
+        if os.path.isfile(source):
+            pictures[src] = source
+        else:
+            debug.event("packages", "comment picture missing", src=src, mat_id=mat_id)
     builder = (asset_record.saved_builder(model.preferences, mat_id, model.DB_FILENAME)
                if model.DB_FILENAME in library_files.ASSET_SECTIONS else {})
     return {"type": "asset", "section": model.NOTES_SECTION,
-            "id": mat_id, "record": record,
-            "note": page, "sources": sources, "textures": textures, "builder": builder}
+            "id": mat_id, "record": record, "note": page, "sources": sources,
+            "textures": textures, "comment_pictures": pictures, "builder": builder}
+
+
+def _picture_name(src) -> str:
+    """The file name in `comments/` a comment's `$AMAZEASSET/comments/<name>` gives; "" for others."""
+    src = str(src or "")
+    name = src[len(PICTURES):] if src.startswith(PICTURES) else ""
+    return name if library_files.is_safe_id(name) else ""
 
 
 def collect_file(path: str, kind: str) -> dict:
@@ -108,6 +127,15 @@ def write_package(out_path: str, items) -> int:
                 payload.append((arc, source))
             if texarcs:
                 entry["textures"] = texarcs
+            picarcs = {}
+            for src, source in sorted(entry.pop("comment_pictures", {}).items()):
+                arc = "assets/%s/%s/%s/%s" % (
+                    entry["section"], entry["id"], library_files.COMMENT_FOLDER,
+                    os.path.basename(source))
+                picarcs[src] = arc
+                payload.append((arc, source))
+            if picarcs:
+                entry["comment_pictures"] = picarcs
         elif entry.get("type") == "file":
             arc = "files/%d_%s" % (n, entry["name"])    # the index keeps two exports of one basename apart
             entry["arc"] = arc
@@ -182,7 +210,7 @@ def _entry_problems(entry) -> list:
         return ["not an object"]
     found = ["%s is not an object" % key for key in OBJECTS
              if entry.get(key) is not None and not isinstance(entry[key], dict)]
-    for key in ("files", "textures"):
+    for key in MEMBER_MAPS:
         named = entry.get(key)
         if isinstance(named, dict) and not all(
                 isinstance(arc, str) for arc in named.values()):
@@ -224,7 +252,7 @@ def read_manifest(path: str) -> dict:
 
 
 def import_package(models, prefs, path: str, restore: bool = False) -> dict:
-    """Import a package, new ids under `Import` or own ids with `restore`; PackageError if incomplete."""
+    """Import a package with new ids, `restore` replacing curated presets; PackageError if incomplete."""
     try:
         bundle = zipfile.ZipFile(path)
     except (OSError, zipfile.BadZipFile) as exc:
@@ -252,7 +280,7 @@ def import_entries(models, prefs, bundle, entries,
     if needed > MAX_UNPACKED_BYTES:    # before the first write, so a rejected import leaves the library unchanged
         raise PackageError(messages.PACKAGE_TOO_LARGE % (
             wording.byte_size(needed), wording.byte_size(MAX_UNPACKED_BYTES)))
-    summary = {"imported": 0, "skipped": 0, "files": 0, "refused": 0,
+    summary = {"imported": 0, "skipped": 0, "replaced": 0, "files": 0, "refused": 0,
                "categories": {}, "problems": []}
     staged = []    # appended rows and their written files, committed once per model by `_commit_assets`
     taken = set()    # texture targets already staged: two entries may share one
@@ -278,27 +306,48 @@ def import_entries(models, prefs, bundle, entries,
                         name=name)
             summary["refused"] += 1
             summary["problems"].append("%s: %s" % (name, exc))    # the real cause, as raised
-    _commit_assets(prefs, staged, summary)
+    _commit_assets(prefs, staged, summary, restore)
     return summary
 
 
-def _save_model_rows(prefs, model, items) -> bool:
-    """One model's appended rows and every file they brought, as ONE change; False: none saved."""
+def _save_model_rows(prefs, model, items, going=()) -> bool:
+    """One model's appended rows, their files and the `(row, record)` they replace, as ONE change."""
     from amaze.core import library_db
     if not library_db.accepts(prefs, model.DB_FILENAME):
         return False
     held = library_db.guard_of(prefs)
-    with library_db.library_for(prefs).holding():
-        model._stage_rows(model._doc())
+    trash, taken = None, {}
+    if going:
+        trash, taken = model._unlist_for_delete(going)    # the model's own delete; it stages every row
+    else:
+        with library_db.library_for(prefs).holding():
+            model._stage_rows(model._doc())
 
     def files(change):
+        if trash is not None:
+            trash(change)
         for _model, asset, _entry, _row, written in items:
             asset_record.add_staged(change, held, written,
                                     metadata=json.loads(json.dumps(asset.get_as_dict())))
-    return bool(library_db.save(prefs, model.DB_FILENAME, also=files))
+    saved = False
+    try:
+        saved = bool(library_db.save(prefs, model.DB_FILENAME, also=files))
+    finally:
+        if going and not saved:
+            model._restore_unsaved_removals(going, taken)    # nothing on disk changed
+    return saved
 
 
-def _commit_assets(prefs, staged, summary) -> None:
+def _replaced(model, items) -> list:
+    """`(row, record)` of every other asset in the model sharing a restored entry's curated tag."""
+    tags = {str(row.get("curated") or "") for _model, _asset, _entry, row, _written in items}
+    tags.discard("")
+    fresh = {id(asset) for _model, asset, _entry, _row, _written in items}
+    return [(at, asset) for at, asset in enumerate(model.assets)
+            if id(asset) not in fresh and str(asset._extra.get("curated") or "") in tags]
+
+
+def _commit_assets(prefs, staged, summary, restore: bool = False) -> None:
     """Save each model's rows and files once, then the saved ones' notes; failed rows are removed."""
     pages = {}
     by_model = {}
@@ -306,8 +355,9 @@ def _commit_assets(prefs, staged, summary) -> None:
         by_model.setdefault(id(item[0]), []).append(item)
     for items in by_model.values():
         model = items[0][0]
+        going = _replaced(model, items) if restore else []
         try:
-            stored = _save_model_rows(prefs, model, items)
+            stored = _save_model_rows(prefs, model, items, going)
         except Exception as exc:                          # noqa: BLE001
             debug.event("packages", "entry not imported", error=str(exc),
                         name=model.DB_FILENAME)
@@ -321,6 +371,7 @@ def _commit_assets(prefs, staged, summary) -> None:
                 material.release_asset_dir(prefs, model.DB_FILENAME, asset.mat_id)
             summary["refused"] += len(items)
             continue
+        summary["replaced"] += len(going)
         for _model, asset, entry, row, _written in items:
             model._content_state[str(asset.mat_id)] = model._content_stat(asset.mat_id)    # saved now
             page = entry.get("note") or {}
@@ -347,23 +398,15 @@ def _import_asset(models, prefs, bundle, entry, restore, summary, taken):
         summary["skipped"] += 1
         return
     row = dict(entry.get("record") or {})
-    if restore:
-        tag = str(row.get("curated") or "")
-        if tag:    # curated rows match on the tag, since ids differ per library
-            present = {str(a._extra.get("curated") or "")
-                       for a in model.assets}
-        else:
-            present = {str(a.mat_id) for a in model.assets}
-        if (tag or str(row.get("id") or "")) in present:
-            summary["skipped"] += 1
-            return
-    else:
-        row.pop("id", None)
-        row.pop("uid", None)    # the old id key, which readers copy into `id`
+    row.pop("id", None)
+    row.pop("uid", None)    # the old id key, which readers copy into `id`
+    if not (restore and row.get("curated")):    # a restored preset keeps its own category
         row["categories"] = ["Import"]
     asset = model._asset_from_row(row)
+    pictures = entry.get("comment_pictures") or {}
     own = (material.claim_asset_dir(prefs, model.DB_FILENAME, asset.mat_id, asset.name)
-           if model.DB_FILENAME in library_files.ASSET_SECTIONS or entry.get("files") else "")
+           if model.DB_FILENAME in library_files.ASSET_SECTIONS or entry.get("files") or pictures
+           else "")
     targets = model.asset_files(asset.mat_id)
     held = {}    # the builder's members, read into `<id>.json` rather than written as files
     written = []    # (asset_record.TAKE, target, scratch) and the record: committed with the row
@@ -390,6 +433,12 @@ def _import_asset(models, prefs, bundle, entry, restore, summary, taken):
                 continue
             written.append(_staged_member(bundle, arcname, target))
             taken.add(target)
+        for src, arcname in pictures.items():
+            name = _picture_name(src)
+            if not own or not name:
+                raise PackageError("not a picture of the asset's own comments: %r" % src)
+            written.append(_staged_member(bundle, arcname, hostos.contained_join(
+                own, library_files.COMMENT_FOLDER, name)))
         written.extend(_staged_builder(model, asset.mat_id, held))
     except BaseException:
         asset_record.discard(written)
@@ -438,11 +487,10 @@ def _import_file(prefs, bundle, entry, summary) -> None:
 
 
 def _arcs(entry) -> list:
-    """The members one entry writes: a file entry its `arc`, an asset entry its files and textures."""
+    """The members one entry writes: a file entry its `arc`, an asset entry its files and pictures."""
     if entry.get("type") == "file":
         return [entry.get("arc")]
-    return (list((entry.get("files") or {}).values())
-            + list((entry.get("textures") or {}).values()))
+    return [arc for key in MEMBER_MAPS for arc in (entry.get(key) or {}).values()]
 
 
 def _verify(bundle, manifest) -> list:

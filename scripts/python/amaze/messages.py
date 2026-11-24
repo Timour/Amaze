@@ -237,7 +237,7 @@ STORE_TILE_NOT_IMPORTED = 'the tile could not be imported'
 
 STORE_TILE_IMPORTED_NOTHING = 'nothing in this tile could be imported'
 
-STORE_RESTORE_SUMMARY = 'Restored %d, %d already present.'
+STORE_RESTORE_SUMMARY = 'Restored %d, %d replaced.'
 
 NODE_HAS_NO_FILE_PARM = '%s has no file parameter to take %s'
 
