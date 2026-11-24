@@ -214,7 +214,7 @@ def copy_image_into_library(preferences, source: str, key: str) -> str:
             src = texstore.OWN_PREFIX + library_files.COMMENT_FOLDER + "/" + name
         with open(source, "rb") as handle:
             data = handle.read()
-        change = held.change(str(getattr(preferences, "library_user", "")))
+        change = held.change(library_db.user(preferences))
         change.put_file(relative, data)
         change.commit()
     except (OSError, hostos.PathOutsideBase, guard.Refused) as exc:

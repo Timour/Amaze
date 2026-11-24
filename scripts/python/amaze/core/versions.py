@@ -67,7 +67,7 @@ def _commit_files(preferences, writes: dict, removals=(), why: str = "") -> bool
     """{path: bytes} written and `removals` removed as ONE commit via guard.py; whether it succeeded."""
     from amaze.core import guard, library_db
     held = library_db.guard_of(preferences)
-    change = held.change(str(getattr(preferences, "library_user", "") or ""))
+    change = held.change(library_db.user(preferences))
     try:
         for path, data in writes.items():
             relative = held.inside(path)

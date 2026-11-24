@@ -4,7 +4,7 @@ import shutil
 import tempfile
 import hou
 
-from amaze.core import debug, guard
+from amaze.core import debug, guard, library_db
 from amaze.core import material
 from amaze.core import renderers
 import amaze
@@ -49,7 +49,7 @@ class ThumbNailRenderer:
 
     def _user(self) -> str:
         """The library's selected user, whom every picture this renderer writes is by."""
-        return str(getattr(self._preferences, "library_user", "") or "")
+        return library_db.user(self._preferences)
 
     @staticmethod
     def render_batch(preferences, renderer: str, items) -> bool:
@@ -81,7 +81,7 @@ class ThumbNailRenderer:
         frames = [(asset_id, tile_icons.thumbnail_path(preferences, asset_id, nodes.MATERIALS))
                   for (asset_id, _node), prim in zip(items, batch["prims"]) if prim]
         batch["prims"] = [prim for prim in batch["prims"] if prim]
-        batch["user"] = str(getattr(preferences, "library_user", "") or "")    # who the pictures are by
+        batch["user"] = library_db.user(preferences)    # who the pictures are by
         if not frames:    # no material node in any of them
             shutil.rmtree(job_dir, ignore_errors=True)
             return False

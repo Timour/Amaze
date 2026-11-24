@@ -319,7 +319,7 @@ class Library:
                 title=messages.TITLE_AMAZE) != 0:
             return
         try:
-            layout_conversion.convert(library_db.guard_of(prefs), str(prefs.library_user or ""))
+            layout_conversion.convert(library_db.guard_of(prefs), library_db.user(prefs))
         except OSError as exc:
             debug.event("library", "conversion to 3.0 failed", dir=prefs.dir, error=str(exc))
             ui.displayMessage(messages.LIBRARY_CONVERSION_FAILED % exc, title=messages.TITLE_AMAZE,

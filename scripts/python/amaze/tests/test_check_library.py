@@ -34,6 +34,7 @@ def record(name: str, *categories) -> bytes:
 def lay_out(folder: str) -> None:
     """A 3.0 library holding one of each thing Check Library reports, and things it must leave."""
     put(folder, guard.MASTER, {"policy": {"library": {"version": library_policy.LIBRARY_VERSION}},
+                               "users": {USER: {"name": test_support.FIXTURE_USER_NAME}},
                                guard.MANIFEST: {name: {"created": "x", "by": ""}
                                                 for name in (MATERIALS, NODES, CODE)}})
     put(folder, MATERIALS, {"assets": {"A1": {"name": "Brick", "categories": ["Walls"]},

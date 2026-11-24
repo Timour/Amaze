@@ -583,6 +583,8 @@ class _Settings(unittest.TestCase):
         self.dir = tempfile.mkdtemp(prefix="amaze_storage_lib_") + os.sep
         self.addCleanup(shutil.rmtree, self.dir, True)
         self.prefs = types.SimpleNamespace(dir=self.dir, library_user=test_support.FIXTURE_USER)
+        prefs_mod.create_library(self.dir)
+        test_support.with_fixture_user(self.dir)    # a library takes changes from its own users
 
 
 class ThroughThePreferencesTest(_Settings):

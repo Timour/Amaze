@@ -17,7 +17,7 @@ import hou  # noqa: E402 - the pane engine is Houdini's: hython runs this module
 from amaze import messages  # noqa: E402
 from amaze.actions import library as library_actions  # noqa: E402
 from amaze.core import (documents, guard, library_db, library_files, model_registry,  # noqa: E402
-                        users)
+                        notes, users)
 from amaze.dialogs import prefs_window  # noqa: E402
 from amaze.prefs import persistence  # noqa: E402
 from amaze.prefs import prefs as prefs_mod  # noqa: E402
@@ -148,7 +148,7 @@ class OpenTest(_Pane):
                           if isinstance(table, dict) for entry in table.values()
                           if isinstance(entry, dict) and documents.BY in entry}
                 self.assertLessEqual(stamps, {fern, ""}, "%s was written by a stranger" % name)
-        other, _made = self.library("Sage")
+        other, made = self.library("Sage")
         before = state(other)
         settings = os.path.join(self.pane.prefs.path, "settings.json")
         with open(settings, encoding="utf-8") as handle:
@@ -158,6 +158,18 @@ class OpenTest(_Pane):
             self.pane.library.reload()    # Fern is no user of the library the settings name now
         self.assertEqual(folder, self.pane.library.models_dir, "it opened with a stranger")
         self.assertEqual(before, state(other), "a library not opened was written to")
+        named.update(directory=folder, library_user=made["Sage"])    # the open one, Sage of another
+        test_support.put(self.pane.prefs.path, "settings.json", json.dumps(named))
+        snippets, kept = self.pane.code_model, state(folder)
+        key = notes.note_key("code", snippets.tile_key(0))
+        shot = test_support.put(self.empty_folder(), "shot.png", b"pasted")
+        with test_support.captured_log():
+            self.pane.library.reread_settings()
+            snippets.set_tile_name(0, "named by a stranger")
+            notes.set_note(self.pane.prefs, key, [{"t": "text", "text": "a stranger's"}])
+            notes.copy_image_into_library(self.pane.prefs, shot, key)
+            library_db.flush()
+        self.assertEqual(kept, state(folder), "a user of another library wrote to this one")
 
     def test_sw21_a_library_that_does_not_open_leaves_everything_as_it_was(self):
         other, _made = self.library("Sage")

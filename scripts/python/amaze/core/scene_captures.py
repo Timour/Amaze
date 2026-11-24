@@ -7,7 +7,7 @@ import hou
 
 from amaze import messages
 from amaze.core import captures
-from amaze.core import debug, guard
+from amaze.core import debug, guard, library_db
 from amaze.helpers import hostos
 
 MAX_THUMB_EDGE = 1024  # the captured image's long edge, in pixels
@@ -238,7 +238,7 @@ def capture_open_scene(preferences, target: str = "") -> str:
 
     key = captures.file_key(preferences, target)
     return capture_tile(captures.file_path(preferences, key), key,
-                        str(getattr(preferences, "library_user", "") or ""))
+                        library_db.user(preferences))
 
 
 def capture_tile(out: str, key: str, user: str = "") -> str:

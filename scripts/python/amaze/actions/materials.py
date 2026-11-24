@@ -123,7 +123,7 @@ def update_asset_content(model, row: int, node: hou.Node) -> str:
         if cop_path and os.path.exists(cop_path):
             try:
                 held = library_db.guard_of(model.preferences)
-                change = held.change(str(getattr(model.preferences, "library_user", "") or ""))
+                change = held.change(library_db.user(model.preferences))
                 change.trash(held.inside(cop_path))
                 change.commit()
             except (OSError, guard.Refused) as exc:

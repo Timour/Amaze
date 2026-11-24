@@ -22,7 +22,7 @@ def _location_prefs(case, names):
     """Only the attributes a location record reads; a real `Prefs` looks up the install."""
     prefs = prefs_mod.Prefs.__new__(prefs_mod.Prefs)
     prefs.save = lambda: None
-    prefs._directory = tempfile.mkdtemp(prefix="amaze_locations_")
+    prefs._directory = test_support.with_fixture_user(tempfile.mkdtemp(prefix="amaze_locations_"))
     prefs._library_user = test_support.FIXTURE_USER
     prefs.data = {}
     prefs._file_folders = []

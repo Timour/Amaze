@@ -5,6 +5,7 @@ import shutil
 import unittest
 
 from amaze.core import documents, guard, library, library_db, library_files, notes, texstore
+from amaze.core import users
 from amaze.tests import faults, test_support
 
 MATERIALS = library_files.MATERIALS
@@ -123,11 +124,11 @@ class CommentsTest(unittest.TestCase):
         first = test_support.FIXTURE_USER
         self.assertTrue(self.page(self.key, text("the first's"), {"t": "todo", "label": "to do"}))
         before = notes.note_for(self.prefs, self.key)["items"]
-        self.prefs.library_user = "u-second"
+        second = self.prefs.library_user = users.create(self.prefs, "Second")
         self.assertTrue(self.page(self.key, text("the first's"),
                                   {"t": "todo", "label": "to do", "done": True}, text("mine")))
         after = notes.note_for(self.prefs, self.key)["items"]
-        self.assertEqual([(item["id"], first) for item in before] + [(after[2]["id"], "u-second")],
+        self.assertEqual([(item["id"], first) for item in before] + [(after[2]["id"], second)],
                          [(item["id"], item["author"]) for item in after])
 
     def test_cm22_a_comment_with_nothing_left_is_removed(self):

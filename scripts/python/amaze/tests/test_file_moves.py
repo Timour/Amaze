@@ -16,11 +16,9 @@ from PySide6 import QtWidgets
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 from amaze import messages  # noqa: E402
-from amaze.core import captures, file_moves, library_db, locations  # noqa: E402
+from amaze.core import captures, file_moves, library_db, locations, users  # noqa: E402
 from amaze.helpers import hostos  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
-
-OTHER_USER = "a1b2c3d4e5f60718293a4b5c6d7e8f90"
 
 
 def _read(path):
@@ -140,13 +138,15 @@ class WhatAMoveDoesTest(_Folders):
         prefs = types.SimpleNamespace(dir=os.path.join(self.root, "library") + os.sep,
                                       library_user=test_support.FIXTURE_USER)
         os.makedirs(prefs.dir)
+        test_support.with_fixture_user(prefs.dir)
+        other = users.create(prefs, "Other")
         self.assertTrue(locations.register(prefs, self.root))
         old, new = captures.file_key(prefs, self.plate), captures.file_key(prefs, self.moved_to)
         held = library_db.document(prefs, locations.FILES)
         held.put(locations.COMMENTS, old, {"items": [{"t": "text", "text": "kept"}]})
         held.put(locations.ICONS, old, {"name": "activity"})
         library_db.save(prefs, locations.FILES)
-        for user in (OTHER_USER, test_support.FIXTURE_USER):
+        for user in (other, test_support.FIXTURE_USER):
             prefs.library_user = user
             self.assertTrue(locations.set_favourite(prefs, self.plate, True))
         test_support.write_text(captures.file_path(prefs, old), "picture")
@@ -157,7 +157,7 @@ class WhatAMoveDoesTest(_Folders):
                     sorted(user for user, own in held.everyones(locations.FAVORITES).items() if key in own))
         file_moves.mover.start([(self.plate, self.moved_to)], prefs, lambda *_: None, lambda _r: None)
         _wait_for_the_mover()
-        self.assertEqual((True, True, True, sorted([OTHER_USER, test_support.FIXTURE_USER])), data(new))
+        self.assertEqual((True, True, True, sorted([other, test_support.FIXTURE_USER])), data(new))
         copied = os.path.join(self.a, "plate.exr")
         file_moves.mover.start([(self.moved_to, copied)], prefs, lambda *_: None, lambda _r: None,
                                copying=True)

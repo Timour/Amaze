@@ -3,7 +3,7 @@
 import hou
 
 from amaze import messages
-from amaze.core import debug, scene_captures
+from amaze.core import debug, library_db, scene_captures
 
 
 class TileCapture:
@@ -37,7 +37,7 @@ class TileCapture:
             captured = self.run(
                 lambda: scene_captures.capture_tile(
                     model.capture_path(row), model.tile_key(row),
-                    str(getattr(model.preferences, "library_user", "") or "")),
+                    library_db.user(model.preferences)),
                 model.tile_key(row))
         if captured:
             self.pane.assets.apply_icon_spec(model, [row], {"face": "image"})

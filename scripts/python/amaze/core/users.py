@@ -34,7 +34,16 @@ def all_users(preferences, library: str = "") -> dict:
     """`{uid: name}` for this library, or for `library`."""
     return {uid: str(record.get("name") or "")
             for uid, record in _master(preferences, library).table(SECTION).items()
-            if isinstance(record, dict) and str(record.get("name") or "").strip()}
+            if _named(record)}
+
+
+def holds(held, uid) -> bool:
+    """Whether `held`, a library's `DataBase.json`, names `uid` as a user in the file as last read."""
+    return _named(held.was(SECTION, str(uid or "")))
+
+
+def _named(record) -> bool:
+    return isinstance(record, dict) and bool(str(record.get("name") or "").strip())
 
 
 def roster(preferences) -> set:

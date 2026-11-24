@@ -8,7 +8,7 @@ import hou
 
 
 from amaze import messages
-from amaze.core import asset_record, library_files, material, material_files
+from amaze.core import asset_record, library_db, library_files, material, material_files
 from amaze.core import renderers
 from amaze.core import texstore
 from amaze.prefs import prefs
@@ -697,7 +697,7 @@ class NodeHandler:
             target = target_of()
             if not isinstance(self.staging, list):
                 return guard.put_rendered(target, write,
-                                          str(getattr(self._preferences, "library_user", "") or ""))
+                                          library_db.user(self._preferences))
             self.staging.append(asset_record.staged_write(target, write))    # with the row
             return True
         except (OSError, hostos.PathOutsideBase) as exc:
