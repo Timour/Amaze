@@ -23,7 +23,7 @@ def connect(model) -> None:
 def add_asset(model, node: hou.Node, cats: str, tags: str, fav: bool,
               name: str | None = None, picture: str = "", render: bool = True,
               about: str | None = None, license: str | None = None, sources=()) -> str:
-    """Save `node` and `sources` as a new material, its row and files as one change: its renderer, or ""."""
+    """Save `node` and `sources` as a new material, row and files in one change: its renderer, or ""."""
     handler = nodes.NodeHandler(model.preferences)
     handler.supplied_thumbnail = picture    # a hosted picture, which replaces the render
     handler.render_after_save = render    # False: the caller renders its rows in one batch
