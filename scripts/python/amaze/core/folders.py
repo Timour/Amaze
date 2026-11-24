@@ -545,11 +545,7 @@ class FolderTreeModel(sidebar_model.SidebarModel):
         return len(after) > len(before)
 
     def remove_folder(self, row: int) -> bool:
-        # All and the scene row are not locations; True when the location was removed
-        return self.unregister_folder(row)
-
-    def unregister_folder(self, row: int) -> bool:
-        """Remove the location at ROW, nothing else; its files' data is kept for when it is re-added."""
+        """Unregister the location at ROW; True when it was. A subclass drops its files' data."""
         path = self.registered_at(row)
         if not path:
             return False

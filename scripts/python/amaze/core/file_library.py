@@ -8,6 +8,7 @@ import stat
 
 from PySide6 import QtCore, QtGui
 
+from amaze import messages
 from amaze.core import captures, debug, file_info, file_moves, folders, geo_library, scene_files
 from amaze.core import grid_engine
 from amaze.core import locations
@@ -24,6 +25,27 @@ def kind_for(name: str) -> str:
     if hostos.has_extension(name, geo_library.GEO_EXTENSIONS):
         return locations.KIND_GEO
     return locations.KIND_OTHER
+
+
+def new_name_refusal(name: str) -> str:
+    """Why `name` cannot name a new folder or scene in one folder, or "": a slash divides folders."""
+    return messages.NEW_NAME_HAS_A_SLASH % name if "/" in name or os.sep in name else ""
+
+
+def make_folder(folder: str, name: str) -> str:
+    """A new folder `name` inside `folder`: "", or why nothing was made."""
+    refusal = new_name_refusal(name)
+    if refusal:
+        return refusal
+    path = os.path.join(folder, name)
+    try:
+        os.mkdir(path)    # never over anything, even a name taken a moment ago
+    except FileExistsError:
+        return messages.NEW_FOLDER_TAKEN % (name, folder)
+    except OSError as exc:
+        return messages.NEW_FOLDER_FAILED % (name, exc)
+    debug.event("file", "folder made", path=path)
+    return ""
 
 
 def _stat_once(known: dict):

@@ -8,6 +8,7 @@ import hou
 from PySide6 import QtCore
 
 from amaze import amazetheme, messages
+from amaze.actions import files as files_actions
 from amaze.core import debug, file_library, file_moves, grid_columns, locations, notes, scene_captures, section_list, sidebar_model
 from amaze.helpers import wording
 from amaze.pane import files as pane_files
@@ -209,9 +210,8 @@ class FolderSection(base.Section):
         if self.selected_kinds(indexes) == {locations.KIND_IMAGE}:
             self.pane.loading.click_on_row(self, current)    # `click_on_row`, the same call as a double-click on the row
             return
-        for index in indexes:
-            if index.data(files.KindRole) == locations.KIND_GEO:
-                self.pane.loading.import_geo_asset(index)
+        self.pane.loading.import_geo_assets(
+            [index for index in indexes if index.data(files.KindRole) == locations.KIND_GEO])
 
     def menu_load_scene(self, indexes, current, payload=None) -> None:
         self.open_hip_scene(current)
@@ -236,55 +236,27 @@ class FolderSection(base.Section):
         files = self._p(self.files_attr)
         return files.browsing() if files is not None else ""
 
-    def _ask_new_name(self, title: str, then) -> None:
-        """`then(name)` with the typed name; nothing for a cancel, a cleared field, or a slash in it."""
+    def _ask_new_name(self, title: str, make) -> None:
+        """`make(folder shown, typed name)`, its refusal shown; a cancel or a cleared field makes nothing."""
+        folder = self._shown_folder()
+        if not folder:
+            return
+
         def typed(name):
             name = (name or "").strip()
-            if name and ("/" in name or os.sep in name):
-                debug.refuse(messages.NEW_NAME_HAS_A_SLASH % name)
-                return
-            if name:
-                then(name)
+            refusal = make(folder, name) if name else ""
+            if refusal:
+                debug.refuse(refusal)
+            elif name:
+                self._refresh_shown()
         self.pane.ui.ask_name(title, "", typed)
 
     def menu_new_folder(self, indexes, current, payload=None) -> None:
-        folder = self._shown_folder()
-        if folder:
-            self._ask_new_name("New Folder", lambda name: self._make_folder(folder, name))
-
-    def _make_folder(self, folder: str, name: str) -> None:
-        """A new folder `name` inside `folder`; a name in use or a failed write is refused."""
-        path = os.path.join(folder, name)
-        if os.path.exists(path):
-            debug.refuse(messages.NEW_FOLDER_TAKEN % (name, folder))
-            return
-        try:
-            os.makedirs(path)
-        except OSError as exc:
-            debug.refuse(messages.NEW_FOLDER_FAILED % (name, exc))
-            return
-        debug.event("file", "folder made", path=path)
-        self._refresh_shown()
+        self._ask_new_name("New Folder", file_library.make_folder)
 
     def menu_save_scene(self, indexes, current, payload=None) -> None:
         """Save As of the open scene into the folder shown; the file becomes the open scene."""
-        folder = self._shown_folder()
-        if folder:
-            self._ask_new_name("Save Scene", lambda name: self._save_scene_as(folder, name))
-
-    def _save_scene_as(self, folder: str, name: str) -> None:
-        """The open scene saved as `name` in `folder`, then the open scene; a name in use is refused."""
-        path = os.path.join(folder, name + scene_captures.scene_extension())
-        if os.path.exists(path):
-            debug.refuse(messages.SAVE_SCENE_TAKEN % (os.path.basename(path), folder))
-            return
-        try:
-            hou.hipFile.save(path)
-        except hou.Error as exc:
-            debug.refuse(messages.SAVE_SCENE_FAILED % (path, exc))
-            return
-        debug.event("hip", "scene saved as new", file=path)
-        self._refresh_shown()
+        self._ask_new_name("Save Scene", files_actions.save_scene_as)
 
     def _refresh_shown(self) -> None:
         """The grid lists the folder again; the sidebar re-reads it, so a new subfolder gets its row."""
@@ -570,7 +542,7 @@ class FileSection(FolderSection):
         return packages.write_package(path, items)
 
     def click_import_geo(self, index) -> bool:
-        self.pane.loading.import_geo_asset(index)
+        self.pane.loading.import_geo_assets([index])
         return True
 
     def drop_geo_at_release(self, index: QtCore.QModelIndex) -> bool:
@@ -588,9 +560,9 @@ class FileSection(FolderSection):
             return False
         with dragengine.drop_group("Amaze Import Geometry"):
             created = pane.drop_placement.import_geo_in_context(path, context)
-        if created is not None:
-            helpers.place_nodes([created],
-                                pane.drop_placement.release_position_in(context))
+            if created is None:    # refused, and the reason shown: the miss shows too
+                return False
+            helpers.place_nodes([created], pane.drop_placement.release_position_in(context))
         return True
 
     def click_open_hip(self, index) -> bool:
@@ -637,24 +609,15 @@ class FileSection(FolderSection):
 
     def create_image_node_in(self, index, dest, position=None) -> bool:
         """Create a mtlximage node set to the file's path, where the network can contain one."""
-        pane = self.pane
-        from amaze.core import dragengine
         from amaze.helpers import helpers
+        pane = self.pane
         path = index.data(pane.file_files_model.PathRole)
         if not path:
             return False
-        base = wording.sanitize_usd_path(
-            os.path.splitext(os.path.basename(path))[0]) or "image"
-        with dragengine.drop_group("Amaze Create Image Node"):
-            node = pane.drop_placement.create_holder_node(dest, "mtlximage", base, position)
-            if node is None:
-                return False
-            parm = helpers.find_file_parm(node)
-            if parm is None:
-                node.destroy()
-                return False
-            parm.set(pane.drop_placement.scene_path(path))
-        return True
+        name = wording.sanitize_usd_path(os.path.splitext(os.path.basename(path))[0]) or "image"
+        return pane.drop_placement.create_holder_node(
+            dest, "mtlximage", name, position, helpers.find_file_parm,
+            pane.drop_placement.scene_path(path), "Amaze Create Image Node")
 
     def click_copy_path(self, index) -> bool:
         """Copy the path: the only click action for a file of unknown kind."""

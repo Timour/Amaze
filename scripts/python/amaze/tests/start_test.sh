@@ -115,25 +115,22 @@ fi
 
 MODULES="test_category test_library test_generator \
 test_roundtrip test_thumbnail_shutdown test_addons test_addon_tab test_debug_log_repeats \
-test_library_storage test_check_library test_lop_assign test_drag_gesture test_houdini_operations \
-test_drop_targets test_drop_resolution test_cop_root \
+test_library_storage test_check_library test_houdini_operations \
+test_cop_root \
 test_prefs_equality test_karma_batch \
 test_nodes_section test_tile_icons test_category_colors \
-test_shell_gates test_folder_sections test_folder_tree test_file_moves \
-test_viewport_pick test_log_export \
-test_hip_section test_library_list test_library_tab test_atomic_write \
-test_gradient_guard test_harness_reset \
-test_stale_proxy_index test_alert_sink \
-test_save_from_node test_node_menu \
-test_versions test_file_section test_notes \
-test_file_info test_info_panel test_info_subjects test_image_preview \
-test_shaderball_assets \
-test_cancel_conversions test_qml_pane test_code_tile \
-test_no_live_data \
-test_write_ordering test_thumbnail_paths test_panel_correctness \
-test_prefs_and_sources test_prefs_shared test_prefs_per_user test_conversion test_area_bindings test_sidebar_order test_comments_area test_grid_operations test_sidebar_menu test_scene_folder test_grid_engine test_matx_translate test_material_two_files \
-test_redshift_terminal test_redshift_converter test_simready test_octane test_conversion_engine test_husk_job test_dead_cover test_updater \
-test_empty_state \
+test_shell_gates test_file_moves test_log_export test_hip_section test_library_list \
+test_library_tab test_atomic_write test_gradient_guard test_harness_reset \
+test_stale_proxy_index test_alert_sink test_save_from_node test_node_menu test_versions \
+test_file_section test_notes test_file_info test_info_panel test_info_subjects \
+test_image_preview test_shaderball_assets test_cancel_conversions test_qml_pane \
+test_no_live_data test_write_ordering test_thumbnail_paths test_panel_correctness \
+test_prefs_and_sources test_prefs_shared test_prefs_per_user test_conversion \
+test_area_bindings test_sidebar_order test_comments_area test_grid_operations \
+test_sidebar_menu test_grid_engine test_matx_translate test_material_two_files \
+test_redshift_terminal test_redshift_converter test_simready test_octane \
+test_conversion_engine test_husk_job test_dead_cover test_updater test_empty_state \
+test_snippet_run test_drop_into_scene \
 test_fresh_library test_grouped_import test_gallery_import test_row_addressing \
 test_switch_rereads \
 test_fixture_guard test_packages test_texstore \

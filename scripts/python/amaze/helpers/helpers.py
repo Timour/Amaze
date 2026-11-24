@@ -262,6 +262,11 @@ def get_connected_output_nodes(
     return _walk_connected(nodes, selected, "outputs")
 
 
+def selected_in(networks) -> list:
+    """The selected nodes inside `networks`: `hou.selectedNodes()` also holds other networks'."""
+    return [node for node in hou.selectedNodes() if node.parent() in networks]
+
+
 @contextlib.contextmanager
 def preserving_selection_and_current():
     """Restore the selection and the Network Editors after Amaze's temporary nodes changed them."""

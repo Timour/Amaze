@@ -91,21 +91,11 @@ class GradientSection(base.AssetSection):
     def _create_gradient_holder_node(self, entry, dest, basis: str = "",
                                      position=None) -> bool:
         """Node creation shared by the drop (an index) and the click actions (an entry)."""
-        from amaze.core import dragengine
         from amaze.helpers import helpers
-        name = wording.sanitize_usd_path(
-            str(entry.get("name") or "")) or "gradient"
-        with dragengine.drop_group("Amaze Create Gradient Node"):
-            node = self.pane.drop_placement.create_holder_node(dest, "hmtlxrampc", name,
-                                                               position)
-            if node is None:
-                return False
-            parm = helpers.find_color_ramp_parm(node)
-            if parm is None:
-                node.destroy()
-                return False
-            parm.set(self._entry_ramp(entry, basis))
-        return True
+        name = wording.sanitize_usd_path(str(entry.get("name") or "")) or "gradient"
+        return self.pane.drop_placement.create_holder_node(
+            dest, "hmtlxrampc", name, position, helpers.find_color_ramp_parm,
+            self._entry_ramp(entry, basis), "Amaze Create Gradient Node")
 
     def _copy_gradient_swatch(self, color: dict) -> None:
         """Put one swatch's hex code on the system clipboard; it assigns nothing."""

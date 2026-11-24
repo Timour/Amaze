@@ -43,6 +43,7 @@ LIBRARY_FOLDER_NOT_EMPTY = "This folder is not empty. Pick an empty folder for a
 NO_FOLDER_SELECTED_TO_RELOCATE = "Select the registered folder to re-point first (\"All\" is not a real folder)."
 RELOCATE_TARGET_NOT_A_FOLDER = "That location isn't a folder."
 LOCATION_ALREADY_ADDED = "That location is already added."
+REMOVE_LOCATION_CONFIRM = "Remove %s from the File section? The files stay on disk. Their comments, icons and favorites in Amaze are removed for every user."
 NO_LIBRARY_CONFIGURED = "Set up a library first."
 PACKAGE_IMPORT_SUMMARY = "Imported %d asset(s) and %d file(s) into the Import category."
 PACKAGE_EXPORTED = "Exported %d items to %s."
@@ -72,7 +73,7 @@ RESTART_TO_FINISH_UPDATE = "Amaze was updated while Houdini was running. Restart
 NODE_CANNOT_BE_SAVED = "\"%s\" can't be saved — it's not a material, color ramp, code node or network."
 NODE_SAVE_FAILED_WITH_REASON = "\"%s\" could not be saved: %s"
 NODE_SAVE_FAILED = "\"%s\" could not be saved."
-OBJECT_HAS_NO_MATERIAL_PARM = "\"%s\" has no material parameter — imported to /mat without assigning."
+OBJECT_HAS_NO_MATERIAL_PARM = "\"%s\" has no material parameter, so nothing was imported."
 DROP_CANCELED = 'The action was canceled.'
 
 MOVE_DONE = 'Moved %s to %s.'
@@ -119,7 +120,6 @@ BUTTONS_OVERWRITE_OR_SKIP = ('Overwrite', 'Skip', 'Cancel')
 
 STOCK_LOP_HELPERS_UNAVAILABLE = "Could not load Houdini's material-assignment helpers — material not imported."
 NETWORK_REFUSED_MATERIAL_LIBRARY = "%s can't take a Material Library, so the material was not imported.\n\n%s"
-DROPPED_MATERIAL_IMPORT_FAILED = "The dropped material could not be imported, so nothing was assigned. Other materials in the selection were still added to the library."
 MATERIAL_ASSIGN_FAILED = "Imported, but assigning failed: %s"
 NO_MATERIAL_DESTINATION_NETWORK = "No place to create the material — dive into a Material Library or /mat first."
 LOP_IMPORT_OUTSIDE_LIBRARY = 'A material goes into a Material Library. Dive into one and import again.'
@@ -349,6 +349,8 @@ BUTTONS_IMPORT = ('Import', 'Cancel')
 
 BUTTONS_DELETE = ('Delete', 'Cancel')
 
+BUTTONS_REMOVE = ('Remove', 'Cancel')
+
 BUTTONS_DELETE_USER = ('Delete User', 'Cancel')
 
 BUTTONS_OPEN_PREFERENCES = ('Open Preferences', 'Close')
@@ -381,6 +383,7 @@ SNIPPET_HAS_NO_CODE = "No code to save."
 CODE_VERSION_UNREADABLE = "That version's file could not be read. The editor keeps the code it had."
 
 SNIPPET_RUN_FAILED = "\"%s\" stopped: %s"
+SNIPPET_NOT_PYTHON = "\"%s\" was not run: it is %s, and only a Python snippet runs in Houdini."
 CONFIRM_CLEAR_THUMBNAIL_CACHE = "This deletes all cached thumbnails from disk. They regenerate as you browse."
 NO_SCENE_VIEWER_FOR_THUMBNAIL = "Thumbnails render with a Scene Viewer's color settings, and none is open. Open one, then use Render Image."
 THUMBNAIL_RENDERER_NOT_LOADED = '"%s" was not rendered because %s isn\'t loaded in this Houdini session.'
@@ -405,8 +408,13 @@ NODE_NOT_A_MATERIAL = '"%s" is not a material Amaze can convert.'
 
 NODE_SKIPPED_LINE = '"%s":\n  [skipped] %s'
 
+CONVERSION_STOPPED = 'the conversion stopped, so no copy was made: %s'
+
+SWAP_KEPT_OLD_NODE = 'not swapped: the old node is kept, and the copy is beside it'
+
 NODE_ASSETS_IMPORT_FAILURES = "Some node assets couldn't be imported."
 MATERIALS_SAVE_FAILURES = "Some materials could not be saved."
 MATERIALS_IMPORT_FAILURES = "Some materials could not be imported."
 LOADER_SOP_HAS_NO_FILE_PARM = "The \"%s\" SOP has no file parameter to set."
 GEOMETRY_IMPORT_FAILED = "Could not import %s: %s"
+HOLDER_NOT_MADE = "No %s node was made in %s: %s"

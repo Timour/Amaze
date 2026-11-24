@@ -5,7 +5,8 @@ import os
 import hou
 from PySide6 import QtCore, QtGui
 
-from amaze.core import debug, geo_library, scene_captures, thumbnails
+from amaze import messages
+from amaze.core import debug, file_library, geo_library, scene_captures, scene_files, thumbnails
 from amaze.helpers import hostos
 from amaze.render import thumbs
 
@@ -20,6 +21,28 @@ def connect(files_model, folders_model, os_icon=None) -> None:
     files_model.open_scene = lambda: scene_captures.current_scene_path()
     files_model.render_geo = lambda misses: render_geo_misses(files_model, misses)
     files_model.os_icon = os_icon
+
+
+def save_scene_as(folder: str, name: str) -> str:
+    """The open scene saved as `name` in `folder`, which becomes the open scene: "", or why not."""
+    refusal = file_library.new_name_refusal(name)
+    if refusal:
+        return refusal
+    typed = scene_files.matched_extension(name)    # `shot.hip` names the scene `shot`
+    path = os.path.join(folder, name[:len(name) - len(typed)] + scene_captures.scene_extension())
+    try:
+        open(path, "x").close()    # the name taken first, so the save never goes over a file
+    except FileExistsError:
+        return messages.SAVE_SCENE_TAKEN % (os.path.basename(path), folder)
+    except OSError as exc:
+        return messages.SAVE_SCENE_FAILED % (path, exc)
+    try:
+        hou.hipFile.save(path)
+    except hou.Error as exc:    # OperationFailed: the file cannot be written
+        os.remove(path)
+        return messages.SAVE_SCENE_FAILED % (path, exc)
+    debug.event("hip", "scene saved as new", file=path)
+    return ""
 
 
 def scene_saved() -> bool:
