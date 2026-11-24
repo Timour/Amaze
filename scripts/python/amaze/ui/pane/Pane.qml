@@ -12,6 +12,17 @@ PaneRoot {
         if (rows.length > 0)
             menuMaker.createObject(root).show(rows)
     }
+    function menuAt(x, y) {    // Qt's context menu request at (x, y), from the pane's widget: the row under it
+        const shown = grid.active ? grid : list
+        const view = shown.item
+        if (!view || !shown.visible)
+            return
+        const at = root.mapToItem(view, x, y)
+        if (at.x < 0 || at.y < 0 || at.x > view.width || at.y > view.height)
+            return    // outside the grid's area
+        view.forceActiveFocus(Qt.MouseFocusReason)
+        root.openMenu(SharedState.tileMenu(view.rowAt(at.x, at.y)))
+    }
     Component {
         id: menuMaker
         AmazeMenu {
@@ -116,7 +127,6 @@ PaneRoot {
                         onTileClicked: (row, modifiers) => SharedState.clickTile(row, modifiers)
                         onTileDoubleClicked: row => SharedState.doubleClickTile(row)
                         onTileKeyed: (row, modifiers) => SharedState.keyTile(row, modifiers)
-                        onTileMenu: row => root.openMenu(SharedState.tileMenu(row))
                         onBadgeClicked: (row, name) => SharedState.clickBadge(row, name)
                     }
                 }
@@ -137,7 +147,6 @@ PaneRoot {
                         onRowClicked: (row, modifiers) => SharedState.clickTile(row, modifiers)
                         onRowDoubleClicked: row => SharedState.doubleClickTile(row)
                         onRowKeyed: (row, modifiers) => SharedState.keyTile(row, modifiers)
-                        onRowMenu: row => root.openMenu(SharedState.tileMenu(row))
                         onHeadingClicked: column => SharedState.sortList(column)
                     }
                 }

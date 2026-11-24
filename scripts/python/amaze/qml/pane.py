@@ -573,6 +573,14 @@ class PaneView(qmlviews.BaseQmlWidget):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         hotkeys.watch(self)    # Amaze's hotkey context is active for this pane
+        # Qt's context menu request, as the widget grid takes it: answered here, never passed up to Houdini
+        self.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._context_menu)
+
+    def _context_menu(self, at) -> None:
+        """The pane's menu for whatever is under `at`, as the QML finds it."""
+        QtCore.QMetaObject.invokeMethod(self.rootObject(), "menuAt", QtCore.Qt.ConnectionType.DirectConnection,
+                                        QtCore.Q_ARG("QVariant", at.x()), QtCore.Q_ARG("QVariant", at.y()))
 
     def _makeSharedState(self) -> PaneState:
         return PaneState()
