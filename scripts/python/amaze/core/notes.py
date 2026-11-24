@@ -185,9 +185,9 @@ def copy_image_into_library(preferences, source: str, key: str) -> str:
 
 
 def image_path(library_dir: str, key: str, src: str) -> str:
-    """A comment picture's file: `$AMAZEASSET/` in its asset's own folder, else in the library."""
-    if not src or os.path.isabs(src):
-        return src or ""
+    """A comment picture's file, in its asset's folder for `$AMAZEASSET/`; "" for one outside."""
+    if not src or os.path.isabs(src) or ".." in src.replace("\\", "/").split("/"):
+        return ""
     if not src.startswith(texstore.OWN_PREFIX):
         return os.path.join(library_dir or "", src)
     database, ident = _split(key)

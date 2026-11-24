@@ -291,6 +291,8 @@ BUTTONS_FIX_ALL_TRASH = ('Move to Trash', 'Skip These', 'Cancel')
 
 FIXED_RECOVERED = '%s added to the database.'
 
+FIXED_UNCATEGORIZED = '%s put in Uncategorized.'
+
 FIXED_REMOVED = '%s removed from the database.'
 
 FIXED_TRASHED = '%s moved to the trash.'

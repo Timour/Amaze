@@ -137,11 +137,16 @@ def claim_asset_dir(preferences, section: str, asset_id, name) -> str:
 
 
 def release_asset_dir(preferences, section: str, asset_id) -> None:
-    """Remove the folder a first save claimed, once that save failed and left it empty."""
+    """Remove the folder a first save claimed, once that save failed: its empty folders, no file."""
     try:
-        os.rmdir(asset_dir(preferences, section, asset_id))
-    except (OSError, ValueError):
-        pass
+        folder = asset_dir(preferences, section, asset_id)
+    except ValueError:
+        return
+    for here, _folders, _files in os.walk(folder, topdown=False):    # the deepest first
+        try:
+            os.rmdir(here)    # only an empty folder goes
+        except OSError:
+            pass
 
 
 def payload_path(preferences, asset_id, suffix: str, section: str, name: str = "") -> str:

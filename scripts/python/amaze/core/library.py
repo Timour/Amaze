@@ -838,17 +838,15 @@ class AssetLibrary(grid_engine.GridEngine,
         return [texstore.resolve(str(token), self.preferences, own)
                 for token in (tokens if isinstance(tokens, list) else ()) if token]
 
-    def own_file_paths(self, asset) -> list:
-        """The paths `asset_files()` names for the asset; [] for an id that names no file."""
-        try:
-            return list(self.asset_files(asset.mat_id).values())
-        except hostos.PathOutsideBase:
-            return []
+    def folder_files(self, asset) -> list:
+        """Every file in the asset's folder: versions, textures and comment pictures included."""
+        folder = self.asset_directories(asset.mat_id).get("folder", "")
+        return [os.path.join(here, name)
+                for here, _folders, names in os.walk(folder) for name in names] if folder else []
 
     def info_paths(self, row: int) -> list:
-        """Every file one row owns, its textures included, for the read that adds up their sizes."""
-        asset = self._assets[row]
-        return self.own_file_paths(asset) + self.texture_paths(asset)
+        """Every file one row owns, for the read that adds up their sizes."""
+        return self.folder_files(self._assets[row])
 
     def _hold_pre_edit_files(self, mat_id: str) -> dict:
         """Copy the asset's current files aside for the version store: {archive suffix: held path}."""
@@ -1137,7 +1135,7 @@ class MaterialLibrary(AssetLibrary):
     def _info_facts(self, row: int, asset) -> tuple:
         """Size, Renderer and Textures, and the read that finds the largest texture."""
         textures = existing_files(self.texture_paths(asset))
-        facts = [("Size", size_of(existing_files(self.own_file_paths(asset)) + textures)),
+        facts = [("Size", size_of(existing_files(self.folder_files(asset)))),
                  ("Renderer", self.tile_subtitle(asset)),
                  ("Textures", file_count(len(textures)) if textures else "")]
         return facts, file_info.request_for_textures([path for path, _size in textures])

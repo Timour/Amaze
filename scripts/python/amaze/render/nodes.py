@@ -711,16 +711,33 @@ class NodeHandler:
                        "registered without one." % label)
 
     def _supply_thumbnail(self, asset_id, section=MATERIALS) -> bool:
-        """The hosted image an import supplied, saved as the asset's thumbnail; False if not."""
+        """The hosted picture an import supplied, as the asset's picture; False if not."""
         from PySide6 import QtGui
         from amaze.core import tile_icons
-        image = QtGui.QImage(self.supplied_thumbnail)
-        target = tile_icons.thumbnail_path(self._preferences, str(asset_id), section)
-        os.makedirs(os.path.dirname(target), exist_ok=True)
-        saved = not image.isNull() and image.save(target, "PNG")
+        saved = self._put_picture(
+            QtGui.QImage(self.supplied_thumbnail),
+            lambda: tile_icons.thumbnail_path(self._preferences, str(asset_id), section))
         debug.event("save", "thumbnail from the hosted picture",
                     asset_id=str(asset_id), saved=saved)
         return saved
+
+    def _put_picture(self, image, target_of) -> bool:
+        """`image` as a PNG at `target_of()`, staged with the row or put whole; False if not."""
+        from amaze.core import guard
+
+        def write(scratch):
+            if image.isNull() or not image.save(scratch, "PNG"):
+                raise OSError("the picture could not be written as a PNG")
+        try:
+            target = target_of()
+            staged = asset_record.staged_write(target, write)
+            if isinstance(self.staging, list):
+                self.staging.append(staged)    # it arrives with the row, or is discarded with it
+                return True
+            return guard.put_rendered(target, staged[2])
+        except (OSError, hostos.PathOutsideBase) as exc:
+            debug.event("save", "picture not written", error=str(exc))
+            return False
 
     def __init__(self, preferences: prefs.Prefs) -> None:
         self._preferences = preferences

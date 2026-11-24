@@ -533,8 +533,8 @@ def drop_favorites(preferences, shown: dict) -> int:
 
 
 def fix_safe(library_dir: str, preferences, shown: dict, user: str = "") -> dict:
-    """What can be done without losing anything: recover, set aside, favorites of gone files."""
-    done = {"recovered": recover(library_dir, user)}
+    """What loses nothing: recover, put in Uncategorized, set aside, favorites of gone files."""
+    done = {"recovered": recover(library_dir, user), "uncategorized": uncategorized(library_dir, user)}
     if preferences is not None and hostos.canonical_path_key(str(getattr(preferences, "dir", ""))) \
             == hostos.canonical_path_key(library_dir):    # the Files section is the open library's
         done["folders"] = set_aside(preferences, shown)

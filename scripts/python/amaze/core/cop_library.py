@@ -23,8 +23,8 @@ class CopLibrary(library.AssetLibrary):
     RENDERABLE = renderers.RENDERABLE_CONTEXTS    # defined in renderers.py; Check Library reads it too
 
     def _info_facts(self, row: int, asset) -> tuple:
-        """Size, its textures included where the record lists some, and Context, the Type column."""
-        found = library.existing_files(self.own_file_paths(asset) + self.texture_paths(asset))
+        """Size, every file in its folder, and Context, the Type column."""
+        found = library.existing_files(self.folder_files(asset))
         return [("Size", library.size_of(found)),
                 ("Context", str(self.row_data(row, self.RendererLabelRole) or ""))], None
 

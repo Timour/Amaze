@@ -22,8 +22,8 @@ def convert(held: guard.Guard, user: str = "") -> int:
         for section in library_files.SECTION_FOLDERS:
             moved += _assets_into_folders(held, change, section)
         _store_into_materials(held, change, copies)
-        for section in library_files.SECTION_FOLDERS:
-            _comments_into_folders(held, change, copies, section)
+        kept = {section for section in library_files.SECTION_FOLDERS
+                if _comments_into_folders(held, change, copies, section)}
         for _kind, target, scratch in copies:
             change.take(held.inside(target), scratch)
         change.commit()    # from its journal on, the copies are the guard's to finish or remove
@@ -32,8 +32,9 @@ def convert(held: guard.Guard, user: str = "") -> int:
         raise OSError(str(exc)) from exc
     leftover = held.change(user)    # second: a trash step runs before the moves of its own change
     for name in (texstore.OLD_STORE,) + tuple(
-            "%s/%s" % (folder, sub) for folder in library_files.SECTION_FOLDERS.values()
-            for sub in (library_files.VERSIONS, library_files.COMMENT_FOLDER)):
+            "%s/%s" % (folder, sub) for section, folder in library_files.SECTION_FOLDERS.items()
+            for sub in (library_files.VERSIONS, library_files.COMMENT_FOLDER)
+            if sub == library_files.VERSIONS or section not in kept):
         if os.path.exists(held.path(*name.split("/"))):
             leftover.trash(name)
     leftover.commit()
@@ -71,35 +72,40 @@ def _assets_into_folders(held, change, section: str) -> int:
     return len(owners)
 
 
-def _comments_into_folders(held, change, copies: list, section: str) -> None:
-    """Each picture a section's comments show, into its asset's folder as `$AMAZEASSET/comments/`."""
+def _comments_into_folders(held, change, copies: list, section: str) -> bool:
+    """Each comment picture into its asset's folder; True while a comment still names the old one."""
     reading = held.read(section)
     document = reading.document if isinstance(reading.document, dict) else None
     pages = (document or {}).get(notes.SECTION)
     if not isinstance(pages, dict):
-        return
-    rows, placed, changed = _rows(held, section), set(), False
+        return False
+    rows, placed, changed, kept = _rows(held, section), set(), False, False
     shared = "%s/%s/" % (library_files.SECTION_FOLDERS[section], library_files.COMMENT_FOLDER)
     for asset_id, page in sorted(pages.items()):
         items = page.get("items") if isinstance(page, dict) else None
         for item in items if isinstance(items, list) else ():
             src = item.get("src") if isinstance(item, dict) else None
-            name = src[len(shared):] if isinstance(src, str) and src.startswith(shared) else ""
-            if not (library_files.is_safe_id(name) and material.is_safe_asset_id(asset_id)):
-                continue    # a plain file name only: a path of any other shape is left as it is
-            source = held.path(*src.split("/"))
+            if not (isinstance(src, str) and src.startswith(shared)):
+                continue
+            name = src[len(shared):]
+            source = held.path(*src.split("/")) if library_files.is_safe_id(name) else ""
+            if not (source and asset_id in rows and material.is_safe_asset_id(asset_id)
+                    and os.path.isfile(source)):
+                kept = True    # an odd path, a page with no asset, a file not here yet: left as is
+                continue
             target = os.path.join(_folder_of(held, section, asset_id, rows),
                                   library_files.COMMENT_FOLDER, name)
-            if os.path.isfile(source) and source not in placed:
+            if source not in placed:
                 change.move(held.inside(source), held.inside(target))    # its first comment's
                 placed.add(source)
-            elif os.path.isfile(source):
+            else:
                 copies.append(asset_record.staged_write(
                     target, lambda scratch, source=source: shutil.copyfile(source, scratch)))
             item["src"] = texstore.OWN_PREFIX + library_files.COMMENT_FOLDER + "/" + name
             changed = True
     if changed:
         change.put(reading.ticket, document)
+    return kept
 
 
 def _store_into_materials(held, change, copies: list) -> None:

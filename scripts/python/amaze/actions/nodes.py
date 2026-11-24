@@ -20,7 +20,13 @@ def add_asset(model, node: hou.Node, cats: str, tags: str, fav: bool,
     material.claim_asset_dir(model.preferences, model.DB_FILENAME, new_mat.mat_id, new_mat.name)
 
     handler.staging = []    # the files are committed together with the row, as one change
-    if not handler.save_node_cop(node, new_mat.mat_id, items=items):
+    try:
+        saved = handler.save_node_cop(node, new_mat.mat_id, items=items)
+    except BaseException:    # a failure or a cancel leaves no file and no folder
+        asset_record.discard(handler.staging)
+        material.release_asset_dir(model.preferences, model.DB_FILENAME, new_mat.mat_id)
+        raise
+    if not saved:
         asset_record.discard(handler.staging)
         material.release_asset_dir(model.preferences, model.DB_FILENAME, new_mat.mat_id)
         return ""
@@ -31,6 +37,7 @@ def add_asset(model, node: hou.Node, cats: str, tags: str, fav: bool,
         debug.refuse(messages.ASSET_NOT_SAVED_DATABASE_REFUSED % new_mat.name)
         material.release_asset_dir(model.preferences, model.DB_FILENAME, new_mat.mat_id)
         return ""
+    handler.staging = None    # committed: anything after this is written on its own
     for render in handler.after_commit:
         render()
     if handler.after_commit:

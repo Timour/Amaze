@@ -334,9 +334,9 @@ class Document:
             change = self.guard.change(user)
             if self._dirty:
                 change.put(self._ticket, self._whole())
-            if also is not None:
-                also(change)
             try:
+                if also is not None:
+                    also(change)    # a file it refuses refuses the whole save
                 tickets = change.commit()
             except guard.Moved:
                 reading = self.guard.read(self.name)
@@ -349,7 +349,7 @@ class Document:
                 self._ticket = reading.ticket
                 merged = True
                 continue
-            except (guard.Refused, OSError) as exc:
+            except (guard.Refused, OSError, ValueError) as exc:
                 return Saved(False, DENIED, str(exc), merged)
             self._ticket = tickets.get(self.name, self._ticket)
             self._base = copy.deepcopy(self._data)

@@ -55,7 +55,10 @@ def with_sections(path: str, sections: dict) -> bytes:
     for section in sections:
         if section not in SECTIONS:
             raise ValueError("an asset record has no %r section" % section)
-    document = dict(_load(path)[0])
+    found, why = _load(path)
+    if why:    # an unreadable record is never written over: its metadata is the database's backup
+        raise ValueError("%s does not read (%s), so it is not written over" % (path, why))
+    document = dict(found)
     for section, data in sections.items():
         if data:
             document[section] = data

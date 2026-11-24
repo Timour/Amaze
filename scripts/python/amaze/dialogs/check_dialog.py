@@ -74,6 +74,8 @@ def done_lines(done: dict) -> list:
                      else messages.FIXED_EMPTIED % label)
     if done.get("recovered"):
         lines.append(messages.FIXED_RECOVERED % wording.count(done["recovered"], "asset"))
+    if done.get("uncategorized"):
+        lines.append(messages.FIXED_UNCATEGORIZED % wording.count(done["uncategorized"], "asset"))
     if done.get("removed"):
         lines.append(messages.FIXED_REMOVED % wording.count(done["removed"], "asset"))
     if done.get("trashed"):

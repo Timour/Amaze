@@ -19,7 +19,8 @@ def connect(model) -> None:
 
 
 def add_asset(model, node: hou.Node, cats: str, tags: str, fav: bool,
-              name: str | None = None, picture: str = "", render: bool = True) -> str:
+              name: str | None = None, picture: str = "", render: bool = True,
+              about: str | None = None, license: str | None = None) -> str:
     """Save `node` into `model` as a new material: its renderer (`ListNotSaved` if unlisted), or ""."""
     handler = nodes.NodeHandler(model.preferences)
     handler.supplied_thumbnail = picture    # a hosted picture, which replaces the render
@@ -27,12 +28,17 @@ def add_asset(model, node: hou.Node, cats: str, tags: str, fav: bool,
     renderer = handler.get_renderer_from_node(node)
     new_mat = material.Material()
     tags = model.sanitize_tags(tags)
-    new_mat.set_data(name or node.name(), cats, tags, fav, renderer)
+    new_mat.set_data(name or node.name(), cats, tags, fav, renderer, about=about, license=license)
     new_mat.node_color = nodes.custom_node_color(node)
     material.claim_asset_dir(model.preferences, model.DB_FILENAME, new_mat.mat_id, new_mat.name)
 
     handler.staging = []    # the files are committed together with the row, as one change
-    saved = handler.save_node(node, new_mat.mat_id, False)
+    try:
+        saved = handler.save_node(node, new_mat.mat_id, False)
+    except BaseException:    # a failure or a cancel leaves no file and no folder
+        asset_record.discard(handler.staging)
+        material.release_asset_dir(model.preferences, model.DB_FILENAME, new_mat.mat_id)
+        raise
     debug.event(
         "save", "save_node result",
         ok=bool(saved), name=new_mat.name,
@@ -234,7 +240,7 @@ def convert(model, index: QtCore.QModelIndex, target: str, render: bool = True):
                 return False, report
             saved = add_asset(
                 model, made.builder, ",".join(mat.categories), ",".join(mat.tags), False,
-                name=mat.name, render=render)
+                name=mat.name, render=render, about=mat.about, license=mat.license)
             if isinstance(saved, library.ListNotSaved):    # files saved, list not saved: the caller tells the user
                 return saved, report
             return bool(saved), report    # a refused save leaves nothing: the scratch matnet is destroyed below
