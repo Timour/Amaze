@@ -57,16 +57,6 @@ def keep_textures(mat, inventory) -> None:
         mat._extra["textures"] = list(inventory)
 
 
-def adding_into(model, unlisted: list):
-    """`add_asset` into `model`; each save whose list was not saved adds its name to `unlisted`."""
-    def save(node, *args, **kwargs):
-        answer = add_asset(model, node, *args, **kwargs)
-        if isinstance(answer, library.ListNotSaved):
-            unlisted.append(kwargs.get("name") or node.name())    # the name `add_asset` saved it under
-        return answer
-    return save
-
-
 class UpdateRefused(Exception):
     """Raised when an update wrote nothing; its text goes in the one message after the save."""
 
@@ -200,14 +190,12 @@ def convert(model, index: QtCore.QModelIndex, target: str, render: bool = True):
         saved = add_asset(
             model, made.builder, ",".join(mat.categories), ",".join(mat.tags), False,
             name=mat.name, render=render, about=mat.about, license=mat.license)
-        if isinstance(saved, library.ListNotSaved):    # files saved, list not saved: the caller tells the user
-            return saved, report
         return bool(saved), report    # a refused save leaves nothing
 
 
 def convert_rows(model, ids, target: str):
-    """Convert to for the rows `ids` that have a route: (message, details, all converted, unlisted)."""
-    lines, converted, eligible, sources, unlisted = [], 0, 0, set(), []
+    """Convert to for the rows `ids` that have a route: (message, details, all converted)."""
+    lines, converted, eligible, sources = [], 0, 0, set()
     for row in (model.find_asset_row_by_id(mat_id) for mat_id in ids):
         if row < 0:
             continue
@@ -222,10 +210,8 @@ def convert_rows(model, ids, target: str):
             lines.append(messages.CONVERSION_CRASHED_LINE % (mat.name, exc))
             continue
         converted += 1 if ok else 0
-        if isinstance(ok, library.ListNotSaved):
-            unlisted.append(mat.name)    # the copy keeps its source's name
         lines.extend(report.summary_lines())
     if not eligible:
         return None
     message = conversion_report.summary(converted, eligible, sources, renderers.label(target))
-    return message, "\n".join(lines), converted == eligible, unlisted
+    return message, "\n".join(lines), converted == eligible

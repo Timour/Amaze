@@ -1,5 +1,6 @@
 """Saving into the library: scene nodes through the Save dialog, new versions, snippets, galleries."""
 
+import functools
 import os
 
 from PySide6 import QtCore
@@ -201,7 +202,7 @@ class Saving:
                 ui.displayMessage(messages.MATERIALS_NOT_UPDATED, details="\n".join(
                     messages.MATERIAL_NOT_UPDATED_LINE % (name, reason) for name, reason in refused),
                     title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
-        library.report_unlisted(unlisted, updated=True)    # the status line, last, so nothing overwrites it
+        library.report_unlisted(unlisted)    # the status line, last, so nothing overwrites it
 
     def _update_existing_asset(self, mat_id: str, node: hou.Node) -> bool:
         """Overwrite asset `mat_id`'s files from the scene node: False if the list was not saved."""
@@ -313,7 +314,7 @@ class Saving:
         ) if ui is not None else 1    # no UI to prompt, so the result is the close_choice - Cancel
         if choice != 0:
             return
-        summary, interrupted, unlisted = {}, False, []    # import_entries fills OUR dict: Esc keeps the counts so far
+        summary, interrupted = {}, False    # import_entries fills OUR dict: Esc keeps the counts so far
         try:
             with hou.InterruptableOperation(  # type: ignore
                 "Importing gallery presets", open_interrupt_dialog=True
@@ -324,7 +325,7 @@ class Saving:
                         "%d/%d  %s" % (index + 1, total, name),
                     )
                 gallery_import.import_entries(
-                    material_actions.adding_into(pane.material_model, unlisted),
+                    functools.partial(material_actions.add_asset, pane.material_model),
                     entries, progress=progress, summary=summary,
                     library=pane.material_model)    # each save skips its render; ONE batch follows
         except hou.OperationInterrupted:
@@ -344,4 +345,3 @@ class Saving:
         if ui is not None:
             ui.displayMessage(text, title=messages.TITLE_AMAZE,
                               severity=hou.severityType.Warning if failed else hou.severityType.Message)
-        library.report_unlisted(unlisted)    # the status line, last

@@ -7,7 +7,7 @@ import hou
 
 from amaze import messages
 from amaze.actions import materials as material_actions
-from amaze.core import debug, library, matx_sources, renderers
+from amaze.core import debug, matx_sources, renderers
 from amaze.render import nodes
 
 
@@ -42,7 +42,7 @@ class OnlineImport:
         if not len(records):
             return
         total = len(records)
-        failures, unlisted = [], []
+        failures = []
         before = {str(mat.mat_id) for mat in getattr(self.pane.material_model, "assets", ())}
         with self.download_operation(records) as progress_for:
             for i, rec in enumerate(records):
@@ -59,8 +59,6 @@ class OnlineImport:
                     ok, reason = False, str(exc)
                 if not ok:
                     failures.append("%s: %s" % (rec.title, reason))
-                elif isinstance(reason, library.ListNotSaved):
-                    unlisted.append(str(reason))
         if self.pane.material_model is not None:
             self.pane.assets.render_new_thumbnails(before)
         ui = getattr(hou, "ui", None)
@@ -69,7 +67,6 @@ class OnlineImport:
                 messages.AMAZE_COULD_NOT % (len(failures), total),
                 details="\n".join(failures[:10]),
                 title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
-        library.report_unlisted(unlisted)    # the status line, last: nothing after it writes the line
 
     def import_material(self, record, on_progress=None,
                         renderer=renderers.INTERMEDIATE.key, render=True):
@@ -95,7 +92,7 @@ class OnlineImport:
             return (False, reason or messages.ONLINE_IMPORT_FAILED)
         self.pane.category_model.check_add_category(record.category)    # no relayout wrapper: it emits its own row-insert signals
         self.pane.sidebar.refresh()
-        return (True, library.ListNotSaved(reason) if reason else "")    # a reason: files saved, list entry not saved
+        return (True, "")
 
     def source_for(self, record):
         """The record's source and the resolution to fetch it at: (source, resolution, error)."""

@@ -264,7 +264,7 @@ class ConvertTest(_Convert):
 
         held = test_support.asset_ids(self.model)
         with mock.patch.object(material_actions, "convert", crashing_on_the_first):
-            message, details, complete, _unlisted = material_actions.convert_rows(
+            message, details, complete = material_actions.convert_rows(
                 self.model, [self.source.mat_id, second.mat_id, "gone"], TARGET)
         self.assertEqual(messages.CONVERSION_SUMMARY % (1, 2, "MaterialX", TARGET), message)
         self.assertFalse(complete)

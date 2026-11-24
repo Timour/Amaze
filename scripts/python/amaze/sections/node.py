@@ -6,7 +6,7 @@ import hou
 
 from amaze import messages
 from amaze.actions import nodes as node_actions
-from amaze.core import debug, library, section_list
+from amaze.core import debug, section_list
 from amaze.render import cop_nodes
 from amaze.sections import base
 
@@ -133,8 +133,6 @@ class CopSection(base.AssetSection):
                 messages.NODE_SAVE_FAILED % node.name(),
                 title=messages.TITLE_AMAZE, severity=hou.severityType.Warning
             )
-        if isinstance(result, library.ListNotSaved):    # the name below is the one the add gave it
-            debug.refuse(messages.ASSET_ADDED_LIBRARY_NOT_SAVED % (answer.name.strip() or node.name()))
 
     def update_preview(self, indexes) -> None:
         """Update Render on Node tiles: each network's thumbnail re-rendered by `node_actions`."""

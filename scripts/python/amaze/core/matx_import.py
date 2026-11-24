@@ -349,7 +349,7 @@ def hosted_picture(record, source, renderer) -> str:
 
 def import_record(record, source, resolution, library, preferences,
                   progress=None, renderer: str = renderers.INTERMEDIATE.key, *, save, render=True):
-    """One record and its download saved by `save` into `library`: (ok, why); why names it if unlisted."""
+    """One record and its download saved by `save` into `library`: (ok, why not)."""
     name = record_name(record)
     debug.event("import", "start", title=record.title, name=name,
                 source=record.source, kind=record.kind,
@@ -378,14 +378,13 @@ def import_record(record, source, resolution, library, preferences,
             return (False, "%s could not be saved to your library, so "
                            "it was not added. Your scene is unchanged."
                            % name)
-        listed = True    # unknown when crediting raises: the library has already shown its own alert
         try:
             credited = library.assets[row]
             credited.license = record.licence or ""
             extra = credited._extra
             extra["source"] = record.source or ""    # where it came from and which one, on the row
             extra["online_uid"] = str(record.uid or "")    # not `uid`: that spelling is the pre-connector id, which packages.py strips on import
-            listed = library.save()    # writes the whole database: an earlier failed save is written here too
+            library.save()    # stages the credit; the add has just passed the same write gate
             from amaze.core import notes
             notes.set_note(preferences, notes.note_key(library.NOTES_SECTION, stamped), [
                 {"t": "text", "text": text}
@@ -393,6 +392,5 @@ def import_record(record, source, resolution, library, preferences,
         except Exception as exc:
             debug.exception("credit the import", exc)
             debug.event("import", "credit not written", error=str(exc))
-        debug.event("import", "registered", name=name,
-                    rows=library.rowCount(), listed=listed)
-        return (True, "" if listed else name)    # ok with a name: the asset was saved, but its database was not
+        debug.event("import", "registered", name=name, rows=library.rowCount())
+        return (True, "")

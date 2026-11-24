@@ -5,7 +5,7 @@ import hou
 
 from amaze import messages
 from amaze.actions import materials as material_actions
-from amaze.core import captures, grid_columns, library, tile_icons
+from amaze.core import captures, grid_columns, tile_icons
 from amaze.pane import asks
 
 
@@ -80,13 +80,12 @@ class Assets:
         self.render_new_thumbnails(before)
         if done is None:
             return
-        message, details, complete, unlisted = done
+        message, details, complete = done
         ui = getattr(hou, "ui", None)
         if ui is not None:
             ui.displayMessage(message, details=details, title=messages.TITLE_AMAZE,
                               severity=(hou.severityType.Message if complete
                                         else hou.severityType.Warning))
-        library.report_unlisted(unlisted)    # the status line, last, so nothing after it overwrites the line
 
     def render_new_thumbnails(self, before: set) -> None:
         """ONE render batch for the materials saved since `before` that have no thumbnail yet."""
