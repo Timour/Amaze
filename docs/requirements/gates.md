@@ -4,9 +4,15 @@ What the scripts that guard a push and the install must do: `tools/sync-install.
 hook in `tools/git-hooks`, `tools/run-tests.sh`, `scripts/python/amaze/tests/start_test.sh`, the
 push's test selection (`tools/select-tests.py` with `tests/impact_map.py`), the dead-cover check
 (`tests/check_dead_cover.py`) and the Houdini lookup in `tools/houdini-env.sh`. They guard the
-maintainer's install and pushes, not a user's library, and what they let through is undone by a
-new sync or a revert, so every line is Wrong output; their tests run when `tools/` changes.
-The levels and the rules for tests are in the [README](README.md).
+maintainer's install and pushes, not a user's library. What they let through is undone by a new
+sync or a revert, so they are Wrong output, all but one: a sync over a folder that is not a scratch
+install would delete files in it. Their tests run when `tools/` changes, GT-01's at every push.
+The rules the gates keep over the code, such as every test module being in the suite's list,
+are in `tools/check-code.py`. The levels and the rules for tests are in the [README](README.md).
+
+## Catastrophe
+
+- GT-01 Catastrophe: A scratch destination that holds files and no scratch marker is refused and left as it is.
 
 ## Wrong output
 
@@ -18,7 +24,6 @@ The levels and the rules for tests are in the [README](README.md).
 - GT-25 Wrong output: An older checkout goes over a newer install only when `AMAZE_REPLACE_INSTALLED` names the installed version.
 - GT-26 Wrong output: A sync copies the code, the menus and the shelf to the install, runs no tests, and prints its last line.
 - GT-27 Wrong output: A scratch sync copies the working tree as it is, uncommitted files included, and leaves the real install untouched.
-- GT-28 Wrong output: A scratch destination that holds files and no scratch marker is refused and left as it is.
 - GT-29 Wrong output: A committed change syncs without being pushed.
 - GT-30 Wrong output: A sync in a fresh clone sets `core.hooksPath` to the repository's hooks, and says so only the first time.
 - GT-31 Wrong output: The maintainer's checks run before the tests; when they refuse, the push is refused and no test runs.

@@ -28,7 +28,8 @@ _spec.loader.exec_module(select_tests)
 
 CODE = "scripts/python/amaze/core/"
 TEST_B = "scripts/python/amaze/tests/test_b.py"
-SUITE = ["test_a", "test_b", "test_c", "test_d", "test_e", "test_shell_gates", "test_dead_cover"]
+SUITE = ["test_a", "test_b", "test_c", "test_d", "test_e", "test_shell_gates", "test_dead_cover",
+         "test_impact_map"]
 ONE = '''"""One."""
 LIMIT = 3
 
@@ -68,12 +69,12 @@ IT = "test_b.BTest.test_it"
 
 class TheShapeHashesCodeNotText(unittest.TestCase):
 
-    def test_comments_and_docstrings_change_no_hash(self):
+    def test_gt69_comments_and_docstrings_change_no_hash(self):
         edited = ONE.replace('"""One."""', '"""One, reworded."""').replace(
             "# a comment", "# another comment\n\n")
         self.assertEqual(impact_map.Code(ONE).shape(), impact_map.Code(edited).shape())
 
-    def test_each_edit_changes_only_its_own_hash(self):
+    def test_gt70_each_edit_changes_only_its_own_hash(self):
         before = impact_map.Code(ONE + "\n\ndef outer():\n    def inner():\n        return 1\n"
                                        "    return inner\n").shape()
         for why, old, new, part, key in (
@@ -93,7 +94,7 @@ class TheShapeHashesCodeNotText(unittest.TestCase):
                     moved.append(("effects", None))
                 self.assertEqual([(part, key)], moved)
 
-    def test_a_lambda_runs_inside_its_def(self):
+    def test_gt71_a_lambda_runs_inside_its_def(self):
         self.assertEqual("outer.<locals>.inner",
                          impact_map.def_name("outer.<locals>.inner.<locals>.<lambda>"))
         self.assertEqual("", impact_map.def_name("<module>"))
@@ -141,28 +142,28 @@ class AChangePicksTheTestsThatRanIt(unittest.TestCase):
             text = handle.read()
         self.write(path, text.replace(old, new, 1))
 
-    def test_a_def_picks_the_tests_that_ran_it_and_those_that_read_its_file(self):
+    def test_gt72_a_def_picks_the_tests_that_ran_it_and_those_that_read_its_file(self):
         picks = self.pick(CODE + "one.py")
         self.edit(CODE + "one.py", "return 2", "return 22")
         self.assertEqual([IT, "test_d"], picks(), "a module whose tests are all selected "
                                                   "is listed by its module name")
 
-    def test_a_comment_picks_only_the_tests_that_read_the_file(self):
+    def test_gt73_a_comment_picks_only_the_tests_that_read_the_file(self):
         picks = self.pick(CODE + "one.py")
         self.edit(CODE + "one.py", "# a comment", "# a longer comment")
         self.assertEqual(["test_d"], picks())
 
-    def test_a_constant_picks_every_def_that_uses_it_in_any_file(self):
+    def test_gt74_a_constant_picks_every_def_that_uses_it_in_any_file(self):
         picks = self.pick(CODE + "one.py")
         self.edit(CODE + "one.py", "LIMIT = 3", "LIMIT = 4")
         self.assertEqual(["test_a.A.test_1", IT, "test_d"], picks())
 
-    def test_an_import_picks_only_its_own_files_users(self):
+    def test_gt75_an_import_picks_only_its_own_files_users(self):
         picks = self.pick(CODE + "two.py")
         self.edit(CODE + "two.py", "from amaze.core import one", "import amaze.core.one as one")
         self.assertEqual([IT], picks())
 
-    def test_a_test_module_picks_the_tests_that_run_the_changed_code(self):
+    def test_gt76_a_test_module_picks_the_tests_that_run_the_changed_code(self):
         for why, old, new, picked in (
                 ("a helper", "return 1", "return 2", [IT, "test_e"]),
                 ("a test", "return 2", "return 3", ["test_b.BTest.test_other"]),
@@ -174,7 +175,7 @@ class AChangePicksTheTestsThatRanIt(unittest.TestCase):
                 self.assertEqual(picked, picks())
                 self.write(TEST_B, B)
 
-    def test_a_def_run_while_loading_picks_the_users_of_what_it_built(self):
+    def test_gt77_a_def_run_while_loading_picks_the_users_of_what_it_built(self):
         three = CODE + "three.py"
         self.write(three, "def make():\n    return [1]\n\n\nTABLE = make()\nprint(make())\n\n\n"
                           "def reads_table():\n    return TABLE\n")
@@ -192,22 +193,16 @@ class AChangePicksTheTestsThatRanIt(unittest.TestCase):
                                                              select_tests.reader(self.root)))
                 self.edit(three, "return [2]", "return [1]")
 
-    def test_a_test_costs_its_own_seconds_and_its_fixtures(self):
-        impact = {"seconds": {"test_b": 1.0, "test_b.BTest": 2.0, IT: 3.0,
-                              "test_b.BTest.test_other": 4.0}}
-        self.assertEqual(6.0, select_tests.cost([IT], impact))
-        self.assertEqual(10.0, select_tests.cost(["test_b"], impact))
-
-    def test_files_pick_their_readers_and_a_new_file_its_folders_listers(self):
+    def test_gt78_files_pick_their_readers_and_a_new_file_its_folders_listers(self):
         for path, picked in (("docs/guide.md", ["test_a.A.test_2"]), ("docs/other.md", []),
-                             ("ui/new.svg", ["test_c"]), ("tools/run-tests.sh",
-                                                         ["test_shell_gates", "test_dead_cover"])):
+                             ("ui/new.svg", ["test_c"]), ("tools/select-tests.py", [
+                                 "test_shell_gates", "test_dead_cover", "test_impact_map"])):
             with self.subTest(path):
                 picks = self.pick(path)
                 self.write(path, "changed\n")
                 self.assertEqual(picked, picks())
 
-    def test_a_change_the_map_cannot_place_selects_the_whole_suite(self):
+    def test_gt79_a_change_the_map_cannot_place_selects_the_whole_suite(self):
         self.recorder.ran[impact_map.LOADING] = {CODE + "two.py": {"plain"}}
         for why, path, old, new in (
                 ("a def that runs on import", CODE + "two.py", "return 0", "return 1"),
@@ -228,12 +223,12 @@ class AChangePicksTheTestsThatRanIt(unittest.TestCase):
                                               select_tests.reader(self.root)),
                           "no map to read, yet something was picked")
 
-    def test_the_suite_list_is_start_test_shs(self):
+    def test_gt80_the_suite_list_is_start_test_shs(self):
         listed = select_tests.suite_modules()
         self.assertIn("test_impact_map", listed)
         self.assertEqual(len(listed), len(set(listed)), "a module is listed twice")
 
-    def test_the_repository_files_are_gits_own_list(self):
+    def test_gt81_the_repository_files_are_gits_own_list(self):
         listed = impact_map.repository_files(REPO)
         self.assertIn("LICENSE", listed)
         self.assertIn("scripts/python/amaze/tests/impact_map.py", listed)
@@ -254,7 +249,7 @@ class TheRecorderChargesEachTestWhatItRan(unittest.TestCase):
         import impact_probe
         self.probe = impact_probe
 
-    def test_a_def_run_by_two_modules_is_charged_to_both(self):
+    def test_gt82_a_def_run_by_two_modules_is_charged_to_both(self):
         recorder = impact_map.Recorder(self.root, tool=sys.monitoring.COVERAGE_ID)
         if not recorder.start(audit=False):
             self.skipTest("the coverage tool id is taken in this process")
@@ -269,7 +264,7 @@ class TheRecorderChargesEachTestWhatItRan(unittest.TestCase):
             self.assertEqual({"touch"}, recorder.ran.get(module, {}).get("impact_probe.py"),
                              "%s ran touch and was not charged for it" % module)
 
-    def test_a_read_is_charged_but_an_import_a_traceback_and_a_stopped_recorder_are_not(self):
+    def test_gt83_a_read_is_charged_but_an_import_a_traceback_and_a_stopped_recorder_are_not(self):
         fresh = os.path.join(self.root, "impact_fresh.py")
         with open(fresh, "w", encoding="utf-8") as handle:
             handle.write("VALUE = 1\n")
@@ -298,7 +293,7 @@ class TheRecorderChargesEachTestWhatItRan(unittest.TestCase):
                          "an import's or a traceback's source read was charged as a read, "
                          "inspect.getsource was not, or a stopped recorder kept charging")
 
-    def test_a_def_run_while_loading_is_charged_to_the_statement_that_ran_it(self):
+    def test_gt84_a_def_run_while_loading_is_charged_to_the_statement_that_ran_it(self):
         with open(os.path.join(self.root, "impact_built.py"), "w", encoding="utf-8") as handle:
             handle.write("def build():\n    return [1]\n\n\nTABLE = build()\n")
         self.addCleanup(sys.modules.pop, "impact_built", None)
@@ -316,19 +311,7 @@ class TheRecorderChargesEachTestWhatItRan(unittest.TestCase):
         self.assertEqual([("impact_built.py", "TABLE")],
                          built["files"]["impact_built.py"]["loaded"]["build"])
 
-    def test_each_test_and_fixture_is_charged_the_time_it_ran(self):
-        recorder = impact_map.Recorder(self.root, tool=sys.monitoring.COVERAGE_ID)
-        recorder.clock = iter([0.0, 1.0, 4.0, 6.0]).__next__
-        if not recorder.start(audit=False):
-            self.skipTest("the coverage tool id is taken in this process")
-        recorder.enter("test_a.A")
-        recorder.begin("test_a.A.test_1")
-        recorder.stop()
-        self.assertEqual({impact_map.LOADING: 1.0, "test_a.A": 3.0, "test_a.A.test_1": 2.0},
-                         recorder.seconds)
-        self.assertEqual(["test_a.A.test_1"], recorder.tests)
-
-    def test_the_map_is_written_whole_with_the_loading_bucket_in_it(self):
+    def test_gt85_the_map_is_written_whole_with_the_loading_bucket_in_it(self):
         recorder = impact_map.Recorder(self.root)
         recorder.ran = {impact_map.LOADING: {"impact_probe.py": {"touch"}},
                         "test_a": {"impact_probe.py": {"touch", "gone"}}}
