@@ -158,8 +158,8 @@ network editor, opens the save dialog. The dialog sets the name,
 category and tags, and **Section** sets the section the material is
 saved to. Amaze renders a preview and adds the material to the library.
 
-A material that is already in the library is saved as a new version or
-as a new material.
+Saving a material that is already in the library offers **Save Version**
+and **Save New**; see [Versions](#versions).
 
 Previews use the display and view transform of the Scene Viewer and
 require `$OCIO`.
@@ -175,16 +175,22 @@ the right end of the tab row, stops the render.
 
 ### Versions
 
-Saving over a material keeps the previous one as a version. A tile with
-versions shows the
+**Save Version** saves over a material and keeps the previous one as a
+version. A tile with versions shows the
 <img src="scripts/python/amaze/ui/badge_versions.svg" width="14">
 badge in its lower-left corner. The badge opens the list of versions,
 newest first; pick one and press **Select** to make it current.
 
 <img src="docs/images/dialog_versions.png" width="380">
 
+When the previous material cannot be kept as a version, on a full disk
+for example, the material is not saved over. A message says why, and
+**Save New** saves it as a new material instead.
+
 Only materials keep versions. **Enable Asset Versions** in Preferences ▸
-Library turns them on and off.
+Library turns them on and off; turning them on asks first. With versions
+off, the save offers **Overwrite** in place of **Save Version**, which
+saves over the material and keeps no version.
 
 ### Loading
 
@@ -259,9 +265,11 @@ The right-click menu acts on one material or a selection:
   tile's picture as its preview instead. A renderer is available when its
   plugin is loaded.
 - **Import to Scene ▸ MaterialX**, **Redshift** or **Octane** builds the
-  material in the current material library, or in `/mat`.
-- **Restore**, on Amaze packages, restores the entries the package
-  carries.
+  material in the current material library, or in `/mat`. Its textures
+  download into `$HIP/tex`, the `tex` folder beside the scene file, and
+  their paths follow **Write Paths As**.
+- **Restore**, on Amaze packages, puts Amaze's presets back as the
+  package holds them; see [Packages](#packages).
 - **Refresh** reloads the source.
 
 **Double-click** imports a material into the scene.
@@ -517,9 +525,10 @@ package's files go into an **Import** folder in the library, which the
 File sidebar lists as a location with every kind of file shown.
 
 **Restore**, on the right-click menu of a package in the **Amaze** source
-of the [online browser](#online-materials), puts its entries back under
-their original identities and replaces the existing ones. It restores
-default palettes and materials.
+of the [online browser](#online-materials), puts Amaze's presets back as
+the package holds them: the default palettes and code snippets. Each one
+replaces the copy already in the library, which goes to the library's
+trash. Restored presets keep their own categories.
 
 ---
 
@@ -990,7 +999,7 @@ what another session or another user saved since. When two users
 change the same field of the same item at once, your change is kept
 and Amaze names the other user.
 
-**Versions** (Preferences ▸ Library) is stored in the library,
+**Enable Asset Versions** (Preferences ▸ Library) is stored in the library,
 and every computer that uses the library shares it.
 
 **Debug Mode** (Preferences ▸ About) records a session log. **Save
