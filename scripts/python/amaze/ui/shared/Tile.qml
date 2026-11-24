@@ -16,6 +16,8 @@ Item {
     signal clicked(int modifiers)    // the user's click on the tile, away from a badge that takes clicks
     signal doubleClicked()
     signal badgeClicked(string name)
+    signal dragged(int modifiers)    // a press on the tile moved past the drag distance
+    readonly property bool held: tap.pressed || drag.active    // pressed here: the grid holds its flicking
 
     readonly property real side: width - 2 * root.drawn.pad    // the picture's side; the card is as wide
     readonly property real textTop: root.drawn.pad + root.side + root.drawn.img_text_gap
@@ -45,9 +47,14 @@ Item {
         id: hover
     }
     TapHandler {    // exclusive, so a badge's own click is not also a click on the tile
+        id: tap
         gesturePolicy: TapHandler.WithinBounds
         onTapped: root.clicked(point.modifiers)
         onDoubleTapped: root.doubleClicked()
+    }
+    DragOut {    // past the drag distance it takes the press from the tap: no click
+        id: drag
+        onStarted: (at, modifiers) => root.dragged(modifiers)
     }
 
     Rectangle {    // a selected tile is Houdini's selection around its picture and under its text

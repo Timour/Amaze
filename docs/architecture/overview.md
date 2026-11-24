@@ -767,7 +767,7 @@ reason in a `HOUSE_STRAY` attribute.
 
 ---
 
-## Drag & Drop Engine (core/dragengine.py + panel/dragdrop_widgets.py + core/lop_assign.py)
+## Drag & Drop Engine (core/dragengine.py + pane/drag_session.py + core/lop_assign.py)
 
 **`core/lop_assign.py`** is the USD half of a LOP viewport drop, split
 out of the panel 2026-07-27: what is already bound under a prim,
@@ -792,14 +792,21 @@ or changed), release-target resolution (`viewport_release_target`),
 container placement (`first_materiallibrary(connected_to=)`,
 `find_assignmaterial`), Houdini's stock LOP helpers (`stock_lop()`), and
 `keep_editor_focus` — a viewport release never moves the user's editors.
-A drag has ONE end, `GridGestureMixin._end_drag`, reached by the release, Esc
-(the view grabs the keyboard for the length of the drag), another mouse button,
-a hidden view and an error while following the pointer; it is the only caller
-of `dragengine.end()`. The name tag is hidden while another application is in front.
+One drag is a `drag_session.DragSession`, one per view, the same for both panes: `begin`
+(the pressed row; the drop handlers read the selection), `move` per pointer move, and one end,
+`release` or `cancel`. Its `_end` is reached by the release, Esc (the view grabs the keyboard
+for the length of the drag), another mouse button, a hidden view and an error while following
+the pointer; it is the only caller of `dragengine.end()`. The session has no widget: the name
+tag and the red X are `ui_helpers.DragMarks`, handed to it by the view. The widget panel's
+views start it past the drag distance (`GridGestureMixin`); the QML grid and list start it
+from `ui/shared/DragOut.qml`, a DragHandler, and the pane's view, which keeps the mouse while
+a button is down, hands it the moves and the release. A grid or list holds its flicking while
+a tile or row is pressed, or at a UI scale under 1 the flick takes a downward drag.
+The name tag is hidden while another application is in front.
 Sections' release handlers call the import code. What a release does is one engine call,
 `DropPlacement.release(section_key, key, pane_tab, pane_kind)` in `pane/drop_placement.py`: the
-tile's drop rule, its handler and the wire splice as one undo step; the widget panel's gesture
-calls it, and the QML grid will. The one native drag left is the texture file drag.
+tile's drop rule, its handler and the wire splice as one undo step; the drag session calls it
+for both panes. The one native drag left is the texture file drag.
 Rules: an item is placed where it is dropped; nothing is created before release;
 SOP and LOP contexts never reference each other; empty viewport space is a
 miss (red X); a drop that opens a menu shows no icon.
@@ -1039,6 +1046,8 @@ pane/package_import.py    The package import: .amazepkg files and store
                           tiles into the library (`pane.package_import`)
 pane/drop_placement.py    Where a drop or a click creates nodes: the network,
                           the position, the holder node (`pane.drop_placement`)
+pane/drag_session.py      One view's drag of tiles into Houdini, for both panes:
+                          begin, each move's feedback, the release or the end
 pane/tile_capture.py      Capture: the Scene View onto one tile, or the
                           open scene onto its File tile (`pane.tile_capture`)
 pane/empty_state.py       EMPTY STATE ENGINE - which empty state the shown
@@ -1066,7 +1075,8 @@ panel/grid.py             The GRID area - the one right-click menu
 panel/sidebar.py          The SIDEBAR area - what a row means and what
                           may be dropped on it (the drag-hover handling)
 panel/empty_state.py      the widget panel's empty page: its labels and button
-panel/dragdrop_widgets.py Drag-and-drop into the network editor
+panel/dragdrop_widgets.py The widget panel's views: the press that starts a drag, a
+                          node dropped in to save it
 core/thumbnails.py        THUMBNAIL ENGINE (cache, budget, loaders)
 core/conversion.py        CONVERSION ENGINE (file -> QImage, verified)
 core/guard.py             DATABASE ENGINE: the only module that reads and writes a library's files

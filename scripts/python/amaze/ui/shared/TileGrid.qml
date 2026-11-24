@@ -17,6 +17,7 @@ ScrollView {
     signal tileDoubleClicked(int row)
     signal tileKeyed(int row, int modifiers)    // the user's move by an Amaze hotkey landed on `row`
     signal badgeClicked(int row, string name)
+    signal tileDragged(int row, int modifiers)    // a press on tile `row` moved past the drag distance
 
     function rowAt(x, y) {    // the tile at (x, y) in the grid, -1 for its empty space
         const at = root.mapToItem(view.contentItem, x, y)
@@ -36,11 +37,13 @@ ScrollView {
         id: view
 
         property int selectionChanges: 0    // counted, so every tile reads its selected state again
+        property Item holder: null    // the tile under a press: no flick takes it, so a drag goes out
         // each line in whole px, as QFontMetrics gives the widget tile its cell
         readonly property int nameHeight: Math.round(nameFont.ascent) + Math.round(nameFont.descent)
         readonly property int subtitleHeight: Math.round(subtitleFont.ascent) + Math.round(subtitleFont.descent)
 
         clip: true
+        interactive: holder === null    // Qt's documented way to hold flicking for a child's own gesture
         cacheBuffer: 0    // tiles, and their pictures, only while on screen
         keyNavigationEnabled: false    // keys are Amaze's hotkeys, landing through `step`
         cellWidth: root.tileSize + root.drawn.width_extra
@@ -107,6 +110,7 @@ ScrollView {
         }
 
         delegate: Tile {
+            id: tile
             width: view.cellWidth
             height: view.cellHeight
             drawn: root.drawn
@@ -117,6 +121,8 @@ ScrollView {
                       && root.selectionModel.isSelected(view.model.index(index, 0))
             onClicked: modifiers => view.clickedOn(index, modifiers)
             onDoubleClicked: root.tileDoubleClicked(index)
+            onHeldChanged: if (held) view.holder = tile; else if (view.holder === tile) view.holder = null
+            onDragged: modifiers => root.tileDragged(index, modifiers)
             onBadgeClicked: name => {
                 view.forceActiveFocus(Qt.MouseFocusReason)
                 root.badgeClicked(index, name)
