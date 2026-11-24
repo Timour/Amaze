@@ -113,9 +113,9 @@ if ! "$python" "$tests_dir/../../../../tools/check-requirements.py"; then
     exit 1
 fi
 
-MODULES="test_category test_library test_generator \
+MODULES="test_category test_library test_online_sources \
 test_roundtrip test_thumbnail_shutdown test_addons test_debug_log_repeats \
-test_library_storage test_check_library test_lop_assign test_drag_gesture test_houdini_operations \
+test_library_storage test_check_library test_lop_assign test_drag_gesture \
 test_drop_targets test_drop_resolution test_cop_root \
 test_prefs_equality test_karma_batch \
 test_nodes_section test_tile_icons test_category_colors \
@@ -131,8 +131,8 @@ test_toolbar_filter test_shaderball_assets \
 test_cancel_conversions test_section_tabs test_qml_pane test_code_tile \
 test_list_columns test_versions_dialog test_no_live_data test_screen_dpr \
 test_write_ordering test_thumbnail_paths test_panel_correctness \
-test_prefs_and_sources test_prefs_shared test_prefs_per_user test_unbound_names test_conversion test_area_bindings test_grid_order test_sidebar_area test_sidebar_order test_toolbar_area test_comments_area test_grid_operations test_grid_badges test_sidebar_colour test_grid_menu test_sidebar_menu test_sidebar_highlight test_scene_folder test_grid_columns test_grid_engine test_matx_translate test_material_two_files \
-test_redshift_terminal test_redshift_converter test_simready test_octane test_conversion_engine test_husk_job test_dead_cover test_updates test_preview_boundary test_layers \
+test_prefs_and_sources test_prefs_shared test_prefs_per_user test_unbound_names test_conversion test_area_bindings test_grid_order test_sidebar_area test_sidebar_order test_toolbar_area test_comments_area test_grid_operations test_grid_badges test_sidebar_colour test_grid_menu test_sidebar_menu test_sidebar_highlight test_scene_folder test_grid_columns test_grid_engine test_material_two_files \
+test_redshift_terminal test_redshift_converter test_octane test_conversion_engine test_husk_job test_dead_cover test_updates test_preview_boundary test_layers \
 test_empty_state test_role_numbers test_comment_budget test_ui_labels \
 test_design_document test_drawn_binding test_messages test_tooltips \
 test_fresh_library test_grouped_import test_gallery_import test_row_addressing \

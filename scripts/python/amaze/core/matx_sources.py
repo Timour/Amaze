@@ -8,6 +8,7 @@ import math
 import os
 import posixpath
 import re
+import shutil
 import ssl
 import struct
 import tempfile
@@ -1267,13 +1268,14 @@ def member_share(before: int, size: int, read: int, span: int) -> float:
     return before + size * min(1.0, read / span) if span else before
 
 
-def read_member(bundle, remote, name: str, on_bytes=None) -> bytes:
-    """One member, its header and data fetched in one streamed request; zipfile checks its CRC."""
+def extract_member(bundle, remote, name: str, target: str, on_bytes=None) -> None:
+    """One member into `target`: fetched in one streamed request, written a piece at a time."""
     info = bundle.getinfo(name)
     start = info.header_offset
     remote.prefetch(start, start + 30 + len(info.filename.encode()) + 1024
                     + info.compress_size, on_bytes)    # 1024: room for the local extra field
-    return bundle.read(info)
+    with bundle.open(info) as source, open(target, "wb") as handle:    # zipfile checks its CRC
+        shutil.copyfileobj(source, handle)
 
 
 class AmazeSource(MatxSource):
@@ -1518,13 +1520,10 @@ class SimReadySource(MatxSource):
     @staticmethod
     def _extract(bundle, remote, name: str, dest_dir: str, on_bytes=None) -> str:
         target = hostos.contained_join(dest_dir, *name.split("/"))    # member names come from the network, `/`-separated whatever the OS
-        try:
-            data = read_member(bundle, remote, name, on_bytes)
-        except KeyError:
-            raise RuntimeError("%s is not in the SimReady archive" % name) from None
+        if name not in bundle.NameToInfo:
+            raise RuntimeError("%s is not in the SimReady archive" % name)
         os.makedirs(os.path.dirname(target), exist_ok=True)
-        with open(target, "wb") as handle:
-            handle.write(data)
+        extract_member(bundle, remote, name, target, on_bytes)
         return target
 
     def fetch(self, record, resolution, dest_dir, progress=None):
@@ -1549,6 +1548,9 @@ class SimReadySource(MatxSource):
             if name in held:    # a texture missing from the archive is skipped here
                 textures.append(name)
         report_unsafe("texture", unsafe)
+        from amaze.core import packages
+        if sum(bundle.getinfo(name).file_size for name in textures) > packages.MAX_UNPACKED_BYTES:
+            raise DownloadTooLarge(packages.MAX_UNPACKED_BYTES)    # before a byte of it is read
         total = sum(bundle.getinfo(name).compress_size for name in textures) or 1
         done = 0
         for name in textures:

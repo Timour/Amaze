@@ -233,7 +233,6 @@ class Loading:
 
     def generate_random_material(self) -> None:
         """One random plausible material, built in the scene's material network, not the library."""
-        from amaze.helpers import helpers
         from amaze.render import generator
         builder = None
         destination = None
@@ -257,9 +256,8 @@ class Loading:
                             title=messages.TITLE_AMAZE, severity=hou.severityType.Warning
                         )
                     return
-                moved = hou.moveNodesTo((builder,), destination)
-                if not moved:
-                    builder = None
+                builder, registered = nodes.place_built(builder, destination)    # as an import is
+                if builder is None:
                     debug.event("generate", "move failed",
                                 destination=destination.path())
                     if ui is not None:
@@ -268,13 +266,6 @@ class Loading:
                             title=messages.TITLE_AMAZE, severity=hou.severityType.Warning
                         )
                     return
-                builder = moved[0]
-                helpers.auto_place(builder)
-                registered = True
-                if destination.type().name() == "materiallibrary":    # registered as an import is
-                    registered = nodes.register_in_materiallibrary(
-                        destination, builder
-                    )
                 builder.setCurrent(True, True)    # current and selected, as a node from the Tab menu is
                 debug.event("generate", "random material",
                             name=builder.name(),
