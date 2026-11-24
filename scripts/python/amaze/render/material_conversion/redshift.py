@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from amaze.core import renderers
-from amaze.render import material_converter, redshift_converter
+from amaze.render import material_converter, nodes, redshift_converter
 from amaze.render.material_conversion import engine
 
 
@@ -13,7 +13,9 @@ class RedshiftAPI(engine.RendererAPI):
     name = renderers.REDSHIFT.key
 
     def available(self) -> bool:
-        return material_converter._redshift_type_available()
+        """Both containers the converters read and write can be made here."""
+        return all(nodes.node_type_available(name) for name in (
+            renderers.REDSHIFT.classic_container, renderers.REDSHIFT.usd_builder))
 
     def build(self, parent, name, produce):
         return redshift_converter.build_redshift_material(parent, name, produce)

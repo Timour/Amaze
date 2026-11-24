@@ -7,32 +7,11 @@ import hou
 from amaze import messages
 from amaze.core import debug
 from amaze.core import material
-from amaze.core import renderers
 from amaze.core import texstore
 
 from amaze.helpers import wording
 from amaze.render import nodes
 from amaze.render.material_conversion.report import ConversionReport    # defined only in report.py
-
-
-REDSHIFT_CONTAINERS = (renderers.REDSHIFT.classic_container,    # read, and written
-                       renderers.REDSHIFT.usd_builder)
-
-
-def _redshift_type_available() -> bool:
-    """True when Redshift is loaded: both containers the converters use are creatable here."""
-    return all(nodes.node_type_available(name) for name in REDSHIFT_CONTAINERS)
-
-
-OCTANE_BUILDER_SHADER = "octane::NT_MAT_STANDARD_SURFACE"    # what Octane's own builder starts with
-
-
-def _octane_type_available() -> bool:
-    """True if the Octane plugin is loaded: its builder's shader creatable in ANY category."""
-    for cat in hou.nodeTypeCategories().values():
-        if hou.nodeType(cat, OCTANE_BUILDER_SHADER) is not None:
-            return True
-    return False
 
 
 def find_redshift_shader(vopnet: hou.Node) -> hou.Node | None:
@@ -1354,36 +1333,6 @@ def _convert_uber_shader(
     if vendor_transforms:
         _apply_vendor_transforms(rs_node, mtlx, report)
     return mtlx
-
-
-def convert_redshift_material(
-    node_handler,
-    source_mat,
-    prefs_dir_parent: hou.Node,
-) -> tuple[hou.Node | None, ConversionReport]:
-    """Rebuild source_mat in scratch and convert it: (shader, displacement, report), None if not."""
-    report = ConversionReport(source_mat.name)
-    debug.event("convert", "start", material=source_mat.name,
-                renderer=source_mat.renderer, mat_id=source_mat.mat_id)
-
-    if not _redshift_type_available():    # the rebuild needs the Redshift plugin loaded
-        report.skip(
-            "Redshift isn't loaded this session, so the source material "
-            "can't be read (the converter reconstructs the Redshift "
-            "network to read its parameters). Load Redshift and retry - "
-            "check the Houdini/Redshift plugin versions match."
-        )
-        return None, None, report
-
-    with hou.undos.disabler():    # off the undo stack at BOTH creation and deletion (#278)
-        scratch = hou.node("/obj").createNode("matnet")
-    try:
-        vopnet = node_handler.rebuild_saved(source_mat, scratch)
-        mtlx, mtlx_disp = convert_redshift_container(vopnet, prefs_dir_parent, report)
-        return mtlx, mtlx_disp, report
-    finally:
-        with hou.undos.disabler():
-            scratch.destroy()    # the rebuilt copy is read, never left in the scene
 
 
 def convert_redshift_container(vopnet, prefs_dir_parent, report):

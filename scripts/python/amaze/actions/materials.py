@@ -1,13 +1,17 @@
 """Saving, loading, converting and rendering a Material in Houdini. ▸archive/actions/materials.py"""
 
+import contextlib
 import os
 
 import hou
 from PySide6 import QtCore
 
 from amaze import messages
-from amaze.core import asset_record, debug, guard, library, library_db, material, texstore, versions
+from amaze.core import asset_record, debug, guard, library, library_db, material, renderers
+from amaze.core import texstore, versions
 from amaze.render import husk_job, nodes
+from amaze.render.material_conversion import engine as conversion_engine
+from amaze.render.material_conversion import report as conversion_report
 
 
 def connect(model) -> None:
@@ -194,31 +198,58 @@ def import_asset_to_scene(
     return ok, reason, created
 
 
+@contextlib.contextmanager
+def rebuilt_as(preferences, mat, target: str, report):
+    """`mat` rebuilt from its files and converted to `target`; all of it is removed afterwards."""
+    with hou.undos.disabler():    # the WHOLE block, the id stamp on the new builder included ▸r/undo-groups
+        scratch = hou.node("/obj").createNode("matnet")
+        try:
+            source = nodes.NodeHandler(preferences).rebuild_saved(mat, scratch)
+            yield conversion_engine.convert(source, mat.renderer, target, scratch, mat.name, report)
+        finally:
+            scratch.destroy()
+
+
 def convert(model, index: QtCore.QModelIndex, target: str, render: bool = True):
     """Convert this row to a `target` material, saved as a new row, same name: (ok, report)."""
-    from amaze.render.material_conversion import engine as conversion_engine
-    from amaze.render.material_conversion.report import ConversionReport
     mat = model._assets[index.row()]
-    report = ConversionReport(mat.name)
+    report = conversion_report.ConversionReport(mat.name)
     reason = conversion_engine.why_not(mat.renderer, target)
     if reason:    # before the rebuild: a missing plugin makes it raise
         report.skip(reason)
         return False, report
+    with rebuilt_as(model.preferences, mat, target, report) as made:
+        if made.shader is None:
+            return False, report
+        saved = add_asset(
+            model, made.builder, ",".join(mat.categories), ",".join(mat.tags), False,
+            name=mat.name, render=render, about=mat.about, license=mat.license)
+        if isinstance(saved, library.ListNotSaved):    # files saved, list not saved: the caller tells the user
+            return saved, report
+        return bool(saved), report    # a refused save leaves nothing
 
-    handler = nodes.NodeHandler(model.preferences)
-    with hou.undos.disabler():    # the WHOLE block, the id stamp on the new builder included ▸r/undo-groups
-        scratch = hou.node("/obj").createNode("matnet")
+
+def convert_rows(model, ids, target: str):
+    """Convert to for the rows `ids` that have a route: (message, details, all converted, unlisted)."""
+    lines, converted, eligible, sources, unlisted = [], 0, 0, set(), []
+    for row in (model.find_asset_row_by_id(mat_id) for mat_id in ids):
+        if row < 0:
+            continue
+        mat = model.assets[row]
+        if not conversion_engine.has_route(mat.renderer, target):
+            continue
+        eligible += 1
+        sources.add(renderers.normalized(mat.renderer))
         try:
-            source = handler.rebuild_saved(mat, scratch)
-            made = conversion_engine.convert(
-                source, mat.renderer, target, scratch, mat.name, report)
-            if made.shader is None:
-                return False, report
-            saved = add_asset(
-                model, made.builder, ",".join(mat.categories), ",".join(mat.tags), False,
-                name=mat.name, render=render, about=mat.about, license=mat.license)
-            if isinstance(saved, library.ListNotSaved):    # files saved, list not saved: the caller tells the user
-                return saved, report
-            return bool(saved), report    # a refused save leaves nothing: the scratch matnet is destroyed below
-        finally:
-            scratch.destroy()
+            ok, report = convert(model, model.index(row, 0), target, render=False)
+        except Exception as exc:                              # noqa: BLE001 - one crash costs its row
+            lines.append(messages.CONVERSION_CRASHED_LINE % (mat.name, exc))
+            continue
+        converted += 1 if ok else 0
+        if isinstance(ok, library.ListNotSaved):
+            unlisted.append(mat.name)    # the copy keeps its source's name
+        lines.extend(report.summary_lines())
+    if not eligible:
+        return None
+    message = conversion_report.summary(converted, eligible, sources, renderers.label(target))
+    return message, "\n".join(lines), converted == eligible, unlisted

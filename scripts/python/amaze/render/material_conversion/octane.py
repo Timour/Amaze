@@ -6,9 +6,10 @@ import hou
 
 from amaze.core import debug, renderers
 from amaze.helpers import wording
-from amaze.render import material_converter, nodes
+from amaze.render import nodes
 from amaze.render.material_conversion import engine, materialx, octane_reader
 
+BUILDER_SHADER = "octane::NT_MAT_STANDARD_SURFACE"    # what Octane's own builder starts with
 SOLARIS_TERMINAL = "octane_material"
 SUBNET_IO = ("subinput", "suboutput")
 PASS_THROUGH = "mtlxdot"
@@ -235,7 +236,8 @@ class OctaneAPI(engine.RendererAPI):
     name = renderers.OCTANE.key
 
     def available(self) -> bool:
-        return material_converter._octane_type_available()
+        """Octane's builder shader can be made here."""
+        return nodes.node_type_available(BUILDER_SHADER)
 
     def build(self, parent, name, produce):
         made = nodes.build_karma_material(parent, name, produce)

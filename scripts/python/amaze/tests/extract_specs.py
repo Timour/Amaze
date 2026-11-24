@@ -17,9 +17,10 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import guard, library_files, material as matmod  # noqa: E402
-from amaze.render import material_converter, nodes  # noqa: E402
-from amaze.tests.conversion_report import _Prefs  # noqa: E402
+from amaze.actions import materials as material_actions  # noqa: E402
+from amaze.core import guard, library_files  # noqa: E402
+from amaze.render.material_conversion.report import ConversionReport  # noqa: E402
+from amaze.tests.conversion_report import _Prefs, _material  # noqa: E402
 
 SPEC_PARMS = (
     "base", "base_color", "metalness", "specular", "specular_roughness",
@@ -54,46 +55,25 @@ def from_library(library_dir: str, limit: int = 0) -> list:
     if limit:
         records = records[:limit]
     prefs = _Prefs(library_dir)
-    staging = hou.node("/obj").createNode("matnet", "spec_extract")
     out = []
-    try:
-        for index, record in enumerate(records, 1):
-            mat = matmod.Material()
-            mat._name = record.get("name", "")
-            mat._mat_id = str(record.get("id"))
-            mat._renderer = record.get("renderer", "")
-            handler = nodes.NodeHandler(prefs)
-
-            def produce(builder, _handler=handler, _mat=mat):
-                shader, disp, _report = (
-                    material_converter.convert_redshift_material(
-                        _handler, _mat, builder
-                    )
-                )
-                return (shader, disp)
-
-            try:
-                builder, shader = nodes.build_karma_material(
-                    staging, mat.name, produce
-                )
-            except Exception:                      # noqa: BLE001
-                continue
-            if shader is not None and \
-                    shader.type().name() == "mtlxstandard_surface":
-                spec = _read_shader(shader)
-                if spec:
-                    out.append({
-                        "name": record.get("name"),
-                        "source": "library",
-                        "categories": record.get("categories", []),
-                        "spec": spec,
-                    })
-            for child in list(staging.children()):
-                child.destroy()
-            if index % 50 == 0:
-                print("  ...%d/%d" % (index, len(records)))
-    finally:
-        staging.destroy()
+    for index, record in enumerate(records, 1):
+        report = ConversionReport(str(record.get("name", "")))
+        try:
+            with material_actions.rebuilt_as(prefs, _material(record), "Karma", report) as made:
+                shader = made.shader
+                if shader is not None and shader.type().name() == "mtlxstandard_surface":
+                    spec = _read_shader(shader)
+                    if spec:
+                        out.append({
+                            "name": record.get("name"),
+                            "source": "library",
+                            "categories": record.get("categories", []),
+                            "spec": spec,
+                        })
+        except Exception:                      # noqa: BLE001
+            continue
+        if index % 50 == 0:
+            print("  ...%d/%d" % (index, len(records)))
     return out
 
 

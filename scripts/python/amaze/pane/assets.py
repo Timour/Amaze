@@ -7,7 +7,7 @@ import hou
 
 from amaze import messages
 from amaze.actions import materials as material_actions
-from amaze.core import grid_columns, library, renderers, tile_icons
+from amaze.core import grid_columns, library, tile_icons
 from amaze.pane import asks
 
 
@@ -77,36 +77,17 @@ class Assets:
         model = pane.material_model
         ids = [model.tile_key(pane.material_sorted_model.mapToSource(index).row())
                for index in indexes]    # by ID, with no layout pair: each converted copy inserts and saves
-        lines, converted, eligible, sources, unlisted = [], 0, 0, set(), []
         before = {str(mat.mat_id) for mat in model.assets}    # the converted copies are the rows added after this
-        for row in (model.find_asset_row_by_id(mat_id) for mat_id in ids):
-            if row < 0:
-                continue
-            mat = model.assets[row]
-            if not conversion_engine.has_route(mat.renderer, target):
-                continue
-            eligible += 1
-            sources.add(renderers.normalized(mat.renderer))
-            try:
-                ok, report = material_actions.convert(model, model.index(row, 0), target,
-                                                      render=False)
-            except Exception as exc:                          # noqa: BLE001
-                lines.append(messages.CONVERSION_CRASHED_LINE % (mat.name, exc))
-                continue
-            converted += 1 if ok else 0
-            if isinstance(ok, library.ListNotSaved):
-                unlisted.append(mat.name)    # the copy keeps its source's name
-            lines.extend(report.summary_lines())
+        done = material_actions.convert_rows(model, ids, target)
         self.render_new_thumbnails(before)
-        shown = " and ".join(renderers.label(source)
-                             for source in conversion_engine.targets() if source in sources)
+        if done is None:
+            return
+        message, details, complete, unlisted = done
         ui = getattr(hou, "ui", None)
-        if ui is not None and eligible:
-            ui.displayMessage(
-                messages.CONVERSION_SUMMARY % (converted, eligible, shown, renderers.label(target)),
-                details="\n".join(lines), title=messages.TITLE_AMAZE,
-                severity=(hou.severityType.Message if converted == eligible
-                          else hou.severityType.Warning))
+        if ui is not None:
+            ui.displayMessage(message, details=details, title=messages.TITLE_AMAZE,
+                              severity=(hou.severityType.Message if complete
+                                        else hou.severityType.Warning))
         library.report_unlisted(unlisted)    # the status line, last, so nothing after it overwrites the line
 
     def render_new_thumbnails(self, before: set) -> None:

@@ -9,7 +9,7 @@ import hou
 from amaze.core import debug, material, renderers, texstore
 from amaze.helpers import wording
 from amaze.render import nodes
-from amaze.render.material_conversion import engine, materialx
+from amaze.render.material_conversion import materialx
 from amaze.render.material_converter import (    # the forward converter's tables and helpers
     ConversionReport,
     OPENPBR_MATERIAL_PARM_MAP,
@@ -115,9 +115,7 @@ def convert_karma_builder(source: hou.Node, parent: hou.Node, name: str, report=
     def produce(builder):
         return convert_karma_network(source, builder, report)
 
-    made = build_redshift_material(parent, name, produce)
-    if made.shader is not None and not made.wired:
-        report.skip(engine.UNWIRED)
+    made = build_redshift_material(parent, name, produce)    # the engine reports an unwired copy
     return made.builder, made.shader, made.wired, report
 
 

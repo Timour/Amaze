@@ -17,8 +17,10 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
+from amaze.actions import materials as material_actions  # noqa: E402
 from amaze.core import guard, library_files, material as matmod  # noqa: E402
-from amaze.render import material_converter, nodes  # noqa: E402
+from amaze.render import nodes  # noqa: E402
+from amaze.render.material_conversion.report import ConversionReport  # noqa: E402
 
 
 def library_materials(library_dir: str) -> list:
@@ -51,39 +53,34 @@ class _Prefs:
         self.karma_rendersamples = 9
 
 
-def check_material(record, prefs, staging) -> dict:
-    """Convert one material with the production converter and return the result dict."""
-    result = {"name": record.get("name"), "id": record.get("id"),
-              "renderer": record.get("renderer"), "stage": "convert",
-              "ok": False, "detail": "", "notes": 0}
-    started = time.time()
+def check_material(record, prefs) -> dict:
+    """Convert one material as Convert to does, without saving it, and return the result dict."""
+    report = ConversionReport(str(record.get("name", "")))
+    try:
+        with material_actions.rebuilt_as(prefs, _material(record), "Karma", report) as made:
+            return _checked(record, made.builder, made.shader, report, time.time())
+    except Exception as exc:                      # noqa: BLE001
+        return {"name": record.get("name"), "id": record.get("id"), "ok": False,
+                "renderer": record.get("renderer"), "stage": "convert", "notes": 0,
+                "detail": "%s: %s" % (type(exc).__name__, exc)}
+
+
+def _material(record):
+    """The library row `record` as a Material, enough to rebuild it."""
     mat = matmod.Material()
     mat._name = record.get("name", "")
     mat._mat_id = str(record.get("id"))
     mat._renderer = record.get("renderer", "")
     mat._categories = list(record.get("categories", []))
     mat._tags = list(record.get("tags", []))
+    return mat
 
-    handler = nodes.NodeHandler(prefs)
-    report_holder = {}
 
-    def produce(builder):
-        shader, disp, report = material_converter.convert_redshift_material(
-            handler, mat, builder
-        )
-        report_holder["report"] = report
-        return (shader, disp)
-
-    try:
-        builder, shader = nodes.build_karma_material(
-            staging, mat.name, produce
-        )
-    except Exception as exc:                      # noqa: BLE001
-        result["detail"] = "%s: %s" % (type(exc).__name__, exc)
-        result["ms"] = round((time.time() - started) * 1000)
-        return result
-
-    report = report_holder.get("report")
+def _checked(record, builder, shader, report, started) -> dict:
+    """The result dict of one converted material, read before its scratch network goes."""
+    result = {"name": record.get("name"), "id": record.get("id"),
+              "renderer": record.get("renderer"), "stage": "convert",
+              "ok": False, "detail": "", "notes": 0}
     result["skipped"] = list(getattr(report, "skipped", []) or [])
     result["approximated"] = list(getattr(report, "approximated", []) or [])
     result["notes"] = len(result["skipped"]) + len(result["approximated"])
@@ -145,23 +142,17 @@ def main() -> int:
         print("nothing to check")
         return 0
 
-    staging = hou.node("/obj").createNode("matnet", "conversion_report")
     results = []
-    try:
-        for index, record in enumerate(records, 1):
-            verdict = check_material(record, prefs, staging)
-            results.append(verdict)
-            mark = "ok  " if verdict["ok"] else "FAIL"
-            print("  [%3d/%3d] %s %-42s %s"
-                  % (index, len(records), mark,
-                     str(verdict["name"])[:42],
-                     "" if verdict["ok"]
-                     else "(%s: %s)" % (verdict["stage"],
-                                        verdict["detail"][:70])))
-            for child in list(staging.children()):
-                child.destroy()
-    finally:
-        staging.destroy()
+    for index, record in enumerate(records, 1):
+        verdict = check_material(record, prefs)
+        results.append(verdict)
+        mark = "ok  " if verdict["ok"] else "FAIL"
+        print("  [%3d/%3d] %s %-42s %s"
+              % (index, len(records), mark,
+                 str(verdict["name"])[:42],
+                 "" if verdict["ok"]
+                 else "(%s: %s)" % (verdict["stage"],
+                                    verdict["detail"][:70])))
 
     passed = [r for r in results if r["ok"]]
     print("\n%d/%d converted and translated cleanly" % (len(passed), len(results)))
