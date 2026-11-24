@@ -335,9 +335,8 @@ class Saving:
         pane.sidebar.refresh()
         imported, skipped, failed = (summary.get(key, 0) for key in ("imported", "skipped", "failed"))
         if interrupted:
-            counts = (imported, skipped, failed)
-            text = (messages.GALLERY_IMPORT_INTERRUPTED_RENDERING % counts if renders
-                    else messages.GALLERY_IMPORT_INTERRUPTED % counts)
+            text = (messages.GALLERY_IMPORT_INTERRUPTED_RENDERING % (imported, skipped, failed) if renders
+                    else messages.GALLERY_IMPORT_INTERRUPTED % (imported, skipped, failed))
         elif renders:
             text = messages.GALLERY_IMPORT_FINISHED_RENDERING % (imported, skipped, failed)
         else:
