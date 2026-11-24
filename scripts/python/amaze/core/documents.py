@@ -265,6 +265,10 @@ class Document:
         self._touch()
         return len(by_user)
 
+    def was(self, section: str, key: str, default=None):
+        """A shared entry as the file held it when last read: what the next save replaces."""
+        return (self._base.get(section) or {}).get(key, default)
+
     def changed(self, section: str) -> list:
         """The keys of a section that differ from the file as last read: what the next save writes."""
         ours, base = self._data[section], self._base.get(section) or {}

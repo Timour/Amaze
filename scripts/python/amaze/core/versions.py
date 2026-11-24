@@ -13,16 +13,11 @@ from amaze.core import asset_files, asset_record, debug, library_files, material
 from amaze.core.material import RECORD_SUFFIX
 from amaze.helpers import hostos
 
-_KINDS = ((".mat", True), (RECORD_SUFFIX, False),    # the kinds a version archives; only .mat is required
-          (".png", False))
+_KINDS = tuple((suffix, suffix == ".mat")    # the kinds a version archives; only .mat is required
+               for suffix in library_files.VERSION_SUFFIXES)
 
-SOURCE_KINDS = {    # `asset_files()` kind -> archive suffix; a kind absent here is not versioned
-    "mat": ".mat",
-    "json": RECORD_SUFFIX,    # archived as its builder alone ▸r/version-store
-    "thumbnail": ".png",
-}
-
-LEDGER = "versions.json"
+SOURCE_KINDS = dict(zip(("mat", "json", "thumbnail"),    # `asset_files()` kind -> archive suffix
+                        library_files.VERSION_SUFFIXES))    # the .json is archived as its builder alone
 
 
 def versions_dir(preferences, mat_id: str) -> str:
@@ -39,12 +34,16 @@ def stored_ids(preferences) -> set:
 
 
 def _ledger_path(preferences, mat_id: str) -> str:
-    return os.path.join(versions_dir(preferences, mat_id), LEDGER)
+    return os.path.join(versions_dir(preferences, mat_id), library_files.LEDGER)
 
 
 def read_ledger(preferences, mat_id: str) -> dict:
     """The ledger, or an empty one; an unreadable one reads as empty and create and switch fail."""
-    path = _ledger_path(preferences, mat_id)
+    return ledger_in(_ledger_path(preferences, mat_id), mat_id)
+
+
+def ledger_in(path: str, mat_id: str = "") -> dict:
+    """The ledger at `path`: empty when absent, empty and marked `unreadable` when it cannot be read."""
     if not os.path.exists(path):
         return {"active": 0, "versions": []}
     try:
@@ -116,11 +115,8 @@ def active_version_name(preferences, mat_id: str) -> str:
     entries = ledger.get("versions", [])
     if not entries:
         return ""
-    active = int(ledger.get("active", 0) or 0)
-    for entry in entries:
-        if int(entry.get("n", 0)) == active:
-            return version_label(entry)
-    return version_label(entries[-1])    # active matches no row: return the newest
+    return version_label(_row_for(ledger, ledger.get("active", 0) or 0)
+                         or entries[-1])    # active matches no row: the newest
 
 
 def _base_paths(preferences, mat_id: str) -> dict:
@@ -221,7 +217,7 @@ def create_version(preferences, mat_id: str, name: str = "", source_paths: dict 
         pass
     ledger["versions"].append({
         "n": number,
-        "name": name or ("Version %d" % number),
+        "name": name or version_label({"n": number}),
         "author": author,
         "date": time.strftime("%Y-%m-%d %H:%M"),
     })
@@ -373,11 +369,11 @@ def rename_version(preferences, mat_id: str, number: int, name: str) -> bool:
     ledger = read_ledger(preferences, mat_id)
     if ledger.get("unreadable"):
         return False
-    for version in ledger["versions"]:
-        if int(version.get("n", 0)) == int(number):
-            version["name"] = name
-            return _write_ledger(preferences, mat_id, ledger)
-    return False
+    row = _row_for(ledger, number)
+    if row is None:
+        return False
+    row["name"] = name
+    return _write_ledger(preferences, mat_id, ledger)
 
 
 def version_file(preferences, mat_id: str, number: int) -> str:

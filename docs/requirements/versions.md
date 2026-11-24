@@ -1,0 +1,28 @@
+# Versions: requirements
+
+What the version store must do. Only materials keep versions: a snippet's old versions stay in its
+folder as they are, and nothing else uses versions. The engine is `core/versions.py`, with its
+caller in `actions/materials.py` (saving over a material) and the Versions window's calls in
+`core/library.py`. Preferences ▸ Versions is the library's policy (LS-20). The levels and the rules
+for tests are in the [README](README.md).
+
+## Catastrophe
+
+- VS-01 Catastrophe: Switching versions never loses the material's current content: what no version holds yet is kept as a new version first, and when that cannot be written, nothing switches.
+- VS-02 Catastrophe: Making or switching a version is applied whole or not at all: cut off by a full disk, a crash or a file another program holds, the material is left on one version, never part of one and part of another, and the list names the version its files hold.
+- VS-03 Catastrophe: A new version never writes over a version file already on disk, even one the list does not name, such as another computer's arriving by sync.
+- VS-04 Catastrophe: A version list that cannot be read is never written over: no version is made, switched or renamed until it can be read.
+- VS-05 Catastrophe: Losing a material's versions, the whole folder or only its list, never touches the material itself: it still opens, imports and renders.
+
+## Severe
+
+- VS-10 Severe: Saving over a material keeps it as it was as a version when no version holds it, for a change of values or of nodes alike, and the new state becomes the active version: the first time, the old one becomes Version 1 and the new one Version 2. When that copy cannot be written, the save-over is refused with a message and the material stays as it was.
+- VS-11 Severe: Switching versions keeps the material's current name, category, tags and comments.
+
+## Wrong output
+
+- VS-20 Wrong output: Select in the Versions window puts that version on the material, whole: its network, builder and picture; nothing of the version shown before stays. Cancel changes nothing.
+- VS-21 Wrong output: Changing a material's name, category, tags or comments makes no new version.
+- VS-22 Wrong output: A fresh render goes into the active version only, and only while that version holds the material; every other version keeps its own picture.
+- VS-24 Wrong output: After a switch, saving over that material is not refused as changed elsewhere.
+- VS-26 Wrong output: With Versions off, saving over a material replaces it and makes no version; the versions it already has stay as they are.

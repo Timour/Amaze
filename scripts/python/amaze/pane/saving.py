@@ -41,7 +41,7 @@ class Saving:
             return
         key = sections.save_guess(keys, nodes, prefer)
         if key == "material":
-            self.save_asset()    # the already-in-the-library prompt comes first
+            self.save_asset(nodes)    # the already-in-the-library prompt comes first
             return
         self._save_new(nodes, key, node)
 
@@ -89,12 +89,12 @@ class Saving:
 
         pane.ui.open_save(question, saved)
 
-    def save_asset(self) -> None:
-        """Save the selected nodes; ones in the library get one save-over/new/cancel prompt."""
+    def save_asset(self, nodes=None) -> None:
+        """Save `nodes`, else the selection; ones in the library get one save-over or new prompt."""
         from amaze.core import library_settings
         model = self.pane.material_model
         ui = getattr(hou, "ui", None)
-        sel = hou.selectedNodes()
+        sel = list(nodes) if nodes is not None else hou.selectedNodes()
         debug.event("save", "save_asset entry", selected=len(sel))
         if not sel:
             if ui is not None:

@@ -451,6 +451,15 @@ class Guard:
             found["bytes"] += total
         return found
 
+    def in_trash(self, relative: str) -> str:
+        """The newest trashed copy of the file at `relative`, inside the library; "" for none."""
+        clean = "/".join(part for part in str(relative).replace("\\", "/").split("/") if part)
+        for day in sorted(self.disk.names(self.path(TRASH_DIR)), reverse=True):
+            found = "%s/%s/%s" % (TRASH_DIR, day, clean)
+            if self.disk.exists(self._relative(found)):
+                return found
+        return ""
+
     def expire_trash(self) -> int:
         """Remove the trash's day folders older than TRASH_DAYS; how many were removed."""
         cutoff = (self._now() - datetime.timedelta(days=TRASH_DAYS)).strftime("%Y-%m-%d")
@@ -476,6 +485,7 @@ class Change:
         self._removals = []
         self._trashed = []
         self._moved = []    # (relative, to): files or folders renamed after this change's writes
+        self.journaled = False    # its journal is written: its files are the library's to keep
         self.waiting = ""    # after `commit`: why the recorded change is not yet all in place
 
     def put(self, ticket: Ticket, document: dict) -> None:
@@ -563,6 +573,7 @@ class Change:
                     disk.write(scratch, json.dumps({"steps": steps}).encode("utf-8"))
                     written = []    # from here journal recovery handles the scratch files
                     disk.swap(scratch, journal)
+                    self.journaled = True
                     try:
                         guard._apply(steps)
                         disk.remove(journal)

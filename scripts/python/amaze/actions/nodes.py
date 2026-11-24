@@ -2,8 +2,7 @@
 
 import hou
 
-from amaze import messages
-from amaze.core import asset_record, debug, material
+from amaze.core import debug, material
 from amaze.render import cop_nodes, nodes
 
 
@@ -16,25 +15,14 @@ def add_asset(model, node: hou.Node, cats: str, tags: str, fav: bool,
     label = (context or "NODE").upper()
     new_mat.set_data(name.strip() or node.name(), cats, tags, fav, label)
     new_mat.node_color = nodes.custom_node_color(node)
-    material.claim_asset_dir(model.preferences, model.DB_FILENAME, new_mat.mat_id, new_mat.name)
 
-    handler.staging = []    # the files are committed together with the row, as one change
-    try:
-        saved = handler.save_node_cop(node, new_mat.mat_id, items=items)
-    except BaseException:    # a failure or a cancel leaves no file and no folder
-        asset_record.discard(handler.staging)
-        material.release_asset_dir(model.preferences, model.DB_FILENAME, new_mat.mat_id)
-        raise
-    if not saved:
-        asset_record.discard(handler.staging)
-        material.release_asset_dir(model.preferences, model.DB_FILENAME, new_mat.mat_id)
-        return ""
-    new_mat.cop_net = handler.cop_info    # holds `thumb_node`, read from the node's current display flag
-    if not model.add_saved(new_mat, handler.staging):
-        debug.event("save", "node setup not saved - its database took neither row nor files",
-                    name=new_mat.name, mat_id=new_mat.mat_id)
-        debug.refuse(messages.ASSET_NOT_SAVED_DATABASE_REFUSED % new_mat.name)
-        material.release_asset_dir(model.preferences, model.DB_FILENAME, new_mat.mat_id)
+    def save(staging, _own):
+        handler.staging = staging    # the files are committed together with the row, as one change
+        if not handler.save_node_cop(node, new_mat.mat_id, items=items):
+            return False
+        new_mat.cop_net = handler.cop_info    # holds `thumb_node`, read from the display flag
+        return True
+    if not model.save_new(new_mat, save):
         return ""
     handler.staging = None    # committed: anything after this is written on its own
     for render in handler.after_commit:
@@ -43,10 +31,7 @@ def add_asset(model, node: hou.Node, cats: str, tags: str, fav: bool,
         row = model.find_asset_row_by_id(new_mat.mat_id)
         if row >= 0:
             model._add_thumb_paths(row)    # the thumbnail was rendered after the tile appeared
-    try:
-        node.setUserData("assetlib_id", str(new_mat.mat_id))
-    except hou.OperationFailed:
-        pass
+    nodes.stamp_asset_id(node, new_mat.mat_id)
     return label
 
 

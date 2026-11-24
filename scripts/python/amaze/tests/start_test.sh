@@ -113,22 +113,18 @@ if ! "$python" "$tests_dir/../../../../tools/check-requirements.py"; then
     exit 1
 fi
 
-MODULES="test_asset_editing test_qt_models test_generator \
-test_roundtrip test_thumbnail_shutdown test_addons test_addon_tab test_debug_log_repeats \
-test_library_storage test_check_library test_houdini_operations \
-test_cop_root \
-test_prefs_equality test_karma_batch \
-test_nodes_section test_shell_gates test_file_moves test_log_export test_hip_section \
-test_library_list test_library_tab test_atomic_write test_harness_reset test_alert_sink \
-test_save_from_node test_node_menu test_versions test_file_section test_notes \
-test_shaderball_assets test_cancel_conversions test_qml_pane test_no_live_data \
-test_write_ordering test_thumbnail_paths test_panel_correctness test_prefs_and_sources \
-test_prefs_shared test_prefs_per_user test_conversion test_area_bindings \
-test_comments_area test_grid_engine test_matx_translate test_material_two_files \
-test_simready test_husk_job test_dead_cover test_updater test_empty_state \
-test_snippet_run test_drop_into_scene test_info_pane test_material_conversion \
-test_fresh_library test_grouped_import test_gallery_import test_switch_rereads \
-test_fixture_guard test_packages test_texstore \
+MODULES="test_asset_editing test_qt_models test_generator test_thumbnail_shutdown test_addons \
+test_addon_tab test_debug_log_repeats test_library_storage test_check_library \
+test_houdini_operations test_prefs_equality test_karma_batch test_shell_gates \
+test_file_moves test_log_export test_hip_section test_library_list test_library_tab \
+test_atomic_write test_harness_reset test_alert_sink test_node_menu test_versions \
+test_file_section test_shaderball_assets test_cancel_conversions test_qml_pane \
+test_no_live_data test_thumbnail_paths test_panel_correctness test_prefs_and_sources \
+test_prefs_shared test_prefs_per_user test_conversion test_area_bindings test_grid_engine \
+test_matx_translate test_simready test_husk_job test_dead_cover test_updater \
+test_empty_state test_snippet_run test_drop_into_scene test_info_pane \
+test_material_conversion test_gallery_import test_switch_rereads test_fixture_guard \
+test_packages test_saving_and_loading test_comments \
 test_bug_report test_peer_read test_two_panels test_peer_refresh test_file_lock \
 test_impact_map"
 

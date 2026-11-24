@@ -141,9 +141,12 @@ def commit_staged_files(preferences, staged: list) -> None:
         with LOCK:
             add_staged(change, held, staged)
             change.commit()
-    except (guard.Refused, ValueError) as exc:
-        discard(staged)
-        raise OSError(str(exc)) from exc
+    except BaseException as exc:
+        if not change.journaled:    # a written journal finishes the change on the next open
+            discard(staged)
+        if isinstance(exc, (guard.Refused, ValueError)):
+            raise OSError(str(exc)) from exc
+        raise
 
 
 def builder_section(found: dict) -> dict:

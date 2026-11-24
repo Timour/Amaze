@@ -645,8 +645,6 @@ class AssetLibrary(grid_engine.GridEngine,
             self.endInsertRows()
         self._add_thumb_paths(row)
         moved = self.resort()    # now, so no caller keeps a row number that is about to change
-        self._content_state[str(record.mat_id)] = self._content_stat(
-            record.mat_id)
         return moved.get(row, row) if moved else row
 
     def _remove_unsaved_record(self, record) -> None:
@@ -663,6 +661,27 @@ class AssetLibrary(grid_engine.GridEngine,
         self._content_state.pop(str(record.mat_id), None)
         with library_db.library_for(self.preferences).holding():
             self._doc().drop(ROWS, str(record.mat_id))
+
+    def save_new(self, record, save) -> bool:
+        """`save(staging, folder)` writes a new asset's files, kept with its row as one change."""
+        folder = material.claim_asset_dir(self.preferences, self.DB_FILENAME, record.mat_id,
+                                          record.name)
+        staging = []
+        try:
+            saved = save(staging, folder)
+        except BaseException:    # a failure or a cancel leaves no file and no folder
+            asset_record.discard(staging)
+            material.release_asset_dir(self.preferences, self.DB_FILENAME, record.mat_id)
+            raise
+        if saved and not self.add_saved(record, staging):
+            debug.event("save", "asset not saved - its database took neither row nor files",
+                        name=record.name, mat_id=record.mat_id)
+            debug.refuse(messages.ASSET_NOT_SAVED_DATABASE_REFUSED % record.name)
+            saved = False
+        if not saved:
+            asset_record.discard(staging)
+            material.release_asset_dir(self.preferences, self.DB_FILENAME, record.mat_id)
+        return bool(saved)
 
     def add_saved(self, record, staged=()) -> bool:
         """Save a new record and the files its save staged as ONE change; False: neither was saved."""
@@ -686,6 +705,8 @@ class AssetLibrary(grid_engine.GridEngine,
             for record in records:
                 self._remove_unsaved_record(record)
             return False
+        self._content_state[str(record.mat_id)] = self._content_stat(    # its files are on disk now
+            record.mat_id)
         return True
 
     def add_shipped(self, mark: str, records: list, pages: dict, category_model) -> int:

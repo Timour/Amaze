@@ -341,6 +341,16 @@ def op_path_parms(nodes):
                 yield parm, raw
 
 
+def stamp_asset_id(node, asset_id) -> bool:
+    """Name on `node` the asset it was saved as or loaded from, off the undo list; False if gone."""
+    try:
+        with hou.undos.disabler():    # the artist's next Ctrl+Z undoes their own change, not this
+            node.setUserData("assetlib_id", str(asset_id))
+        return True
+    except (hou.OperationFailed, hou.ObjectWasDeleted):    # ▸r/node-vanished
+        return False
+
+
 def clear_inherited_stamps(container: hou.Node, include_self=False) -> int:
     """Strip `assetlib_id` from what a load brought in; returns the count ▸r/inherited-asset-ids"""
     cleared = 0
@@ -616,6 +626,7 @@ class NodeHandler:
             staged.append((asset_record.TAKE, mat_path, tmp_mat))
             if record_path:    # read-replace-write: the metadata beside it is kept
                 staged.append((asset_record.RECORD, record_path, {asset_record.BUILDER: builder}))
+            tmp_mat, handed = "", True    # each staged file is the commit's now, kept or discarded
             if getattr(self, "staging", None) is not None:
                 self.staging.extend(staged)    # the caller commits them with the row
             elif preferences is not None:
@@ -623,7 +634,6 @@ class NodeHandler:
             else:
                 for kind, target, held in staged:
                     hostos.replace_with_scratch(held, target)
-            tmp_mat, handed = "", True
         finally:
             if tmp_mat:
                 hostos.discard_scratch(tmp_mat)
@@ -812,18 +822,9 @@ class NodeHandler:
         payload, refusal = self._payload_or_refusal(mat)
         if refusal:
             return (False, refusal)
-        try:
-            if os.path.getsize(payload) == 0:
-                return (False,
-                        debug.Damage(
-                            '"%s" cannot be imported: its material file is '
-                            "empty, so the save that produced it did not "
-                            "finish (%s)" % (mat.name, payload)))
-        except OSError as exc:
-            return (False,
-                    debug.Damage(
-                        '"%s" cannot be imported: its material file could '
-                        "not be read (%s)" % (mat.name, exc)))
+        problem = empty_file_reason(payload)
+        if problem:
+            return (False, debug.Damage('"%s" cannot be imported: %s' % (mat.name, problem)))
 
         saved_type = self._saved_builder(mat).get("type", "")
         if saved_type and not node_type_available(saved_type):
@@ -879,11 +880,8 @@ class NodeHandler:
                         self._import_path, self._builder_node
                     )
 
-            try:
-                self._builder_node.setUserData("assetlib_id", str(mat.mat_id))
-                apply_node_color(self._builder_node, mat.node_color)
-            except (hou.OperationFailed, hou.ObjectWasDeleted) as e:
-                debug.note("could not stamp imported node: " + str(e))
+            stamp_asset_id(self._builder_node, mat.mat_id)
+            apply_node_color(self._builder_node, mat.node_color)
             completed = True
         except hou.Error as exc:
             if self._hou_parent is None:    # the staging failed before any load
@@ -1694,10 +1692,7 @@ class NodeHandler:
             return (False, debug.Damage(nothing_loaded(mat.name, file_name)))
         clear_inherited_stamps(container)    # before the container's own stamp below ▸r/inherited-asset-ids
         helpers.auto_place(container)
-        try:
-            container.setUserData("assetlib_id", str(mat.mat_id))
-        except hou.OperationFailed:
-            pass
+        stamp_asset_id(container, mat.mat_id)
         apply_node_color(container, mat.node_color)
         container.setCurrent(True, True)    # current and selected, as a node from the Tab menu is
         self._imported_cop_nodes = [container]

@@ -1,445 +1,280 @@
-"""The version store: the base files are the current asset; losing versions/ loses only history."""
+"""Versions: one test per requirement in docs/requirements/versions.md."""
 
-import json
 import os
 import shutil
-import sys
+import types
 import unittest
+from unittest import mock
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PySide6 import QtWidgets  # noqa: E402
+from PySide6 import QtWidgets
+
+from amaze import messages
+from amaze.actions import materials as material_actions
+from amaze.core import asset_files, asset_record, library, library_db, library_files
+from amaze.core import library_settings, notes, versions
+from amaze.tests import faults, test_support
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
-import hou  # noqa: E402,F401
-
-sys.path.insert(
-    0, os.path.dirname(os.path.dirname(
-        os.path.dirname(os.path.abspath(__file__)))))
-
-from amaze.core import asset_record, library_files, material, versions  # noqa: E402
-from amaze.actions import materials as material_actions  # noqa: E402
-from amaze.tests import test_support  # noqa: E402
-
 MATERIALS = library_files.MATERIALS
+GOLD, GLASS = "139888336889814930", "139888337058723210"    # two fixture materials
+FIXED_DATE = types.SimpleNamespace(strftime=lambda *_args: "2026-11-24 10:00")
 
 
-class _Case(unittest.TestCase):
-
-    def setUp(self):
-        self.prefs = test_support.fixture_prefs(self)
-        test_support.reset_database_singletons()
-        self.addCleanup(test_support.reset_database_singletons)
-        with open(os.path.join(self.prefs.dir, library_files.MATERIALS),
-                  encoding="utf-8") as fh:
-            self.mat_id = sorted(key for key in json.load(fh)["assets"] if key != "-1")[0]
-        self.base_mat = material.payload_path(self.prefs, self.mat_id, ".mat", MATERIALS)
-        self.base_record = asset_record.path_for(self.prefs, self.mat_id, MATERIALS)
-        self.base_png = os.path.join(material.section_folder(self.prefs.dir, MATERIALS),
-                                     self.mat_id + ".png")    # the asset's one picture
-
-    def _set_base_builder(self, interface):
-        test_support.write_section(self.base_record, asset_record.BUILDER,
-                                   {"type": "subnet", "interface": interface, "values": {}})
-
-    def _base_bytes(self):
-        with open(self.base_mat, "rb") as fh:
-            return fh.read()
-
-    def _rewrite_base(self, payload):
-        with open(self.base_mat, "wb") as fh:
-            fh.write(payload)
+def read(path: str) -> bytes:
+    with open(path, "rb") as handle:
+        return handle.read()
 
 
-class SwitchRollsBackWhenTheLedgerWriteFails(_Case):
-    """Ledger and base files are written as one change: a failed ledger write changes nothing."""
-
-    def test_the_base_is_restored_when_the_ledger_write_fails(self):
-        versions.create_version(self.prefs, self.mat_id)          # V1
-        self._rewrite_base(b"EDITED-STATE")
-        versions.create_version(self.prefs, self.mat_id)          # V2
-        with test_support.full_disk_for(versions._ledger_path(self.prefs, self.mat_id)):
-            self.assertFalse(
-                versions.switch_active(self.prefs, self.mat_id, 1))
-        self.assertEqual(
-            b"EDITED-STATE", self._base_bytes(),
-            "the base holds version 1 while the ledger still names "
-            "version 2 - the promotion was not rolled back")
-        self.assertEqual(
-            2, versions.active_version(self.prefs, self.mat_id),
-            "the ledger changed although its write failed")
-
-
-class AVersionHoldsTheBuilderAndNeverTheMetadata(_Case):
-    """`<stem>.json` is the builder alone, so a switch keeps the base's own metadata."""
-
-    def _archive(self, number, suffix):
-        return os.path.join(versions.versions_dir(self.prefs, self.mat_id),
-                            versions.file_stem(self.mat_id, number) + suffix)
-
-    def _set_metadata(self, name):
-        test_support.write_section(self.base_record, asset_record.METADATA,
-                                   {"id": self.mat_id, "name": name})
-
-    def test_an_archive_holds_no_metadata_and_a_metadata_edit_creates_no_version(self):
-        self._set_metadata("Before")
-        self._set_base_builder("v1")
-        self.assertEqual(1, versions.create_version(self.prefs, self.mat_id))
-        archived = asset_record.read(self._archive(1, ".json"))
-        self.assertEqual({}, archived[asset_record.METADATA], "a version archived the metadata")
-        self.assertEqual("v1", archived[asset_record.BUILDER].get("interface"))
-        self._set_metadata("Renamed")
-        self.assertTrue(versions.keep_base(self.prefs, self.mat_id))
-        self.assertEqual(1, versions.version_count(self.prefs, self.mat_id),
-                         "a metadata edit made the base differ from its version")
-
-    def test_a_switch_takes_the_builder_and_keeps_the_metadata(self):
-        self._set_base_builder("v1")
-        versions.create_version(self.prefs, self.mat_id)
-        self._set_base_builder("v2")
-        versions.create_version(self.prefs, self.mat_id)
-        self._set_metadata("Current name")
-        self.assertTrue(versions.switch_active(self.prefs, self.mat_id, 1))
-        record = asset_record.read(self.base_record)
-        self.assertEqual("v1", record[asset_record.BUILDER].get("interface"))
-        self.assertEqual("Current name", record[asset_record.METADATA].get("name"),
-                         "the switch put an old version's metadata on the base")
-
-
-class TheBaseModelSwitchesInItsOwnSection(_Case):
-    """`switch_version` uses the section its model names, as every other version call does."""
-
-    def test_a_rename_shows_on_the_row_at_once(self):
-        from amaze.core import library as library_mod
-        versions.create_version(self.prefs, self.mat_id)
-        model = library_mod.MaterialLibrary(preferences=self.prefs)
-        row = model.find_asset_row_by_id(self.mat_id)
-        index = model.index(row, 0)
-        self.assertEqual("Version 1", model.data(index, model.ActiveVersionRole), "premise")
-        self.assertTrue(model.rename_version(row, 1, "Hero look"))
-        self.assertEqual("Hero look", model.data(index, model.ActiveVersionRole),
-                         "the row kept the old name until something else repainted it")
-
-
-class TheArchiveIsEachVersionsDurableThumbnail(_Case):
-    """record_render copies a fresh PNG into the active slot only, so each version keeps its picture."""
-
-    def _png_paths(self):
-        folder = versions.versions_dir(self.prefs, self.mat_id)
-        return self.base_png, folder
-
-    def test_identical_bytes_cost_no_write(self):
-        base, folder = self._png_paths()
-        with open(base, "wb") as fh:
-            fh.write(b"SAME-PICTURE")
-        versions.create_version(self.prefs, self.mat_id)
-        stem = versions.file_stem(self.mat_id, 1)
-        slot = os.path.join(folder, stem + ".png")
-        before = os.stat(slot).st_mtime_ns
-        self.assertTrue(versions.record_render(self.prefs, self.mat_id))
-        self.assertEqual(
-            before, os.stat(slot).st_mtime_ns,
-            "identical bytes were rewritten - every switch would rewrite "
-            "files in the sync folder")
-
-
-class StoreTest(_Case):
-
-    def test_create_archives_the_base_and_becomes_active(self):
-        self.assertEqual(0, versions.version_count(self.prefs, self.mat_id))
-        self.assertEqual([], versions.list_versions(self.prefs, self.mat_id))
-        n = versions.create_version(self.prefs, self.mat_id)
-        self.assertEqual(1, n)
-        self.assertEqual(1, versions.active_version(self.prefs, self.mat_id))
-        row = versions.list_versions(self.prefs, self.mat_id)[0]
-        self.assertNotIn("file", row, "the ledger row still names its files")
-        archived = os.path.join(
-            versions.versions_dir(self.prefs, self.mat_id),
-            "%s_1.mat" % self.mat_id)
-        with open(archived, "rb") as fh:
-            self.assertEqual(self._base_bytes(), fh.read(),
-                             "the archive is not a copy of the base")
-
-    def test_names_default_and_a_rename_is_kept(self):
-        versions.create_version(self.prefs, self.mat_id)
-        listed = versions.list_versions(self.prefs, self.mat_id)
-        self.assertEqual("Version 1", listed[0]["name"],
-                         "auto-naming is the recorded rule: never "
-                         "interrupt a save to ask for a name")
-        self.assertTrue(versions.rename_version(
-            self.prefs, self.mat_id, 1, "Hero look"))
-        self.assertEqual("Hero look", versions.list_versions(
-            self.prefs, self.mat_id)[0]["name"])
-
-    def test_switch_copies_the_archives_bytes_to_the_base(self):
-        original = self._base_bytes()
-        versions.create_version(self.prefs, self.mat_id)     # V1 = original
-        self._rewrite_base(b"EDITED-STATE")
-        versions.create_version(self.prefs, self.mat_id)     # V2 = edited
-
-        self.assertTrue(versions.switch_active(self.prefs, self.mat_id, 1))
-        self.assertEqual(original, self._base_bytes(),
-                         "switching to Version 1 did not restore its "
-                         "bytes onto the base - imports would still see "
-                         "the edited state")
-        self.assertTrue(versions.switch_active(self.prefs, self.mat_id, 2))
-        self.assertEqual(b"EDITED-STATE", self._base_bytes())
-
-    def test_switching_to_a_missing_version_returns_false(self):
-        versions.create_version(self.prefs, self.mat_id)
-        before = self._base_bytes()
-        self.assertFalse(versions.switch_active(self.prefs, self.mat_id, 9))
-        self.assertEqual(before, self._base_bytes(),
-                         "a refused switch still modified the base")
-
-    def test_losing_the_versions_folder_costs_only_history(self):
-        versions.create_version(self.prefs, self.mat_id)
-        before = self._base_bytes()
-        shutil.rmtree(versions.versions_dir(self.prefs, self.mat_id))
-        self.assertEqual(0, versions.version_count(self.prefs, self.mat_id))
-        self.assertEqual(before, self._base_bytes(),
-                         "the base depended on the archive - it must "
-                         "never; the archive is a copy of the base, "
-                         "not the source")
-
-    def test_an_unreadable_ledger_blocks_writes_not_reads(self):
-        versions.create_version(self.prefs, self.mat_id)
-        ledger = os.path.join(
-            versions.versions_dir(self.prefs, self.mat_id),
-            versions.LEDGER)
-        with open(ledger, "w", encoding="utf-8") as fh:
-            fh.write("{ broken")
-        self.assertEqual(0, versions.version_count(self.prefs, self.mat_id))
-        self.assertEqual(0, versions.create_version(self.prefs, self.mat_id),
-                         "a create wrote over an unreadable ledger")
-        self.assertFalse(versions.switch_active(self.prefs, self.mat_id, 1))
-
-
-class VersionFilesAreNamedByIdAndNumberTest(_Case):
-    """A version's files are `<id>_<n>.*`; the ledger names no file, and names only its rows."""
-
-    def test_the_file_names_contain_the_id_and_the_number(self):
-        from amaze.core import users
-        self.prefs.library_user = users.create(self.prefs, "Crimson")
-        versions.create_version(self.prefs, self.mat_id)
-        row = versions.list_versions(self.prefs, self.mat_id)[0]
-        self.assertEqual("Crimson", row.get("author"),
-                         "the author was not taken from prefs")
-        self.assertNotIn("file", row)
-        self.assertEqual("%s_1" % self.mat_id, versions.file_stem(self.mat_id, 1))
-        folder = versions.versions_dir(self.prefs, self.mat_id)
-        self.assertEqual({"%s_1.mat" % self.mat_id, "%s_1.json" % self.mat_id},
-                         {name for name in os.listdir(folder)
-                          if name.endswith((".mat", ".json")) and name != versions.LEDGER})
-
-    def test_two_writers_same_number_never_collide(self):
-        """Two real user records writing the same version number never collide on disk."""
-        from amaze.core import users
-        self.prefs.library_user = users.create(self.prefs, "Crimson")
-        versions.create_version(self.prefs, self.mat_id)
-        ledger_path = os.path.join(
-            versions.versions_dir(self.prefs, self.mat_id),
-            versions.LEDGER)
-        with open(ledger_path, encoding="utf-8") as fh:
-            frozen = fh.read()
-        self._rewrite_base(b"MACHINE B EDIT")
-        self.prefs.library_user = users.create(self.prefs, "Cobalt")
-        versions.create_version(self.prefs, self.mat_id)
-        with open(ledger_path, "w", encoding="utf-8") as fh:  # a sync's last-write-wins: put A's ledger back
-            fh.write(frozen)
-        folder = versions.versions_dir(self.prefs, self.mat_id)
-        self.assertTrue(
-            os.path.exists(os.path.join(folder, "%s_1.mat" % self.mat_id)))
-        self.assertTrue(
-            os.path.exists(os.path.join(folder, "%s_2.mat" % self.mat_id)),
-            "the second writer's file survived the ledger overwrite")
-
-    def test_a_file_the_ledger_does_not_name_is_an_orphaned_file(self):
-        """It is no version: never a row, never switched to, never written over."""
-        self.prefs.library_user = "Crimson"
-        versions.create_version(self.prefs, self.mat_id)
-        folder = versions.versions_dir(self.prefs, self.mat_id)
-        stray = "%s_2.mat" % self.mat_id
-        with open(os.path.join(folder, stray), "wb") as fh:
-            fh.write(b"THE OTHER MACHINES VERSION")
-        self.assertEqual([1], [int(row["n"]) for row in
-                               versions.list_versions(self.prefs, self.mat_id)])
-        before = self._base_bytes()
-        self.assertFalse(versions.switch_active(self.prefs, self.mat_id, 2))
-        self.assertEqual(before, self._base_bytes())
-        self.assertEqual(3, versions.create_version(self.prefs, self.mat_id),
-                         "a new version wrote over the orphaned file")
-        with open(os.path.join(folder, stray), "rb") as fh:
-            self.assertEqual(b"THE OTHER MACHINES VERSION", fh.read())
-
-    def test_a_file_under_an_older_name_is_not_read(self):
-        """`1.mat` is not version 1's file: only `<id>_1.mat` is."""
-        self.prefs.library_user = "Crimson"
-        versions.create_version(self.prefs, self.mat_id)
-        folder = versions.versions_dir(self.prefs, self.mat_id)
-        for name in os.listdir(folder):
-            if name.startswith(self.mat_id + "_1."):
-                os.rename(os.path.join(folder, name),
-                          os.path.join(folder, name[len(self.mat_id) + 1:]))
-        self._rewrite_base(b"EDITED PAST VERSION ONE")
-        self.assertEqual("", versions.version_file(self.prefs, self.mat_id, 1))
-        self.assertFalse(
-            versions.switch_active(self.prefs, self.mat_id, 1))
-        self.assertEqual(b"EDITED PAST VERSION ONE", self._base_bytes())
-
-    def test_one_listdir_seeds_the_tile_caches(self):
-        """One listdir at model build answers for unversioned assets; only versioned ones read a ledger."""
-        from unittest import mock
-        from amaze.core import library as library_mod
-
-        self.prefs.library_user ="Crimson"
-        versions.create_version(self.prefs, self.mat_id)
-        model = library_mod.MaterialLibrary(preferences=self.prefs)
-        asked = []
-        real = versions.read_ledger
-
-        def counting(preferences, mat_id, *section):
-            asked.append(str(mat_id))
-            return real(preferences, mat_id, *section)
-
-        with mock.patch.object(versions, "read_ledger",
-                               side_effect=counting):
-            for row in range(len(model.assets)):
-                index = model.index(row, 0)
-                model.data(index, model.VersionsRole)
-                model.data(index, model.ActiveVersionRole)
-        self.assertLessEqual(
-            set(asked), {self.mat_id},
-            "an asset with no versions folder read the ledger: %s"
-            % sorted(set(asked) - {self.mat_id}))
-        self.assertTrue(asked, "the versioned asset must still read "
-                        "its ledger - the listdir only covers assets with no versions")
-
-
-class TheWholeLoopThroughTheModelTest(unittest.TestCase):
-    """Parameter-only saves create versions; a switch resets the baseline so Update Existing works."""
+class StoreTest(unittest.TestCase):
+    """A fixture library whose material GOLD has version 1 and version 2, two networks apart."""
 
     def setUp(self):
-        from amaze.core import library as library_mod
-        from amaze.core import renderers
-        from amaze.render import nodes as nodes_mod
-        self.nodes = nodes_mod
-        self.renderers = renderers
-        test_support.pin_env(self, "OCIO", "/dev/null")    # save_node gates on $OCIO; nothing renders here
-        self.prefs = test_support.fixture_prefs(self)
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
-        self.model = library_mod.MaterialLibrary(preferences=self.prefs)
+        patch = mock.patch.object(versions, "time", FIXED_DATE)    # a ledger row's date
+        patch.start()
+        self.addCleanup(patch.stop)
+        self.prefs = self.library()
 
-    def _karma_row(self):
-        return next(r for r in range(self.model.rowCount())
-                    if self.renderers.is_karma(
-                        self.model.assets[r].renderer))
+    def library(self):
+        prefs = test_support.fixture_prefs(self)
+        self.files = asset_files.asset_files_for(prefs, GOLD, MATERIALS)
+        for number in (1, 2):
+            self.network(b"network %d" % number, "builder %d" % number)
+            self.assertEqual(number, versions.create_version(prefs, GOLD))
+        return prefs
 
-    def test_parameter_only_update_creates_versions(self):
-        # A real parameter-only edit: import, tweak one float, update.
-        row = self._karma_row()
-        mat = self.model.assets[row]
-        ok, reason, _created = material_actions.import_asset_to_scene(self.model,
-            self.model.index(row, 0), target="mat")
+    def network(self, data: bytes, builder: str) -> None:
+        """The material's network and builder on disk replaced, as a save over it writes them."""
+        with open(self.files["mat"], "wb") as handle:
+            handle.write(data)
+        test_support.write_section(self.files["json"], asset_record.BUILDER,
+                                   {"type": "subnet", "interface": builder, "values": {}})
+
+    def archive(self, number: int, suffix: str) -> str:
+        return os.path.join(versions.versions_dir(self.prefs, GOLD),
+                            versions.file_stem(GOLD, number) + suffix)
+
+    def ledger(self) -> str:
+        return os.path.join(versions.versions_dir(self.prefs, GOLD), library_files.LEDGER)
+
+    def builder(self, path: str) -> str:
+        return asset_record.read(path)[asset_record.BUILDER].get("interface")
+
+    def kept(self) -> dict:
+        return {path: data for path, data in test_support.library_state(self.prefs.dir).items()
+                if "/versions/" in path}
+
+    def test_vs01_a_switch_keeps_what_no_version_holds_or_does_not_switch(self):
+        self.network(b"edited", "edited")
+        before = test_support.library_state(self.prefs.dir)
+        with test_support.full_disk_for(self.ledger()):
+            self.assertFalse(versions.switch_active(self.prefs, GOLD, 1))
+        self.assertEqual(before, test_support.library_state(self.prefs.dir))
+        self.assertTrue(versions.switch_active(self.prefs, GOLD, 1))
+        self.assertEqual((b"network 1", b"edited", "edited"), (
+            read(self.files["mat"]), read(self.archive(3, ".mat")),
+            self.builder(self.archive(3, ".json"))))
+
+    def cut(self, act, disk) -> dict:
+        """A new library's state after `act` ran on `disk` and the library was opened again."""
+        self.prefs = self.library()
+        library_db.guard_of(self.prefs).disk = disk
+        try:
+            act(self.prefs)
+        except faults.Cut:
+            pass
+        faults.crash(self.prefs)
+        return test_support.library_state(self.prefs.dir)
+
+    def test_vs02_making_or_switching_a_version_is_applied_whole_or_not_at_all(self):
+        for name, act in (("make", lambda prefs: versions.create_version(prefs, GOLD)),
+                          ("switch", lambda prefs: versions.switch_active(prefs, GOLD, 1))):
+            before = test_support.library_state(self.library().dir)
+            counting = faults.FaultDisk()
+            after = self.cut(act, counting)
+            self.assertNotEqual(before, after, name)
+            for torn in (False, True):
+                for step in range(1, counting.steps + 1):
+                    found = self.cut(act, faults.FaultDisk(cut_at=step, torn=torn))
+                    self.assertIn(found, (before, after), "%s cut at step %d" % (name, step))
+            for full_from in (1, 2, 3):
+                self.assertEqual(before, self.cut(act, faults.FaultDisk(full_from=full_from)))
+        self.prefs = self.library()
+        held = faults.FaultDisk(busy=os.path.basename(self.files["mat"]))
+        library_db.guard_of(self.prefs).disk = held
+        self.assertTrue(versions.switch_active(self.prefs, GOLD, 1), "kept, waiting on the file")
+        self.assertEqual((2, b"network 2"), (versions.active_version(self.prefs, GOLD),
+                                             read(self.files["mat"])))
+        held.free = True
+        library_db.guard_of(self.prefs).recover()
+        self.assertEqual(after, test_support.library_state(self.prefs.dir))
+
+    def test_vs03_a_new_version_never_writes_over_a_version_file_on_disk(self):
+        stray = self.archive(3, ".mat")
+        with open(stray, "wb") as handle:
+            handle.write(b"another computer's version 3")
+        self.assertEqual(4, versions.create_version(self.prefs, GOLD))
+        self.assertEqual(b"another computer's version 3", read(stray))
+        self.assertEqual([1, 2, 4], [row["n"] for row in versions.list_versions(self.prefs, GOLD)])
+
+    def test_vs04_a_version_list_that_cannot_be_read_is_never_written_over(self):
+        with open(self.ledger(), "wb") as handle:
+            handle.write(b'{"active": 2, "versions": [')
+        before = self.kept()
+        self.network(b"edited", "edited")
+        self.assertEqual(0, versions.create_version(self.prefs, GOLD))
+        self.assertFalse(versions.keep_base(self.prefs, GOLD))
+        self.assertFalse(versions.switch_active(self.prefs, GOLD, 1))
+        self.assertFalse(versions.rename_version(self.prefs, GOLD, 1, "Hero"))
+        self.assertEqual(before, self.kept())
+
+    def test_vs05_losing_the_versions_never_touches_the_material(self):
+        files = asset_files.asset_files_for(self.prefs, GLASS, MATERIALS)
+        own = {kind: read(path) for kind, path in files.items() if os.path.exists(path)}
+        self.assertEqual(1, versions.create_version(self.prefs, GLASS))
+        os.remove(os.path.join(versions.versions_dir(self.prefs, GLASS), library_files.LEDGER))
+        self.assertEqual((0, ""), (versions.version_count(self.prefs, GLASS),
+                                   versions.active_version_name(self.prefs, GLASS)))
+        shutil.rmtree(versions.versions_dir(self.prefs, GLASS))
+        self.assertEqual(own, {kind: read(path) for kind, path in files.items()
+                               if os.path.exists(path)})
+        model = library.MaterialLibrary(preferences=self.prefs)
+        ok, reason, created = material_actions.import_asset_to_scene(
+            model, model.index(model.find_asset_row_by_id(GLASS), 0), target="mat")
+        for node in created:
+            self.addCleanup(test_support.drop_node, node)
         self.assertTrue(ok, reason)
-        imported = next(n for n in hou.node("/mat").children()
-                        if n.userData("assetlib_id") == mat.mat_id)
-        self.addCleanup(imported.destroy)
-        shader = next((c for c in imported.children()
-                       if "surface" in c.type().name().lower()
-                       or c.type().name().startswith("mtlx")), None)
-        if shader is not None:
-            scalar = next((parm for parm in shader.parms()
-                           if parm.parmTemplate().numComponents() == 1
-                           and parm.parmTemplate().type()
-                           == hou.parmTemplateType.Float), None)
-            if scalar is not None:
-                scalar.set(scalar.eval() + 0.2)
 
-        renderer = material_actions.update_asset_content(self.model, row, imported)
-        self.assertTrue(renderer, "premise: the update itself succeeded")
+    def test_vs11_a_switch_keeps_the_materials_name_category_tags_and_comments(self):
+        held = library_db.document(self.prefs, MATERIALS)
+        held.edit("assets", GOLD, name="Current", categories=["Metal"], tags=["shiny"])
+        self.assertTrue(library_db.save(self.prefs, MATERIALS))
+        key = notes.note_key("material", GOLD)
+        self.assertTrue(notes.set_note(self.prefs, key, [{"t": "text", "text": "keep me"}]))
+        self.files = asset_files.asset_files_for(self.prefs, GOLD, MATERIALS)    # renamed with it
+        row, metadata = held.get("assets", GOLD), asset_record.read(self.files["json"])["metadata"]
+        self.assertEqual("Current", metadata.get("name"))
+        self.assertTrue(versions.switch_active(self.prefs, GOLD, 1))
+        test_support.reset_database_singletons()
+        self.assertEqual(("builder 1", metadata), (self.builder(self.files["json"]),
+                                                   asset_record.read(self.files["json"])["metadata"]))
+        self.assertEqual(row, library_db.document(self.prefs, MATERIALS).get("assets", GOLD))
+        self.assertEqual("keep me", notes.note_for(self.prefs, key)["items"][0]["text"])
 
-        from amaze.core import versions as versions_mod
-        count = versions_mod.version_count(self.prefs, mat.mat_id)
-        self.assertEqual(2, count,
-                         "a parameter-only update did not produce the "
-                         "pre-edit version and the new one (got %d)"
-                         % count)
-        self.assertEqual(count, self.model.data(
-            self.model.index(row, 0), self.model.VersionsRole),
-            "`VersionsRole` differs from the version count")
+    def test_vs20_select_puts_the_whole_version_on_the_material(self):
+        os.remove(self.files["thumbnail"])
+        self.network(b"network 3", "builder 3")
+        self.assertEqual(3, versions.create_version(self.prefs, GOLD))
+        model = library.MaterialLibrary(preferences=self.prefs)
+        self.assertTrue(model.switch_version(model.find_asset_row_by_id(GOLD), 2))
+        self.assertEqual((b"network 2", "builder 2", read(self.archive(2, ".png"))), (
+            read(self.files["mat"]), self.builder(self.files["json"]),
+            read(self.files["thumbnail"])))
+        self.assertTrue(model.switch_version(model.find_asset_row_by_id(GOLD), 3))
+        self.assertEqual((b"network 3", "builder 3", False), (
+            read(self.files["mat"]), self.builder(self.files["json"]),
+            os.path.exists(self.files["thumbnail"])))
 
-        base = self.model.asset_files(mat.mat_id)["mat"]
-        with open(base, "rb") as fh:
-            edited = fh.read()
+    def test_vs21_a_metadata_change_makes_no_version(self):
+        library_db.document(self.prefs, MATERIALS).edit(
+            "assets", GOLD, name="Renamed", categories=["Wood"], tags=["new"])
+        self.assertTrue(library_db.save(self.prefs, MATERIALS))
+        self.assertTrue(notes.set_note(self.prefs, notes.note_key("material", GOLD),
+                                       [{"t": "text", "text": "a comment"}]))
+        self.files = asset_files.asset_files_for(self.prefs, GOLD, MATERIALS)    # renamed with it
+        self.assertEqual("Renamed", asset_record.read(self.files["json"])["metadata"]["name"])
+        self.assertTrue(versions.keep_base(self.prefs, GOLD))
+        self.assertEqual(2, versions.version_count(self.prefs, GOLD))
 
-        self.assertTrue(self.model.switch_version(row, 1))
-        with open(base, "rb") as fh:
-            self.assertNotEqual(edited, fh.read(),
-                                "switching to Version 1 left the edited "
-                                "bytes on the base")
+    def test_vs22_a_render_goes_into_the_active_version_while_it_holds_the_material(self):
+        self.assertTrue(versions.switch_active(self.prefs, GOLD, 1))
+        other = read(self.archive(2, ".png"))
+        with open(self.files["thumbnail"], "wb") as handle:
+            handle.write(b"a fresh render")
+        self.assertTrue(versions.record_render(self.prefs, GOLD))
+        self.assertEqual((b"a fresh render", other),
+                         (read(self.archive(1, ".png")), read(self.archive(2, ".png"))))
+        self.network(b"saved over with Versions off", "off")
+        with open(self.files["thumbnail"], "wb") as handle:
+            handle.write(b"its render")
+        self.assertFalse(versions.record_render(self.prefs, GOLD))
+        self.assertEqual(b"a fresh render", read(self.archive(1, ".png")))
 
-        known = self.model._content_state.get(str(mat.mat_id))
-        current = self.model._content_stat(mat.mat_id)
-        self.assertEqual(known, current,
-                         "switch_version did not reset the baseline - the next "
-                         "Update Existing will be refused as a conflict")
 
-
-class DeletingAUser(unittest.TestCase):
-    """Deleting a user removes the record and their tagged favourites and folders, and only theirs."""
+class SavedOverTest(unittest.TestCase):
+    """GOLD loaded into the scene, changed and saved over, as Update Existing does."""
 
     def setUp(self):
+        test_support.pin_env(self, "OCIO", "/dev/null")    # the save checks it; nothing renders
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
         self.prefs = test_support.fixture_prefs(self)
+        self.prefs.render_on_import = 0
+        self.model = library.MaterialLibrary(preferences=self.prefs)
+        self.row = self.model.find_asset_row_by_id(GOLD)
+        ok, reason, created = material_actions.import_asset_to_scene(
+            self.model, self.model.index(self.row, 0), target="mat")
+        self.assertTrue(ok, reason)
+        for node in created:
+            self.addCleanup(test_support.drop_node, node)
+        self.node = next(node for node in created if node.userData("assetlib_id") == GOLD)
+        self.mat = self.model.asset_files(GOLD)["mat"]
 
-    def _become(self, uid):
-        self.prefs.library_user = uid
+    def change(self) -> bytes:
+        """A value of the scene node changed; the material's network on disk as it was."""
+        parm = next(child.parm("specular_roughness") for child in self.node.allSubChildren()
+                    if child.parm("specular_roughness") is not None)
+        parm.set(parm.eval() / 2 + 0.25)
+        return read(self.mat)
 
-    def test_delete_removes_the_record_and_touches_nobody_elses_rows(self):
-        from amaze.core import library_db, locations, users
-        anna = users.create(self.prefs, "Anna")
-        bo = users.create(self.prefs, "Bo")
-        self._become(anna)
-        self.assertTrue(locations.set_favourite(self.prefs, "m-anna", True))
-        self._become(bo)
-        self.assertTrue(locations.set_favourite(self.prefs, "m-bo", True))
+    def save_over(self):
+        return material_actions.update_asset_content(self.model, self.row, self.node)
 
-        self.assertTrue(users.delete(self.prefs, anna))
+    def count(self) -> tuple:
+        return (versions.version_count(self.prefs, GOLD), versions.active_version(self.prefs, GOLD))
 
-        self.assertEqual({bo: "Bo"}, users.all_users(self.prefs))
-        stars = library_db.document(self.prefs, library_files.FILES).everyones(locations.FAVORITES)
-        self.assertTrue(stars.get(bo), "the deletion removed the other user's stars: %s" % stars)
-        self.assertTrue(stars.get(anna), "the deletion rewrote another user's rows: %s" % stars)
-        self.assertTrue(locations.is_favourite(self.prefs, "m-bo"))
-        self.assertFalse(locations.is_favourite(self.prefs, "m-anna"),
-                         "the deleted user's star shows for the remaining user")
-        self.assertFalse(users.delete(self.prefs, "f" * 32),
-                         "deleting an unknown user returned True")
+    def test_vs10_a_save_over_keeps_the_old_material_as_a_version_or_is_refused(self):
+        old = self.change()
+        self.assertTrue(self.save_over())
+        self.assertEqual((2, 2), self.count())
+        self.assertEqual((old, read(self.mat)), (read(versions.version_file(self.prefs, GOLD, 1)),
+                                                 read(versions.version_file(self.prefs, GOLD, 2))))
+        self.node.createNode("null", "added")
+        self.assertTrue(self.save_over())
+        self.assertEqual((3, 3), self.count())
+        self.assertTrue(library_settings.set_allow_overwrite(self.prefs, False))
+        self.change()
+        self.assertTrue(self.save_over())
+        self.assertTrue(library_settings.set_allow_overwrite(self.prefs, True))
+        unkept = self.change()
+        with test_support.full_disk_for(os.path.join(
+                versions.versions_dir(self.prefs, GOLD), library_files.LEDGER)):
+            with self.assertRaises(material_actions.UpdateRefused) as refused:
+                self.save_over()
+        self.assertEqual(messages.UPDATE_REFUSED_NOT_KEPT, str(refused.exception))
+        self.assertEqual((unkept, (3, 3)), (read(self.mat), self.count()))
 
-    def test_deleting_yourself_clears_this_machines_pointer(self):
-        from amaze.core import users
-        anna = users.create(self.prefs, "Anna")
-        users.create(self.prefs, "Bo")
-        self._become(anna)
-        self.assertTrue(users.delete(self.prefs, anna))
-        self.assertEqual("", str(self.prefs.library_user or ""),
-                         "the pointer still names the deleted user")
-        self.assertIsNone(users.current(self.prefs),
-                          "a user was picked silently - the ASK "
-                          "state is for the picker to resolve")
+    def test_vs24_after_a_switch_saving_over_is_not_refused(self):
+        self.change()
+        self.assertTrue(self.save_over())
+        self.assertTrue(self.model.switch_version(self.row, 1))
+        self.change()
+        self.assertTrue(self.save_over())
 
-    def test_the_last_deletion_leaves_no_user_and_a_stale_pointer_creates_none(self):
-        from amaze.core import users
-        only = users.create(self.prefs, "Anna")
-        self._become(only)
-        self.assertTrue(users.delete(self.prefs, only))
-        self.assertEqual(users.MINT, users.first_run_state(self.prefs))
-
-        self._become(only)    # another machine still pointing at the deleted UID
-        self.assertIsNone(users.current(self.prefs))
-        self.assertEqual({}, users.all_users(self.prefs), "a stale pointer made a user")
+    def test_vs26_with_versions_off_a_save_over_makes_no_version(self):
+        self.change()
+        self.assertTrue(self.save_over())
+        kept = {path: data for path, data in test_support.library_state(self.prefs.dir).items()
+                if "/versions/" in path}
+        self.assertTrue(library_settings.set_allow_overwrite(self.prefs, False))
+        old = self.change()
+        self.assertTrue(self.save_over())
+        self.assertNotEqual(old, read(self.mat))
+        self.assertEqual(kept, {path: data for path, data in test_support.library_state(
+            self.prefs.dir).items() if "/versions/" in path})
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    unittest.main()
