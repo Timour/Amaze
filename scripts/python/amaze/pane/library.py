@@ -330,7 +330,7 @@ class Library:
 
     def _offer_amaze_update(self) -> None:
         """Update Amaze or Cancel, for the library left closed; headless, no dialog is shown."""
-        from amaze.core import library_settings, updater
+        from amaze.core import library_settings
         from amaze.dialogs import update_dialog
         ui = getattr(hou, "ui", None)
         if ui is None:
@@ -342,14 +342,7 @@ class Library:
                 buttons=messages.BUTTONS_UPDATE_AMAZE, default_choice=0, close_choice=1,
                 severity=hou.severityType.Warning, title=messages.TITLE_AMAZE) != 0:
             return
-        found = updater.check()
-        if not found:
-            ui.displayMessage(found.sentence, title=messages.TITLE_AMAZE,
-                              severity=(hou.severityType.Warning
-                                        if found.verdict == updater.UNREACHABLE
-                                        else hou.severityType.Message))
-        elif update_dialog.confirmed(found, library_dir):
-            update_dialog.install_and_report(found)
+        update_dialog.check_and_install(library_dir, offer=False)    # Update Amaze was the offer
 
     def _seed_curated_content(self) -> None:
         """Add the shipped starters, on construction and on a switch. ▸archive/actions/library.py"""

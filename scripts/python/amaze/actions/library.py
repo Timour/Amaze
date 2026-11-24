@@ -23,7 +23,7 @@ def index_unopenable(lib_dir: str) -> str:
     path = os.path.join(lib_dir, library_files.MASTER)
     try:
         with open(path, "rb"):
-            return ""
+            pass
     except (FileNotFoundError, NotADirectoryError):
         return ""    # absent: `index_present` checks that
     except OSError as exc:
@@ -31,6 +31,13 @@ def index_unopenable(lib_dir: str) -> str:
         if cause == hostos.FAILED_READ_ONLY:    # its message is for a WRITE; a denied read is a permissions problem
             return messages.LIBRARY_INDEX_READ_NOT_PERMITTED % path
         return why
+    return messages.LIBRARY_OLDER_THAN_2_0 if older_than_2_0(lib_dir) else ""
+
+
+def older_than_2_0(lib_dir: str) -> int:
+    """The version of a library older than format 2.0, which this Amaze neither opens nor marks."""
+    found = library_settings.library_version(lib_dir) if lib_dir else 0
+    return found if 0 < found < library_policy.LAYOUT_2_0 else 0
 
 
 def index_present(lib_dir: str) -> bool:
@@ -96,7 +103,7 @@ def ensure_library_dirs(preferences) -> bool:
 def update(preferences) -> bool:
     """Expire the old trash, stamp this Amaze's library version; True when the version changed."""
     library_dir = str(preferences.dir or "")
-    if not library_dir or not os.path.isdir(library_dir):
+    if not library_dir or not os.path.isdir(library_dir) or older_than_2_0(library_dir):
         return False
     from amaze.core import library_db, locations
     library_db.guard_of(preferences).expire_trash()

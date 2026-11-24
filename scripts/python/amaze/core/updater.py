@@ -38,7 +38,7 @@ class Update:
     """One verdict, with everything a caller needs to act or explain."""
 
     def __init__(self, verdict, version="", url="", sentence="",
-                 digest="", size=0, library_version=0, library_since=""):
+                 digest="", size=0, library_version=0, library_since="", formats=(0, 0)):
         self.verdict = verdict
         self.version = version
         self.url = url
@@ -47,6 +47,7 @@ class Update:
         self.size = size        # the asset's declared byte count, 0 when unknown
         self.library_version = library_version    # what the release updates libraries to; 0 when not read
         self.library_since = library_since or version    # the first Amaze that reads that version
+        self.formats = tuple(formats)    # the release's database and record formats; 0 when not read
 
     def __bool__(self):
         return self.verdict == NEWER
@@ -112,46 +113,43 @@ def check(current: str = "") -> Update:
     if not is_newer(tag, current):
         return Update(UP_TO_DATE, version=tag, sentence=(
             "You are running %s, which is the newest release." % current))
-    library_version, library_since = release_library(tag)
+    library_version, library_since, formats = release_library(tag)
     return Update(NEWER, version=tag, url=url, digest=digest, size=size,
-                  library_version=library_version, library_since=library_since,
+                  library_version=library_version, library_since=library_since, formats=formats,
                   sentence=(
         "Amaze %s is available. You are running %s." % (tag, current)))
 
 
 def release_library(tag: str) -> tuple:
-    """The library version release `tag` updates to, and the first Amaze reading it; 0 if unread."""
+    """Release `tag`'s library version, the first Amaze reading it, and its two formats; 0 if unread."""
     try:
         with _open(LIBRARY_POLICY_URL % tag) as response:
             text = response.read().decode("utf-8", "replace")
     except Exception as exc:                                  # noqa: BLE001
         debug.event("updater", "release library version unread", tag=tag, error=str(exc))
-        return 0, ""
+        return 0, "", (0, 0)
     version = re.search(r"^LIBRARY_VERSION\s*=\s*(\d+)", text, re.MULTILINE)
     since = re.search(r"^LIBRARY_VERSION_SINCE\s*=\s*[\"']([^\"']+)[\"']", text, re.MULTILINE)
-    _RELEASE_FORMATS[tag] = tuple(
-        int(found.group(1)) if found else 0 for found in (
-            re.search(r"^%s\s*=\s*(\d+)" % name, text, re.MULTILINE)
-            for name in ("DATABASE_FORMAT", "RECORD_FORMAT")))
-    return (int(version.group(1)) if version else 1), (since.group(1) if since else "")
-
-
-_RELEASE_FORMATS: dict = {}    # release tag -> (database format, record format) its policy file names
+    formats = tuple(int(found.group(1)) if found else 0 for found in (
+        re.search(r"^%s\s*=\s*(\d+)" % name, text, re.MULTILINE)
+        for name in ("DATABASE_FORMAT", "RECORD_FORMAT")))
+    return (int(version.group(1)) if version else 1), (since.group(1) if since else ""), formats
 
 
 def release_formats(found) -> tuple:
     """(library version, database format, record format) of a release; 0 for one its file omits."""
-    return (int(getattr(found, "library_version", 0) or 0),) + _RELEASE_FORMATS.get(
-        getattr(found, "version", ""), (0, 0))
+    return (int(getattr(found, "library_version", 0) or 0),) + tuple(
+        getattr(found, "formats", (0, 0)))
 
 
 def updates_library(found, library_dir: str) -> bool:
     """Whether installing `found` updates the library at `library_dir`: the red Install Update."""
     from amaze.core import library_policy, library_settings
-    wanted = [one or base for one, base in zip(release_formats(found), library_policy.FORMAT_3_0)]
-    wanted[0] = int(getattr(found, "library_version", 0) or 0)
-    return (bool(found) and bool(library_dir) and bool(wanted[0]) and any(
-        one > here for one, here in zip(wanted, library_settings.library_formats(library_dir))))
+    wanted = release_formats(found)
+    if not (found and library_dir and wanted[0]):    # an unread release format announces nothing
+        return False
+    wanted = [one or base for one, base in zip(wanted, library_policy.FORMAT_3_0)]
+    return any(one > here for one, here in zip(wanted, library_settings.library_formats(library_dir)))
 
 
 def configured_library() -> str:
@@ -341,14 +339,13 @@ def install_root() -> str:
 def install(found, into: str = "") -> None:
     """Fetch, verify, stage and swap in `found`; OSError on failure, changing nothing ▸p/updater-shape"""
     from amaze import messages
-    from amaze.helpers import hostos
 
     if not found or not getattr(found, "url", ""):
         raise OSError(messages.NO_RELEASE_TO_INSTALL)
     into = into or install_root()
     if not into or not os.path.isdir(into):
         raise OSError(messages.INSTALL_LOCATION_UNKNOWN)
-    workspace = os.path.join(hostos.cache_root(), "updates")
+    workspace = into.rstrip("/\\") + ".update"    # beside the install: the swap never crosses a drive
     from amaze.helpers import helpers
     try:
         with helpers.download_operation(messages.DOWNLOADING_UPDATE) as on_bytes:
@@ -360,26 +357,16 @@ def install(found, into: str = "") -> None:
         shutil.rmtree(workspace, ignore_errors=True)
 
 
-def apply_update(staged: str, install: str) -> None:
-    """Put `staged` where `install` is; the old install is deleted once the swap completes."""
+def apply_update(staged: str, install: str, disk=None) -> None:
+    """Put `staged`, with every add-on, where `install` is; the old one goes once the new one is in."""
+    from amaze.core import guard
     if not os.path.isdir(staged):
         raise OSError("the staged update is not there: %s" % staged)
-    aside = install.rstrip("/\\") + ".replacing"
-    if os.path.isdir(aside):
-        _copy_addons(aside, install)    # an older build's failed add-on copy left the only copy here
-    shutil.rmtree(aside, ignore_errors=True)    # a leftover from a run that stopped mid-swap
+    install = install.rstrip("/\\")
+    if os.path.isdir(install + guard.ASIDE) and os.path.isdir(install):
+        _copy_addons(install + guard.ASIDE, install)    # an older build left the only copy there
     _copy_addons(install, staged)    # part of the swap: if the add-on copy fails, nothing is installed
-    os.rename(install, aside)    # same parent as the install, so this one never crosses a volume
-    try:
-        try:
-            os.rename(staged, install)
-        except OSError:
-            shutil.move(staged, install)    # works across volumes ▸r/cross-volume-move
-    except OSError:
-        shutil.rmtree(install, ignore_errors=True)    # a half-copied install is removed
-        os.rename(aside, install)    # RESTORE THE OLD INSTALL - between the two renames is the only time no complete install exists
-        raise
-    shutil.rmtree(aside, ignore_errors=True)    # only once the new one is IN PLACE, so the rollback above is still reachable until here
+    guard.swap_folder(staged, install, disk)
     debug.event("updater", "update applied", install=install)
 
 

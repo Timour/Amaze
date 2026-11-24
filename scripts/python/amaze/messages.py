@@ -173,6 +173,7 @@ UPDATE_OFFER = "%s\n\nRestart Houdini after installing."
 UPDATE_LIBRARY_AVAILABLE = "Amaze v%s is available. The library will be updated to v%s."
 LIBRARY_UPDATE_WARNING = "The library will be updated and won't work with Amaze versions older than %s."
 LIBRARY_NEEDS_NEWER_AMAZE = "This library is version %s and needs a newer Amaze. Update Amaze to open it."
+LIBRARY_OLDER_THAN_2_0 = "it is older than version 2.0, which this Amaze cannot convert. Open it once in Amaze 1.48, which updates it to 2.0, then open it here."
 LIBRARY_NEEDS_CONVERSION = ("This library is version 2.0. To open it, Amaze converts it to version 3.0: "
                             "each material and node gets its own folder with all its files, and the "
                             "matX folder goes to the library's trash. An older Amaze can't open it after that.")

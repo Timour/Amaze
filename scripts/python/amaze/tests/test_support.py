@@ -312,6 +312,41 @@ def full_disk_for(path):
         yield
 
 
+class Reply(io.BytesIO):
+    """What the one network call returns: a body with headers, usable in a `with`."""
+
+    def __init__(self, body, headers=None) -> None:
+        super().__init__(body if isinstance(body, bytes) else json.dumps(body).encode("utf-8"))
+        self.headers = dict(headers or {})
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+        return False
+
+
+def serve(testcase, answer) -> list:
+    """Every request through `matx_sources._request` answered by `answer(url)`; the URLs asked."""
+    from unittest import mock
+    from amaze.core import matx_sources
+    asked = []
+
+    def request(url, headers=None):
+        asked.append(url)
+        reply = answer(url)
+        if isinstance(reply, BaseException):
+            raise reply
+        return reply if isinstance(reply, Reply) else Reply(reply, {
+            "Content-Length": str(len(reply))} if isinstance(reply, bytes) else None)
+
+    patcher = mock.patch.object(matx_sources, "_request", request)
+    patcher.start()
+    testcase.addCleanup(patcher.stop)
+    return asked
+
+
 @contextlib.contextmanager
 def captured_log():
     """Capture what `debug` records in the block; state restored on exit. ▸p/harness-isolation"""

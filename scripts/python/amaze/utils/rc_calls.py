@@ -257,20 +257,8 @@ def check_for_updates() -> None:
     tool = _shelf_tool("amaze.core.updater", "amaze.dialogs.update_dialog")
     if tool is None:
         return
-    ui, updater, update_dialog = tool
-    found = updater.check()
-    library = updater.configured_library()
-    if not found:    # up to date, no release, or unreachable: that message is all that is shown
-        ui.displayMessage(found.sentence, title=messages.TITLE_AMAZE,
-                          severity=(hou.severityType.Warning
-                                    if found.verdict == updater.UNREACHABLE
-                                    else hou.severityType.Message))
-    elif ui.displayMessage(
-            messages.UPDATE_OFFER % updater.offer_line(found, library),
-            buttons=messages.BUTTONS_INSTALL_UPDATE,
-            close_choice=1, title=messages.TITLE_AMAZE, severity=hou.severityType.Message) == 0 \
-            and update_dialog.confirmed(found, library):    # Continue or Cancel, as on the About tab
-        update_dialog.install_and_report(found)
+    _ui, updater, update_dialog = tool
+    update_dialog.check_and_install(updater.configured_library())
 
 
 def reload_asset_files() -> None:
