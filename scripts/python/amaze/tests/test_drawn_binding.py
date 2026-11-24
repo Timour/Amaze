@@ -130,7 +130,7 @@ DRAWN_EXEMPT = (    # (does this node need no pin, why): every other drawn node 
      "sizes through drawn_comments, held by TheCommentsPaneMatchesItsDesignFrame"),
     (lambda f, n: f == "N02",
      "the info pane's rows are drawn by Houdini's style: it reads its sizes through "
-     "drawn_info, held by test_info_panel ▸ TheInfoPaneMatchesItsDesignFrame"),
+     "drawn_info"),
     (lambda f, n: f == "D01" and n[0].startswith("QListWidget ▸ "),
      "a row is drawn by Houdini's style, not pixel-matched: the list reads its column "
      "from drawn_list_rows, held by test_versions_dialog"),

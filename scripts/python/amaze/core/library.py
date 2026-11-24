@@ -2,7 +2,6 @@
 
 import json
 import os
-import stat
 from typing import Any
 from PySide6 import QtCore, QtGui
 
@@ -51,24 +50,6 @@ def filled(rows) -> tuple:
 def file_count(count: int) -> str:
     """`1 file` or `5 files`."""
     return "1 file" if count == 1 else "%d files" % count
-
-
-def existing_files(paths) -> list:
-    """(path, size) of each path that is a file now, from one `os.stat` each."""
-    found = []
-    for path in paths:
-        try:
-            info = os.stat(path)
-        except (OSError, ValueError):    # ValueError: a path with a NUL in it
-            continue
-        if stat.S_ISREG(info.st_mode):
-            found.append((path, info.st_size))
-    return found
-
-
-def size_of(found) -> str:
-    """The total of `existing_files` rows as the info pane writes it; "" when no file exists."""
-    return file_info.size_text(sum(size for _path, size in found)) if found else ""
 
 
 def report_unlisted(names, updated: bool = False) -> None:
@@ -810,15 +791,17 @@ class AssetLibrary(grid_engine.GridEngine,
         """(before, after, request) the info pane shows for one row; a row with no value is left out."""
         asset = self._assets[row]
         facts, request = self._info_facts(row, asset)
+        size = (file_info.size_rows(self.folder_files(asset))    # a material's or node's whole folder
+                if self.DB_FILENAME in library_files.ASSET_SECTIONS else [])
         before = [("Name", str(self.row_data(row, QtCore.Qt.ItemDataRole.DisplayRole) or "")),
-                  ("Date", str(asset.date or "").split(" ")[0])] + facts    # stored with its time
+                  ("Date", str(asset.date or "").split(" ")[0])] + size + facts    # stored with its time
         after = (("Version", self._info_version(row)),
                  ("License", str(asset.license or "").strip()),
                  ("ID", str(asset.mat_id)))
         return filled(before), filled(after), request
 
     def _info_facts(self, row: int, asset) -> tuple:
-        """([rows after Date], the read that adds rows or None); each section names its own."""
+        """([rows after Date and Size], the read that adds rows or None); each section its own."""
         return [], None
 
     def _info_version(self, row: int) -> str:
@@ -1118,12 +1101,11 @@ class MaterialLibrary(AssetLibrary):
         return super().row_data(row, role)
 
     def _info_facts(self, row: int, asset) -> tuple:
-        """Size, Renderer and Textures, and the read that finds the largest texture."""
-        textures = existing_files(self.texture_paths(asset))
-        facts = [("Size", size_of(existing_files(self.folder_files(asset)))),
-                 ("Renderer", self.tile_subtitle(asset)),
+        """Renderer and Textures, and the read that finds the largest texture."""
+        textures = [path for path in self.texture_paths(asset) if os.path.isfile(path)]
+        facts = [("Renderer", self.tile_subtitle(asset)),
                  ("Textures", file_count(len(textures)) if textures else "")]
-        return facts, file_info.request_for_textures([path for path, _size in textures])
+        return facts, file_info.request_for_textures(textures)
 
     def renderer_label(self, asset) -> str:
         """'USD ' for a USD-builder type, ':<shader>' where a table names it: `USD Redshift:PBR`."""

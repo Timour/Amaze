@@ -4,17 +4,14 @@ from __future__ import annotations
 
 import dataclasses
 import functools
-import locale
 import os
 import re
-import subprocess
 import tempfile
-import threading
 import time
 
 from PySide6 import QtCore
 
-from amaze.core import debug, geo_library, scene_files, workers
+from amaze.core import conversion, debug, geo_library, scene_files, workers
 from amaze.helpers import hostos
 
 KIND_IMAGE = "image"
@@ -82,11 +79,16 @@ def format_text(path: str) -> str:
     return _ending(path)[1:].upper()
 
 
+def name_text(path: str) -> str:
+    """The file's name without its ending, as the pane's header and Name row show it."""
+    name, ending = os.path.basename(path), _ending(path)
+    return name[:len(name) - len(ending)] if ending else name
+
+
 def file_rows(path: str) -> tuple:
     """(before, after) for a file, from one `os.stat`: Name, Created, Modified, Size, Format; Folder."""
-    name = os.path.basename(path)
     ending = _ending(path)
-    before = [("Name", name[:len(name) - len(ending)] if ending else name)]
+    before = [("Name", name_text(path))]
     try:
         info = os.stat(path)
     except OSError:
@@ -124,64 +126,20 @@ def request_for_sizes(paths) -> Request | None:
     return Request(KIND_SIZES, found) if found else None
 
 
-TOOL_TIMEOUT_SECONDS = 10.0    # how long one call of a Houdini tool may run before it is killed
-POLL_SECONDS = 0.1    # how often a running tool's exit and the cancel callback are read
-KILL_GRACE_SECONDS = 0.5    # how long a killed tool may take to exit before it is left running
+TOOL_TIMEOUT_MS = 10000    # how long one call of a Houdini tool may run before it is killed
 PATHS_PER_CALL = 100    # the most files one `iinfo` call is given
 SIZE_CHECK_EVERY = 100    # files added up between two reads of the cancel callback
 PRIM_CHECK_EVERY = 1000    # prims counted between two reads of the cancel callback
 
-_LEFT: list = []    # killed tools still running after the grace; dropped once they exit
-_LEFT_GUARD = threading.Lock()    # tools run on several worker threads
-
 
 def run_tool(program: str, args: list, cancelled) -> str | None:
     """The tool's stdout at any exit code; None if it did not start, timed out or was cancelled."""
-    with _LEFT_GUARD:
-        _LEFT[:] = [process for process in _LEFT if process.poll() is None]
-    live = QtCore.QProcessEnvironment.systemEnvironment()    # os.environ misses what Houdini set later
     with tempfile.TemporaryFile() as output:    # a file, so a tool that writes much never blocks
-        try:
-            process = subprocess.Popen(    # posix_spawn on macOS, as conversion._spawn ▸r/qprocess-sigchld
-                [program] + list(args), stdin=subprocess.DEVNULL, stdout=output,
-                stderr=subprocess.DEVNULL, env={key: live.value(key) for key in live.keys()},
-                close_fds=not hostos.is_macos(),
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))    # Windows: no console
-        except OSError as exc:
-            debug.event("info", "a tool did not start", program=program, error=str(exc))
+        _ok, why = conversion._run_process(program, args, TOOL_TIMEOUT_MS, cancelled, output)
+        if why == conversion.CANCELLED or why in conversion.UNFINISHED:
             return None
-        deadline = time.monotonic() + TOOL_TIMEOUT_SECONDS
-        while True:
-            try:
-                process.wait(POLL_SECONDS)
-                break
-            except subprocess.TimeoutExpired:
-                pass
-            if cancelled():
-                _stop(process)
-                return None
-            if time.monotonic() >= deadline:
-                debug.event("info", "a tool hit its timeout", program=program, args=list(args))
-                _stop(process)
-                return None
         output.seek(0)
-        raw = output.read()
-    try:    # Houdini's tools write the ANSI codepage on Windows ▸r/conversion-internals
-        return raw.decode(locale.getpreferredencoding(False))
-    except (UnicodeDecodeError, LookupError):
-        return raw.decode("utf-8", "replace")
-
-
-def _stop(process) -> None:
-    """Kill a tool and wait KILL_GRACE_SECONDS for its exit; one still running goes in `_LEFT`."""
-    try:
-        process.kill()
-        process.wait(KILL_GRACE_SECONDS)
-    except subprocess.TimeoutExpired:
-        with _LEFT_GUARD:
-            _LEFT.append(process)
-    except OSError:
-        pass    # it had exited already
+        return conversion.text_of(output.read())
 
 
 def _lines(text: str):
@@ -412,17 +370,17 @@ def _read_largest(paths, hfs: str, cancelled) -> list:
     return largest_row(sizes)
 
 
-def _read_sizes(paths, cancelled) -> list:
-    """The `Size` row: the bytes of every existing file in `paths` added up."""
+def size_rows(paths, cancelled=None) -> list:
+    """The `Size` row: the bytes of every existing file in `paths` added up; [] for none."""
     total, seen = 0, False
     for number, path in enumerate(paths):
-        if number % SIZE_CHECK_EVERY == 0 and cancelled():
+        if cancelled is not None and number % SIZE_CHECK_EVERY == 0 and cancelled():
             return []
         try:
             total += os.path.getsize(path)
             seen = True
-        except OSError:
-            pass    # a missing file adds nothing
+        except (OSError, ValueError):    # a missing file adds nothing; ValueError: a NUL in the path
+            pass
     return [("Size", size_text(total))] if seen else []
 
 
@@ -450,7 +408,7 @@ def read(request: Request, hfs: str = "", cancelled=None) -> list:
         elif request.kind == KIND_TEXTURES:
             rows = _read_largest(paths, hfs, cancelled)
         elif request.kind == KIND_SIZES:
-            rows = _read_sizes(paths, cancelled)
+            rows = size_rows(paths, cancelled)
         else:
             rows = []    # KIND_ALEMBIC: abcinfo prints no frame rate and no last frame
     except Exception as exc:                                  # noqa: BLE001 - the pane shows no rows
@@ -459,14 +417,19 @@ def read(request: Request, hfs: str = "", cancelled=None) -> list:
     return [] if cancelled() else rows
 
 
+def _rows(request: Request, cancelled) -> list:
+    """`read` as a Reader's job: `read` is looked up when the job runs."""
+    return read(request, cancelled=cancelled)
+
+
 class _ReadWorker(QtCore.QThread):
-    """Runs one `read` off the UI thread and emits its rows unless it was cancelled."""
+    """Runs one read off the UI thread and emits its answer unless it was cancelled."""
 
-    answered = QtCore.Signal(int, str, object)    # (token, key, rows)
+    answered = QtCore.Signal(int, str, object)    # (token, key, answer)
 
-    def __init__(self, token: int, key: str, request: Request) -> None:
+    def __init__(self, token: int, key: str, job) -> None:
         super().__init__()
-        self.token, self.key, self.request = token, key, request
+        self.token, self.key, self.job = token, key, job
         self._canceled = False    # the stop flag workers.stop() sets, the name every worker uses
 
     def cancel(self) -> None:
@@ -476,9 +439,9 @@ class _ReadWorker(QtCore.QThread):
         return self._canceled or self.isInterruptionRequested()
 
     def run(self) -> None:
-        rows = read(self.request, cancelled=self._stopped)
+        answer = self.job(self._stopped)
         if not self._stopped():
-            self.answered.emit(self.token, self.key, rows)
+            self.answered.emit(self.token, self.key, answer)
 
 
 class _ReadEngine(QtCore.QObject):
@@ -508,9 +471,9 @@ engine = workers.install(__name__, _ReadEngine, QtCore.QCoreApplication.instance
 
 
 class Reader(QtCore.QObject):
-    """Runs one `read` at a time off the UI thread and emits its rows with the key they are for."""
+    """Runs one read at a time off the UI thread and emits its answer with the key it is for."""
 
-    ready = QtCore.Signal(str, list)    # (key, rows), on the UI thread
+    ready = QtCore.Signal(str, object)    # (key, answer), on the UI thread
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -518,9 +481,13 @@ class Reader(QtCore.QObject):
         self._worker = None
 
     def ask(self, key: str, request: Request) -> None:
-        """Start the read for `key`; an answer still on its way for an earlier key is dropped."""
+        """Start the read of `request` for `key`; an answer on its way for an earlier key is dropped."""
+        self.start(key, functools.partial(_rows, request))
+
+    def start(self, key: str, job) -> None:
+        """Run `job(cancelled)` off the UI thread for `key`; an earlier answer is dropped."""
         self.stop()
-        worker = _ReadWorker(self._token, key, request)
+        worker = _ReadWorker(self._token, key, job)
         worker.answered.connect(self._answered)    # queued: the worker emits on its own thread
         self.destroyed.connect(worker.cancel)    # a deleted Reader stops its read
         self._worker = worker
@@ -537,7 +504,7 @@ class Reader(QtCore.QObject):
             except (RuntimeError, TypeError):
                 pass    # its C++ side is gone, or it was never connected
 
-    def _answered(self, token: int, key: str, rows) -> None:
+    def _answered(self, token: int, key: str, answer) -> None:
         if token == self._token:
             self._worker = None
-            self.ready.emit(key, list(rows))
+            self.ready.emit(key, answer)

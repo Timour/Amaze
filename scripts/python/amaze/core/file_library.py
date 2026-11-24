@@ -665,9 +665,7 @@ class FileFiles(grid_engine.GridEngine,
 
     def info_header(self, row: int) -> tuple:
         """(name, type) heading a row in the info pane: its Name row without the stat, and its format."""
-        path = self._full_path(row) or ""
-        name, ending = os.path.basename(path), file_info.format_text(path)
-        return (name[:len(name) - len(ending) - 1] if ending else name,
+        return (file_info.name_text(self._full_path(row) or ""),
                 str(self.row_data(row, self.FormatRole) or ""))
 
     def info_rows(self, row: int) -> tuple:

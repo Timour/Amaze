@@ -135,10 +135,8 @@ class InfoPanel(side_pane.SidePage):
     def _show_picture_of(self, subject) -> None:
         path = self.picture_path(subject)
         self.preview_button.setVisible(bool(path))    # only an image file has a picture to hide
-        if path == self._picture_path and path:
-            return
         self._picture_path = path
-        self.preview.set_image(None)    # never another file's picture over these rows
+        self.preview.set_image(None)    # never another file's picture, nor this one's before it changed
         self._ask_picture()
 
     def _picture_width(self) -> int:

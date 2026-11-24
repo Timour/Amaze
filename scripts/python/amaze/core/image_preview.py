@@ -7,7 +7,7 @@ import os
 
 from PySide6 import QtCore, QtGui
 
-from amaze.core import debug, workers
+from amaze.core import debug, file_info
 from amaze.helpers import hostos
 
 QT_ENDINGS = (".jpg", ".jpeg", ".png", ".bmp", ".gif")    # Qt reads these far faster ▸r/image-preview
@@ -115,87 +115,17 @@ def read(path: str, width: int, cancelled=None):
     return None if cancelled() else image
 
 
-class _ReadWorker(QtCore.QThread):
-    """Runs one `read` off the UI thread and emits its image unless it was cancelled."""
-
-    answered = QtCore.Signal(int, str, int, object)    # (token, path, width, image or None)
-
-    def __init__(self, token: int, path: str, width: int) -> None:
-        super().__init__()
-        self.token, self.path, self.width = token, path, width
-        self._canceled = False    # the stop flag workers.stop() sets, the name every worker uses
-
-    def cancel(self) -> None:
-        self._canceled = True
-
-    def _stopped(self) -> bool:
-        return self._canceled or self.isInterruptionRequested()
-
-    def run(self) -> None:
-        image = read(self.path, self.width, self._stopped)
-        if not self._stopped():
-            self.answered.emit(self.token, self.path, self.width, image)
+def _shown(path: str, width: int, cancelled):
+    """`read` as a Reader's job: an image narrower than asked is marked as the whole file."""
+    image = read(path, width, cancelled)
+    if image is not None and image.width() < width:
+        image.setText(WHOLE, "1")
+    return image
 
 
-class _ReadEngine(QtCore.QObject):
-    """Keeps every running read's thread until it ends; stops them on quit. ▸r/model-contracts"""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self._threads = []    # a running QThread must keep a reference until it ends ▸r/model-contracts
-
-    def start(self, worker: _ReadWorker) -> None:
-        worker.finished.connect(    # bound here, never sender(): ordering is per sender ▸r/model-contracts
-            functools.partial(self._finished, worker))
-        self._threads.append(worker)
-        worker.start()
-
-    def _finished(self, worker) -> None:
-        self._threads = [t for t in self._threads if t is not worker and not workers.gone(t)]
-
-    def shutdown(self) -> None:
-        """Stop every read, THEN wait for each; safe twice and with nothing running."""
-        workers.stop(self._threads, "preview")
-        self._threads = []
-
-
-engine = workers.install(__name__, _ReadEngine, QtCore.QCoreApplication.instance())
-
-
-class Reader(QtCore.QObject):
-    """Reads one picture at a time off the UI thread."""
-
-    ready = QtCore.Signal(str, object)    # (path, image or None), on the UI thread
-
-    def __init__(self, parent=None) -> None:
-        super().__init__(parent)
-        self._token = 0    # the newest ask's number; an answer with another number is dropped
-        self._worker = None
+class Reader(file_info.Reader):
+    """Reads one picture at a time off the UI thread; `ready` is (path, image or None)."""
 
     def ask(self, path: str, width: int) -> None:
         """Start reading `path` at `width`; a read still on its way for an earlier ask is dropped."""
-        self.stop()
-        worker = _ReadWorker(self._token, path, width)
-        worker.answered.connect(self._answered)    # queued: the worker emits on its own thread
-        self.destroyed.connect(worker.cancel)    # a deleted Reader stops its read
-        self._worker = worker
-        engine.start(worker)
-
-    def stop(self) -> None:
-        """Drop every read on its way; nothing is emitted afterwards."""
-        self._token += 1
-        worker, self._worker = self._worker, None
-        if worker is not None:
-            try:
-                worker.cancel()
-                self.destroyed.disconnect(worker.cancel)
-            except (RuntimeError, TypeError):
-                pass    # its C++ side is gone, or it was never connected
-
-    def _answered(self, token: int, path: str, width: int, image) -> None:
-        if token != self._token:
-            return
-        self._worker = None
-        if image is not None and image.width() < width:
-            image.setText(WHOLE, "1")
-        self.ready.emit(path, image)
+        self.start(path, functools.partial(_shown, path, width))
