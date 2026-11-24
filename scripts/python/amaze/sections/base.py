@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import collections
+import functools
 import hashlib
 import os
 
@@ -10,7 +11,7 @@ import hou
 from PySide6 import QtCore
 
 from amaze import amazetheme, messages
-from amaze.core import category, debug, file_info, grid_columns, grid_engine, multifilterproxy_model, notes
+from amaze.core import category, debug, file_info, grid_columns, multifilterproxy_model, notes
 
 AssetStack = collections.namedtuple(
     "AssetStack", "model proxy selection categories")
@@ -49,6 +50,14 @@ GRID_MENU_TAIL = (    # the tile's picture rows, Render Image only where one ren
     MenuEntry("Favorite", handler="menu_favourite"),
     MenuEntry("Delete", handler="menu_delete", shown="deletes_rows"),
 )
+
+
+def _disconnect(signal, slot, *_destroyed) -> None:
+    """Drop a connection a section made; one already gone is no error."""
+    try:
+        signal.disconnect(slot)
+    except (RuntimeError, TypeError):
+        pass
 
 
 class Section:
@@ -98,7 +107,12 @@ class Section:
         self._reselect_timer.setInterval(0)
         self._reselect_timer.timeout.connect(self._reselect_sidebar_row_if_shown)
         for moved in (sidebar.modelReset, sidebar.layoutChanged, sidebar.rowsRemoved):
-            moved.connect(self._sidebar_rows_changed)
+            self.follow(moved, self._sidebar_rows_changed)
+
+    def follow(self, signal, slot) -> None:
+        """`signal` calls `slot` until the pane is deleted: Qt cannot disconnect a section."""
+        signal.connect(slot)
+        self.pane.destroyed.connect(functools.partial(_disconnect, signal, slot))
 
     def reject_drop(self) -> bool:
         """A drop no target accepts: the red cross and a status line that it was canceled; False."""
@@ -248,10 +262,7 @@ class Section:
 
     def _sidebar_rows_changed(self, *_args) -> None:
         """Sidebar rows reset, moved or removed, maybe by another pane: queue `reselect_sidebar_row`."""
-        try:
-            self._reselect_timer.start()
-        except RuntimeError:    # the pane was deleted, and File's shared model outlives it
-            pass
+        self._reselect_timer.start()
 
     def _reselect_sidebar_row_if_shown(self) -> None:
         """Run `reselect_sidebar_row` only while this section is shown."""
@@ -481,21 +492,11 @@ class AssetSection(Section):
         st = self.stack()
         if st is None or not new_name:
             return
-        new_name = st.categories.stored_name(new_name)    # a typed WIP maps to the existing `_WIP`
-        if category.is_all(new_name):
-            return    # the All row is a view of everything, never a category to rename onto
-        names = []    # STORED names: `_WIP` displays as WIP, and that label matches no asset
-        for index in indexes:
-            name = self.sidebar_key(index)
-            if name and not category.is_all(name):
-                names.append(name)
+        names = [self.sidebar_key(index) for index in indexes]    # STORED: `_WIP` reads as WIP
         shown = self.shown_sidebar_key()    # the grid's row: a right press moved only the sidebar
-        with grid_engine.relayout(st.model):    # the asset rows change IN PLACE, the only case for this pair
-            for name in names:
-                st.model.rename_category(name, new_name)
-        st.model.save()    # AFTER the pair: a save merges rows another Houdini wrote, and an insert inside segfaults H21
-        for name in names:
-            st.categories.rename_category(name, new_name)    # after the rows: its save must not undo them
+        new_name = category.rename(st.model, st.categories, names, new_name)
+        if not new_name:
+            return
         self.select_sidebar_key(new_name if shown in names else shown)    # a renamed row is found by its new name
         self.pane.sidebar.refresh()    # updates counts and empty-category hiding after the rename
 
@@ -536,22 +537,13 @@ class AssetSection(Section):
         st = self.stack()
         if st is None:
             return
-        names = []    # stored names: removing by the label would leave the row in place
-        for index in indexes:
-            name = self.sidebar_key(index)
-            if name and not category.is_all(name):
-                names.append(name)
-        if not names:
+        names = [name for name in map(self.sidebar_key, indexes) if not category.is_all(name)]
+        if not any(names):
             return
         if st.selection is not None:
             st.selection.clearSelection()
-        with grid_engine.relayout(st.model):    # the asset rows change IN PLACE, the only case for this pair
-            for name in names:
-                st.model.remove_category(name)
-        st.model.save()    # AFTER the pair: a save merges rows another Houdini wrote, and an insert inside segfaults H21
-        for name in names:
-            st.categories.remove_category(name)    # outside the relayout wrapper: begin/endRemoveRows notify the view; pairing them segfaults
-        self.reselect_after_removal(names)
+        if category.remove(st.model, st.categories, names):
+            self.reselect_after_removal(names)
 
     def menu_sort_categories(self, indexes, current, payload=None) -> None:
         """The one-off Sort by name: sorts every row below All, whichever row was clicked."""
