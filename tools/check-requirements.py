@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Refuses a test that proves no listed requirement, or a second test for one. ▸docs/requirements"""
+"""Refuses a test that proves no listed requirement, a second test for one, or a broken code rule."""
 import ast
+import importlib.util
 import os
 import re
 import sys
@@ -64,8 +65,18 @@ def at_every_push() -> list:
             if listed.get(rid, ("",))[0] in ("Catastrophe", "Severe")]
 
 
+def code_rules() -> list:
+    """What breaks a rule of `check-code.py`, loaded only here so its importers need no copy."""
+    spec = importlib.util.spec_from_file_location(
+        "check_code", os.path.join(ROOT, "tools", "check-code.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.refusals()
+
+
 def main() -> int:
     listed, refused = requirements()
+    refused += code_rules()
     proved, files, every = {}, {}, tests()
     for name, test, rid in every:
         files.setdefault(name, set()).add(bool(rid))
