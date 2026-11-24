@@ -797,8 +797,10 @@ A drag has ONE end, `GridGestureMixin._end_drag`, reached by the release, Esc
 (the view grabs the keyboard for the length of the drag), another mouse button,
 a hidden view and an error while following the pointer; it is the only caller
 of `dragengine.end()`. The name tag is hidden while another application is in front.
-Sections' release handlers call the import code; the panel keeps
-the shared plumbing. The one native drag left is the texture file drag.
+Sections' release handlers call the import code. What a release does is one engine call,
+`DropPlacement.release(section_key, key, pane_tab, pane_kind)` in `pane/drop_placement.py`: the
+tile's drop rule, its handler and the wire splice as one undo step; the widget panel's gesture
+calls it, and the QML grid will. The one native drag left is the texture file drag.
 Rules: an item is placed where it is dropped; nothing is created before release;
 SOP and LOP contexts never reference each other; empty viewport space is a
 miss (red X); a drop that opens a menu shows no icon.
