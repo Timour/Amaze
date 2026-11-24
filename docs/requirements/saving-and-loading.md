@@ -10,7 +10,7 @@ and `core/asset_record.py`, with `core/texstore.py` at save and load, `pane/savi
 ## Catastrophe
 
 - SL-01 Catastrophe: A new asset is saved whole or not at all: its row, network, record, textures and COP network arrive together, and a save that fails leaves no row, no file and no folder.
-- SL-02 Catastrophe: Saving over an asset replaces its network, record and COP network together; a save that fails at any step leaves the old ones as they were.
+- SL-02 Catastrophe: Saving over an asset replaces its network, record and COP network together; a save that fails at any step leaves the old ones as they were, and one the library refuses writes nothing and says why.
 - SL-03 Catastrophe: Saving over an asset is refused when another session changed its network since this one read it, and their files stay as they are.
 - SL-04 Catastrophe: An asset's record that cannot be read is never written over by a save.
 

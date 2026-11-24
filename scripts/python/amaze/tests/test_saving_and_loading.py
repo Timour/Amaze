@@ -186,6 +186,17 @@ class SavingTest(unittest.TestCase):
         self.assertEqual([True] * 3, unchanged(faults.FaultDisk(full_from=1)))
         self.assertEqual([], [name for _here, _dirs, names in os.walk(self.prefs.dir)
                               for name in names if name.endswith(guard.SCRATCH)])
+        self.fresh()
+        self.add()
+        before = state(self.prefs.dir)
+        self.change()
+        with test_support.refused_at_open(os.path.join(self.prefs.dir, MATERIALS)), \
+                test_support.captured_log() as log:
+            library_db.refresh(self.prefs)    # another program holds the list now
+            answer = self.save_over()
+        self.assertEqual(before, state(self.prefs.dir), "a save over the library refused wrote")
+        self.assertEqual(("", [messages.CHANGE_REFUSED_READ_ONLY % library_files.section_label(
+            MATERIALS)]), (answer, log.messages("refuse")))
 
     def test_sl03_a_save_over_is_refused_when_another_session_changed_the_network(self):
         self.add()
