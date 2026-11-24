@@ -216,14 +216,14 @@ class Library:
         return ""
 
     def _stay_closed(self, why: str = "") -> bool:
-        """False; an open library stays open, its Library Path restored, `why` shown."""
+        """False; an open library stays open, its folder and user put back, `why` shown."""
         prefs = self.pane.prefs
         switching = getattr(self.pane, "material_model", None) is not None
         if library_db.key_of(prefs) != library_db.key_of(
                 types.SimpleNamespace(dir=self.models_dir or "")):
             library_db.release(prefs)    # read during the checks, never opened: released
-        if switching:
-            prefs.dir = self.models_dir
+        if switching:    # put back what Reload or Apply changed
+            prefs.dir, prefs.library_user = self.models_dir, self.models_user
             prefs.save()
             debug.event("session", "previous library left open", dir=prefs.dir)
         if why:    # `debug.refuse` defers it: a modal in the pane's build draws black ▸r/modal-in-pane-build

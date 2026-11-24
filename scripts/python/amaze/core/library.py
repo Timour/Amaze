@@ -127,7 +127,7 @@ class AssetLibrary(grid_engine.GridEngine,
     def _read_rows(self) -> list:
         """One record per row in the database; an unreadable row is skipped."""
         found = []
-        self._rows_library_key = library_db.key_of(self.preferences)    # the library these rows came from
+        self.read_from = library_db.key_of(self.preferences)    # the library these rows came from
         for key, row in self._doc().table(ROWS).items():
             if not isinstance(row, dict):
                 continue
@@ -298,7 +298,7 @@ class AssetLibrary(grid_engine.GridEngine,
 
     def takes_edits(self) -> bool:
         """Whether this library takes a change now; when not, the user is told why."""
-        return library_db.takes_change(self.preferences, self.DB_FILENAME)
+        return library_db.takes_change(self, tell=True)
 
     def _changeable(self, row: int):
         """The record at `row` when its database takes a change now, else None: nothing changes."""
@@ -418,7 +418,7 @@ class AssetLibrary(grid_engine.GridEngine,
     def set_tile_icons(self, rows, spec) -> int:
         """Give every row in `rows` the icon `spec` in one store write; returns how many failed."""
         valid = [row for row in rows if 0 <= row < len(self._assets)]
-        if not valid:
+        if not valid or not library_db.takes_change(self, tell=True):
             return len(rows)
         chosen = {row: tile_icons.choice_for(self, row, spec) for row in valid}
         held = tile_icons.set_overrides(  # icons are stored only in the database, so a clear here deletes the icon
@@ -569,12 +569,8 @@ class AssetLibrary(grid_engine.GridEngine,
 
     def save(self) -> bool:
         """Stage the records in the database for the timer to save; False when it accepts no change."""
-        if not library_db.accepts(self.preferences, self.DB_FILENAME):
+        if not library_db.takes_change(self):
             return False
-        if getattr(self, "_rows_library_key", None) not in (None, library_db.key_of(self.preferences)):
-            debug.event("library", "save skipped - the rows are from another library",
-                        store=self.DB_FILENAME, dir=str(self.preferences.dir))
-            return False    # the folder changed without a switch: these rows are from another library
         held = self._doc()
         with library_db.library_for(self.preferences).holding():
             self._stage_rows(held)
@@ -689,7 +685,7 @@ class AssetLibrary(grid_engine.GridEngine,
 
     def add_all(self, records: list, staged=()) -> bool:
         """Save new records, with the files the last one staged, as ONE change; False: none was."""
-        if not library_db.accepts(self.preferences, self.DB_FILENAME):
+        if not library_db.takes_change(self):
             asset_record.discard(staged)
             return False
         for record in records:
@@ -850,7 +846,7 @@ class AssetLibrary(grid_engine.GridEngine,
                  if 0 <= row < len(self._assets)]
         if not going:
             return 0
-        if not library_db.accepts(self.preferences, self.DB_FILENAME):
+        if not library_db.takes_change(self):
             self._report_refused_delete(going[-1][1])
             return 0
         trash, taken = self._unlist_for_delete(going)

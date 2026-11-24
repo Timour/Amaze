@@ -232,6 +232,14 @@ class Document:
         self._touch()
         return True
 
+    def drop_user(self, section: str, user: str) -> bool:
+        """Remove one user's whole table from a per-user section; False when not allowed or none."""
+        if not self._may_change(section, guard.PER_USER) or user not in self._data[section]:
+            return False
+        del self._data[section][user]
+        self._touch()
+        return True
+
     def rekey_everyones(self, section: str, old: str, new: str) -> int:
         """Move the entry at `old` to `new` in every user's table of a per-user section; how many."""
         if old == new:

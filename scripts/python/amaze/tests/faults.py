@@ -1,7 +1,10 @@
 """The one fault simulator: a real disk that crashes at a step, runs full, holds a file or races."""
 
+import builtins
+import contextlib
 import errno
 import os
+from unittest import mock
 
 from amaze.core import guard
 
@@ -82,3 +85,70 @@ class FaultDisk(guard.Disk):
         if self._reached():
             raise Cut()
         super().remove_folder(path)
+
+
+class _CutFile:
+    """A file opened for writing whose `write` is one step of a `CutWrites`."""
+
+    def __init__(self, handle, fault: "CutWrites") -> None:
+        self._handle, self._fault = handle, fault
+
+    def write(self, data):
+        if self._fault._reached():
+            if self._fault.torn:
+                self._handle.write(data[: len(data) // 2])
+                self._handle.flush()
+            raise Cut()
+        return self._handle.write(data)
+
+    def __getattr__(self, name):
+        return getattr(self._handle, name)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self._handle.close()
+
+
+class CutWrites:
+    """Each write or rename of a file under `folder` crashes at step `cut_at`; `torn`: mid-write."""
+
+    def __init__(self, folder: str, cut_at: int = 0, torn: bool = False) -> None:
+        self.folder = os.path.realpath(folder) + os.sep
+        self.cut_at, self.torn = cut_at, torn
+        self.steps = 0
+        self.cut = False
+
+    def _reached(self) -> bool:
+        if self.cut:
+            raise Cut()
+        self.steps += 1
+        self.cut = self.steps == self.cut_at
+        return self.cut
+
+    def _inside(self, path) -> bool:
+        return (isinstance(path, (str, os.PathLike))
+                and os.path.realpath(path).startswith(self.folder))
+
+    def __enter__(self) -> "CutWrites":
+        real_open, real_replace = builtins.open, os.replace
+
+        def opened(name, mode="r", *args, **kwargs):
+            handle = real_open(name, mode, *args, **kwargs)
+            writing = any(letter in mode for letter in "wax+")
+            return _CutFile(handle, self) if writing and self._inside(name) else handle
+
+        def replaced(source, target, *args, **kwargs):
+            if self._inside(target) and self._reached():
+                raise Cut()
+            return real_replace(source, target, *args, **kwargs)
+
+        self._patches = contextlib.ExitStack()
+        self._patches.enter_context(mock.patch("builtins.open", opened))
+        self._patches.enter_context(mock.patch("os.replace", replaced))
+        return self
+
+    def __exit__(self, *exc) -> bool:
+        self._patches.close()
+        return exc[0] is Cut

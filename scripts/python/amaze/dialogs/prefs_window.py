@@ -526,9 +526,7 @@ class AmazePrefsState(mainprefs.PrefsState):
         return True
 
     def _switch_library(self, folder: str, uid: str) -> bool:
-        """Open `folder` with the picked user; both are restored when it does not open."""
-        if self._pane is not None and not self._pane.library.takes_library(folder):
-            return False    # checked before anything is written to it
+        """Open `folder` with the picked user; both are put back when it does not open."""
         before, before_dir = str(self._prefs.library_user or ""), self._prefs.dir
         library_db.flush()    # the open library's pending changes, saved as the user who made them
         if not uid.startswith(NEW_USER):
@@ -536,7 +534,7 @@ class AmazePrefsState(mainprefs.PrefsState):
         self._prefs.dir = folder
         self._prefs.save()    # the models' switch re-reads settings.json
         opened = self._pane is None or self._pane.library.open_library()
-        if not opened:    # the settings name the library that is open, or none
+        if not opened:    # with no library open the pane has nothing to put back
             self._prefs.library_user = before
             self._prefs.dir = before_dir
             self._prefs.save()
@@ -603,8 +601,7 @@ class AmazePrefsState(mainprefs.PrefsState):
         """Remove from List on the current and selected rows, as Node Search reads its table's."""
         folders = [str(index.data(LibraryRows.FOLDER_ROLE)) for index in [current, *indexes]
                    if index.isValid()]
-        folders = [one for one in folders if not _same_folder(one, self._prefs.dir)]    # it stays
-        if not folders or not self._prefs.remove_libraries(folders):
+        if not self._prefs.remove_libraries(folders):
             return
         self._prefs.save()
         self.libraryRows.fill([row for row in self.libraryRows.rows
@@ -687,7 +684,7 @@ class AmazePrefsState(mainprefs.PrefsState):
         self.rename_user(name)
 
     def delete_user(self, uid: str) -> None:
-        """Delete `uid` and everything tagged theirs from the open library; nobody is picked after."""
+        """Delete `uid`, their favourites and folder list from the open library; nobody is picked after."""
         if users.delete(self._prefs, uid):
             self._overlay.pop((USER, ""), None)
             self._updateFlags()

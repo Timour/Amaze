@@ -232,7 +232,7 @@ class FactsTest(_Info):
         self.assertEqual((("Name", "Metal"), ("Date", "2026-01-27")), before.before[:2])
         self.assertEqual((("ID", METAL),), before.after, "an empty licence or version has a row")
         for named, shown in (("glossy", (("Version", "glossy"),)), ("Metal", ())):
-            put(versions.versions_dir(self.prefs, METAL), versions.LEDGER,
+            put(versions.versions_dir(self.prefs, METAL), library_files.LEDGER,
                 json.dumps({"active": 1, "versions": [{"n": 1, "name": named}]}))
             model, materials = self.materials()
             model._assets[model.find_asset_row_by_id(METAL)].license = "MIT"

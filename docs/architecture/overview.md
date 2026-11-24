@@ -269,7 +269,7 @@ the newer-library check, `actions/library.py`'s `prepare`, the models
 built (`setup`) or switched (`switch_all_models`), `$AMAZELIB`, the
 version update, then the shipped starters. Opening the pane, Reload
 Library, Apply on Preferences ▸ Library and closing Preferences on another
-library all call it, and `test_switch_rereads` checks the order for all four. What each caller does itself: Reload Library saves
+library all call it; its requirements are [open and switch](../requirements/open-and-switch.md). What each caller does itself: Reload Library saves
 first, opening the pane and closing Preferences apply the log and cache
 settings, and Apply asks `takes_library` before it writes anything.
 

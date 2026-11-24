@@ -74,12 +74,18 @@ def accepts(preferences, name: str) -> bool:
     return found.writable and bool(found.user())
 
 
-def takes_change(preferences, name: str) -> bool:
-    """`accepts`, and when it does not, the user is told why: no user picked, or read-only."""
+def takes_change(model, tell: bool = False) -> bool:
+    """The one write gate: rows of the library Prefs names, which `accepts`; `tell` says why not."""
+    preferences, name = model.preferences, model.DB_FILENAME
+    if getattr(model, "read_from", None) not in (None, key_of(preferences)):
+        debug.event("library", "change refused - the rows are from another library",
+                    store=name, dir=str(getattr(preferences, "dir", "") or ""))
+        return False    # the folder changed and the models have not switched yet
     if accepts(preferences, name):
         return True
-    debug.refuse(messages.NO_USER_PICKED if not document(preferences, name).user()
-                 else messages.CHANGE_REFUSED_READ_ONLY % library_files.section_label(name))
+    if tell:    # an edit the user made: the status line says whether no user is picked or it is read-only
+        debug.refuse(messages.NO_USER_PICKED if not document(preferences, name).user()
+                     else messages.CHANGE_REFUSED_READ_ONLY % library_files.section_label(name))
     return False
 
 
@@ -323,6 +329,11 @@ def preferences_of(key: str):
 def use(preferences) -> None:
     """A panel's models now use this library: it stays in `_in_use` until `release`."""
     _in_use.add(key_of(preferences))
+
+
+def unuse(key: str) -> None:
+    """No panel's models use the library at `key` any more; its databases stay until `release`."""
+    _in_use.discard(key)
 
 
 def held_libraries() -> list:

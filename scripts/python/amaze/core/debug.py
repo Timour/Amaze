@@ -207,20 +207,33 @@ def export_log(dest_dir: str) -> str:
         stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         name = "amaze-%s-%s-hou%s-%s.jsonl" % (
             hostos.machine_name(), hostos.os_tag(), version, stamp)
-        target = os.path.join(dest_dir, name)
-        suffix = 1
-        while os.path.exists(target):
-            target = os.path.join(
-                dest_dir, name[:-6] + "-%d.jsonl" % suffix)
-            suffix += 1
         os.makedirs(dest_dir, exist_ok=True)
-        shutil.copyfile(source, target)
+        target = _copy_beside_others(source, dest_dir, name)
     except OSError as exc:
         raise ExportRefused(
             "Could not write to %s: %s" % (dest_dir, exc))
     event("prefs", "log exported",
           to=target, bytes=os.path.getsize(target))
     return target
+
+
+def _copy_beside_others(source: str, dest_dir: str, name: str) -> str:
+    """Copy `source` into a new file `name` in `dest_dir`, numbered past any file there; its path."""
+    suffix = 0
+    while True:
+        target = os.path.join(dest_dir, name if not suffix else name[:-6] + "-%d.jsonl" % suffix)
+        try:
+            writing = open(target, "xb")    # made new, or it fails: never another file written over
+        except FileExistsError:
+            suffix += 1
+            continue
+        try:
+            with writing, open(source, "rb") as reading:
+                shutil.copyfileobj(reading, writing)
+        except OSError:
+            os.remove(target)    # a copy cut short is no export
+            raise
+        return target
 
 
 def _houdini_version_tag() -> str:
@@ -331,7 +344,10 @@ def _rotate() -> None:
 
 
 def _write(record: dict) -> None:
+    """Every record's one way into the log; dropped once the log is full and cannot be rotated."""
     global _seq
+    if _rotation_blocked:
+        return
     with _write_lock:
         _seq += 1
         record["n"] = _seq
@@ -434,7 +450,7 @@ def prefs_snapshot(preferences) -> None:
 
 def event(category: str, message: str, /, **data) -> None:
     """A structured entry, not written with Debug Mode off; **data may reuse category and message."""
-    if not _enabled or _rotation_blocked:
+    if not _enabled:
         return
     keep, count = _repeat_check("event:%s" % category, message, "")
     if not keep:
@@ -446,14 +462,14 @@ def event(category: str, message: str, /, **data) -> None:
 
 def ledger(category: str, message: str, /, **data) -> None:
     """An `event` never rate-limited: for a record that must appear once per occurrence."""
-    if not _enabled or _rotation_blocked:
+    if not _enabled:
         return
     _write({"cat": category, "msg": message, "data": data})
 
 
 def note(message: str, /, **data) -> None:
     """Print `Amaze: ...` and record it; never prints on Windows ▸r/platform-files"""
-    if _enabled and not _rotation_blocked:
+    if _enabled:
         _write({"cat": "note", "msg": message, "data": data})
     _print(message)
 
@@ -482,7 +498,7 @@ def set_ui(ui) -> None:
 def alert(message: str, /, key: str = "", **data) -> bool:
     """Show once per key, True if shown; pass a stable `key` ▸p/dialogs-interrupt ▸p/queue-time-needs"""
     stable = key or message
-    if _enabled and not _rotation_blocked:
+    if _enabled:
         _write({"cat": "alert", "msg": message,
                 "data": dict(data, key=stable,
                              repeat=stable in _alerted)})
@@ -506,7 +522,7 @@ class Damage(str):
 def refuse(reason: str, /, **data) -> bool:
     """Report that a user action failed, True when shown; repeats and never raises ▸p/refuse-vs-alert"""
     damage = isinstance(reason, Damage)
-    if _enabled and not _rotation_blocked:
+    if _enabled:
         _write({"cat": "refuse", "msg": str(reason),
                 "data": dict(data, damage=damage)})
     try:
@@ -531,7 +547,7 @@ def status(message: str, /) -> bool:
 
 def exception(where: str, exc: BaseException | None = None, /, **data) -> None:
     """A full traceback for a handled exception, Debug-Mode gated."""
-    if not _enabled or _rotation_blocked:
+    if not _enabled:
         return
     text = traceback.format_exc() if exc is None else "".join(
         traceback.format_exception(type(exc), exc, exc.__traceback__)
@@ -544,7 +560,7 @@ def exception(where: str, exc: BaseException | None = None, /, **data) -> None:
 @contextmanager
 def timed(category: str, message: str, /, **data):
     """Time a block and record the duration in `ms`, with `failed` set if it raised."""
-    if not _enabled or _rotation_blocked:
+    if not _enabled:
         yield
         return
     start = datetime.datetime.now()

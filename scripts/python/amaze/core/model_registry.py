@@ -45,7 +45,7 @@ def rebind(preferences, model) -> None:
         if old != key and any(held is model for held in models.values()):
             _models.pop(old)
             _models[key] = models
-            library_db._in_use.discard(old)    # no model uses the old key any more
+            library_db.unuse(old)    # no model uses the old key any more
             return
 
 

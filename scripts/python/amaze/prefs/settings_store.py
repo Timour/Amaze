@@ -13,6 +13,7 @@ FILENAME = "settings.json"    # machine-local: it holds the library's path and i
 
 READ, FRESH, UNREADABLE = "read", "fresh", "blind"    # parsed; missing; present but unreadable: no writes
 
+_GONE = object()    # a key a document does not hold
 COMBINE, FIELDS = "combine", "fields"    # a list: this pane's, then the other's; a table: field by field
 RULES = {    # merge of another pane's save per key; a key with no rule keeps ours if both changed it
     "users/*/file_folders": COMBINE,
@@ -42,34 +43,31 @@ def _deeper(path: tuple) -> bool:
                for parts in (pattern.split("/") for pattern in RULES))
 
 
-def _merge_by_rule(rule: str, ours, theirs, path: tuple = ()):
-    """This pane's value with the other pane's additions merged in; None when there are none."""
-    if rule == COMBINE:
-        if not (isinstance(ours, list) and isinstance(theirs, list)):
-            return None
-        extra = [value for value in theirs if value not in ours]
-        return (ours + extra) if extra else None
-    if rule == FIELDS:
-        if not (isinstance(ours, dict) and isinstance(theirs, dict)):
-            return None
-        merged, changed = dict(ours), False
-        for key, value in theirs.items():
-            if key not in merged:
-                merged[key], changed = value, True
-                continue
-            below = path + (str(key),)
-            named = _rule(below) or (FIELDS if _deeper(below) else "")
-            if named:
-                folded = _merge_by_rule(named, merged[key], value, below)
-            elif isinstance(merged[key], dict) and isinstance(value, dict):
-                missing = {f: v for f, v in value.items() if f not in merged[key]}
-                folded = {**merged[key], **missing} if missing else None
-            else:
-                folded = None
-            if folded is not None:
-                merged[key], changed = folded, True
-        return merged if changed else None
-    return None
+def _merged(ours, theirs, base, path: tuple = ()):
+    """Ours with what another save changed since `base` merged in, by the rule for `path`."""
+    if theirs == base or ours == theirs:
+        return ours
+    if ours == base or ours is _GONE:
+        return theirs    # only the other save changed it, or its edit is kept over our removal
+    if theirs is _GONE:
+        return ours
+    rule = _rule(path) or (FIELDS if _deeper(path) else "")
+    if rule == COMBINE and isinstance(ours, list) and isinstance(theirs, list):
+        return ours + [value for value in theirs if value not in ours]
+    if rule == FIELDS and isinstance(ours, dict) and isinstance(theirs, dict):
+        base = base if isinstance(base, dict) else {}
+        out = {}
+        for key in list(ours) + [key for key in theirs if key not in ours]:
+            value = _merged(ours.get(key, _GONE), theirs.get(key, _GONE), base.get(key, _GONE),
+                            path + (str(key),))
+            if value is not _GONE:
+                out[key] = value
+        return out
+    return ours    # both changed it: ours is kept
+
+
+class _NotRead(OSError):
+    """settings.json is there but could not be read now."""
 
 
 class SettingsFile:
@@ -106,12 +104,14 @@ class SettingsFile:
         return copy.deepcopy(self._table)
 
     def _changed_on_disk(self):
-        """What is on disk now, when another SettingsFile saved since our read; None otherwise."""
+        """What another save left on disk since our read: None for nothing, False if unreadable."""
         try:
             with open(self.path, "rb") as handle:
                 raw = handle.read()
-        except OSError:
+        except FileNotFoundError:
             return None
+        except OSError as exc:
+            raise _NotRead(exc) from exc    # held a moment: a write now drops its changes
         if raw == self._raw:
             return None
         try:
@@ -121,34 +121,25 @@ class SettingsFile:
         return loaded if isinstance(loaded, dict) else False
 
     def _merge(self, staged: dict, theirs: dict) -> None:
-        base = self._base
-        for key, value in theirs.items():
-            based = key in base
-            moved = not based or value != base[key]
-            if key not in staged:
-                if moved:
-                    staged[key] = value    # the other pane's addition, or its edit to a key we removed
-                continue
-            if staged[key] == value:
-                continue
-            named = _rule((key,)) or (FIELDS if _deeper((key,)) else "")
-            if named:
-                folded = _merge_by_rule(named, staged[key], value, (key,))
-                if folded is not None:
-                    staged[key] = folded
-                continue
-            if moved and based and staged[key] == base[key]:
-                staged[key] = value    # only the other pane changed it
-        for key in list(staged):
-            if key not in theirs and key in base and staged[key] == base[key]:
-                staged.pop(key)    # the other pane deleted a key we did not change
+        merged = _merged(dict(staged), theirs, self._base)
+        staged.clear()
+        staged.update(merged)
 
     def replace(self, document: dict, before_write=None) -> bool:
-        """Write a whole document, merged with another pane's save; False when not written."""
+        """Write a whole document, merged with another pane's or session's save; False if not."""
         if not self.writable:
             return False
+        with hostos.file_lock(self.path):    # another Houdini's save waits, or it would not be merged
+            return self._replace_locked(document, before_write)
+
+    def _replace_locked(self, document: dict, before_write) -> bool:
         staged = {str(key): value for key, value in document.items()}
-        theirs = self._changed_on_disk()
+        try:
+            theirs = self._changed_on_disk()
+        except _NotRead as exc:
+            debug.event("prefs", "settings.json not saved - it could not be read to merge",
+                        path=self.path, error=str(exc))
+            return False    # the next save tries again
         if theirs is False:
             self.state = UNREADABLE
             hostos.preserve_unreadable(self.path, why="settings")
