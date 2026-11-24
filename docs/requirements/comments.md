@@ -22,7 +22,7 @@ to the trash (LS-39). The levels and the rules for tests are in the [README](REA
 
 - CM-20 Wrong output: A comment is text, to-dos and pictures in the order written, and reads back the same in every session and on every computer.
 - CM-21 Wrong output: Each item names the user who wrote it; an unchanged or ticked item keeps its id and author.
-- CM-22 Wrong output: A comment with no text, to-do or picture left is removed, so its asset or file has no comment.
+- CM-22 Wrong output: A comment with no text, to-do or picture left is removed, so its asset or file has no comment; one that still holds an item only a newer Amaze knows is kept (LS-13).
 - CM-23 Wrong output: A pasted picture is copied into the library under a name of its own before the comment names it, so two pictures never share a file; the original is only read.
 - CM-24 Wrong output: A picture whose file is not here, still syncing or gone, shows its fallback text, and the picture the next time the comment opens after the file arrives.
 - CM-25 Wrong output: A file's comment stays with it when its location is renamed or relocated, when a location is added above or inside it, and when two ids of one folder become one, whose pages are joined.
