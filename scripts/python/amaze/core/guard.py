@@ -451,6 +451,15 @@ class Guard:
             found["bytes"] += total
         return found
 
+    def in_trash(self, relative: str) -> str:
+        """The newest trashed copy of the file at `relative`, inside the library; "" for none."""
+        clean = "/".join(part for part in str(relative).replace("\\", "/").split("/") if part)
+        for day in sorted(self.disk.names(self.path(TRASH_DIR)), reverse=True):
+            found = "%s/%s/%s" % (TRASH_DIR, day, clean)
+            if self.disk.exists(self._relative(found)):
+                return found
+        return ""
+
     def expire_trash(self) -> int:
         """Remove the trash's day folders older than TRASH_DAYS; how many were removed."""
         cutoff = (self._now() - datetime.timedelta(days=TRASH_DAYS)).strftime("%Y-%m-%d")

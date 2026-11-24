@@ -178,18 +178,17 @@ def _record(change, held, own: str, asset_id: str, row: dict) -> bool:
 
 
 def _save_one(key: str, held: documents.Document, also=None) -> documents.Saved:
-    """Save one database, its records' metadata and the caller's files, then `report_save`."""
-    records = _records(key, held)
-    if records is None or not held.dirty:
-        both = also
-    elif also is None:
-        both = records
-    else:
-        def both(change):
-            records(change)
-            also(change)    # last: a record the caller writes whole overrides the metadata above
+    """Save one database, its comments' pictures, its records' metadata and the caller's files."""
+    from amaze.core import notes
     _read_again(key, held)
-    saved = held.save(also=both)
+    steps = [step for step in (notes.pictures_follow(held) if held.dirty else None,
+                               _records(key, held) if held.dirty else None,
+                               also) if step is not None]    # last: a record written whole wins
+
+    def every(change):
+        for step in steps:
+            step(change)
+    saved = held.save(also=every if steps else None)
     report_save(saved, held.name)
     alert_database_problem(key, held)
     if saved.merged:    # only then does memory hold rows the models have not shown

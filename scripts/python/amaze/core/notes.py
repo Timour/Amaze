@@ -75,34 +75,23 @@ def _document(preferences, database: str, library: str = ""):
     return library_db.document(preferences, database)
 
 
-def notes(preferences) -> dict:
-    """Every page in this library, keyed by note_key()."""
-    found = {}
-    for section, database in DATABASE_OF.items():
-        for ident, page in _document(preferences, database).table(SECTION).items():
-            if isinstance(page, dict) and page.get("items"):
-                found[note_key(section, ident)] = {"items": list(page["items"])}
-    return found
+def _items(preferences, key: str) -> list:
+    """The items of one page that are tables; a page of any other shape has none."""
+    database, ident = _split(key)
+    page = _document(preferences, database).get(SECTION, ident) if database else None
+    items = page.get("items") if isinstance(page, dict) else None
+    return [item for item in items if isinstance(item, dict)] if isinstance(items, list) else []
 
 
 def note_for(preferences, key: str) -> dict:
     """One page, `{"items": [...]}` - {} when it has none."""
-    database, ident = _split(key)
-    if not database:
-        return {}
-    page = _document(preferences, database).get(SECTION, ident)
-    if not isinstance(page, dict) or not page.get("items"):
-        return {}
-    return {"items": [dict(item) for item in page["items"]]}
+    items = _items(preferences, key)
+    return {"items": [dict(item) for item in items]} if items else {}
 
 
 def has_note(preferences, key: str) -> bool:
     """Whether this asset or file has a comment; cheap enough per repaint."""
-    database, ident = _split(key)
-    if not database:
-        return False
-    page = _document(preferences, database).get(SECTION, ident)
-    return isinstance(page, dict) and bool(page.get("items"))
+    return bool(_items(preferences, key))
 
 
 def _stage(held, ident: str, items) -> bool:
@@ -155,6 +144,43 @@ def set_notes(preferences, pages: dict) -> bool:
         saved = library_db.save(preferences, database)
         taken = taken and (bool(saved) or saved.reason == "unchanged")
     return taken
+
+
+def _shown(held, ident: str, page) -> set:
+    """The library-relative path of each picture `page` shows; none outside the library."""
+    prefix = next((name for name, database in DATABASE_OF.items() if database == held.name), "")
+    found = set()
+    for item in normalise_items(page.get("items")) if isinstance(page, dict) else ():
+        path = image_path(held.guard.dir, note_key(prefix, ident), item["src"]) \
+            if item["t"] == "image" else ""
+        if path and held.guard.inside(path):
+            found.add(held.guard.inside(path))
+    return found
+
+
+def pictures_follow(held):
+    """`also` for a save: a picture no comment shows is trashed, one shown again comes back."""
+    if SECTION not in held.kind.sections:
+        return None
+    pages = [ident for ident in held.changed(SECTION)    # a deleted asset's folder is trashed whole
+             if held.name == library_files.FILES or held.get("assets", ident) is not None]
+    if not pages:
+        return None
+
+    def follow(change):
+        shown = set()
+        for ident, page in held.table(SECTION).items():
+            shown |= _shown(held, ident, page)
+        for ident in pages:
+            for relative in _shown(held, ident, held.was(SECTION, ident)) - shown:
+                if os.path.isfile(held.guard._relative(relative)):
+                    change.trash(relative)
+            for relative in _shown(held, ident, held.get(SECTION, ident)):
+                kept = "" if os.path.exists(held.guard._relative(relative)) \
+                    else held.guard.in_trash(relative)    # taken out, then put back by an undo
+                if kept:
+                    change.move(kept, relative)
+    return follow
 
 
 def copy_image_into_library(preferences, source: str, key: str) -> str:
