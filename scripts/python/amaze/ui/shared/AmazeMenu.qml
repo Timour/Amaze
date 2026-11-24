@@ -10,6 +10,7 @@ Menu {
 
     property string chosen: ""    // the picked row's key, handed on only once the menu has closed
     signal picked(string key)
+    signal finished()    // every close, after `picked`, a row picked or not
 
     function show(rows) {    // fills the menu and opens it at the cursor
         root.fill(root, rows)
@@ -43,6 +44,7 @@ Menu {
     onClosed: {    // the row runs after the menu is gone, so a window it opens is not under a closing menu
         if (root.chosen !== "")
             root.picked(root.chosen)
+        root.finished()
         root.destroy()
     }
 

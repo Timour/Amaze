@@ -32,6 +32,10 @@ TreeView {
         enabled: root.wheelFix
     }
 
+    function indexAt(x, y) {    // the row at (x, y) in the tree, an invalid index below the rows
+        const at = root.mapToItem(root.contentItem, x, y)
+        return root.index(root.cellAtPosition(at.x, at.y).y, 0)
+    }
     function open(index) {    // the folder at `index` and every folder above it
         expandToIndex(index)
         expand(rowAtIndex(index))

@@ -13,6 +13,14 @@ PaneRoot {
             menuMaker.createObject(root).show(rows)
     }
     function menuAt(x, y) {    // Qt's context menu request at (x, y), from the pane's widget: the row under it
+        if (sidebarArea.visible) {
+            const side = root.mapToItem(sidebar, x, y)
+            if (side.x >= 0 && side.y >= 0 && side.x <= sidebar.width && side.y <= sidebar.height) {
+                sidebar.forceActiveFocus(Qt.MouseFocusReason)
+                root.openMenu(SharedState.sidebarMenu(sidebar.indexAt(side.x, side.y)))
+                return
+            }
+        }
         const shown = grid.active ? grid : list
         const view = shown.item
         if (!view || !shown.visible)
@@ -27,6 +35,7 @@ PaneRoot {
         id: menuMaker
         AmazeMenu {
             onPicked: key => SharedState.pickMenu(key)
+            onFinished: SharedState.menuClosed()
         }
     }
 

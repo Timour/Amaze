@@ -158,6 +158,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         self._rows_followed = None
         self._grid_anchor = QtCore.QPersistentModelIndex()    # where a Shift click's span starts
         self._menu = None    # the open menu's engine, which runs its picked row
+        self._after_menu = None    # what the open menu puts back once it has closed, picked or not
         self.tile = drawn_tile()
         self.table = amazetheme.drawn_list()
         tabs = amazetheme.drawn_tabs()
@@ -406,6 +407,29 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         current = index if index.isValid() and index in indexes else (indexes[0] if indexes else None)
         self._menu = menus.Menu(context, entries, indexes, current, host=self)
         return self._menu.rows
+
+    @QtCore.Slot(QtCore.QModelIndex, result="QVariantList")
+    def sidebarMenu(self, index: QtCore.QModelIndex) -> list:
+        """The sidebar's right-click menu on row `index`; the row shown comes back once it closes."""
+        context = self.pane.active_section()
+        entries = getattr(context, "SIDEBAR_MENU", ()) if context is not None else ()
+        if not entries or self._sidebar_selection is None:
+            return []
+        if index.isValid() and not self._sidebar_selection.isSelected(index):
+            self.pane.sidebar.highlight(index)    # as Qt's list moves its highlight on a right press
+        indexes = context.sidebar_selection()
+        current = index if index.isValid() and index in indexes else (indexes[0] if indexes else None)
+        self._menu = menus.Menu(context, entries, indexes, current, host=self)
+        self._after_menu = context.reselect_sidebar_row    # the old panel's own put-back
+        return self._menu.rows
+
+    @QtCore.Slot()
+    def menuClosed(self) -> None:
+        """The open menu closed, after its pick if any: what it moved is put back."""
+        after, self._after_menu = self._after_menu, None
+        self._menu = None
+        if after is not None:
+            after()
 
     @QtCore.Slot(str)
     def pickMenu(self, key: str) -> None:
