@@ -169,23 +169,23 @@ _ABANDONED: list = []    # killed converters still running after the grace; `_co
 _ABANDONED_GUARD = threading.Lock()    # converters run on several worker threads
 
 
-def _spawn(program: str, args: list, errors):
+def _spawn(program: str, args: list, errors, output=subprocess.DEVNULL):
     """Start a converter with its stderr in `errors`; posix_spawn on macOS. ▸r/qprocess-sigchld"""
     live = QtCore.QProcessEnvironment.systemEnvironment()    # os.environ misses what Houdini set later
     return subprocess.Popen(
-        [program] + list(args), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+        [program] + list(args), stdin=subprocess.DEVNULL, stdout=output,
         stderr=errors, env={key: live.value(key) for key in live.keys()},
         close_fds=not hostos.is_macos(),    # False is what makes Python use posix_spawn there
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))    # Windows: no console
 
 
 def _run_process(program: str, args: list, timeout_ms: int = CONVERT_TIMEOUT_MS,
-                 cancelled=None) -> tuple:
+                 cancelled=None, output=subprocess.DEVNULL) -> tuple:
     """(True, "") or (False, why): CANCELLED, one of UNFINISHED, or `exit N: <stderr>`."""
     _collect_abandoned()
     with tempfile.TemporaryFile() as errors:    # a file, so a converter that writes much never blocks on a pipe
         try:
-            process = _spawn(program, args, errors)
+            process = _spawn(program, args, errors, output)
         except OSError as exc:
             debug.event("convert", "a converter did not start", program=program, error=str(exc))
             return False, FAILED_TO_START
@@ -206,12 +206,16 @@ def _run_process(program: str, args: list, timeout_ms: int = CONVERT_TIMEOUT_MS,
         if code == 0:
             return True, ""
         errors.seek(0)
-        raw = errors.read()    # iconvert's stderr is the ANSI codepage on Windows ▸r/conversion-internals
-    try:
-        stderr = raw.decode(locale.getpreferredencoding(False)).strip()
-    except (UnicodeDecodeError, LookupError):
-        stderr = raw.decode("utf-8", "replace").strip()
+        stderr = text_of(errors.read()).strip()
     return False, f"exit {code}: {stderr}"
+
+
+def text_of(raw: bytes) -> str:
+    """A Houdini tool's output as text: the ANSI codepage on Windows ▸r/conversion-internals"""
+    try:
+        return raw.decode(locale.getpreferredencoding(False))
+    except (UnicodeDecodeError, LookupError):
+        return raw.decode("utf-8", "replace")
 
 
 def _stop(process) -> bool:

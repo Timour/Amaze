@@ -180,7 +180,7 @@ def convert(node, target, swap=False) -> None:
         return
     from amaze.core import renderers
     from amaze.render.material_conversion import engine
-    from amaze.render.material_conversion.report import ConversionReport
+    from amaze.render.material_conversion.report import ConversionReport, summary
     ui = getattr(hou, "ui", None)
     chosen = _chosen(node)
     word = renderers.get(target).engine    # the menu item's name, Karma, where the library label shows MaterialX
@@ -218,10 +218,9 @@ def convert(node, target, swap=False) -> None:
             HoudiniUI.status(messages.NODE_SWAPPED % (name, word) if swap
                                   else messages.NODE_CONVERTED % (name, word))
     else:
-        shown = engine.label_of(sources)
         lines = skipped + [line for _made, report in reports for line in report.summary_lines()]
         ui.displayMessage(
-            messages.CONVERSION_SUMMARY % (made_count, len(chosen), shown, word),
+            summary(made_count, len(chosen), sources, word),
             details="\n".join(lines), title=messages.TITLE_AMAZE,
             severity=(hou.severityType.Message if made_count == len(chosen)
                       else hou.severityType.Warning))

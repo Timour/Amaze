@@ -1,5 +1,14 @@
 """What one conversion did, for an honest summary rather than a bare pass or fail."""
 
+from amaze import messages
+from amaze.core import renderers
+
+
+def summary(made: int, total: int, sources, target: str) -> str:
+    """The one message after a batch: `made` of `total` materials of `sources` became `target`."""
+    shown = " and ".join(renderers.label(each.key) for each in renderers.ALL if each.key in sources)
+    return messages.CONVERSION_SUMMARY % (made, total, shown, target)
+
 
 class ConversionReport:
     """One conversion's skipped and approximated inputs, said instead of guessed."""
