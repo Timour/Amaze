@@ -242,22 +242,23 @@ def copy_member(bundle, member, handle) -> None:
         shutil.copyfileobj(source, handle)
 
 
-def read_manifest(path: str) -> dict:
-    """The package's manifest, opening the file once."""
+def open_bundle(path: str):
+    """The one way a package or add-on file is opened; PackageError when it is no readable zip."""
     try:
-        with zipfile.ZipFile(path) as bundle:
-            return manifest_from(bundle, path)
+        return zipfile.ZipFile(path)
     except (OSError, zipfile.BadZipFile) as exc:
         raise PackageError("cannot read %s: %s" % (path, exc)) from None
+
+
+def read_manifest(path: str) -> dict:
+    """The package's manifest, opening the file once."""
+    with open_bundle(path) as bundle:
+        return manifest_from(bundle, path)
 
 
 def import_package(models, prefs, path: str, restore: bool = False) -> dict:
     """Import a package with new ids, `restore` replacing curated presets; PackageError if incomplete."""
-    try:
-        bundle = zipfile.ZipFile(path)
-    except (OSError, zipfile.BadZipFile) as exc:
-        raise PackageError("cannot read %s: %s" % (path, exc)) from None
-    with bundle:    # one open file for the manifest, the check and the import
+    with open_bundle(path) as bundle:    # one open file for the manifest, the check and the import
         manifest = manifest_from(bundle, path)
         if manifest.get("kind"):
             raise PackageError("%s is an add-on, not library assets"
@@ -506,5 +507,5 @@ def _verify(bundle, manifest) -> list:
 
 def verify_package(path: str) -> list:
     """Missing members, one sentence each, opening the file once; [] means none is missing."""
-    with zipfile.ZipFile(path) as bundle:
+    with open_bundle(path) as bundle:
         return _verify(bundle, manifest_from(bundle, path))

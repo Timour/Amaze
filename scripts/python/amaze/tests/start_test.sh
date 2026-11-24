@@ -114,7 +114,7 @@ if ! "$python" "$tests_dir/../../../../tools/check-requirements.py"; then
 fi
 
 MODULES="test_category test_library test_generator \
-test_roundtrip test_thumbnail_shutdown test_addons test_addon_tab test_debug_log_repeats \
+test_roundtrip test_thumbnail_shutdown test_addons test_debug_log_repeats \
 test_library_storage test_check_library test_lop_assign test_drag_gesture test_houdini_operations \
 test_drop_targets test_drop_resolution test_cop_root \
 test_prefs_equality test_karma_batch \

@@ -111,6 +111,38 @@ class Disk:
         shutil.rmtree(path)
 
 
+ASIDE = ".replacing"    # beside a folder being swapped: the old one, until the new one is in
+
+
+def swap_folder(staged: str, target: str, disk: Disk = None) -> None:
+    """The one folder swap: `staged` takes `target`'s place; the old one is removed once it is in."""
+    disk = disk or Disk()
+    aside = target + ASIDE
+    finish_swap(target, disk)
+    if disk.exists(target):
+        disk.move(target, aside)
+    try:
+        disk.move(staged, target)
+    except OSError:
+        if disk.exists(aside):
+            disk.move(aside, target)
+        raise
+    if disk.exists(aside):
+        disk.remove_folder(aside)
+
+
+def finish_swap(target: str, disk: Disk = None) -> None:
+    """Put right a swap a crash cut off: the old folder back if none took its place, else removed."""
+    disk = disk or Disk()
+    aside = target + ASIDE
+    if not disk.exists(aside):
+        return
+    if disk.exists(target):
+        disk.remove_folder(aside)
+    else:
+        disk.move(aside, target)
+
+
 class Ticket:
     """The record of one read: a database's name and exactly the bytes it held, None when absent."""
 

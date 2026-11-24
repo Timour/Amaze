@@ -194,6 +194,7 @@ ADDON_VERSION = 'version %s'
 ADDON_FIELD_NOT_TEXT = '%s is not text'
 ADDON_NODE_FIELD_NOT_TEXT = '%s: %s is not text'
 ADDON_TOO_LARGE = 'it unpacks to %s, more than the %s an add-on may hold'
+ADDON_FOLDER_TAKEN = "%s was not installed: its folder %s holds the add-on %s, which it may not replace."
 
 ADDON_AUTHOR = 'author: %s'
 
