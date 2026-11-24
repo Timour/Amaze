@@ -48,6 +48,7 @@ class Categories(sidebar_model.SidebarModel):
     def __init__(self, preferences: prefs.Prefs) -> None:
         super().__init__()
         self.preferences = preferences  # required, never defaulted ▸p/delete-both-duplicates
+        self.read_from = library_db.key_of(preferences)    # the library these rows came from
         self._categories = stored_order(self._doc())
         self._seen = list(self._categories)    # the database's order as last read or saved
         self._colour_table = self._read_colours()
@@ -144,6 +145,7 @@ class Categories(sidebar_model.SidebarModel):
         # Same whole-row-set replacement as MaterialLibrary.switch_model_data.
         self.beginResetModel()
         try:
+            self.read_from = library_db.key_of(self.preferences)
             self._categories = stored_order(self._doc())
             self._seen = list(self._categories)
             self._colour_table = self._read_colours()
@@ -352,7 +354,7 @@ class Categories(sidebar_model.SidebarModel):
 
     def save(self) -> bool:
         """Write the names, order and colours to the database; False when it accepts no change now."""
-        if not library_db.accepts(self.preferences, self.DB_FILENAME):
+        if not library_db.takes_changes(self):
             return False
         held = self._doc()
         with library_db.library_for(self.preferences).holding():

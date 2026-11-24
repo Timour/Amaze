@@ -74,6 +74,16 @@ def accepts(preferences, name: str) -> bool:
     return found.writable and bool(found.user())
 
 
+def takes_changes(model) -> bool:
+    """Whether a model may write: its rows are of the library its Prefs names, which takes changes."""
+    preferences = model.preferences
+    if getattr(model, "read_from", None) not in (None, key_of(preferences)):
+        debug.event("library", "change refused - the rows are from another library",
+                    store=model.DB_FILENAME, dir=str(getattr(preferences, "dir", "") or ""))
+        return False    # the folder changed and the models have not switched yet
+    return accepts(preferences, model.DB_FILENAME)
+
+
 def _read_again(key: str, held: documents.Document) -> None:
     """Read a database that takes no change once more: a file in use a moment ago may open now."""
     if held.writable:

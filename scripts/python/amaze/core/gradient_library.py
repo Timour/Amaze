@@ -117,7 +117,7 @@ class GradientLibrary(library.AssetLibrary):
         """Whether the database accepts no change now."""
         if self.preferences is None:
             return False
-        return not library_db.accepts(self.preferences, self.DB_FILENAME)
+        return not library_db.takes_changes(self)
 
     _SEED_MARK = "gradient_seed_v1"  # in the library's marks; bump when the seed contents change
 

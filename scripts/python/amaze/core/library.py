@@ -146,7 +146,7 @@ class AssetLibrary(grid_engine.GridEngine,
     def _read_rows(self) -> list:
         """One record per row in the database; an unreadable row is skipped."""
         found = []
-        self._rows_library_key = library_db.key_of(self.preferences)    # the library these rows came from
+        self.read_from = library_db.key_of(self.preferences)    # the library these rows came from
         for key, row in self._doc().table(ROWS).items():
             if not isinstance(row, dict):
                 continue
@@ -424,7 +424,7 @@ class AssetLibrary(grid_engine.GridEngine,
     def set_tile_icons(self, rows, spec) -> int:
         """Give every row in `rows` the icon `spec` in one store write; returns how many failed."""
         valid = [row for row in rows if 0 <= row < len(self._assets)]
-        if not valid:
+        if not valid or not library_db.takes_changes(self):
             return len(rows)
         chosen = {row: tile_icons.choice_for(self, row, spec) for row in valid}
         held = tile_icons.set_overrides(  # icons are stored only in the database, so a clear here deletes the icon
@@ -575,12 +575,8 @@ class AssetLibrary(grid_engine.GridEngine,
 
     def save(self) -> bool:
         """Stage the records in the database for the timer to save; False when it accepts no change."""
-        if not library_db.accepts(self.preferences, self.DB_FILENAME):
+        if not library_db.takes_changes(self):
             return False
-        if getattr(self, "_rows_library_key", None) not in (None, library_db.key_of(self.preferences)):
-            debug.event("library", "save skipped - the rows are from another library",
-                        store=self.DB_FILENAME, dir=str(self.preferences.dir))
-            return False    # the folder changed without a switch: these rows are from another library
         held = self._doc()
         with library_db.library_for(self.preferences).holding():
             self._stage_rows(held)
@@ -672,7 +668,7 @@ class AssetLibrary(grid_engine.GridEngine,
 
     def add_saved(self, record, staged: list) -> bool:
         """Save a new record and the files its save staged as ONE change; False: neither was saved."""
-        if not library_db.accepts(self.preferences, self.DB_FILENAME):
+        if not library_db.takes_changes(self):
             asset_record.discard(staged)
             return False
         self._append_record(record)
@@ -871,7 +867,7 @@ class AssetLibrary(grid_engine.GridEngine,
                  if 0 <= row < len(self._assets)]
         if not going:
             return 0
-        if not library_db.accepts(self.preferences, self.DB_FILENAME):
+        if not library_db.takes_changes(self):
             self._report_refused_delete(going[-1][1])
             return 0
         trash, taken = self._unlist_for_delete(going)
@@ -1032,6 +1028,8 @@ class AssetLibrary(grid_engine.GridEngine,
 
     def toggle_favs(self, rows) -> None:
         """Flip the star on every row in `rows` in ONE store write; rows outside the model are skipped."""
+        if not library_db.takes_changes(self):
+            return
         wanted = {}
         flipped = []
         for row in rows:

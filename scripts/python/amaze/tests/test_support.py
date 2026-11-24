@@ -580,11 +580,10 @@ def with_fixture_location(library, folder) -> None:
     locations.forget()
 
 
-def fixture_panel(testcase, render_geometry=False):
-    """A real AmazePanel over a private fixture library, isolation asserted. ▸p/harness-isolation"""
-    from amaze.panel import panel as panel_mod       # reloads hostos
+def _fixture_world(testcase, render_geometry: bool) -> str:
+    """Settings, library, File folder and scene of a fixture pane, network off; the scene folder."""
     from amaze.helpers import hostos as hostos_mod
-    from amaze.core import library_db as library_db_mod, matx_library, matx_sources
+    from amaze.core import matx_sources
     from amaze.actions import files as files_actions
 
     if not render_geometry:    # the fixture's three geometry files cost ~1.2 s a render, every panel, every folder shown
@@ -625,19 +624,33 @@ def fixture_panel(testcase, render_geometry=False):
     real_config_root = hostos_mod.config_root
     hostos_mod.config_root = lambda: config
     testcase.addCleanup(setattr, hostos_mod, "config_root", real_config_root)
-
     reset_database_singletons()
+    return scene
+
+
+def fixture_panel(testcase, render_geometry=False):
+    """A real AmazePanel over a private fixture library, isolation asserted. ▸p/harness-isolation"""
+    from amaze.panel import panel as panel_mod       # reloads hostos
+    from amaze.core import library_db as library_db_mod
+
+    scene = _fixture_world(testcase, render_geometry)
     panel = panel_mod.AmazePanel()
     library_db_mod.drop_scheduler()    # a test reads what it changed at once, never after a timer
     testcase.addCleanup(dispose_panel, panel)
     testcase.addCleanup(stop_panel_workers, panel)    # after deleteLater, so it runs first: hython never emits aboutToQuit
+    _isolated(panel.pane, scene)
+    return panel
 
-    checked = [("settings", panel.pane.prefs.path),
-               ("library", panel.pane.prefs.dir),
+
+def _isolated(pane, scene: str) -> None:
+    """Raise unless every folder a fixture pane uses is in temp and its library opened."""
+    from amaze.core import matx_library
+    checked = [("settings", pane.prefs.path),
+               ("library", pane.prefs.dir),
                ("catalogue cache", matx_library.catalogue_cache()),
                ("preview cache", matx_library.preview_cache()),
                ("scene folder", scene)]
-    for folder in panel.pane.prefs.file_folders or ():    # NAMED field, not a defaulting getattr - a default would narrow this check silently
+    for folder in pane.prefs.file_folders or ():    # NAMED field, not a defaulting getattr - a default would narrow this check silently
         checked.append(("file_folders", str(folder)))
     for label, path in checked:
         if not os.path.realpath(path).startswith(
@@ -646,13 +659,41 @@ def fixture_panel(testcase, render_geometry=False):
                 "fixture panel isolation failed - %s is %s, outside the "
                 "temp directory" % (label, path)
             )
-    if panel.pane.material_model is None:
+    if pane.material_model is None:
         raise RuntimeError(
             "the fixture panel did not load its library, so setup() never "
             "ran - this fixture is not building the panel tests need"
         )
-    _keep_seeded(panel.pane.prefs.dir)
-    return panel
+    _keep_seeded(pane.prefs.dir)
+
+
+def fixture_pane(testcase, render_geometry=False):
+    """The pane engine with no window over a private fixture library; `pane.ui.asked`: its asks."""
+    from PySide6 import QtGui
+    from amaze.core import library_db
+    from amaze.pane import asks, pane as pane_mod
+
+    class Host(asks.Asks):
+        """The window a pane engine is shown in, here none: each Preferences ask is recorded."""
+
+        def __init__(self) -> None:
+            self.asked = []
+
+        def show_prefs(self, page: str = "") -> None:
+            self.asked.append(page)
+
+        @staticmethod
+        def os_file_icon(path: str, side: int):
+            return QtGui.QImage()
+
+    scene = _fixture_world(testcase, render_geometry)
+    pane = pane_mod.Pane(Host())
+    testcase.addCleanup(dispose_panel, pane)
+    testcase.addCleanup(stop_panel_workers, types.SimpleNamespace(pane=pane))
+    pane.library.start()
+    library_db.drop_scheduler()    # a test reads what it changed at once, never after a timer
+    _isolated(pane, scene)
+    return pane
 
 
 def reopened_panel(testcase):
