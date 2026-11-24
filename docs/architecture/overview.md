@@ -336,13 +336,14 @@ on the wrong tile.
   from disk on demand. Its Preferences row was removed 2026-11-23: the QML
   pane keeps no decoded picture.
 - **Storage rule (no exceptions):** a LIBRARY-OWNED asset's thumbnail is part
-  of the library — `<library>/img/<id>.png`, copied with it to other
+  of the library — `<id>.png` in the asset's own folder, copied with it to other
   machines (Material, Node; an online import's preview becomes its
   library thumbnail). A thumbnail for content the library only POINTS
   AT (the File section's folders) is a regenerable local artifact — it
   goes in the OS-Integration Engine's per-OS cache, never synced. A
   CAPTURE, any tile's, is hand-framed and cannot be regenerated, so it
-  is stored in the library too: `<library>/captures` (`core/captures.py`).
+  is stored in the library too: as the asset's `<id>.png`, or a File row's
+  `files/<40 hex>.png` (`core/captures.py`).
   Color/Code paint their pictures in RAM; a capture is the one picture
   they store.
 
@@ -395,7 +396,7 @@ adapter, and return the uniform one if no adapter does better.
 
 ### 4c. The **Database Engine**: guard, documents, library_db {#o/keyed-store}
 
-Library format 2.0 (library version 4, `Current Library Format: 2.0`) keeps six
+Library format 3.0 (library version 5, `Current Library Format: 3.0`) keeps six
 databases at the library root, each a JSON document of named sections,
 every section a table keyed by id or key:
 
@@ -422,8 +423,8 @@ change of several files is being applied.
 - **`core/library_db.py`** keeps one `Library` per open library and
   keeps a pending save until the panel's timer writes it.
 - **`core/library_conversion.py`** is the only code that knows format 3's
-  files: Check Library uses it to recognise their leftovers, and Package
-  Import to read an old package's builder.
+  files: Package Import uses it to read an old package's builder. A format 3
+  file left in a library is an unknown file to Check Library.
 
 - **A location is an id, its path one property**: `files.json` ▸
   `paths` holds id → path, and every per-file key is
@@ -701,10 +702,10 @@ model (§5, the one model set). It is in `core/grid_engine.py`.
 
 | Term | What it is | In code |
 |---|---|---|
-| **Library** | The on-disk folder holding every section's data: the six databases (§4c) + each asset section's folder (`materials/`, `nodes/`) + `backup/`, `trash/` + `matX/` (downloaded MaterialX). Path in `settings.json`. | — |
+| **Library** | The on-disk folder holding every section's data: the six databases (§4c) + each section's folder (`materials/`, `nodes/`, `code/`, `colors/`), one folder per asset in it + `files/`, `backup/`, `trash/` + `matX/` (online downloads). Path in `settings.json`. | — |
 | **Library Model** | The Qt model over a **Library**'s JSON. The shared base class is `AssetLibrary` (records, categories, tags, tile icons, saves, deletes, the connector's guards — nothing renderer-specific); the four section models subclass it over their own JSON. `MaterialLibrary` adds what a MATERIAL is: its USD and shader-type labels, and the repaint when a render finishes; saving, updating, converting, loading and rendering one are `actions/materials.py`'s. Colors uses the same base class with its palette payload (`colors`/`ramp`) stored on the record. | `core/library.py` → `AssetLibrary`, `MaterialLibrary`; `cop_library.py`; `code_library.py`; `gradient_library.py` |
 | **Material** | One asset record (id, name, categories, tags, renderer, date, …). **NOT a favourite and NOT a tile icon**: those are the database's `favorites` (per user) and `icons` sections. **One category per asset** — multi-category was removed 2026-07-27; tags are the many-to-many axis. | `core/material.py` |
-| **Tile Icon** | A chosen Feather symbol on a colour, for assets with nothing to render; the section's database ▸ `icons` is the only store, keyed by asset id (a file key in `files.json`). Composed to `<id>_icon.png` BESIDE the render, never over it — except Color, which composes in memory. | `core/tile_icons.py` |
+| **Tile Icon** | A chosen Feather symbol on a colour, for assets with nothing to render; the section's database ▸ `icons` is the only store, keyed by asset id (a file key in `files.json`). Composed in memory for every section (`tile_icons.compose_for`); no file is written. | `core/tile_icons.py` |
 | **Comment** | A page of text + to-dos per asset (the Comments pane, toggled from the toolbar). Stored in the section's database ▸ `comments`, keyed by asset id or file key; a comment item belongs to its author. WHICH asset the pane shows is decided by the context — `Section.comment_subject(index)`, one of the four area hooks — because only the context can map an index through its proxy and read its roles; the panel finds the live current index and delegates. `takes_comments` is the separate, selection-free half that the toolbar chip reads. EVERY section takes notes, Color included - a gradient carries a full-uuid4 identity in `id` (from creation, or from the schema-8 migration that creates one for any row loaded without it — a construction-time backfill did this until 2026-08-20; the field was `uid` before 2026-08-09 and the VALUE never changed, so existing keys still resolve), keyed `gradient:<value>`. | `core/notes.py`, `panel/notes_panel.py` |
 | **Category Colour** | A colour on a category, painted under every tile in it and down its sidebar row. Stored beside the category names in the same JSON, so the grid reads it from the connector's shared data dict. | `core/category.py` → `Categories.set_color` |
 | **Sidebar Model** | What every Sidebar list is: All on row 0, the top rows, and the rows under a row, each row keyed by its parent row and its key. It answers the key role, `index_of(key)` and the reorder calls; the Categories Model, the Folders Model and the online source list are built on it. | `core/sidebar_model.py` → `SidebarModel` |
@@ -725,9 +726,10 @@ model (§5, the one model set). It is in `core/grid_engine.py`.
 ### The stamp every library carries
 
 `DataBase.json` ▸ `policy` ▸ `library` ▸ `version` (`library_policy`)
-decides what this build may do: a library with a newer version opens read-only
-and directs the user to the updater. There is no schema chain: a library from
-before 2.0 has no `DataBase.json` and is not opened, and
+decides what this build may do: a library with a newer version is not opened,
+and the update is offered. A 2.0 library (version 4) is converted to 3.0 once,
+on the user's yes, before this Amaze opens it (`core/layout_conversion.py`).
+A library from before 2.0 has no `DataBase.json` and is not opened, and
 `prefs.create_library` writes the current version into a new library.
 
 ---
@@ -752,7 +754,7 @@ copied per dialog.
 | Dialog | Section | In code |
 |---|---|---|
 | **Edit Info Dialog** | Materials | `edit_material_info` / `details_dialog` |
-| **Code Dialog** | Code | `dialogs/code_dialog.py` ✓ AssetDialog — typing a snippet (New Snippet, Edit), its versions behind the band's **+**; Apply saves and stays open. Houdini's Fixed face and its syntax colours (`helpers/vex_syntax.py`); a node's code saves through the Save Dialog |
+| **Code Dialog** | Code | `dialogs/code_dialog.py` ✓ AssetDialog — typing a snippet (New Snippet, Edit); Apply saves and stays open. Houdini's Fixed face and its syntax colours (`helpers/vex_syntax.py`); a node's code saves through the Save Dialog |
 | **Save Dialog** | every section a scene node saves into | `dialogs/save_dialog.py` ✓ AssetDialog — D09: Section, Name, Category, Language, Tags. The Section row is guessed from the node and changeable; `dialogs/gradient_dialog.py` keeps only `CategoryDialog` |
 | **Preferences** | — (app-wide) | `dialogs/prefs_window.py` — Houdini's own kind of QML Preferences window: Houdini's prefs state on Amaze's Prefs, its `houdini.prefs` rows, Apply / Accept / Cancel; its pages are `ui/prefs/*.qml` (Library, Render, UI, Add-On, About), their rows in Houdini's `Group`s. A library and its user are picked there and opened on Apply; buttons act at once |
 | **Icon Dialog** | any tile | `dialogs/icon_dialog.py` ✓ AssetDialog (non-modal) |
@@ -803,16 +805,16 @@ miss (red X); a drop that opens a menu shows no icon.
 
 ## Storage format
 
-An asset is two files in its section's folder: `<id>.mat`, a
-Houdini-native node archive (via `saveItemsToFile`), and `<id>.json`,
-its `metadata` and its `builder` (library format 4, 2026-11-16).
+An asset is two files in its own folder, `<section>/<name>__<id>/`:
+`<id>.mat`, a Houdini-native node archive (via `saveItemsToFile`), and
+`<id>.json`, its `metadata` and its `builder` (library format 3.0).
 Recoverable with vanilla Houdini without the plugin, but not portable
 outside Houdini (not `.mtlx`/`.usda`).
 
 **Format 3 wrote two more**, `.interface` (Python from `asCode()`) and
 `.builder.json`, and kept the metadata in `.stamp.json`. Only
 `core/library_conversion.py` reads them, from a package in an older
-format; such files left beside a 2.0 asset are leftovers to Check Library.
+format; such files left in a library are unknown files to Check Library.
 The `.interface` is READ for its first `createNode("<type>"` there, never
 executed. Nothing else reads an old format, and a test searches the code to
 keep it so.
@@ -826,36 +828,28 @@ interface and values - in a form that is parsed. Measured on a real
 548-asset library: with sidecars present, every importable asset
 reproduces byte-identically without executing a line.
 
-### Where version files live — settled 2026-08-08, before Versions is built
+### Where version files live
 
-    materials/versions/<asset id>/<writer>-<n>.mat
-    materials/versions/<asset id>/<writer>-<n>.json    (the builder alone)
-    materials/versions/<asset id>/<writer>-<n>.png
-    nodes/versions/<asset id>/...                       (the same)
-    code/versions/<snippet id>/<writer>-<n>.txt
+    materials/<name>__<id>/versions/versions.json
+    materials/<name>__<id>/versions/<id>_<n>.mat
+    materials/<name>__<id>/versions/<id>_<n>.json    (the builder alone)
+    materials/<name>__<id>/versions/<id>_<n>.png
 
-A directory per asset id, and a file trio per version named for its
-writer and an increasing number. A snippet's version is one text file:
-code goes through the same module, `core/versions.py` taking the section,
-with the same `versions.json`. Check Library reads every folder,
-`code/` and both `versions/` trees included, and
-`core/library_files.py` names a version file as one whose stem is
-`<writer>-<n>` or `<n>` with a version suffix, in a folder named for an
-alphanumeric id. Only the unlisted asset files of `materials/`, `nodes/`,
-`mat/` while it is there are counted against the lists; a version file is a known
-name and never one of them. Settled ahead of the Versions build so
-that the classifier could be written against a shape that is known
-rather than guessed: without a decided name, the first check after
-Versions shipped would have counted every version file as unlisted.
+Only materials keep versions, in `versions/` inside the material's own
+folder, so a rename or a delete moves them with it. Every file of a
+version is named `<id>_<n>` (`versions.file_stem`): the id the folder is
+named by and an increasing number. `core/library_files.py` names a
+version file as one with that stem and a version suffix. Check Library
+reads every asset folder, `versions/` included, and reports a version
+file its `versions.json` does not list as an orphan. Snippets and node
+setups keep no versions; the 3.0 conversion moves their old version
+stores to the trash.
 
-`<writer>` is the artist's own **Library User** — the `library_user`
-preference — never a machine or account name read from the system.
-
-`library_user` is ONE identity: the name in version file names and
-the key every per-user record is stored under. The removed `version_author`
-is COPIED into it on load, so existing `<name>-<n>` stems still match their
-writer. What prevents two writers using one filename is not the name — it is
-skipping any stem already on disk before writing.
+A version's `author` in `versions.json` is the name of the artist's
+**Library User** (the `library_user` preference) when it was written,
+never a machine or account name read from the system. What prevents two
+writers using one filename is skipping any number already on disk before
+writing (`versions.create_version`).
 
 ### The library's policy — `DataBase.json` ▸ `policy`
 
@@ -866,7 +860,7 @@ every caller calls. Preferences has a control for it
 (`_cbx_allow_overwrite`), and the value is stored in the library, so
 two machines using one library have the same value. A policy that cannot be read
 returns False (`library_settings.allow_overwrite`). `library` holds the
-library's version (4, shown as `v2.0`).
+library's version (5, shown as `3.0`).
 
 ### Housekeeping semantics (settled 2026-07-31)
 
@@ -890,14 +884,15 @@ contracts other code and the docs rely on:
   what it will move to the trash. A fix acts only on what the check showed,
   and nothing is trashed while a part could not be checked
   (`holding_back`). A 2.0 library is not checked until it is converted.
-- **Fix Safe changes only what Amaze made**: it recovers unlisted asset
+- **Fix Safe loses nothing and trashes nothing**: it recovers unlisted asset
   folders from their own records, puts rows with no category in
-  Uncategorized, sets aside locations that are not there with their
-  favorites, and trashes scratch past an hour (`check_library.SCRATCH_MIN_AGE`)
-  and a sync copy whose bytes equal the original's. **Fix All** also removes
-  the named rows whose files are gone and trashes the named unknown files
-  and orphan versions. A sync copy that differs, or whose original is
-  absent, is listed and kept.
+  Uncategorized, and sets aside locations that are not there with their
+  favorites. **Fix All** also mends the databases that cannot be read,
+  removes the named rows whose files are gone, and trashes Amaze's own
+  leftovers (scratch past an hour, `check_library.SCRATCH_MIN_AGE`, and a sync
+  copy whose bytes equal the original's) and the named unknown files and
+  orphan versions. A sync copy that differs, or whose original is absent, is
+  listed and kept.
 - **Stars are per user IN THE LIBRARY**: each section's database holds
   `favorites` {user: {id: true}}, `files.json` the File stars; a user writes
   only their own (`locations.set_favourites`).
@@ -913,16 +908,17 @@ contracts other code and the docs rely on:
 **`core/library_files.py` is the only module that defines it**: every name below, with
 the exact patterns, is stated there once, and `library_files.classify`
 returns what kind any path is. The table is the reading guide, not a second
-copy. Anything else is one of four kinds, and the classifier returns
+copy. Anything else is one of three kinds, and the classifier returns
 which: **scratch** (a write by Amaze that stopped partway: `.writing`,
 `.capturing`, `.tmp`, `.lock` and the other suffixes in `SCRATCH_TAILS`,
-or an `.amaze_scratch*` name), **pre-adopt** (`mat/<id>.mat.pre-adopt`,
-`mat/<id>.builder.json.pre-adopt`), **duplicate** (a known name with
+or an `.amaze_scratch*` name), **duplicate** (a known name with
 ` <n>` before its last suffix, a sync service's second copy) or
-**unknown**. OS noise (`.DS_Store`, `Thumbs.db`, `._*` and the rest of
-`OS_NOISE`) is left alone and not reported. Check Library reports all
-four; `tools/library-audit.py` loads the same module by path and
-reports them too (`--strict` exits non-zero, so a script can fail on it).
+**unknown**, which is what a format 3 leftover (`mat/`, `img/`,
+`captures/`, `policy.json`, `.pre-adopt`) now is. OS noise (`.DS_Store`,
+`Thumbs.db`, `._*` and the rest of `OS_NOISE`) is left alone and not
+reported. Check Library reports all three; `tools/library-audit.py` loads
+the same module by path and reports them too (`--strict` exits non-zero,
+so a script can fail on it).
 
 | entry | what it is |
 |---|---|
@@ -930,22 +926,22 @@ reports them too (`--strict` exits non-zero, so a script can fail on it).
 | `materials.json` `nodes.json` `code.json` `colors.json` | each section's database: `assets` {id: row}, `categories` {name: {order, color}}, `comments` {id: {items}}, every item with its `id` and `author`, `icons` {id: face}, `favorites` {user: {id: true}}. Named once in `library_files` (`LISTS`, `LABELS`, `NOUNS`) and declared in `guard.DATABASES` |
 | `files.json` | the Files section: `locations` {user: {`loc:<id>`: record}}, `paths` {id: {path}}, the one place a location's path is stored, and `comments`, `icons`, `favorites` keyed `loc:<id>/<relative>` |
 | `backup/` | every backup: `<database>.<date>_<time>.bak`, the newest 3 and one a day for 30 days; `.before-restore.bak`, the undo copy a restore keeps; `.unreadable-<hash>`, one copy of a database that could not be read |
-| `trash/<date>/…` | what a delete or Check Library moved, under its library path, removed after 30 days |
+| `trash/<date>/…` | what a delete (an asset's whole folder), Check Library or the 3.0 conversion moved, under its library path, removed after 30 days |
 | `.amaze-journal` | there only while a change of several files is applied; finished at the next open |
-| `policy.json` | after a conversion only: the file `{"library_version": 4}` an older Amaze reads, so it does not open the library. Nothing in this Amaze reads it |
-| `materials/` `nodes/` | **each asset section's own folder** (library format 4), named once in `library_files.SECTION_FOLDERS` beside the section's database: `materials.json`'s rows use `materials/`, `nodes.json`'s use `nodes/`. Every path to an asset file is built from (section database, id) by `material.payload_path` |
-| `materials/<id>.mat` | the asset's nodes |
-| `materials/<id>.json` | everything else about the asset, through `core/asset_record.py` alone: `metadata` (the row as its database holds it - what a lost database is rebuilt from, an unlisted asset added back by, and the rows a put-back brings up to date) and `builder` (the container's type, its interface as a dialog script, and its changed values - read, never executed). Two writers share it, the save and the background metadata writer, so each replaces only its own section, under one lock |
-| `materials/<id>_cop.mat` | a material's companion COP network |
-| `materials/versions/<id>/<n>.*` + `versions.json` | the version store: each version's `.mat`, its `.json` holding the builder ALONE (so a metadata edit never makes two versions differ), its `.png`, and the version list. The BASE files are always the active version's - losing this folder loses the history, never the material. Deleting the asset deletes the folder too: `asset_directories()` names it and `remove_asset` removes it |
-| `nodes/…` | the same, for the Nodes section |
-| `mat/` | **format 3's shared asset folder**, every section's files together, with `<id>.interface`, `<id>.builder.json` and `<id>.stamp.json` beside each `.mat`. Nothing reads it; Check Library reports what is left in it |
-| `code/versions/<id>/<n>.txt` + `versions.json` | a snippet's versions: each one's text, and the same version list. The snippet's text in `code.json` is always the active version's; deleting the snippet deletes the folder too |
-| `materials/<id>.png` (and `nodes/`, `code/`, `colors/`) | **the asset's only picture**, beside its files: a render or a capture, each replacing the other in place (`tile_icons.thumbnail_path`). The Icon menu's Image face shows it; Generic and Custom are composed for display and write no file. Code and Colors rows paint their own preview and have a picture file only once one is captured |
-| `<section folder>/comments/` | the pictures pasted into that section's comments (`materials/`, `nodes/`, `code/`, `colors/`, `files/`) |
+| `materials/` `nodes/` `code/` `colors/` | **each section's own folder**, named once in `library_files.SECTION_FOLDERS` beside the section's database. It holds asset folders only; a loose file in it is unknown |
+| `<section>/<name>__<id>/` | **the asset's own folder**, holding every file it owns. `<name>` is its name made safe and cut to 40 characters (`material.folder_name`); the folder is found by the id after the last `__` (`library_files.folder_id`). Renaming the asset renames the folder in the same save (`library_db._records`), and deleting it moves the folder to the trash. A material and a node setup have one from their first save; a snippet and a color only once their first file arrives, a captured picture or a comment picture. Every path into it is built from (section database, id) by `material.payload_path` |
+| `…/<id>.mat` | the asset's nodes |
+| `…/<id>.json` | everything else about the asset, through `core/asset_record.py` alone: `metadata` (the row as its database holds it - what a lost database is rebuilt from, an unlisted asset added back by, and the rows a put-back brings up to date) and `builder` (the container's type, its interface as a dialog script, and its changed values - read, never executed). Two writers share it, the save and the background metadata writer, so each replaces only its own section, under one lock |
+| `…/<id>_cop.mat` | a material's companion COP network |
+| `…/<id>.png` | **the asset's only picture**: a render or a capture, each replacing the other in place (`tile_icons.thumbnail_path`). The Icon menu's Image face shows it; Generic and Custom are composed for display and write no file. Code and Colors rows paint their own preview and have a picture file only once one is captured |
+| `…/textures/` | a material's own copy of every file its network references, written in its `.mat` as `$AMAZEASSET/textures/<file>`; a different file of a taken name is numbered (`texstore.copy_into_library`, at save). At load each `$AMAZEASSET/` path is written into the scene once, in the Write Paths As style (`texstore.resolve_parms`). Check Library does not enter it |
+| `…/versions/` | a material's version store (*Where version files live*): each version's `.mat`, its `.json` holding the builder ALONE (so a metadata edit never makes two versions differ), its `.png`, and the version list `versions.json`. The BASE files are always the active version's - losing this folder loses the history, never the material |
+| `…/comments/` | the pictures pasted into the asset's comments, `<32 hex>.<ext>`, each named in its item's `src` as `$AMAZEASSET/comments/<file>` (`notes.copy_image_into_library`). The comment text stays in the section's database |
+| any other file in it | the asset's own, of any name: a downloaded source, such as a 2.0 `matX/` package the conversion moved into the first material using it and copied into the others |
 | `files/<40 hex>.png` | a File row's scene capture, by the SHA-1 of its key |
-| `img/<id>.png` `img/<id>_icon.png` `captures/<id>.png` | format 3's pictures. None is a tile's picture; Check Library reports them as leftovers |
-| `matX/<package>/…` | MaterialX packages and their textures; Check Library does not enter it, the audit tool reports scratch there only |
+| `files/comments/<32 hex>.<ext>` | the pictures pasted into the Files section's comments |
+| `import/…` | the plain files Package Import writes, added as a File location; their names are the user's, and neither Check Library nor the audit tool reports them |
+| `matX/<package>/…` | an online import's download, reused when the same package is imported again (`matx_import.matx_dir`); the material saved from it takes its own copy of each texture. Check Library does not enter it, the audit tool reports scratch there only. The 3.0 conversion moves a 2.0 library's packages into the materials using them and trashes the folder |
 
 **`backup/` is not clutter.** It is how a damaged database is restored;
 a cleanup that removes it removes the recovery.
@@ -954,9 +950,9 @@ a cleanup that removes it removes the recovery.
 `.capturing`, `.lock` or `.tmp` is always Amaze's and always means a save
 stopped partway — reported separately from a merely unknown file, because
 an unknown file might be the user's and a leftover scratch never is.
-Check Library's default Move Aside moves a scratch file once it is an hour
-old, so a live write in another session is left alone; an unknown file
-moves only by its own button.
+Fix All moves a scratch file to the trash once it is an hour old
+(`check_library.SCRATCH_MIN_AGE`), so a live write in another session is
+left alone; an unknown file moves only once Fix All has named it.
 
 ## 7. The Renderer terms
 
@@ -1151,9 +1147,9 @@ actions/library.py        the steps of opening a library that need no
                           panel: rejecting one a newer Amaze updated,
                           preparing its folder, updating it to this
                           Amaze's version, adding the shipped starters
-core/texstore.py          the texture store: $AMAZELIB tokens, the
-                          FileReference scan, the save-time copy of
-                          referenced files and the scene-side path expansion
+core/texstore.py          a material's textures: its own copies in its
+                          folder as `$AMAZEASSET/...`, the FileReference scan,
+                          the save-time copy and the path written at load
 core/library_settings.py  the SHARED settings: DataBase.json ▸ settings
 core/library_policy.py    the library's version stamp in DataBase.json
 panel/side_pane.py        the pane engine: every part of a pane beside the
@@ -1211,10 +1207,9 @@ core/asset_record.py      the only module that reads and writes `<id>.json`: its
                           `metadata` and `builder`, a section at a time
 core/library_conversion.py  the ONLY module that knows format 3's files
                           (`mat/`, `.interface`, `.builder.json`,
-                          `.stamp.json`, `img/<id>.png`, captures): their
-                          shapes for Check Library, and an old package's
-                          builder for Package Import
-core/versions.py          the version store of materials and code - the
+                          `.stamp.json`, `img/<id>.png`, captures): an old
+                          package's builder for Package Import
+core/versions.py          the version store of materials - the
                           base is always the ACTIVE version's, each
                           version also has an archived copy, and
                           versions.json is the version list

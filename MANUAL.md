@@ -45,10 +45,10 @@ Pick your user or create one, then press **Apply**. The library belongs
 outside the plugin folder, which updates replace. Cloud-synced folders
 are supported.
 
-The library holds a JSON database per section and, for each material
-or node setup, two files in its section's folder (`materials/` or
-`nodes/`): a standard Houdini node archive (`.mat`), and a `.json`
-holding its metadata and builder.
+The library holds a JSON database per section. Each material or node
+setup has a folder in `materials/` or `nodes/` with a standard Houdini
+node archive (`.mat`), a `.json` holding its metadata and builder, and
+a material's textures.
 
 The **Amaze shelf** has five tools:
 
@@ -183,17 +183,8 @@ newest first; pick one and press **Select** to make it current.
 
 <img src="docs/images/dialog_versions.png" width="380">
 
-A snippet keeps versions too. In the code editor, each version opens in
-a tab of its own above the fields. The **+** after the tabs lists **New
-Version** and the snippet's versions: a version opens in a new tab, or
-its tab comes to the front, and **New Version** opens a tab with the
-front tab's code. **Apply** saves the code in the front tab, which
-becomes the snippet's current version. A tab's × closes it; the version
-is still in the **+** list. The Name field names the version, and the
-snippet's tile shows the name of its current version.
-
-**Versions** in Preferences ▸ Library turns versions on and off, for
-materials and snippets.
+Only materials keep versions. **Enable Asset Versions** in Preferences ▸
+Library turns them on and off.
 
 ### Loading
 
@@ -380,8 +371,7 @@ The right-click menu:
 - **Load Asset** writes the snippet into the selected node's code parameter.
 - **Edit** opens the snippet in the editor, with Name, Language,
   Category and Tags above the code. In the editor, **Apply** saves the
-  snippet and the editor stays open. The tabs above the fields hold the
-  snippet's [versions](#versions).
+  snippet and the editor stays open.
 - **Thumbnail ▸** holds **Capture Scene** and **Customize**.
 - **Favorite** and **Delete**.
 
@@ -684,8 +674,8 @@ The pane lists facts about the selected tile, one per row:
 |---|---|
 | Material | Name, Date, Size, Renderer, Textures, Largest Texture, Version, License, ID |
 | Color | Name, Date, Colors, Values, Interpolation, License, ID |
-| Node | Name, Date, Size, Context, Version, License, ID |
-| Code | Name, Date, Language, Lines, Version, License, ID |
+| Node | Name, Date, Size, Context, License, ID |
+| Code | Name, Date, Language, Lines, License, ID |
 | File | Name, Created, Modified, Size, Format, the rows of its kind, Folder |
 | Several tiles | Items, Size |
 
@@ -784,13 +774,13 @@ library.
 **Check Database** checks the open library's databases and folders. The
 light beside it shows the result, and its tooltip lists what the check
 found. Before a check, the line beside the button shows the library's
-format: 2.0 for a library this Amaze writes. After a check, it shows the
+format: 3.0 for a library this Amaze writes. After a check, it shows the
 first finding, or that there is nothing to repair. When a check has
 found something it can fix, the button is **Repair**, which opens
 [Check Library](#housekeeping-and-troubleshooting).
 
 For a library from an older Amaze, the line at the bottom of the page
-says that applying updates it; Amaze converts it to 2.0 when it opens,
+says that applying updates it; Amaze converts it to 3.0 when it opens,
 after a confirmation. A library from a newer Amaze cannot be applied,
 and the line says to update Amaze.
 
@@ -807,7 +797,7 @@ Preferences**, which opens this page. A computer still signed in as a
 deleted user shows the same message the next time Amaze opens.
 
 **Enable Asset Versions** turns [versions](#versions) on and off, for
-materials and snippets.
+materials.
 
 **Paths**
 
@@ -905,12 +895,11 @@ covers:
   stays in the database; **Delete** removes it. Materials and node setups
   that can have a render and have none are counted; **Thumbnail ▸ Render
   Image** renders them.
-- **Orphaned files.** Files in the `materials`, `nodes`, `img` and `captures` folders
-  that no database names.
+- **Orphaned files.** Asset folders that no database lists, and version
+  files that no version list names.
 - **Leftovers.** Files Amaze made that nothing needs any more:
   temporary files from a save that did not finish, once they are an
-  hour old; the `.pre-adopt` backups kept from before an earlier texture
-  update; and conflict copies a sync service made of a file still in the
+  hour old, and conflict copies a sync service made of a file still in the
   library, such as `materials 2.json`. A conflict copy of a database
   or an asset file counts only when its contents match the original's.
   One that differs is named with its date and size and left in place,
@@ -927,13 +916,12 @@ covers:
 
 The fixes, each shown only when it applies:
 
-- **Recover *N* Materials and *N* Nodes** puts orphaned pairs of `.mat`
-  and `.json` files in the database of the folder they are in: the
-  `materials` folder in the Material database, the `nodes` folder in the
-  Node database. Each keeps the metadata saved beside its files: name,
-  category and tags. One whose metadata cannot be read is recovered in a
-  category called Recovered, named Recovered followed by its id. It
-  writes a new database when there is none.
+- **Recover *N* Materials and *N* Nodes** puts each orphaned folder in
+  `materials` or `nodes` back in the database of its section. Each keeps
+  the metadata saved in its folder: name, category and tags. One whose
+  metadata cannot be read is recovered in a category called Recovered,
+  named Recovered followed by its id. It writes a new database when
+  there is none.
 - **Restore Backup** restores a database from its newest backup. The
   confirmation says how many items the backup holds and how many the
   database holds now, and **Older Backups...** lists the earlier ones.
@@ -967,8 +955,8 @@ Moved files go to the library's `trash` folder, in one folder per day,
 each file under the path it had in the library. Each day's files are
 deleted after 30 days; every check, and every time the library opens,
 deletes the days older than that. To restore a file, copy it from the
-trash back to its folder. Deleting a material or node setup moves its
-files to the trash too.
+trash back to its folder. Deleting an asset moves its folder to the
+trash too.
 
 **Check Library**, on the Amaze shelf, runs the same check when the
 Amaze panel will not open. With an Amaze panel open, it says to use the
@@ -987,13 +975,13 @@ Library** leaves the folder unchanged. A message then says what Repair
 did, or why it could not.
 
 `tools/library-audit.py`, in the Amaze folder, lists what a library
-folder holds that does not belong there, by kind: scratch, pre-adopt
-backups, second copies, unknown files, and folders that cannot be read.
+folder holds that does not belong there, by kind: scratch, second
+copies, unknown files, and folders that cannot be read.
 It changes nothing and runs with Python 3 alone, without Houdini:
 `python3 tools/library-audit.py <library folder>`. `--strict` makes it
 exit with 1 when it finds anything, and `--quiet` prints only what it
-finds. It also looks inside the `matX` package folder, which Check
-Library leaves alone.
+finds. It also looks for scratch in the folders Check Library leaves
+alone, such as each material's `textures` folder.
 
 Amaze keeps backups of each database in the library's `backup` folder:
 the newest three, and one a day for 30 days. A change is saved a moment
