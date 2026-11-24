@@ -16,6 +16,11 @@ Menu {
         root.popup()
     }
 
+    function showUnder(rows, item) {    // fills the menu and opens it below `item`, left edges lined up
+        root.fill(root, rows)
+        root.popup(item, 0, item.height)
+    }
+
     function fill(menu, rows) {    // rows as `pane.menus.Menu` gives them, a submenu's in `rows`
         for (const row of rows) {
             if (row.separator) {

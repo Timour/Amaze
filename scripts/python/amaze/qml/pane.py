@@ -102,6 +102,8 @@ class PaneState(qmlviews.SharedState, asks.Asks):
     favouritesOnly: bool = False
     takesFavourites: bool = True
     takesCapture: bool = True
+    filterOffered: bool = False    # the Filter button has a menu here
+    filterTip: str = ""    # what the Filter button narrows by, per section; online, the kind
     tileSizes: list = list(amazetheme.TILE_SIZES)
     tileSize: int = amazetheme.TILE_SIZES[1]
     tileStepped: bool = False
@@ -162,10 +164,10 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         self.table = amazetheme.drawn_list()
         tabs = amazetheme.drawn_tabs()
         self.toolbar = dict(amazetheme.drawn_toolbar(), end_gap=amazetheme.TOOLBAR_SEARCH_END_GAP,
-                            on=amazetheme.TOOLBAR_ON)
+                            field_text=amazetheme.TOOLBAR_FIELD_TEXT, on=amazetheme.TOOLBAR_ON)
         self.strip = {"height": tabs["height"], "left": tabs["left"]}
         self.tips = {"online": tooltips.PANEL_ONLINE, "favourites": tooltips.PANEL_FAVORITES,
-                     "viewMode": tooltips.PANEL_VIEW_MODE,
+                     "viewMode": tooltips.PANEL_VIEW_MODE, "viewMenu": tooltips.PANEL_VIEW_MENU,
                      "prefs": tooltips.PANEL_PREFERENCES, "capture": tooltips.PANEL_CAPTURE,
                      "tileSize": tooltips.PANEL_TILE_SIZE, "tileSizeList": tooltips.PANEL_TILE_SIZE_LIST,
                      "search": tooltips.PANEL_SEARCH, "sidebar": tooltips.PANEL_CATEGORIES}
@@ -189,6 +191,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         pane.progress_shown.connect(self._show_progress)
         pane.progress.connect(self._set_progress)
         pane.empty_changed.connect(self._show_empty)
+        pane.filter_changed.connect(self._show_filter)
         self._show_tabs()
         self._show_settings()
         pane.library.start()
@@ -277,6 +280,15 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         self.takesFavourites = bool(getattr(context, "takes_favourites", True))
         self.takesCapture = bool(getattr(context, "takes_capture", True))
         self.searchHint = getattr(context, "search_hint", "")
+        self._show_filter()
+
+    def _show_filter(self) -> None:
+        """Whether the Filter button opens a menu here, and its tip: the section's, or online the kind's."""
+        toolbar = self.pane.toolbar_menus
+        self.filterOffered = toolbar.filter_offered()
+        context = self.pane.active_section()
+        self.filterTip = (tooltips.PANEL_KIND_FILTER if toolbar.kinds_shown()
+                          else getattr(context, "filter_tooltip", ""))
 
     def _show_online(self) -> None:
         self.online = self.pane.is_online()
@@ -406,6 +418,12 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         current = index if index.isValid() and index in indexes else (indexes[0] if indexes else None)
         self._menu = menus.Menu(context, entries, indexes, current, host=self)
         return self._menu.rows
+
+    @QtCore.Slot(str, result="QVariantList")
+    def toolbarMenu(self, name: str) -> list:
+        """The rows of a toolbar button's menu, "view" or "filter"; `pickMenu` runs the one picked."""
+        self._menu = self.pane.toolbar_menus.menu(name, host=self)
+        return self._menu.rows[0].get("rows", [])
 
     @QtCore.Slot(str)
     def pickMenu(self, key: str) -> None:
