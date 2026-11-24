@@ -120,14 +120,14 @@ class CommentsTest(unittest.TestCase):
         self.assertEqual(written, bare(notes.note_for(self.prefs, self.key)["items"]))
 
     def test_cm21_each_item_names_its_author_and_an_unchanged_one_keeps_it(self):
-        anna = test_support.FIXTURE_USER
-        self.assertTrue(self.page(self.key, text("anna's"), {"t": "todo", "label": "to do"}))
+        first = test_support.FIXTURE_USER
+        self.assertTrue(self.page(self.key, text("the first's"), {"t": "todo", "label": "to do"}))
         before = notes.note_for(self.prefs, self.key)["items"]
-        self.prefs.library_user = "u-erik"
-        self.assertTrue(self.page(self.key, text("anna's"),
-                                  {"t": "todo", "label": "to do", "done": True}, text("erik's")))
+        self.prefs.library_user = "u-second"
+        self.assertTrue(self.page(self.key, text("the first's"),
+                                  {"t": "todo", "label": "to do", "done": True}, text("mine")))
         after = notes.note_for(self.prefs, self.key)["items"]
-        self.assertEqual([(item["id"], anna) for item in before] + [(after[2]["id"], "u-erik")],
+        self.assertEqual([(item["id"], first) for item in before] + [(after[2]["id"], "u-second")],
                          [(item["id"], item["author"]) for item in after])
 
     def test_cm22_a_comment_with_nothing_left_is_removed(self):
