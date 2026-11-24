@@ -775,7 +775,7 @@ out of the panel 2026-07-27: what is already bound under a prim,
 rebinding it, naming an assign after the geometry it applies to, and
 removing a material nothing references any more. No Qt, no panel — it
 reports reasons rather than showing dialogs, so it is testable
-headlessly (`tests/test_lop_assign.py`). The panel keeps the menu,
+headlessly (`tests/test_drop_into_scene.py`). The panel keeps the menu,
 because choosing the prim is UI.
 
 One SELF-MANAGED gesture for every section — no native QDrag, no drop
