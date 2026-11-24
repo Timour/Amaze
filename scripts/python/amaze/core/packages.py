@@ -291,14 +291,13 @@ def import_entries(models, prefs, bundle, entries,
     summary = {"imported": 0, "skipped": 0, "replaced": 0, "files": 0, "refused": 0,
                "categories": {}, "problems": []}
     staged = []    # appended rows and their written files, committed once per model by `_commit_assets`
-    taken = set()    # texture targets already staged: two entries may share one
     for entry in entries:
         name = str((entry.get("record") or {}).get("name")
                    or entry.get("name") or "?")
         try:
             if entry.get("type") == "asset":
                 appended = _import_asset(models, prefs, bundle, entry,
-                                         restore, summary, taken)
+                                         restore, summary)
                 if appended is not None:
                     staged.append(appended)
             elif entry.get("type") == "file":
@@ -403,7 +402,7 @@ def _commit_assets(prefs, staged, summary, restore: bool = False) -> None:
             if notes.note_key(str(item[2].get("section") or ""), item[1].mat_id) in pages))
 
 
-def _import_asset(models, prefs, bundle, entry, restore, summary, taken):
+def _import_asset(models, prefs, bundle, entry, restore, summary):
     """One asset entry's row into its model and its files into scratches, unsaved; None when skipped."""
     section = str(entry.get("section") or "")
     model = models.get(section)
@@ -442,10 +441,7 @@ def _import_asset(models, prefs, bundle, entry, restore, summary, taken):
             target = (texstore.old_store_target(own, old[0], old[1:], old[0] == first) if old
                       else texstore.resolve(str(token), prefs, own))
             hostos.contained_join(own, os.path.relpath(target, own))    # PathOutsideBase on `..`: refused
-            if target in taken:
-                continue
             written.append(_staged_member(bundle, arcname, target))
-            taken.add(target)
         for src, arcname in pictures.items():
             name = _picture_name(src)
             if not own or not name:
