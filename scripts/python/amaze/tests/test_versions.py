@@ -6,7 +6,8 @@ import types
 import unittest
 from unittest import mock
 
-from PySide6 import QtWidgets
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")    # the first app picks the platform ▸p/first-app-picks-the-platform
+from PySide6 import QtWidgets  # noqa: E402
 
 from amaze import messages
 from amaze.actions import materials as material_actions

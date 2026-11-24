@@ -1,11 +1,13 @@
 """Qt model contracts: one test per requirement in docs/requirements/qt-models.md."""
 
 import contextlib
+import os
 import types
 import unittest
 from unittest import mock
 
-from PySide6 import QtCore, QtWidgets
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")    # the first app picks the platform ▸p/first-app-picks-the-platform
+from PySide6 import QtCore, QtWidgets  # noqa: E402
 
 from amaze.core import category, documents, grid_columns, library_files, material, model_registry
 from amaze.tests import test_support

@@ -5,7 +5,8 @@ import os
 import unittest
 from unittest import mock
 
-from PySide6 import QtCore, QtWidgets
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")    # the first app picks the platform ▸p/first-app-picks-the-platform
+from PySide6 import QtCore, QtWidgets  # noqa: E402
 
 from amaze import messages
 from amaze.core import category, code_library, debug, gradient_library, library, library_db
