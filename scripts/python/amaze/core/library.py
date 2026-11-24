@@ -2,7 +2,6 @@
 
 import json
 import os
-import shutil
 import stat
 from typing import Any
 from PySide6 import QtCore, QtGui
@@ -847,25 +846,6 @@ class AssetLibrary(grid_engine.GridEngine,
     def info_paths(self, row: int) -> list:
         """Every file one row owns, for the read that adds up their sizes."""
         return self.folder_files(self._assets[row])
-
-    def _hold_pre_edit_files(self, mat_id: str) -> dict:
-        """Copy the asset's current files aside for the version store: {archive suffix: held path}."""
-        import tempfile as _tempfile
-        keep = _tempfile.mkdtemp(prefix="amaze_preedit_")
-        held, copied = {}, False
-        try:
-            for kind, path in self.asset_files(mat_id).items():
-                suffix = versions.SOURCE_KINDS.get(kind)
-                if suffix is None or not os.path.exists(path):
-                    continue
-                target = os.path.join(keep, os.path.basename(path))
-                shutil.copyfile(path, target)
-                held[suffix] = target
-            copied = True
-        finally:
-            if not (copied and held):
-                shutil.rmtree(keep, ignore_errors=True)    # nothing held, or a copy raised: no folder left
-        return held
 
     def asset_directories(self, mat_id: str) -> dict:
         """{kind: absolute path} of every directory of asset `mat_id`: its own folder."""

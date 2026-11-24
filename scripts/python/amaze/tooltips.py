@@ -15,7 +15,7 @@ PREFS_RELOAD_LIBRARY = 'Reload the library from disk.'
 
 PREFS_OPEN_LIBRARY_FOLDER = 'Open the library folder.'
 
-PREFS_MATERIAL_VERSIONS = "When on, saving over a material asks if you want to keep the old one as a version, and the + in the code editor keeps versions of a snippet. When off, saving always adds a new material and the + is off. This setting is stored in the library, so it applies to everyone who uses it."
+PREFS_MATERIAL_VERSIONS = "When on, saving over a material keeps the old one as a version. When off, saving over a material replaces it and keeps no version. This setting is stored in the library, so it applies to everyone who uses it."
 
 PREFS_LIBRARY_USER = "Who you are in this library. Your favorites and folders follow your name, so the same person on another machine sees the same items, and two people sharing one library keep their things separate. Your name also signs the versions you save. It is never guessed from your machine name."
 

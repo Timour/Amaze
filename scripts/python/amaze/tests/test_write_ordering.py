@@ -190,7 +190,7 @@ class SwitchingVersionsIsAllOrNothing(unittest.TestCase):
         guard.Guard(str(self.prefs.dir)).recover()
 
     def test_an_unarchived_base_is_archived_before_the_switch(self):
-        """A structural update makes no version; the base may be the sole copy: archive it first."""
+        """A save-over with Versions off makes no version; the base may be the sole copy: archive it first."""
         for kind in (".mat", ".json"):
             self._write(kind, "STRUCTURAL %s" % kind)
 

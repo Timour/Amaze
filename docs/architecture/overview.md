@@ -853,13 +853,16 @@ writing (`versions.create_version`).
 
 ### The library's policy — `DataBase.json` ▸ `policy`
 
-`allow_overwrite`, default **true**. When false, `update_asset_content`
-(`actions/materials.py`) does not replace an existing asset's files,
-and the Save dialog no longer offers Overwrite. It is checked in the function
-every caller calls. Preferences has a control for it
-(`_cbx_allow_overwrite`), and the value is stored in the library, so
-two machines using one library have the same value. A policy that cannot be read
-returns False (`library_settings.allow_overwrite`). `library` holds the
+`allow_overwrite`, default **true**, is **Enable Asset Versions** in
+Preferences ▸ Library. When true, `update_asset_content`
+(`actions/materials.py`) keeps the material as it was as a version
+(`versions.keep_base`) before it replaces the files, and the new state
+becomes the active version; the Save dialog offers Save Version. When
+false, the save replaces the files and keeps no version; the dialog
+offers Overwrite. The value is stored in the library, so two machines
+using one library have the same value. A policy that cannot be read
+allows no save-over at all (`library_settings.policy_readable`, LS-20),
+checked in the function every caller calls. `library` holds the
 library's version (5, shown as `3.0`).
 
 ### Housekeeping semantics (settled 2026-07-31)

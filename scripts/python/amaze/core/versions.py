@@ -332,7 +332,7 @@ def record_render(preferences, mat_id: str) -> bool:
 
 
 def record_base(preferences, mat_id: str, kind: str, source: str = "") -> bool:
-    """Copy one kind of the base over the ACTIVE version's archive; identical bytes are not rewritten."""
+    """Copy one kind of the base over the ACTIVE version's archive while that version holds the base."""
     active = 0
     try:
         ledger = read_ledger(preferences, mat_id)
@@ -342,7 +342,10 @@ def record_base(preferences, mat_id: str, kind: str, source: str = "") -> bool:
         active_row = _row_for(ledger, active)
         if active_row is None:
             return False
-        source = source or _base_paths(preferences, mat_id).get(kind)
+        base = _base_paths(preferences, mat_id)
+        if not _base_is_archived(preferences, mat_id, ledger, base):    # saved over with Versions off
+            return False
+        source = source or base.get(kind)
         if not source or not os.path.exists(source):
             return False
         target = _archive_paths(preferences, mat_id, active)[kind]

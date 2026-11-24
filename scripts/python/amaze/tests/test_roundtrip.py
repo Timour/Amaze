@@ -920,68 +920,6 @@ class AnAddWhoseListWriteFails(unittest.TestCase):
                              "a second alert followed the library's own: %s" % log.messages("alert"))
 
 
-class StructureSignatureTest(unittest.TestCase):
-    """Versions rule: only values differ means a new version, else structural ▸p/structure-signature"""
-
-    def setUp(self):
-        self.prefs = test_support.fixture_prefs(self)
-        test_support.reset_database_singletons()
-        self.addCleanup(test_support.reset_database_singletons)
-        self.staging = hou.node("/obj").createNode("matnet")
-        self.addCleanup(self.staging.destroy)
-
-    def test_value_edits_and_layout_moves_keep_the_signature(self):
-        builder = _build_material(self.staging, "sig_keep_probe")
-        before = nodes.structure_signature(builder)
-        shader = _shader_of(builder)
-        scalar = next(parm for parm in shader.parms()    # a SCALAR float: a colour's .parm() is None
-                      if parm.parmTemplate().numComponents() == 1
-                      and parm.parmTemplate().type()
-                      == hou.parmTemplateType.Float)
-        scalar.set(scalar.eval() + 0.111)
-        self.assertEqual(before, nodes.structure_signature(builder),
-                         "a value edit changed the structure signature - "
-                         "every parameter change would take the structural "
-                         "path and Versions would never be used")
-        for child in builder.children():
-            child.move(hou.Vector2(3.0, -2.0))
-        self.assertEqual(before, nodes.structure_signature(builder),
-                         "node positions changed the signature")
-
-    def test_an_added_node_or_a_rewire_changes_it(self):
-        builder = _build_material(self.staging, "sig_change_probe")
-        before = nodes.structure_signature(builder)
-        image = builder.createNode("mtlximage", "sig_added")
-        added = nodes.structure_signature(builder)
-        self.assertNotEqual(before, added,
-                            "an added node did not change the signature - "
-                            "a structural edit would silently become a "
-                            "version")
-        _shader_of(builder).setInput(0, image)
-        self.assertNotEqual(added, nodes.structure_signature(builder),
-                            "a rewire did not change the signature")
-
-    def test_staged_asset_loads_and_cleans_up_even_when_the_loader_raises(self):
-        model = library_mod.MaterialLibrary(preferences=self.prefs)
-        row = next(r for r in range(model.rowCount())
-                   if renderers.is_karma(model.assets[r].renderer))
-        mat = model.assets[row]
-        obj_before = set(hou.node("/obj").children())
-        signature = nodes.staged_asset(self.prefs, mat,
-                                       nodes.structure_signature)
-        self.assertTrue(signature and len(signature) == 16)
-        self.assertEqual(obj_before, set(hou.node("/obj").children()),
-                         "staged_asset left its staging network in /obj")
-
-        def boom(_node):
-            raise RuntimeError("loader failure")
-
-        with self.assertRaises(RuntimeError):
-            nodes.staged_asset(self.prefs, mat, boom)
-        self.assertEqual(obj_before, set(hou.node("/obj").children()),
-                         "a raising loader left the staging network in /obj")
-
-
 class AnUnreadablePayloadFailsWithoutADialogTest(unittest.TestCase):
     """An unreadable payload fails with a reason, never a dialog with no UI ▸r/status-bar"""
 
