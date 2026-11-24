@@ -10,6 +10,14 @@ class Cut(Exception):
     """The simulated crash: the disk stopped at the chosen step."""
 
 
+def crash(preferences) -> None:
+    """The session ends at the cut, its unsaved changes lost; the next one opens the library."""
+    from amaze.core import library_db, model_registry
+    library_db.release(preferences)
+    model_registry.release()
+    library_db.guard_of(preferences)    # a new session finishes a change cut off halfway
+
+
 class FaultDisk(guard.Disk):
     """`guard.Disk` that crashes at step `cut_at` (`torn`: mid-write), fills at write `full_from`."""
 

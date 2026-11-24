@@ -6,7 +6,7 @@ import hou
 from PySide6 import QtCore
 
 from amaze import messages
-from amaze.core import asset_record, debug, guard, library, library_db, material, texstore, versions
+from amaze.core import debug, guard, library, library_db, material, texstore, versions
 from amaze.render import husk_job, nodes
 
 
@@ -20,7 +20,7 @@ def connect(model) -> None:
 def add_asset(model, node: hou.Node, cats: str, tags: str, fav: bool,
               name: str | None = None, picture: str = "", render: bool = True,
               about: str | None = None, license: str | None = None, sources=()) -> str:
-    """Save `node` and `sources` as a new material: its renderer (`ListNotSaved` if unlisted), or ""."""
+    """Save `node` and `sources` as a new material, its row and files as one change: its renderer, or ""."""
     handler = nodes.NodeHandler(model.preferences)
     handler.supplied_thumbnail = picture    # a hosted picture, which replaces the render
     handler.render_after_save = render    # False: the caller renders its rows in one batch
@@ -29,46 +29,30 @@ def add_asset(model, node: hou.Node, cats: str, tags: str, fav: bool,
     tags = model.sanitize_tags(tags)
     new_mat.set_data(name or node.name(), cats, tags, fav, renderer, about=about, license=license)
     new_mat.node_color = nodes.custom_node_color(node)
-    own = material.claim_asset_dir(model.preferences, model.DB_FILENAME, new_mat.mat_id, new_mat.name)
 
-    handler.staging = []    # the files are committed together with the row, as one change
-    try:
-        saved = handler.save_node(node, new_mat.mat_id, False)
-        for path in sources if saved else ():    # a download's own files, at the folder's top level
-            texstore.copy_file_into_library(path, model.preferences, own, handler.staging, "")
-    except BaseException:    # a failure or a cancel leaves no file and no folder
-        asset_record.discard(handler.staging)
-        material.release_asset_dir(model.preferences, model.DB_FILENAME, new_mat.mat_id)
-        raise
-    debug.event(
-        "save", "save_node result",
-        ok=bool(saved), name=new_mat.name,
-        renderer=handler._renderer,
-        node=node.path(), node_type=node.type().name(),
-        mat_id=new_mat.mat_id,
-    )
-    if saved:
+    def save(staging, own):
+        handler.staging = staging    # the files are committed together with the row, as one change
+        if not handler.save_node(node, new_mat.mat_id, False):
+            return False
+        for path in sources:    # a download's own files, at the folder's top level
+            texstore.copy_file_into_library(path, model.preferences, own, staging, "")
         new_mat.cop_net = handler.cop_info
-        inventory = handler.texture_inventory
-        if isinstance(inventory, (list, tuple)) and inventory:    # kept in _extra like the curated tag - old builds ignore it, get_as_dict writes it
-            new_mat._extra["textures"] = list(inventory)
-        if not model.add_saved(new_mat, handler.staging):    # per row, so each tile appears as soon as it is saved
-            debug.event("save", "material not saved - its database took neither row nor files",
-                        name=new_mat.name, mat_id=new_mat.mat_id)
-            debug.refuse(messages.ASSET_NOT_SAVED_DATABASE_REFUSED % new_mat.name)
-            material.release_asset_dir(model.preferences, model.DB_FILENAME, new_mat.mat_id)
-            return ""
-        try:  # the node stores its id, so a later save can offer Update Existing
-            node.setUserData("assetlib_id", str(new_mat.mat_id))
-        except (hou.OperationFailed, hou.ObjectWasDeleted):    # the save succeeded ▸r/node-vanished
-            pass
-        return renderer
-    asset_record.discard(handler.staging)
-    material.release_asset_dir(model.preferences, model.DB_FILENAME, new_mat.mat_id)
-    debug.event("save", "add_asset refused - the node was not saved",
-                name=new_mat.name, node=node.path(),
-                mat_id=new_mat.mat_id)
-    return ""
+        keep_textures(new_mat, handler.texture_inventory)
+        return True
+    saved = model.save_new(new_mat, save)    # per row, so each tile appears as soon as it is saved
+    debug.event("save", "save_node result", ok=saved, name=new_mat.name, renderer=handler._renderer,
+                node=node.path(), node_type=node.type().name(), mat_id=new_mat.mat_id)
+    if not saved:
+        return ""
+    nodes.stamp_asset_id(node, new_mat.mat_id)    # a later save can offer Update Existing
+    return renderer
+
+
+def keep_textures(mat, inventory) -> None:
+    """The textures a save copied in, on the row in `_extra`, which old builds ignore."""
+    mat._extra.pop("textures", None)
+    if isinstance(inventory, (list, tuple)) and inventory:
+        mat._extra["textures"] = list(inventory)
 
 
 def adding_into(model, unlisted: list):
@@ -126,10 +110,7 @@ def update_asset_content(model, row: int, node: hou.Node) -> str:
         versions.create_version(model.preferences, mat.mat_id)  # the new state as the active version
         model._versions_changed(mat)
     mat.cop_net = handler.cop_info
-    mat._extra.pop("textures", None)    # replaced entirely - the new content's references are the inventory now
-    inventory = handler.texture_inventory
-    if isinstance(inventory, (list, tuple)) and inventory:
-        mat._extra["textures"] = list(inventory)
+    keep_textures(mat, handler.texture_inventory)    # the new content's references replace the old
     if renderer:
         mat.renderer = renderer
     mat.node_color = nodes.custom_node_color(node)
@@ -155,10 +136,7 @@ def update_asset_content(model, row: int, node: hou.Node) -> str:
     if not listed:    # `save` showed why; the record stays in memory until a later save succeeds
         debug.event("library", "update written but the library list was not saved",
                     mat_id=str(mat.mat_id), name=mat.name)
-    try:
-        node.setUserData("assetlib_id", str(mat.mat_id))
-    except (hou.OperationFailed, hou.ObjectWasDeleted):    # a deleted node is left without the id ▸r/node-vanished
-        pass
+    nodes.stamp_asset_id(node, mat.mat_id)
     return renderer if listed else library.ListNotSaved(renderer)
 
 

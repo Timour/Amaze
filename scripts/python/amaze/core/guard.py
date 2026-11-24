@@ -476,6 +476,7 @@ class Change:
         self._removals = []
         self._trashed = []
         self._moved = []    # (relative, to): files or folders renamed after this change's writes
+        self.journaled = False    # its journal is written: its files are the library's to keep
         self.waiting = ""    # after `commit`: why the recorded change is not yet all in place
 
     def put(self, ticket: Ticket, document: dict) -> None:
@@ -563,6 +564,7 @@ class Change:
                     disk.write(scratch, json.dumps({"steps": steps}).encode("utf-8"))
                     written = []    # from here journal recovery handles the scratch files
                     disk.swap(scratch, journal)
+                    self.journaled = True
                     try:
                         guard._apply(steps)
                         disk.remove(journal)

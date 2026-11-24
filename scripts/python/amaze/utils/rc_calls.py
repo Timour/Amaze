@@ -109,9 +109,7 @@ def save(node=None) -> None:
             ui.displayMessage(messages.RESTART_TO_FINISH_UPDATE,
                               title=messages.TITLE_AMAZE, severity=hou.severityType.Message)
         return
-    if node is not None and not node.isSelected():
-        node.setSelected(True, clear_all_selected=True)
-    save_from_node(node)
+    save_from_node(node)    # the node alone when it is not selected; the selection stays as it is
 
 
 def node_renderer(node) -> str:

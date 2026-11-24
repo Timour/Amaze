@@ -8,8 +8,6 @@ from unittest import mock
 
 from PySide6 import QtWidgets
 
-import hou
-
 from amaze import messages
 from amaze.actions import materials as material_actions
 from amaze.core import asset_files, asset_record, library, library_db, library_files
@@ -87,8 +85,7 @@ class StoreTest(unittest.TestCase):
             act(self.prefs)
         except faults.Cut:
             pass
-        test_support.reset_database_singletons()
-        library_db.guard_of(self.prefs)    # a new session finishes a change cut off halfway
+        faults.crash(self.prefs)
         return test_support.library_state(self.prefs.dir)
 
     def test_vs02_making_or_switching_a_version_is_applied_whole_or_not_at_all(self):
