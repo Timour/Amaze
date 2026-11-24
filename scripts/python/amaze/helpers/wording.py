@@ -11,6 +11,11 @@ def and_list(words) -> str:
     return "%s and %s" % (", ".join(words[:-1]), words[-1])
 
 
+def count(number: int, noun: str, plural: str = "") -> str:
+    """`1 file`, `3 files`, `2 copies` with `plural`: a number and its noun as messages show it."""
+    return "%d %s" % (number, noun if number == 1 else plural or noun + "s")
+
+
 def byte_size(count: int) -> str:
     """`16 GB`, `1.5 MB`, `4 KB`, `900 bytes`: a size as messages show it, one decimal at most."""
     for unit, scale in (("GB", 1024 ** 3), ("MB", 1024 ** 2), ("KB", 1024)):

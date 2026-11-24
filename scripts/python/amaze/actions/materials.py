@@ -29,6 +29,7 @@ def add_asset(model, node: hou.Node, cats: str, tags: str, fav: bool,
     tags = model.sanitize_tags(tags)
     new_mat.set_data(name or node.name(), cats, tags, fav, renderer)
     new_mat.node_color = nodes.custom_node_color(node)
+    material.claim_asset_dir(model.preferences, model.DB_FILENAME, new_mat.mat_id, new_mat.name)
 
     handler.staging = []    # the files are committed together with the row, as one change
     saved = handler.save_node(node, new_mat.mat_id, False)
@@ -48,6 +49,7 @@ def add_asset(model, node: hou.Node, cats: str, tags: str, fav: bool,
             debug.event("save", "material not saved - its database took neither row nor files",
                         name=new_mat.name, mat_id=new_mat.mat_id)
             debug.refuse(messages.ASSET_NOT_SAVED_DATABASE_REFUSED % new_mat.name)
+            material.release_asset_dir(model.preferences, model.DB_FILENAME, new_mat.mat_id)
             return ""
         try:  # the node stores its id, so a later save can offer Update Existing
             node.setUserData("assetlib_id", str(new_mat.mat_id))
@@ -55,6 +57,7 @@ def add_asset(model, node: hou.Node, cats: str, tags: str, fav: bool,
             pass
         return renderer
     asset_record.discard(handler.staging)
+    material.release_asset_dir(model.preferences, model.DB_FILENAME, new_mat.mat_id)
     debug.event("save", "add_asset refused - the node was not saved",
                 name=new_mat.name, node=node.path(),
                 mat_id=new_mat.mat_id)

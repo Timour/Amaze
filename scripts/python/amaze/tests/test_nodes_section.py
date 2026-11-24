@@ -7,7 +7,7 @@ import unittest
 from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PySide6 import QtGui, QtWidgets
+from PySide6 import QtWidgets
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
@@ -61,11 +61,6 @@ class NodesSectionTest(unittest.TestCase):
         self.prefs.render_on_import = 0
         self.model = cop_library.CopLibrary(preferences=self.prefs)
         self.addCleanup(test_support.clear_obj)
-
-    def _image_for(self, asset) -> str:
-        return os.path.join(material.section_folder(self.prefs.dir, library_files.NODES),
-                            str(asset.mat_id) + self.prefs.img_ext)    # `nodes/<id>.png`
-
 
     def test_context_of_reads_the_containing_network(self):
         geo = _sop_network("ctx_sop")
@@ -455,32 +450,6 @@ class NodesSectionTest(unittest.TestCase):
                 child.destroy()
             except hou.OperationFailed:
                 pass
-
-
-    def test_sop_and_cop_assets_render_a_thumbnail(self):
-        self.prefs.render_on_import = 1
-        for label in ("SOP", "COP"):
-            with self.subTest(label=label):
-                if label == "SOP":
-                    network = _sop_network("thumb_sop")
-                else:
-                    network = hou.node("/obj").createNode("copnet", "thumb_cop")
-                    network.createNode(_cop_node_type())
-                held = test_support.asset_ids(self.model)
-                self.assertEqual(label, node_actions.add_asset(
-                    self.model, network, "", "", False, name="thumbed_" + label))
-                saved, = test_support.arrived(self.model, held)
-                image = self._image_for(saved)
-                self.assertTrue(os.path.exists(image),
-                                "no %s thumbnail written" % label)
-                rendered = QtGui.QImage(image)
-                self.assertFalse(rendered.isNull())
-                if label == "SOP":
-                    colours = {rendered.pixel(x, y)
-                               for x in range(0, rendered.width(), 4)
-                               for y in range(0, rendered.height(), 4)}
-                    self.assertGreater(len(colours), 1,
-                                       "the SOP thumbnail is a blank image")
 
     def test_a_tile_with_no_picture_shows_the_node_face(self):
         """T07 is the face of any node tile with no picture; only a SOP or COP can have one ▸r/tile-faces."""

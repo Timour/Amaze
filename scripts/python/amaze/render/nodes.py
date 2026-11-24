@@ -1203,7 +1203,7 @@ class NodeHandler:
             raise hou.OperationFailed(problem)
 
         texstore.resolve_parms(    # the whole container, before it moves
-            self._builder_node, self._preferences, helpers.houdini_path)
+            self._builder_node, self._preferences, helpers.houdini_path, os.path.dirname(file_name))
 
         new_mat = hou.moveNodesTo((self._builder_node,), self._import_path)  # type: ignore
         if not new_mat:
@@ -1229,7 +1229,7 @@ class NodeHandler:
             raise hou.OperationFailed(nothing_loaded(mat.name, file_name))
         from amaze.helpers import helpers
         texstore.resolve_parms(    # before any move, spelled as Write Paths As says
-            self._builder_node, self._preferences, helpers.houdini_path)
+            self._builder_node, self._preferences, helpers.houdini_path, os.path.dirname(file_name))
         return loaded
 
     def _place_whole_builder(self, mat: material.Material, inner) -> None:
@@ -1797,7 +1797,7 @@ class NodeHandler:
             if path_map:
                 self.rewrite_cop_refs((root,), path_map)
             self.texture_inventory = texstore.copy_into_library(    # on the copy: the scene node stays untouched
-                root, self._preferences, texstore.asset_folder(node.name(), asset_id), textures)
+                root, self._preferences, os.path.dirname(file_name), textures)
             holder, items = ((staging, (root,)) if whole    # a builder subnet keeps its own data
                              else (root, root.allItems()))    # NOT children(): a dot is no child ▸r/node-items
             handed = True

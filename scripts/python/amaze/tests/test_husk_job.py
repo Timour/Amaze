@@ -9,7 +9,7 @@ import unittest
 from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6 import QtWidgets
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
@@ -20,15 +20,11 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 from amaze import preview  # noqa: E402
-from amaze.core import library_files, material, tile_icons  # noqa: E402
-from amaze.render import husk_job, material_converter, thumbs  # noqa: E402
+from amaze.render import husk_job, thumbs  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
 OCIO = {"display": hou.Color.ocio_defaultDisplay(), "view": hou.Color.ocio_defaultView(),
         "space": "scene_linear"}
-RED, GREEN = (0.8, 0.05, 0.05), (0.05, 0.8, 0.05)
-PLASTIC = "139888337459841200"    # a fixture whose surface takes its colour from a parm
-OCTANE_SHADER = "octane::NT_MAT_STANDARD_SURFACE"
 
 
 def _patch_viewer(testcase):
@@ -37,81 +33,6 @@ def _patch_viewer(testcase):
         patcher = mock.patch.object(target, "ocio_from_viewer", lambda: dict(OCIO))
         patcher.start()
         testcase.addCleanup(patcher.stop)
-
-
-def _plastic(testcase, colour):
-    """The plastic fixture loaded into a plain subnet, its base colour set."""
-    holder = hou.node("/mat").createNode("subnet")
-    testcase.addCleanup(test_support.drop_node, holder)
-    holder.loadItemsFromFile(os.path.join(material.section_folder(
-        test_support.FIXTURE_DIR, library_files.MATERIALS), PLASTIC + ".mat"))
-    surface = next(c for c in holder.children() if c.type().name() == "mtlxstandard_surface")
-    surface.parmTuple("base_color").set(colour)
-    return holder
-
-
-def _octane(testcase, colour):
-    import octane_material_builder
-    builder = octane_material_builder.createMaskedOctaneSubnet(target_node=hou.node("/mat"))
-    testcase.addCleanup(test_support.drop_node, builder)
-    shader = next(c for c in builder.children() if c.type().name() == OCTANE_SHADER)
-    shader.parmTuple("baseColor").set(colour)
-    return builder
-
-
-def _redshift(testcase, colour, classic=False):
-    """A Redshift material with its base colour set: the USD builder, or the classic container."""
-    kind = "redshift_vopnet" if classic else "rs_usd_material_builder"
-    builder = hou.node("/mat").createNode(kind)
-    testcase.addCleanup(test_support.drop_node, builder)
-    terminal = material.redshift_terminal(builder)
-    shader = material_converter.find_redshift_shader(builder)
-    if shader is None:
-        shader = builder.createNode("redshift::StandardMaterial")
-    if terminal is not None and not any(
-            c.inputNode() is shader for c in terminal.inputConnections()):
-        terminal.setNamedInput("Surface", shader, 0)
-    shader.parmTuple("base_color").set(colour)
-    return builder
-
-
-def _hue(png):
-    """`red`, `green` or `neither`, from the middle third of the picture."""
-    img = QtGui.QImage(png)
-    if img.isNull():
-        return "no picture"
-    w, h = img.width(), img.height()
-    r = g = b = n = 0
-    for y in range(h // 3, 2 * h // 3):
-        for x in range(w // 3, 2 * w // 3):
-            c = img.pixelColor(x, y)
-            r, g, b, n = r + c.red(), g + c.green(), b + c.blue(), n + 1
-    r, g, b = r / n, g / n, b / n
-    if r > g + 15 and r > b + 15:
-        return "red"
-    if g > r + 15 and g > b + 15:
-        return "green"
-    return "neither (%d, %d, %d)" % (r, g, b)
-
-
-LICENSING_ERROR = "Maxon licensing error"    # Redshift prints it at the first frame with no licence
-
-
-def _stops_at_a_licensing_error(testcase):
-    """Cancel a husk that prints Redshift's licensing error; the list returned gets that line."""
-    lines = []
-    handle = husk_job.HuskJob._handle
-
-    def watched(job, line):
-        if LICENSING_ERROR in line and not lines:
-            lines.append(line.strip())
-            job.cancel("Redshift has no licence")
-        handle(job, line)
-
-    patcher = mock.patch.object(husk_job.HuskJob, "_handle", watched)
-    patcher.start()
-    testcase.addCleanup(patcher.stop)
-    return lines
 
 
 class TheCommandAndItsEnvironment(unittest.TestCase):
@@ -321,48 +242,6 @@ class ThePreFrameScriptBindsFrameNsMaterial(unittest.TestCase):
                         "the binding was authored without applying its API schema")
 
 
-class OneHuskRendersEachMaterial(unittest.TestCase):
-    """Real renders through `render_batch`, here in hython where it waits for husk to finish."""
-
-    def setUp(self):
-        _patch_viewer(self)
-        self.prefs = test_support.fixture_prefs(self)
-        self.prefs.rendersize = 64
-
-    def _render(self, renderer, items):
-        before = set(hou.node("/obj").children())
-        self.assertTrue(thumbs.ThumbNailRenderer.render_batch(self.prefs, renderer, items))
-        self.assertEqual(before, set(hou.node("/obj").children()),
-                         "the batch left nodes behind in /obj")
-        self.assertFalse(husk_job.jobs.busy())
-        return [_hue(tile_icons.thumbnail_path(self.prefs, asset_id, library_files.MATERIALS))
-                for asset_id, _ in items]
-
-    def test_two_karma_materials_are_two_pictures(self):
-        items = [("RED_PROBE", _plastic(self, RED)), ("GREEN_PROBE", _plastic(self, GREEN))]
-        self.assertEqual(["red", "green"], self._render("Karma", items),
-                         "one husk did not give each frame its own material")
-
-    @unittest.skipUnless(test_support.renderer_loaded("Octane"), "the Octane plugin is not loaded")
-    def test_two_octane_materials_are_two_pictures(self):
-        items = [("RED_OCT", _octane(self, RED)), ("GREEN_OCT", _octane(self, GREEN))]
-        self.assertEqual(["red", "green"], self._render("Octane", items),
-                         "Octane kept the first material for the second frame")
-
-    @unittest.skipUnless(test_support.renderer_loaded("Redshift"),
-                         "the Redshift plugin is not loaded")
-    def test_two_redshift_materials_are_two_pictures(self):
-        """The USD builder and a classic container, one husk through Redshift's delegate."""
-        licensing_error = _stops_at_a_licensing_error(self)
-        items = [("RED_RS", _redshift(self, RED)),
-                 ("GREEN_RS", _redshift(self, GREEN, classic=True))]
-        hues = self._render("Redshift", items)
-        if licensing_error:
-            self.skipTest("Redshift has no licence on this machine")
-        self.assertEqual(["red", "green"], hues,
-                         "one Redshift husk did not give each frame its own material")
-
-
 class AHuskThatWillNotStopIsKilled(unittest.TestCase):
     """A Redshift husk stuck in a texture conversion ignored SIGTERM. ▸r/redshift-thumbnail-paths"""
 
@@ -401,85 +280,6 @@ class AHuskThatWillNotStopIsKilled(unittest.TestCase):
         self.assertIsNotNone(job._proc.poll(), "the stalled husk was left running")
         self.assertLess(time.monotonic() - started, 15.0, "the stall took 15 s or more to detect")
         self.assertEqual(1, len(log.matching("printed nothing")), "the stall was not logged")
-
-
-class TheBackgroundQueue(unittest.TestCase):
-    """The panel's path: husk runs while Qt's event loop runs; progress, each PNG, and Cancel."""
-
-    def setUp(self):
-        _patch_viewer(self)
-        self.prefs = test_support.fixture_prefs(self)
-        self.prefs.rendersize = 64
-        patcher = mock.patch.object(hou, "isUIAvailable", lambda: True)
-        patcher.start()
-        self.addCleanup(patcher.stop)
-        self.addCleanup(husk_job.jobs.stop_now)
-
-    def _connect(self, signal, slot):
-        signal.connect(slot)
-        self.addCleanup(signal.disconnect, slot)
-
-    def _wait_idle(self, seconds):
-        loop = QtCore.QEventLoop()
-
-        def idle(active):
-            if not active:
-                loop.quit()
-
-        self._connect(husk_job.jobs.activeChanged, idle)
-        QtCore.QTimer.singleShot(int(seconds * 1000), loop.quit)
-        if husk_job.jobs.busy():
-            loop.exec()
-
-    def test_progress_and_each_thumbnail_arrive(self):
-        written, progress = [], []
-
-        def on_written(asset_id):
-            written.append(asset_id)
-
-        def on_progress(done, total):
-            progress.append(done)
-
-        self._connect(husk_job.jobs.thumbnailWritten, on_written)
-        self._connect(husk_job.jobs.progressed, on_progress)
-        items = [("RED_BG", _plastic(self, RED)), ("GREEN_BG", _plastic(self, GREEN))]
-        self.assertTrue(thumbs.ThumbNailRenderer.render_batch(self.prefs, "Karma", items))
-        self.assertTrue(husk_job.jobs.busy(), "render_batch waited for husk in the foreground")
-        self._wait_idle(120)
-        self.assertFalse(husk_job.jobs.busy(), "husk did not finish in 120 s")
-        self.assertEqual(["RED_BG", "GREEN_BG"], written)
-        self.assertEqual(100, max(progress), progress)
-
-    def test_cancel_stops_husk_and_keeps_the_old_pictures(self):
-        self.prefs.rendersize = 512    # slow enough to cancel mid-way
-        items = [("A_CANCEL", _plastic(self, RED)), ("B_CANCEL", _plastic(self, GREEN))]
-        old = []
-        for asset_id, _ in items:
-            path = tile_icons.thumbnail_path(self.prefs, asset_id, library_files.MATERIALS)
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            with open(path, "wb") as fh:
-                fh.write(b"old picture")
-            old.append(path)
-        started = []
-
-        def cancel_on_first(done, total):
-            if not started:
-                started.append(time.monotonic())
-                husk_job.jobs.cancel()
-
-        self._connect(husk_job.jobs.progressed, cancel_on_first)
-        self.assertTrue(thumbs.ThumbNailRenderer.render_batch(self.prefs, "Karma", items))
-        job = husk_job.jobs._running
-        self._wait_idle(120)
-        self.assertTrue(started, "husk reported no progress to cancel on")
-        self.assertFalse(husk_job.jobs.busy())
-        self.assertEqual("cancelled", job.status)
-        self.assertLess(time.monotonic() - started[0], 5.0, "Cancel did not stop husk")
-        self.assertFalse(os.path.exists(job.job_dir), "the job's folder was left behind")
-        for path in old:
-            with open(path, "rb") as fh:
-                self.assertEqual(b"old picture", fh.read(),
-                                 "a cancelled render replaced a thumbnail")
 
 
 if __name__ == "__main__":

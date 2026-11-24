@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 import os
-import re
 import uuid
 import datetime
 
@@ -42,15 +41,9 @@ def terminal_input(named_inputs: dict, role: str):
 MULTIPLE_VALUES = "Multiple Values..."
 
 
-_SAFE_ASSET_ID = re.compile(r"[0-9A-Za-z._-]{1,64}\Z")
-
-
 def is_safe_asset_id(raw) -> bool:
     """True when this id can be used in a filename: no separators, no `.` or `..`."""
-    text = str(raw)
-    if text in (".", ".."):
-        return False
-    return bool(_SAFE_ASSET_ID.match(text))
+    return library_files.is_safe_id(raw)
 
 
 RECORD_SUFFIX = library_files.RECORD_SUFFIX    # `<id>.json`, read and written only by `core/asset_record.py`
@@ -62,15 +55,104 @@ def section_folder(library_dir: str, section: str, area: str = "") -> str:
     return os.path.join(folder, area) if area else folder
 
 
-def owned_path(preferences, section: str, area: str, name: str) -> str:
-    """`name` in a section's folder or its `area`; `PathOutsideBase` if the path is outside it."""
+FOLDER_NAME_LENGTH = 40    # of a folder's name part, so a texture path stays short enough for Windows
+_folder_index: dict = {}    # section folder -> (its mtime, {asset id: folder name})
+
+
+def folder_name(name, asset_id) -> str:
+    """`<name>__<id>`: the folder an asset gets, named by its name and found by its id."""
     from amaze.helpers import hostos
-    return hostos.contained_join(section_folder(preferences.dir, section, area), name)
+    head = hostos.safe_filename(str(name or ""), "asset")[:FOLDER_NAME_LENGTH].rstrip(". ")
+    return "%s%s%s" % (head or "asset", library_files.FOLDER_SEPARATOR, asset_id)
+
+
+def _folders(base: str) -> dict:
+    """{asset id: folder name} in a section folder, listed again when the folder changes."""
+    stamp = _stamp_of(base)
+    if not stamp:
+        return {}
+    held = _folder_index.get(base)
+    if held is not None and held[0] == stamp:
+        return held[1]
+    found = {}
+    try:
+        names = os.listdir(base)
+    except OSError:
+        names = []
+    for name in names:
+        owner = library_files.folder_id(name)
+        if owner:
+            found[owner] = name
+    _folder_index[base] = (stamp, found)
+    return found
+
+
+def folders_stamp(preferences, section: str) -> int:
+    """A number that changes whenever a section's asset folders are added, renamed or removed."""
+    return _stamp_of(section_folder(preferences.dir, section))
+
+
+def asset_ids_with_folders(preferences, section: str) -> dict:
+    """{asset id: its folder} for every asset folder of a section, by one listing."""
+    base = section_folder(preferences.dir, section)
+    return {owner: os.path.join(base, name) for owner, name in _folders(base).items()}
+
+
+def _stamp_of(base: str) -> int:
+    try:
+        return os.stat(base).st_mtime_ns
+    except OSError:
+        return 0
+
+
+def asset_dir(preferences, section: str, asset_id) -> str:
+    """The asset's own folder, `<section folder>/<name>__<id>`; `PathOutsideBase` for an unsafe id."""
+    return folder_in(preferences.dir, section, asset_id)
+
+
+def folder_in(library_dir: str, section: str, asset_id) -> str:
+    """`asset_dir` for a library folder: the asset's folder there, or the one it would get unnamed."""
+    from amaze.helpers import hostos
+    base = section_folder(library_dir, section)
+    return hostos.contained_join(base, _own_name(base, asset_id))
+
+
+def listed_dir(library_dir: str, section: str, asset_id) -> str:
+    """The asset's folder by a plain join, touching no disk: only for reading a tile's picture."""
+    base = section_folder(library_dir, section)
+    return os.path.join(base, _own_name(base, asset_id))
+
+
+def _own_name(base: str, asset_id) -> str:
+    return _folders(base).get(str(asset_id)) or folder_name("", asset_id)
+
+
+def claim_asset_dir(preferences, section: str, asset_id, name) -> str:
+    """The asset's folder, made as `<name>__<id>` when it has none: a first save names it."""
+    from amaze.helpers import hostos
+    found = asset_dir(preferences, section, asset_id)
+    if not os.path.isdir(found):
+        found = hostos.contained_join(section_folder(preferences.dir, section),
+                                      folder_name(name, asset_id))
+        os.makedirs(found, exist_ok=True)
+    return found
+
+
+def release_asset_dir(preferences, section: str, asset_id) -> None:
+    """Remove the folder a first save claimed, once that save failed and left it empty."""
+    try:
+        os.rmdir(asset_dir(preferences, section, asset_id))
+    except (OSError, ValueError):
+        pass
 
 
 def payload_path(preferences, asset_id, suffix: str, section: str) -> str:
-    """`<section folder>/<id><suffix>`; `PathOutsideBase` if the path is outside that folder."""
-    return owned_path(preferences, section, "", str(asset_id) + suffix)
+    """`<asset folder>/<id><suffix>`, checked whole: `PathOutsideBase` for a path or link leaving it."""
+    from amaze.helpers import hostos
+    if not is_safe_asset_id(asset_id):
+        raise hostos.PathOutsideBase("%r cannot name a file" % (asset_id,))
+    base = section_folder(preferences.dir, section)
+    return hostos.contained_join(base, _own_name(base, asset_id), str(asset_id) + suffix)
 
 
 def category_names(value) -> list:

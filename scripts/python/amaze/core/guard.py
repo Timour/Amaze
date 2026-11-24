@@ -474,6 +474,7 @@ class Change:
         self._taken = {}    # relative path -> a file already written whole, moved into place
         self._removals = []
         self._trashed = []
+        self._moved = []    # (relative, to): files or folders renamed after this change's writes
         self.waiting = ""    # after `commit`: why the recorded change is not yet all in place
 
     def put(self, ticket: Ticket, document: dict) -> None:
@@ -507,6 +508,10 @@ class Change:
     def trash(self, relative: str) -> None:
         """Move a file into today's folder of the library's trash."""
         self._trashed.append(str(relative))
+
+    def move(self, relative: str, to: str) -> None:
+        """Rename a file or a folder inside the library, after every write of this change."""
+        self._moved.append((str(relative), str(to)))
 
     def commit(self) -> dict:
         """Apply the change; {name: Ticket} for each database written. `Moved`: read and redo."""
@@ -545,6 +550,7 @@ class Change:
                         disk.write(guard._relative(inside), disk.read(source))
                     steps.append({"op": "swap", "from": inside, "to": relative})
                 steps += [{"op": "remove", "to": relative} for relative in self._removals]
+                steps += [{"op": "move", "from": relative, "to": to} for relative, to in self._moved]
                 written = [step["from"] for step in steps if step["op"] == "swap"]
                 if len(steps) == 1:
                     guard._apply(steps)    # one rename is atomic by itself
@@ -628,7 +634,8 @@ def put_rendered(target: str, scratch: str) -> bool:
     """A picture a renderer wrote to `scratch`, put whole at `target` in its library; False: none."""
     from amaze.core import library_files
     try:
-        if not os.path.isfile(scratch) or not os.path.getsize(scratch):
+        target = library_files.where_now(target)    # its asset renamed meanwhile: there; deleted: nowhere
+        if not target or not os.path.isfile(scratch) or not os.path.getsize(scratch):
             return False
         Guard(library_files.library_of_file(target)).put_whole(target, written=scratch)
         return True

@@ -6,7 +6,6 @@ import io
 import json
 import os
 import shutil
-import subprocess
 import sys
 import tempfile
 import time
@@ -429,26 +428,37 @@ def write_text(path: str, text: str) -> None:
         handle.write(text)
 
 
+def put(folder: str, relative: str, content) -> str:
+    """bytes, text, or a database document as the guard writes it, at `folder/relative`; the path."""
+    from amaze.core import guard
+    path = os.path.join(folder, *relative.split("/"))
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    data = content if isinstance(content, bytes) else (
+        content.encode("utf-8") if isinstance(content, str) else guard.encode(content))
+    with open(path, "wb") as handle:
+        handle.write(data)
+    return path
+
+
+def library_state(folder: str) -> dict:
+    """Every file of a library and its bytes, without backups and scratch files."""
+    from amaze.core import guard
+    found = {}
+    for root, _dirs, files in os.walk(folder):
+        for name in files:
+            relative = os.path.relpath(os.path.join(root, name), folder).replace(os.sep, "/")
+            if relative.startswith(guard.BACKUP_DIR + "/") or name.endswith(guard.SCRATCH):
+                continue
+            with open(os.path.join(root, name), "rb") as handle:
+                found[relative] = handle.read()
+    return found
+
+
 def source_of(relative: str) -> str:
     """The text of a package file, named relative to the package: `core/notes.py`."""
     package = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     with open(os.path.join(package, relative), encoding="utf-8") as handle:
         return handle.read()
-
-
-def refuse_listing(testcase, folder: str) -> None:
-    """Make `folder` refuse to be listed until the test ends; skips as root, who lists it anyway."""
-    if hostos.is_windows():    # its mode bits stop no listing there; a deny rule for Everyone does
-        everyone = "*S-1-1-0"
-        subprocess.run(["icacls", folder, "/deny", everyone + ":(RD)"],
-                       check=True, capture_output=True)
-        testcase.addCleanup(subprocess.run, ["icacls", folder, "/remove:d", everyone],
-                            capture_output=True)
-        return
-    if hasattr(os, "getuid") and os.getuid() == 0:
-        testcase.skipTest("root lists every folder")
-    os.chmod(folder, 0)
-    testcase.addCleanup(os.chmod, folder, 0o755)
 
 
 def bash() -> str:
@@ -515,27 +525,6 @@ def with_fixture_user(library) -> str:
     library_db.flush(holder)
     library_db.release(holder)
     return library
-
-
-def repair_from_preferences(testcase, panel):
-    """Preferences on `panel`, its Databases button pressed twice: Check, then Repair."""
-    from amaze.dialogs import prefs_window
-    state = prefs_window.AmazePrefsState(panel.pane.prefs, pane=panel.pane)
-    state.checkOrRepair()
-    state.checkOrRepair()
-    return state
-
-
-def backup_now(library, name: str) -> str:
-    """Copy database `name` to a backup Check Library lists; returns the backup's path."""
-    import datetime
-    from amaze.core import guard
-    folder = os.path.join(str(library), guard.BACKUP_DIR)
-    os.makedirs(folder, exist_ok=True)
-    stamp = (datetime.datetime.now() - datetime.timedelta(hours=1)).strftime(guard.STAMP)
-    target = os.path.join(folder, "%s.%s%s" % (name, stamp, guard.BACKUP_TAIL))
-    shutil.copyfile(os.path.join(str(library), name), target)
-    return target
 
 
 def serves(name: str, library) -> bool:

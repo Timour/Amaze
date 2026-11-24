@@ -18,7 +18,6 @@ RECORD_KIND = "json"    # `<id>.json` holding the builder alone: the row is stor
 DERIVED = (RECORD_KIND,)    # composed for the package, never copied: the library's copy holds the metadata
 MAX_UNPACKED_BYTES = 16 * 1024 ** 3    # the largest one import may unpack, by the sizes the zip declares ▸r/zip-declared-size
 OBJECTS = ("record", "note", "files", "textures")    # what an entry holds as an object, or leaves out
-PIECE = 1024 * 1024    # how much of a member is in memory at once while it is compared
 
 
 class PackageError(Exception):
@@ -45,15 +44,16 @@ def _collected(model, mat_id) -> dict:
                if kind not in DERIVED and os.path.exists(path)}
     record = asset.get_as_dict()
     textures = {}
+    own = model.asset_directories(mat_id).get("folder", "")
     for token in (record.get("textures") or ()):
-        source = texstore.resolve(str(token), model.preferences)
+        source = texstore.resolve(str(token), model.preferences, own)
         if os.path.isfile(source):
-            textures[str(token)] = source
+            textures[texstore.tokenize(source, model.preferences, own)] = source    # where it is in its folder
         else:
             debug.event("packages", "inventory texture missing",
                         token=str(token), mat_id=mat_id)
-    if len(textures) != len(record.get("textures") or ()):
-        record = dict(record)    # the packed record must not list a texture the package does not contain
+    if sorted(textures) != list(record.get("textures") or ()):
+        record = dict(record)    # the packed record lists exactly the textures the package holds
         record["textures"] = sorted(textures)
     page = notes.note_for(model.preferences,
                           notes.note_key(model.NOTES_SECTION, mat_id))
@@ -214,19 +214,6 @@ def copy_member(bundle, member, handle) -> None:
         shutil.copyfileobj(source, handle)
 
 
-def _holds(bundle, member, path) -> bool:
-    """Whether the file at `path` is the member byte for byte, both read a piece at a time."""
-    if os.path.getsize(path) != bundle.getinfo(member).file_size:
-        return False
-    with bundle.open(member) as source, open(path, "rb") as handle:
-        while True:
-            piece = source.read(PIECE)
-            if piece != handle.read(PIECE):
-                return False
-            if not piece:
-                return True
-
-
 def read_manifest(path: str) -> dict:
     """The package's manifest, opening the file once."""
     try:
@@ -331,6 +318,7 @@ def _commit_assets(prefs, staged, summary) -> None:
             for _model, asset, _entry, _row, written in reversed(items):
                 asset_record.discard(written)
                 model._remove_unsaved_record(asset)
+                material.release_asset_dir(prefs, model.DB_FILENAME, asset.mat_id)
             summary["refused"] += len(items)
             continue
         for _model, asset, entry, row, _written in items:
@@ -374,6 +362,8 @@ def _import_asset(models, prefs, bundle, entry, restore, summary, taken):
         row.pop("uid", None)    # the old id key, which readers copy into `id`
         row["categories"] = ["Import"]
     asset = model._asset_from_row(row)
+    own = (material.claim_asset_dir(prefs, model.DB_FILENAME, asset.mat_id, asset.name)
+           if model.DB_FILENAME in library_files.ASSET_SECTIONS else "")
     targets = model.asset_files(asset.mat_id)
     held = {}    # the builder's members, read into `<id>.json` rather than written as files
     written = []    # (asset_record.TAKE, target, scratch) and the record: committed with the row
@@ -386,24 +376,24 @@ def _import_asset(models, prefs, bundle, entry, restore, summary, taken):
             if not target or kind in DERIVED:
                 continue
             written.append(_staged_member(bundle, arcname, target))
-        store_prefix = texstore.TOKEN_PREFIX + texstore.STORE_DIR_NAME + "/"
-        for token, arcname in (entry.get("textures") or {}).items():
-            if not str(token).startswith(store_prefix):    # only store tokens may be written
-                raise PackageError("not a store texture token: %r" % token)
-            target = hostos.contained_join(    # PathOutsideBase on `..`; the entry counts in `refused`
-                prefs.dir, *str(token)[len(texstore.TOKEN_PREFIX):].split("/"))
+        textures = entry.get("textures") or {}
+        first = min((texstore.old_store_parts(token)[0] for token in textures
+                     if texstore.old_store_parts(token)), default="")    # a 2.0 package's first folder
+        for token, arcname in textures.items():
+            old = texstore.old_store_parts(token)
+            if not own or not (old or str(token).startswith(texstore.OWN_PREFIX)):
+                raise PackageError("not a texture of the material's own: %r" % token)
+            target = (texstore.old_store_target(own, old[0], old[1:], old[0] == first) if old
+                      else texstore.resolve(str(token), prefs, own))
+            hostos.contained_join(own, os.path.relpath(target, own))    # PathOutsideBase on `..`: refused
             if target in taken:
                 continue
-            if os.path.exists(target):
-                if _holds(bundle, arcname, target):
-                    continue    # byte-identical - another asset already shares the file
-                debug.event("packages", "texture member replaced",
-                            token=str(token))
             written.append(_staged_member(bundle, arcname, target))
             taken.add(target)
         written.extend(_staged_builder(model, asset.mat_id, held))
     except BaseException:
         asset_record.discard(written)
+        material.release_asset_dir(prefs, model.DB_FILENAME, asset.mat_id)
         raise
     model._append_record(asset)
     return model, asset, entry, row, written

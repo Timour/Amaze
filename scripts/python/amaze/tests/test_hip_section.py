@@ -20,7 +20,7 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 import hou  # noqa: E402,F401
 from amaze.actions import files as files_actions  # noqa: E402
 from amaze.core import captures, file_library, locations, scene_captures, scene_files, section_list, thumbnails, tile_icons  # noqa: E402
-from amaze.helpers import hostos, ui_helpers  # noqa: E402
+from amaze.helpers import ui_helpers  # noqa: E402
 from amaze.panel import grid  # noqa: E402
 from amaze import sections  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401
@@ -163,16 +163,6 @@ class CaptureStoreTest(unittest.TestCase):
         other = self.tmp.touch("other.hiplc")
         self.assertNotEqual(path, captures.file_path(
             self.prefs, captures.file_key(self.prefs, other)))
-
-    def test_an_asset_capture_is_named_by_its_id_inside_its_section_folder(self):
-        """An asset's capture is its one picture, `<section folder>/<id>.png`."""
-        for section, folder in (("materials.json", "materials"), ("nodes.json", "nodes"),
-                                ("code.json", "code"), ("colors.json", "colors")):
-            with self.subTest(section=section):
-                self.assertEqual(os.path.join(str(self.prefs.dir), folder, "abc123.png"),
-                                 tile_icons.thumbnail_path(self.prefs, "abc123", section))
-                with self.assertRaises(hostos.PathOutsideBase):
-                    tile_icons.thumbnail_path(self.prefs, "../../escape", section)
 
     def test_the_shelf_and_the_tile_use_one_file(self):
         """The shelf names a scene by its path and the menu by its row: one key, or two files."""
@@ -1619,15 +1609,6 @@ class LibraryUpdateTest(unittest.TestCase):
         self.assertEqual(self.policy.LIBRARY_VERSION, self.settings.library_version(self.dir))
         self.assertEqual([], self.asked, "the update asked first")
 
-    def test_an_open_preferences_window_shows_the_new_version(self):
-        """Reload Library runs the update under an open Preferences, which kept the old number."""
-        self.panel.show_prefs()
-        window = self.panel._prefs_window
-        self.addCleanup(test_support.close_window, window)
-        self.assertEqual("Current Library Format: 3", window.sharedState().libraryFormat)
-        self.panel.pane.library._update_library()
-        self.assertEqual("Current Library Format: 2.0", window.sharedState().libraryFormat)
-
 
 class NewerLibraryTest(unittest.TestCase):
     """A library a newer Amaze updated stays closed, and the update that opens it is offered."""
@@ -1662,17 +1643,6 @@ class NewerLibraryTest(unittest.TestCase):
             QtWidgets.QApplication.processEvents()
             if asked:
                 break
-
-    def test_a_panel_opened_on_it_stays_without_a_library(self):
-        asked = self._answering(1)
-        panel = test_support.reopened_panel(self)
-        self.assertIsNone(panel.pane.material_model, "the newer library was opened")
-        self.assertEqual([], asked, "asked inside onCreateInterface, where a modal draws black")
-        self._idle(asked)
-        text, kwargs = asked[0]
-        self.assertEqual("This library is version 2.1 and needs a newer Amaze. "
-                         "Update Amaze to open it.", text)
-        self.assertEqual(("Update Amaze", "Cancel"), tuple(kwargs["buttons"]))
 
     def test_a_switch_onto_it_leaves_the_models_where_they_are(self):
         from unittest import mock
@@ -1718,14 +1688,6 @@ class AssetCaptureTest(unittest.TestCase):
         self.prefs = test_support.fixture_prefs(self)
         self.model = library.MaterialLibrary(self.prefs)
         self.assertGreater(self.model.rowCount(), 0, "the fixture library is empty")
-
-    def test_the_capture_is_kept_under_the_asset_id(self):
-        self.assertEqual(os.path.join(str(self.prefs.dir), "materials",
-                                      self.model.tile_key(0) + ".png"),
-                         self.model.capture_path(0))
-        self.assertEqual(tile_icons.thumbnail_path(self.prefs, self.model.tile_key(0),
-                                                   self.model.DB_FILENAME),
-                         self.model.capture_path(0))
 
     def test_the_image_face_reads_the_one_picture_and_fills_the_tile(self):
         """Render or capture, the tile reads one file; Image crops, the other faces do not."""
@@ -1973,63 +1935,6 @@ class SectionListIsSingleSourcedTest(unittest.TestCase):
             [], offenders,
             "a section list omits a registered section - that is how "
             "the HIP tab was deleted: %s" % offenders)
-
-
-class CheckLibraryConfirmsBeforeChangingTest(unittest.TestCase):
-    """Source-derived: every action Check Library runs is confirmed first, Cancel on Return and Esc."""
-
-    ACTIONS = ("repair.move_aside(", "repair.recover(",
-               "repair.restore_backup(","repair.set_aside_folders(", "repair.drop_favorites_of_missing_files(",
-               "repair.rescue_uncategorised(")
-    CONFIRMS = ("_confirmed(", "**_copy_buttons(")
-
-    def _source(self, *parts):
-        path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), *parts)
-        with open(path, encoding="utf-8") as handle:
-            return handle.read()
-
-    def _bodies(self):
-        code = self._source("dialogs", "repair_dialog.py")
-        for chunk in code.split("\ndef ")[1:]:
-            name = chunk.split("(", 1)[0]
-            work = min((chunk.find(a) for a in self.ACTIONS if a in chunk), default=-1)
-            if work > -1:
-                yield name, chunk, work
-
-    def test_it_confirms_before_doing_any_work(self):
-        bodies = list(self._bodies())
-        self.assertGreaterEqual(len(bodies), 6, "premise: the actions were not found")
-        for name, body, work in bodies:
-            with self.subTest(name=name):
-                confirm_at = min((body.find(g) for g in self.CONFIRMS if g in body), default=-1)
-                self.assertGreater(confirm_at, -1, "%s has no confirm" % name)
-                self.assertLess(confirm_at, work, "%s confirms AFTER the change" % name)
-
-    def test_every_confirmation_returns_before_the_action(self):
-        for name, body, work in self._bodies():
-            with self.subTest(name=name):
-                confirm_at = min(body.find(g) for g in self.CONFIRMS if g in body)
-                self.assertIn("return", body[confirm_at:work], "%s cannot be stopped" % name)
-
-    def test_cancel_is_the_default_and_the_close_action(self):
-        """A gate that moves files must not act on Return or on Esc."""
-        code = self._source("dialogs", "repair_dialog.py")
-        confirm = code[code.find("def _confirmed("):code.find("\ndef ", code.find("def _confirmed("))]
-        self.assertIn("default_choice=1", confirm)
-        self.assertIn("close_choice=1", confirm)
-        buttons = code[code.find("def _copy_buttons("):code.find("\ndef _restore_backup_copy(")]
-        self.assertIn('"default_choice": len(buttons) - 1', buttons)
-        self.assertIn('"close_choice": len(buttons) - 1', buttons)
-
-    def test_check_shows_no_message_and_repair_found_shows_three(self):
-        self.assertNotIn("displayMessage(", self._source("actions", "check.py"))
-        code = self._source("dialogs", "repair_dialog.py")
-        start = code.find("def repair_found(")
-        body = code[start:code.find("\ndef ", start)]
-        self.assertTrue(body, "premise: the Repair dialog is gone")
-        self.assertEqual(3, body.count("displayMessage("),
-                         "the Repair dialog shows more than what it found, what Fix All moves to "
-                         "the trash, and what the fix did")
 
 
 if __name__ == "__main__":

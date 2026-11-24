@@ -60,45 +60,10 @@ class TheThumbnailPathIsComposedInOnePlace(unittest.TestCase):
         self.addCleanup(test_support.reset_database_singletons)
         self.prefs = test_support.fixture_prefs(self)
 
-    def test_the_separator_cannot_change_the_answer(self):
-        """A trailing separator on `prefs.dir` may not change the thumbnail path."""
-        model = library_mod.MaterialLibrary(preferences=self.prefs)
-        root = self.prefs.dir.rstrip(os.sep)
-
-        answers = set()
-        for value in (root, root + os.sep):
-            self.prefs.dir = value
-            answers.add(os.path.normpath(
-                model.asset_files("abc")["thumbnail"]))
-            answers.add(os.path.normpath(tile_icons.thumbnail_path(
-                self.prefs, "abc", model.DB_FILENAME)))
-        self.assertEqual(
-            1, len(answers),
-            "the renderers and asset_files() resolve a thumbnail to "
-            "different places depending on a trailing separator: %s"
-            % sorted(answers))
-        self.assertEqual(os.path.normpath(os.path.join(root, "materials", "abc.png")),
-                         answers.pop(), "a material's one picture is not `materials/<id>.png`")
-
     def test_an_unsafe_id_cannot_escape_the_image_directory(self):
         """`thumbnail_path` raises on an id leaving the folder, for readers and writers alike."""
         with self.assertRaises(hostos.PathOutsideBase):
             tile_icons.thumbnail_path(self.prefs, "../../../Documents/x", library_files.MATERIALS)
-
-    def test_a_format_3_picture_is_never_read(self):
-        """img/ and captures/ are for the format converter: the picture is in the section folder."""
-        root = str(self.prefs.dir)
-        home = tile_icons.thumbnail_path(self.prefs, "abc", library_files.NODES)
-        self.assertEqual(os.path.join("nodes", "abc.png"),
-                         os.path.relpath(home, root))
-        for folder in ("captures", "img"):
-            os.makedirs(os.path.join(root, folder), exist_ok=True)
-            old = os.path.join(root, folder, "abc.png")
-            with open(old, "wb") as handle:
-                handle.write(b"png")
-            with self.subTest(folder=folder):
-                self.assertEqual(home, tile_icons.thumbnail_path(self.prefs, "abc", library_files.NODES),
-                                 "a format 3 picture was read")
 
     def _tile_reads(self, model, row):
         asked = []

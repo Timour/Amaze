@@ -45,7 +45,7 @@ def library_formats(library_dir: str) -> tuple:
              for one in found]
     if not found[0]:
         return 0, 0, 0
-    return tuple(one or base for one, base in zip(found, library_policy.FORMAT_2_0))
+    return tuple(one or base for one, base in zip(found, library_policy.FORMAT_3_0))
 
 
 def library_version(library_dir: str) -> int:

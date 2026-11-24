@@ -15,4 +15,4 @@ Levels:
   and run when its engine changes.
 - UI errors are not listed: they are judged in Houdini.
 
-The lists: [library storage](library-storage.md), [file moves](file-moves.md).
+The lists: [library storage](library-storage.md), [file moves](file-moves.md), [Check Library](check-library.md).

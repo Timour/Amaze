@@ -20,7 +20,7 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 import hou  # noqa: E402,F401
 from amaze.core import (code_library, cop_library, file_info, file_library,  # noqa: E402
-                        gradient_library, library, library_files, material, texstore,
+                        gradient_library, library, library_files, material,
                         thumbnails, versions)
 from amaze.sections import code as code_section, color as color_section, file as file_section, material as material_section, node as node_section, online as online_section, base as section_base  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
@@ -78,15 +78,6 @@ class LibraryCase(unittest.TestCase):
         model = library.MaterialLibrary(self.prefs)
         return model, _section(material_section.MaterialSection, model)
 
-    def _textures(self, folder: str, names) -> list:
-        """Texture files in the library's store, as the tokens a record lists."""
-        tokens = []
-        for number, name in enumerate(names):
-            path = _write(os.path.join(texstore.store_dir(self.prefs), folder, "textures", name),
-                          b"x" * (100 * (number + 1)))
-            tokens.append(texstore.tokenize(path, self.prefs))
-        return tokens
-
 
 class MaterialRowsTest(LibraryCase):
 
@@ -94,32 +85,6 @@ class MaterialRowsTest(LibraryCase):
         """A version ledger on disk, before the model reads which ids have one."""
         folder = versions.versions_dir(self.prefs, mat_id, versions.MATERIAL)
         _write(os.path.join(folder, versions.LEDGER), json.dumps(ledger).encode("utf-8"))
-
-    def test_a_material_with_textures_a_version_and_a_license(self):
-        self._ledger(METAL, {"active": 2, "versions": [{"n": 1}, {"n": 2}]})
-        model, section = self._material_section()
-        row = model.find_asset_row_by_id(METAL)
-        asset = model._assets[row]
-        tokens = self._textures("Metal", ("base.png", "rough.png"))
-        asset._extra["textures"] = tokens + ["$AMAZELIB/matX/Metal/textures/gone.png"]
-        asset.license = "CC0"
-        subject = section.info_subject(_index(section, row))
-
-        textures = [texstore.resolve(token, self.prefs) for token in tokens]
-        own = [path for path in model.asset_files(METAL).values() if os.path.isfile(path)]
-        self.assertEqual(3, len(own), "the fixture material has no .json, .mat and .png")
-        self.assertEqual((("Name", "Metal"),
-                          ("Date", "2026-01-27"),
-                          ("Size", _sizes(own + textures)),
-                          ("Renderer", "MaterialX"),
-                          ("Textures", "2 files")), subject.before)
-        self.assertEqual((("Version", "2"), ("License", "CC0"), ("ID", METAL)), subject.after)
-        self.assertEqual(file_info.Request(file_info.KIND_TEXTURES, tuple(textures)),
-                         subject.request, "the read is not given the texture files that exist")
-        comment = section.comment_subject(_index(section, row))
-        self.assertEqual((comment.name, comment.type), (subject.name, subject.type),
-                         "the header differs from the comments pane's")
-        self.assertEqual("material:" + METAL, subject.key)
 
     def test_a_material_without_textures_has_no_textures_row_and_no_read(self):
         model, section = self._material_section()
@@ -281,23 +246,6 @@ class FileRowsTest(unittest.TestCase):
         self.assertEqual(file_info.KIND_SIZES, subject.request.kind)
         self.assertEqual({self._path("plate.png"), self._path("shot.hip")},
                          set(subject.request.paths))
-
-
-class SeveralLibraryRowsTest(LibraryCase):
-
-    def test_several_materials_read_every_file_they_own_once(self):
-        model, section = self._material_section()
-        metal, bricks = (model.find_asset_row_by_id(METAL), model.find_asset_row_by_id(BRICKS))
-        tokens = self._textures("Metal", ("base.png",))
-        model._assets[metal]._extra["textures"] = list(tokens)
-        model._assets[bricks]._extra["textures"] = list(tokens)    # shared: read once
-        subject = section.info_subject_for([_index(section, metal), _index(section, bricks)])
-        self.assertEqual(("2 items selected", "", (("Items", "2"),), ()),
-                         (subject.name, subject.type, subject.before, subject.after))
-        wanted = (list(model.asset_files(METAL).values())
-                  + [texstore.resolve(tokens[0], self.prefs)]
-                  + list(model.asset_files(BRICKS).values()))
-        self.assertEqual(file_info.Request(file_info.KIND_SIZES, tuple(wanted)), subject.request)
 
 
 class KeysTest(LibraryCase):

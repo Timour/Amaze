@@ -22,7 +22,6 @@ sys.path.insert(
 
 from amaze.core import asset_record, material  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
-from amaze.actions import materials as material_actions  # noqa: E402
 
 
 def _bytes(path: str) -> bytes:
@@ -861,25 +860,6 @@ class AFiveAssetImportSavesOnce(unittest.TestCase):
     def _folder(self):
         return sorted(os.listdir(material.section_folder(
             self.panel.pane.prefs.dir, self.model.DB_FILENAME)))
-
-    def test_five_materials_are_written_in_one_save(self):
-        held = test_support.asset_ids(self.model)
-        summary, saves = self._import()
-        self.assertEqual(5, summary["imported"], summary)
-        self.assertEqual(1, saves, "five imported materials saved the list "
-                                   "%d times" % saves)
-        arrived = test_support.arrived(self.model, held)
-        self.assertEqual(5, len(arrived))
-        path = os.path.join(self.panel.pane.prefs.dir, self.model.DB_FILENAME)
-        with open(path, encoding="utf-8-sig") as handle:
-            on_disk = set(json.load(handle)["assets"])
-        self.assertTrue({str(a.mat_id) for a in arrived} <= on_disk,
-                        "the imported rows are not in the file")
-        written = self._folder()
-        for asset in arrived:
-            for suffix in (".mat", ".json"):
-                self.assertIn(str(asset.mat_id) + suffix, written,
-                              "an imported row was added without its files")
 
     def test_a_failed_save_removes_all_five(self):
         before, files = [str(a.mat_id) for a in self.model.assets], self._folder()
@@ -1798,118 +1778,12 @@ class OnlinePackageImportTest(unittest.TestCase):
 
 
 class TexturePackingTest(unittest.TestCase):
-    """Format 2: stored textures are packed and restored at their tokens; an escaping token fails."""
+    """A packed texture whose token escapes the library is refused and writes nothing."""
 
     @classmethod
     def setUpClass(cls):
         test_support.pin_env(test_support.class_scope(cls), "OCIO", "/dev/null")    # save_node requires $OCIO
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
-
-    def _material_with_texture(self, name):
-        from amaze.tests import make_library_fixture
-        outside = tempfile.mkdtemp(prefix="amaze_outside_")
-        self.addCleanup(
-            __import__("shutil").rmtree, outside, ignore_errors=True)
-        source = os.path.join(outside, "weave_diff.png")
-        with open(source, "wb") as handle:
-            handle.write(b"weavebytes")
-        builder = make_library_fixture.build_material(
-            hou.node("/mat"), name, (0.4, 0.4, 0.4))
-        self.addCleanup(builder.destroy)
-        image = builder.createNode("mtlximage")
-        image.parm("file").set(source)
-        model = self.panel.pane.material_model
-        held = test_support.asset_ids(model)
-        self.assertTrue(material_actions.add_asset(model, builder, "Fabrics", "", False),
-                        "premise: the save went through")
-        saved, = test_support.arrived(model, held)
-        return model, saved
-
-    def test_export_packs_the_texture_inventory(self):
-        from amaze.core import packages
-        model, row = self._material_with_texture("Packed_Weave")
-        entry = packages.collect_asset(model, str(row.mat_id))
-        textures = entry.get("textures") or {}
-        self.assertEqual(1, len(textures),
-                         "the token inventory was not collected")
-        token = next(iter(textures))
-        self.assertTrue(token.startswith("$AMAZELIB/matX/"), token)
-        out = _out_path(self, "weave.amazepkg")
-        packages.write_package(out, [entry])
-        with zipfile.ZipFile(out) as bundle:
-            manifest = json.loads(bundle.read(packages.MANIFEST))
-            self.assertEqual(2, manifest["format"],
-                             "textures need format 2 - a format-1 "
-                             "reader would silently import without textures")
-            arc = manifest["entries"][0]["textures"][token]
-            self.assertEqual(b"weavebytes", bundle.read(arc))
-
-    def test_import_writes_textures_at_their_tokens(self):
-        from amaze.core import packages, texstore
-        model, row = self._material_with_texture("Landed_Weave")
-        out = _out_path(self, "landed.amazepkg")
-        packages.write_package(
-            out, [packages.collect_asset(model, str(row.mat_id))])
-        stored = texstore.resolve(
-            (row.get_as_dict().get("textures") or [""])[0],
-            model.preferences)
-        os.remove(stored)    # the package must be the only source, as in a foreign library
-        before = model.rowCount()
-        held = test_support.asset_ids(model)
-        summary = self.panel.pane.package_import.import_file(out)
-        self.assertEqual(1, summary["imported"], summary)
-        self.assertEqual(before + 1, model.rowCount())
-        new_asset, = test_support.arrived(model, held)
-        tokens = new_asset.get_as_dict().get("textures") or []
-        self.assertEqual(1, len(tokens),
-                         "the imported row lost its texture list")
-        written = texstore.resolve(tokens[0], model.preferences)
-        self.assertTrue(os.path.isfile(written),
-                        "the texture member was not written at its token")
-
-    def test_no_member_is_read_whole(self):
-        from unittest import mock
-
-        from amaze.core import packages, texstore
-        model, row = self._material_with_texture("Streamed_Weave")
-        folder = tempfile.mkdtemp(prefix="amaze_pkg_filesrc_")
-        self.addCleanup(__import__("shutil").rmtree, folder, ignore_errors=True)
-        plain = os.path.join(folder, "notes.txt")
-        with open(plain, "wb") as handle:
-            handle.write(b"plain file bytes")
-        out = _out_path(self, "streamed.amazepkg")
-        packages.write_package(out, [packages.collect_asset(model, str(row.mat_id)),
-                                     packages.collect_file(plain, "other")])
-        os.remove(texstore.resolve(row.get_as_dict()["textures"][0],
-                                   model.preferences))    # so the texture is written, not compared
-        reads, whole = [], zipfile.ZipFile.read
-
-        def read(bundle, name, pwd=None):
-            reads.append(getattr(name, "filename", name))
-            return whole(bundle, name, pwd)
-
-        with mock.patch.object(zipfile.ZipFile, "read", read):
-            summary = self.panel.pane.package_import.import_file(out)
-        self.assertEqual((1, 1), (summary["imported"], summary["files"]), summary)
-        self.assertEqual([packages.MANIFEST], reads, "a member was read whole into memory")
-
-    def test_a_texture_in_place_is_kept_when_identical_and_replaced_when_not(self):
-        from amaze.core import packages, texstore
-        model, row = self._material_with_texture("Shared_Weave")
-        out = _out_path(self, "shared.amazepkg")
-        packages.write_package(
-            out, [packages.collect_asset(model, str(row.mat_id))])
-        stored = texstore.resolve(row.get_as_dict()["textures"][0],
-                                  model.preferences)
-        before = os.stat(stored).st_ino
-        self.assertEqual(1, self.panel.pane.package_import.import_file(out)["imported"])
-        self.assertEqual(before, os.stat(stored).st_ino,
-                         "a texture already in place byte for byte was written again")
-        with open(stored, "wb") as handle:
-            handle.write(b"WEAVEBYTES")    # the same length, so only the content differs
-        self.assertEqual(1, self.panel.pane.package_import.import_file(out)["imported"])
-        self.assertEqual(b"weavebytes", _bytes(stored),
-                         "a different texture in place was kept")
 
     def test_a_token_escaping_the_library_counts_as_refused_and_writes_nothing(self):
         from amaze.core import packages

@@ -16,43 +16,9 @@ EDIT_CONFLICT_KEPT_YOURS_BY = "%s changed \"%s\" while you had it open.\n\nAmaze
 UNSAFE_ARCHIVE_PATHS_SKIPPED = "%d file(s) in this download tried to write outside your library folder and were skipped. Nothing outside the library was touched; the rest imported normally. If the material looks wrong, delete it and download again."
 NO_LIBRARY_FOLDER_CONFIGURED = "Amaze has no library folder set. Pick one in Preferences (Amaze panel), then run Check Library again."
 LIBRARY_FOLDER_UNREACHABLE = "Amaze can't reach its library folder:\n%s\nIf it's on a drive or in a synced folder, connect it and run Check Library again. If you moved the library, point Preferences at the new location."
-CHECK_LIBRARY_IN_THE_PANEL = 'Amaze is open, so use Check in Preferences ▸ Library instead.'
-
-CHOSEN_SAVED_COPY_CANNOT_BE_READ = "That backup of the %s database cannot be read. Try another backup."
-CONFIRM_PUT_SAVED_COPY_BACK = "Restore the %s database from the backup of %s?"
-SAVED_COPY_PUT_BACK_DONE = "The %s database is restored from the backup of %s.%s\n\n%s"
-SETTINGS_UNREADABLE_REPAIR_REPORT = "Amaze's settings couldn't be read, so Check Library can't tell which library to check.\n\nBackups of your settings:\n%s"
-SETTINGS_MISSING_REPAIR_REPORT = "Amaze's settings file is missing, so Check Library can't tell which library to check.\n\nBackups of your settings:\n%s"
-SETTINGS_NO_LIBRARY_REPAIR_REPORT = "Your settings have no library folder set, so Check Library can't tell which library to check.\n\nBackups of your settings:\n%s"
-SETTINGS_COPY_LINE_UNREADABLE = "%s — this backup can't be read"
-SETTINGS_UNREADABLE_NO_COPIES = "Amaze's settings couldn't be read and there's no backup to restore.\n\nTo start fresh, move settings.json out of this folder and open Amaze:\n\n%s"
-CONFIRM_MOVE_FILES_ASIDE = "Move %s to the trash?"
-NOTHING_MOVED_ASIDE_REASON = "Amaze moved nothing: %s."
-FILES_MOVED_ASIDE_SOME_FAILED = "%s moved to the library's trash folder (deleted after 30 days). %s could not be moved and are still in place."
-FILES_MOVED_ASIDE_DONE = "%s moved to the library's trash folder (deleted after 30 days)."
-CONFIRM_MOVE_UNKNOWN_ASIDE = 'Move the files Amaze does not know to the trash?'
-
-CONFIRM_SET_ASIDE_FOLDERS = 'Set aside %s in the Files section?'
-
-CONFIRM_REMOVE_FAVORITES_OF_MISSING_FILES ='Remove %s of files that are gone?'
-
-CONFIRM_PUT_IN_UNCATEGORIZED = 'Put %s in %s?'
-
-FOLDERS_SET_ASIDE_DONE = 'Set aside %s in the Files section. Adding a folder again brings back its comments, icons and favorites.%s'
-
-FAVORITES_OF_MISSING_FILES_ALSO_REMOVED =' Removed %s of files that are gone as well.'
-
-FAVORITES_OF_MISSING_FILES_REMOVED_DONE ='Removed %s of files that are gone.'
-
-PUT_IN_UNCATEGORIZED_DONE = 'Put %s in %s.'
-
-CONFIRM_RECOVER = "Recover %s?"
-SECTION_LIST_UNCHANGED_REASON = "Amaze did not change the %s database: %s."
 NOTHING_CHANGED_REASON = 'Amaze changed nothing: %s.'
 LIBRARY_CHANGED_SINCE_CHECK = "Something changed in the library since the check. Run Check Library again."
 
-ORPHANED_FILES_RECOVERED_DONE = "Recovered %s. Each came back with the metadata saved beside its files: name, category and tags."
-ORPHANED_FILES_RECOVERED_SOME_UNNAMED = "Recovered %s.\n\n%d of them had no metadata that could be read beside the files: they are in the %s category, named %s followed by their id. Rename them as needed."
 TILE_ICON_NOT_SAVED = "The tile icon could not be saved: %s The tile keeps its previous icon."
 USER_DELETE_CONFIRM = "Delete user \"%s\" from this library?"
 USER_NAME_TAKEN = "A user named \"%s\" already exists in this library. Choose another name."
@@ -65,11 +31,6 @@ LIBRARY_INDEX_UNREADABLE = "The library's Materials database is corrupt/unreadab
 DATABASE_STILL_UNREADABLE = "The Materials database cannot be read. Create a new Library or use Check Library on the Amaze shelf to restore a backup or rebuild it."
 LIBRARY_INDEX_UNREADABLE_SWITCHING = "The library's Materials database is corrupt/unreadable."
 DATABASE_STILL_UNREADABLE_SWITCHING = "The Materials database cannot be read."
-CONFIRM_REBUILD_DATABASE = "Rebuild the %s database from each asset's metadata?"
-HELP_REBUILD_DATABASE = "The %s database is replaced by one built from the metadata saved beside each asset's files in its folder. Category names come back; their order and colors may not."
-DATABASE_REBUILT_DONE = "The %s database is rebuilt from each asset's metadata: %s."
-DATABASE_REBUILT_SOME_UNREAD = " The metadata of %s could not be read."
-PICK_DATABASE_TO_REBUILD = "Which database should Amaze rebuild from each asset's metadata?"
 LIBRARY_INDEX_READ_NOT_PERMITTED = 'this account is not allowed to read it:\n%s\n\nThe permissions on the file, or on a folder above it, have to let this account read it.'
 
 LIBRARY_NOT_OPENED = 'The library could not be opened because %s\n\nAmaze will open without a library.'
@@ -211,6 +172,10 @@ UPDATE_OFFER = "%s\n\nRestart Houdini after installing."
 UPDATE_LIBRARY_AVAILABLE = "Amaze v%s is available. The library will be updated to v%s."
 LIBRARY_UPDATE_WARNING = "The library will be updated and won't work with Amaze versions older than %s."
 LIBRARY_NEEDS_NEWER_AMAZE = "This library is version %s and needs a newer Amaze. Update Amaze to open it."
+LIBRARY_NEEDS_CONVERSION = ("This library is version 2.0. To open it, Amaze converts it to version 3.0: "
+                            "each material and node gets its own folder with all its files, and the "
+                            "matX folder goes to the library's trash. An older Amaze can't open it after that.")
+LIBRARY_CONVERSION_FAILED = "The library couldn't be converted (%s). Amaze tries again the next time it opens."
 UPDATE_INSTALLED = "Amaze %s installed. Restart Houdini to use it."
 UPDATE_FAILED_UNEXPECTED = "The update couldn't be installed (%s)."
 DOWNLOADING_UPDATE = 'Downloading the Amaze update'
@@ -284,55 +249,7 @@ LOG_NOT_CLEARED = 'the debug log could not be cleared (%s). It is still there, a
 
 CHECK_LIBRARY_ONLY_A_REPORT = 'This Houdini session has already read this library, so this is only a report: open Amaze and use Check in Preferences ▸ Library to act on it.'
 
-RECOVER_WRITES_A_NEW_DATABASE = ' There is no %s database in the library folder, so Amaze writes a new one with these in it.'
-
-PICK_AN_ACTION = 'What should Amaze do?'
-
-COLUMN_ACTION = 'Action'
-
-PICK_LIST_TO_PUT_BACK = "Which database should Amaze restore? Each line is that database's newest backup."
-
-PICK_OLDER_COPY_TO_PUT_BACK = 'Which older backup of the %s database should Amaze restore?'
-
-COLUMN_NEWEST_SAVED_COPIES = 'Newest backups'
-
-COLUMN_OLDER_SAVED_COPIES = 'Older backups'
-
-COLUMN_SECTION = 'Section'
-
-CURRENT_LIST_UNREADABLE = 'The database you have now cannot be read at the moment, so Amaze cannot say what is in it to compare.'
-
-CURRENT_LIST_COMPARED = 'The database you have now holds %d. Restoring this backup takes you from %d to %d: anything saved to %s since %s is not in this backup and will not be there afterwards.'
-
-LIST_EARLIER_COPY_KEPT = 'The database you had a moment ago is backed up in the library folder: run Check Library again and restore the backup of %s to return to it.'
-
-NO_EARLIER_LIST = 'There was no database here before, so there is nothing to go back to.'
-
 BUTTON_SHOW_IN_FOLDER = 'Show in Folder'
-
-BUTTON_REPAIR_RECOVER = 'Recover %s'
-
-BUTTON_REPAIR_PUT_COPY_BACK = 'Restore Backup'
-
-BUTTON_REBUILD_FROM_METADATA = 'Rebuild from Metadata'
-
-BUTTON_REPAIR_MOVE_ASIDE = 'Move %s to Trash'
-
-BUTTON_MOVE_ONE_UNKNOWN_ASIDE = 'Move 1 Unknown File to Trash'
-
-BUTTON_MOVE_UNKNOWN_ASIDE = 'Move %d Unknown Files to Trash'
-
-BUTTON_SET_ASIDE_FOLDERS = 'Set Aside %s'
-
-BUTTON_REMOVE_FAVORITES_OF_MISSING_FILES ='Remove %s of Missing Files'
-
-BUTTON_PUT_IN_UNCATEGORIZED = 'Put %s in %s'
-
-BUTTON_SHOW_HOLDING_FOLDER = 'Show Trash'
-
-BUTTON_CHOOSE_AN_ACTION = 'Choose an Action...'
-
-BUTTON_REPAIR_CLOSE = 'Close'
 
 
 
@@ -362,27 +279,11 @@ CHECK_FOLDER_UNREAD = 'The %s folder cannot be read.'
 
 CHECK_DRIVE_NOT_CONNECTED = "A folder's drive is not connected."
 
-CHECK_NO_FILES = '%s listed in the database %s no files.'
-
-CHECK_IN_NO_DATABASE = '%s in %s %s in no database.'
-
-CHECK_LEFTOVERS = "%s %s left over from Amaze's own work."
-
-CHECK_UNKNOWN = '%s %s not known to Amaze.'
-
-CHECK_CONFLICT_COPIES = '%s from a sync service.'
-
-CHECK_FAVORITES_OF_MISSING_FILES ='%s %s of %s gone.'
-
-CHECK_MISSING_FOLDERS ='%s in the Files section %s gone.'
-
-FIXED_RESTORED = '%s restored from %s.'
+FIXED_RESTORED = '%s restored from its newest backup.'
 
 FIXED_REBUILT = "%s rebuilt from the assets' own files."
 
-FIXED_EMPTIED = '%s start%s empty.'
-
-CHECK_DATABASE_NO_BACKUP = 'The %s database has no backup. Fix All starts it empty.'
+FIXED_EMPTIED = '%s starts empty.'
 
 CONFIRM_FIX_ALL_TRASH = 'Fix All moves these to the trash. An asset named here is removed from its database.'
 
@@ -398,6 +299,32 @@ FIXED_FAVORITES = '%s removed.'
 
 FIXED_FOLDERS = '%s removed from the Files section.'
 
+CHECK_DATABASE_EMPTY_KEEPS = 'The %s database holds nothing, so the files that may be its stay where they are.'
+CHECK_BACKUPS = 'It has %s.'
+CHECK_NO_BACKUP = 'It has no backup.'
+CHECK_DATABASE_SHRUNK = 'The %s database holds %d, under half of the %d its newest backup holds.'
+CHECK_ROWS_WITHOUT_FILES = '%s in %s %s no files. A file still syncing looks the same.'
+CHECK_UNLISTED_FOLDERS = '%s in no database; %d of them can be recovered from their own record.'
+CHECK_ORPHANS = '%s that no database or version list names.'
+CHECK_LEFTOVERS_FOUND = "%s left over from Amaze's own work."
+CHECK_CONFLICTS_KEPT = '%s from a sync service, left where they are: each differs from its original, or has none.'
+CHECK_UNKNOWN_FOUND = 'Not known to Amaze: %s.'
+CHECK_NO_PICTURE = '%s with no picture.'
+CHECK_NO_CATEGORY = '%s with no category, shown only under All.'
+CHECK_LOCATIONS_GONE = 'Files section folders not on this computer: %s.'
+CHECK_FAVORITES_GONE = '%s of files that are gone.'
+CHECK_TRASH_EMPTY = "The library's trash is empty."
+CHECK_TRASH_HOLDS = "The library's trash holds %s (%s); its oldest day is deleted on %s."
+CHECK_REBUILD_REFUSED = 'The %s database reads, so it was left as it is.'
+CHECK_FAVORITES_NOT_SAVED = 'The favorites could not be saved.'
+CHECK_NEEDS_CONVERSION = 'This library is version 2.0: open it in Amaze and convert it to 3.0 first.'
+CHECK_PICK_REPAIR = ("The %s database cannot be read. Restore its newest backup, from %s, or rebuild it "
+                     "from the record in each asset's folder?")
+CHECK_PICK_REBUILD = ("The %s database cannot be read and has no backup that reads. Rebuild it from the "
+                      "record in each asset's folder?")
+BUTTONS_RESTORE_OR_REBUILD = ('Restore Backup', 'Rebuild', 'Cancel')
+BUTTONS_REBUILD_ONLY = ('Rebuild', 'Cancel')
+
 TITLE_LOG_NOT_SAVED = 'Log not saved'
 
 TITLE_LOG_SAVED = 'Log saved'
@@ -409,25 +336,9 @@ TITLE_EMPTY_SNIPPET = 'Empty snippet'
 TITLE_SAVE_TO = 'Save to %s'
 
 
-BUTTONS_PUT_COPY_BACK = ('Restore', 'Cancel')
-
-BUTTONS_PUT_COPY_BACK_OR_OLDER = ('Restore', 'Older Backups...', 'Cancel')
-
-BUTTONS_MOVE_ASIDE = ('Move to Trash', 'Cancel')
-
-BUTTONS_SET_ASIDE = ('Set Them Aside', 'Cancel')
-
-BUTTONS_REMOVE = ('Remove Them', 'Cancel')
-
-BUTTONS_PUT_THEM_THERE = ('Put Them There', 'Cancel')
-
-BUTTONS_RECOVER = ('Recover', 'Cancel')
-
 BUTTONS_REPAIR_OR_OPEN_WITHOUT = ('Repair', 'Open Without Library')
 
 BUTTONS_REPAIR_OR_CANCEL = ('Repair', 'Cancel')
-
-BUTTONS_REBUILD = ('Rebuild', 'Cancel')
 
 BUTTONS_IMPORT = ('Import', 'Cancel')
 
@@ -446,38 +357,17 @@ BUTTONS_INSTALL_UPDATE = ('Install Update', 'Later')
 BUTTONS_CONTINUE = ('Continue', 'Cancel')
 
 BUTTONS_UPDATE_AMAZE = ('Update Amaze', 'Cancel')
+BUTTONS_CONVERT_LIBRARY = ('Convert', 'Cancel')
 
 BUTTONS_SAVE_VERSION_OR_NEW = ('Save Version', 'Save New', 'Cancel')
 
 BUTTONS_SAVE_NEW = ('Save New', 'Cancel')
 
 
-HELP_CHECK_LIBRARY = "Check Library looks at every database and folder in your library and changes nothing until you press a button. Files you move to the trash go into the library's trash folder and are deleted after 30 days."
-
 HELP_MATERIAL_VERSIONS = "This is shared: everyone working from this library gets the same setting.\n\nWith it on, saving over an existing material keeps the previous version, and the + in the code editor keeps versions of a snippet."
 HELP_DELETE_USER = 'Their favorites and registered folders are removed from this library everywhere it syncs. A machine signed in as "%s" will ask who is using the library the next time it opens. This cannot be undone.'
 
 HELP_LOG_SAVED = 'It contains your file paths, asset and material names - check before sharing it.'
-
-HELP_PUT_SAVED_COPY_BACK = "That backup is from %s and holds %d %s. %s\n\nYour %s' own files and thumbnails are not touched either way, and the database you have now is backed up in the library folder first - run Check Library again and it offers that backup."
-
-HELP_MOVE_FILES_ASIDE = "%s They move into the library's trash folder and are deleted after 30 days. To restore one before then, copy it back into the library.\n\nEverything showing in Amaze stays.%s"
-
-HELP_MOVE_UNLISTED = 'The orphaned files: %s.'
-
-HELP_MOVE_LEFTOVERS = 'The files Amaze left behind and no longer needs: %s.'
-
-HELP_MOVE_UNLISTED_LAST = ' Do this only if you have already tried restoring a backup of a database: if one of these files belongs to a material whose database was lost, restoring the database is what brings it back.'
-
-HELP_MOVE_UNKNOWN_ASIDE = "These are not files Amaze made or knows: %s. They move into the library's trash folder and are deleted after 30 days."
-
-HELP_SET_ASIDE_FOLDERS = "Each folder's comments, icons and favorites are kept, and come back when the folder is added again. Its files are not touched.%s"
-
-HELP_FAVORITES_OF_MISSING_FILES_REMOVED_TOO =' Favorites of files that are gone from a folder still on this computer are removed too.'
-
-HELP_PUT_IN_UNCATEGORIZED = 'Each one has no category now, so it shows only under All.'
-
-HELP_RECOVER = 'Each one goes in the database of the folder its files are in: the materials folder in Materials, the nodes folder in Nodes. Each keeps the metadata saved beside its files: name, category and tags. One whose metadata cannot be read is recovered in a category called %s, named %s followed by its id, with no renderer badge until you save it again.%s\n\nIf there is a backup of a database from before they went missing, restoring that instead is still the closest match. Nothing here is deleted or overwritten either way.'
 
 
 SNIPPET_HAS_NO_CODE = "No code to save."

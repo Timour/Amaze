@@ -19,11 +19,11 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 from amaze import messages  # noqa: E402
 from amaze.core import asset_record, guard, library_conversion, library_db, library_files  # noqa: E402
-from amaze.core import library_policy, material, repair, versions  # noqa: E402
+from amaze.core import library_policy, material, versions  # noqa: E402
 from amaze.prefs import prefs as prefs_mod  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
-MATERIALS, NODES = library_files.MATERIALS, library_files.NODES
+MATERIALS = library_files.MATERIALS
 ROW = {"id": "", "name": "Brick", "categories": ["Walls"], "tags": ["red"],
        "renderer": "Redshift", "date": "2026-01-01 00:00:00", "usd": 1}
 OLD_BUILDER = {"format": 1, "type": "rs_usd_material_builder",
@@ -75,7 +75,6 @@ class _Library(unittest.TestCase):
         self.dir = self.prefs.dir
         self.old = os.path.join(self.dir, "mat")
         self.materials = material.section_folder(self.dir, MATERIALS)
-        self.nodes = material.section_folder(self.dir, NODES)
 
     def at(self, *parts) -> str:
         return os.path.join(self.dir, *parts)
@@ -128,7 +127,6 @@ class _OldLibrary(_Library):
         self.prefs.library_user = test_support.FIXTURE_USER
         self.old = os.path.join(self.dir, library_conversion.OLD_FOLDER)
         self.materials = material.section_folder(self.dir, MATERIALS)
-        self.nodes = material.section_folder(self.dir, NODES)
         write(self.at(library_conversion.OLD_POLICY),
               {"library_version": library_policy.LIBRARY_VERSION - 1})
         os.makedirs(self.old)
@@ -175,20 +173,6 @@ class NothingChangesUnlessItRunsTest(_OldLibrary):
                       pane_library.Library._open_at_start,
                       pane_library.Library.ensure_library_user, library_actions):
             self.assertNotIn("library_conversion", inspect.getsource(where), str(where))
-
-
-class EveryVersionFileIsRenamedTest(_OldLibrary):
-    """Only `<id>_<n>.*` is a version file's name: an older one is unknown."""
-
-    def test_the_new_names_are_the_only_version_names(self):
-        for relative, kind in (("materials/versions/MAT2/MAT2_3.mat", library_files.VERSION),
-                               ("nodes/versions/N1/N1_12.json", library_files.VERSION),
-                               ("code/versions/C1/C1_2.txt", library_files.VERSION),
-                               ("materials/versions/MAT2/3.mat", library_files.UNKNOWN),
-                               ("materials/versions/MAT2/Crimson-3.mat", library_files.UNKNOWN),
-                               ("materials/versions/MAT2/OTHER_3.mat", library_files.UNKNOWN)):
-            with self.subTest(relative=relative):
-                self.assertEqual(kind, library_files.classify(relative)[0])
 
 
 class OnlyTheConverterNamesFormat3Test(unittest.TestCase):
@@ -338,57 +322,6 @@ class AMetadataEditMakesNoVersionTest(_Library):
                          dict(versions.SOURCE_KINDS))
 
 
-class TheRebuildReadsTheNewFileTest(_Library):
-    """A lost database is rebuilt from each `<id>.json`'s metadata, and only from that."""
-
-    def test_the_metadata_section_rebuilds_the_row(self):
-        self.metadata("REB1")
-        self.old_asset("REB2")
-        self.old_asset("REB3", self.materials)
-        rebuilt = repair.rebuild_from_metadata(self.dir)
-        names = {row["id"] for row in rebuilt["assets"].values()}
-        self.assertIn("REB1", names, "the rebuild could not read `<id>.json`")
-        self.assertNotIn("REB2", names, "the rebuild read a format 3 stamp in mat/")
-        self.assertNotIn("REB3", names, "the rebuild read a format 3 stamp beside the files")
-
-
-class AnyIdTheWriterAcceptsIsReadBackTest(_Library):
-    """`-1` and ids with `.`, `_` or `-` get an `<id>.json`; the rebuild and the checks see it."""
-
-    def test_the_sentinel_row_is_written_and_rebuilt(self):
-        write(os.path.join(self.materials, "-1.mat"), "nodes of -1\n")
-        held = library_db.document(self.prefs, MATERIALS)
-        self.assertTrue(held.put("assets", "-1", dict(ROW, id="-1", name="Sentinel")))
-        test_support.settle_stamps()
-        written = os.path.join(self.materials, "-1.json")
-        self.assertTrue(os.path.exists(written), "premise: the writer takes the id -1")
-        rebuilt = repair.rebuild_from_metadata(self.dir)
-        self.assertIn("-1", {str(row["id"]) for row in rebuilt["assets"].values()})
-        findings = repair.survey(self.dir)
-        self.assertNotIn("materials/-1.json",
-                         [entry[0] for entry in findings["unknown"]],
-                         "Check Library called the file unknown")
-
-    def test_an_unlisted_one_is_an_orphan_with_metadata(self):
-        self.metadata("odd_id.1")
-        findings = repair.survey(self.dir)
-        self.assertIn("odd_id.1.json", findings["unaccounted"]["materials/"])
-        self.assertIn("odd_id.1", repair.recoverable_unlisted(findings))
-
-
-class APairIsOneFolderTest(_Library):
-    """A `.mat` in one folder and a `.json` in another are two halves, not a pair."""
-
-    def test_halves_in_two_folders_are_no_pair(self):
-        write(os.path.join(self.materials, "SPLIT1.mat"), "n\n")
-        write(os.path.join(self.nodes, "SPLIT1.json"), {"builder": {"type": "x"}})
-        write(os.path.join(self.old, "SPLIT2.mat"), "n\n")
-        write(os.path.join(self.materials, "SPLIT2.json"), {"builder": {"type": "x"}})
-        write(os.path.join(self.materials, "WHOLE1.mat"), "n\n")
-        write(os.path.join(self.materials, "WHOLE1.json"), {"builder": {"type": "x"}})
-        self.assertEqual(["WHOLE1"], repair.complete_pairs(repair.survey(self.dir)))
-
-
 class OnePicturePerAssetTest(_Library):
     """`<section>/<id>.png` is the asset's picture, render or capture; a choice moves no file."""
 
@@ -415,14 +348,6 @@ class OnePicturePerAssetTest(_Library):
             self.assertEqual("captured", handle.read())
         self.assertEqual(before, self.trashed(), "a face switch moved a picture to the trash")
 
-    def test_a_format_3_picture_is_never_the_tile_s(self):
-        from amaze.core import tile_icons
-        os.remove(os.path.join(self.materials, self.ASSET + ".png"))
-        for folder in ("img", "captures"):
-            write(self.at(folder, self.ASSET + ".png"), b"old")
-        self.assertEqual(os.path.join(self.materials, self.ASSET + ".png"),
-                         tile_icons.thumbnail_path(self.prefs, self.ASSET, MATERIALS))
-
     def test_a_custom_icon_writes_no_library_file(self):
         from amaze.core import tile_icons
         model, row = self.model()
@@ -434,14 +359,6 @@ class OnePicturePerAssetTest(_Library):
                        for name in names if name.endswith(".png"))
         self.assertEqual(before, after, "a custom icon wrote a file into the library")
         self.assertIsNotNone(model.shown_picture(row)[0], "no icon was composed")
-
-    def test_check_library_on_the_new_layout(self):
-        os.remove(os.path.join(self.materials, self.ASSET + ".png"))
-        write(os.path.join(self.materials, "ORPHANPIC1.png"), "an unlisted picture")
-        findings = repair.survey(self.dir)
-        self.assertIn(self.ASSET,
-                      [one for one, _name in findings["missing_renders"][MATERIALS]])
-        self.assertIn("ORPHANPIC1.png", findings["unaccounted"]["materials/"])
 
 
 class PicturesLiveInTheirSectionTest(_Library):
@@ -469,20 +386,6 @@ class AFreshLibraryTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, folder, True)
         library_actions.ensure_library_dirs(types.SimpleNamespace(dir=folder))
         self.assertEqual(["materials", "nodes"], sorted(os.listdir(folder)))
-
-
-class OldFilesBesideANewOneAreLeftoversTest(_Library):
-    """Format 3 files beside `<id>.json` are leftovers the conversion did not take."""
-
-    def test_beside_a_converted_asset_they_are_leftovers(self):
-        asset_id = "139888336268658010"
-        self.old_asset(asset_id, self.materials, stamp=False)
-        findings = repair.survey(self.dir)
-        kinds = {relative: kind for relative, kind, _size, _when in findings["leftovers"]}
-        self.assertEqual(library_files.SUPERSEDED,
-                         kinds.get("materials/%s.interface" % asset_id), kinds)
-        self.assertFalse(any(name.endswith(".interface") for names in
-                             findings["unaccounted"].values() for name in names))
 
 
 if __name__ == "__main__":

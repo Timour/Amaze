@@ -12,7 +12,7 @@ from PySide6 import QtCore, QtWidgets  # noqa: E402
 import hou  # noqa: E402
 
 from amaze import messages, preview  # noqa: E402
-from amaze.core import dragengine, library_files, material  # noqa: E402
+from amaze.core import dragengine, material  # noqa: E402
 from amaze.render import nodes, thumbs  # noqa: E402
 from amaze.utils import rc_calls  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
@@ -50,8 +50,8 @@ class GuardedFilesNeverUseHouUiDirectlyTest(unittest.TestCase):
     """Fails when a direct `hou.ui` access is added to any file in GUARDED. ▸p/refuse-vs-alert"""
 
     def test_no_guarded_file_uses_hou_ui_directly(self):
-        self.assertTrue(direct_hou_ui_uses("dialogs/repair_dialog.py"),    # ▸p/vacuous-register
-                        "the scan finds no `hou.ui` access even in repair_dialog.py, "
+        self.assertTrue(direct_hou_ui_uses("dialogs/check_dialog.py"),    # ▸p/vacuous-register
+                        "the scan finds no `hou.ui` access even in check_dialog.py, "
                         "so its empty results below mean nothing")
         for relpath in GUARDED:
             with self.subTest(relpath):
@@ -158,36 +158,6 @@ class EveryLookupFindsTheSameVisibleNetworkEditor(unittest.TestCase):
             self.assertEqual(["/stage", "/obj"], panel.pane.loading._view_create_networks())
             self.assertIs(shown, nodes.NodeHandler(
                 panel.pane.prefs).get_active_network_editor())
-
-
-class TheCheckReportHeadingMatchesEveryLine(unittest.TestCase):
-    """The report shows before any change, so its heading must not say anything was removed."""
-
-    def setUp(self):
-        self.panel = test_support.fixture_panel(self)
-        self.shown = []
-
-    def _display_message(self, text, *_args, **kwargs):
-        self.shown.append(text)
-        return kwargs.get("close_choice", 0)    # Close, and Cancel on any confirm
-
-    def test_the_heading_contains_no_removed_deleted_or_finished(self):
-        mats = material.section_folder(self.panel.pane.prefs.dir, library_files.MATERIALS)
-        left = os.path.join(mats, "LEFTOVERHERE1.mat")
-        with open(left, "w", encoding="utf-8") as handle:
-            handle.write("in no list at all\n")    # beside an empty Node list: nothing moves
-        from amaze.dialogs import repair_dialog
-        screen = types.SimpleNamespace(displayMessage=self._display_message)
-        with mock.patch.object(hou, "ui", screen, create=True):
-            repair_dialog.check_failed_library(self.panel.pane.prefs.dir, self.panel.pane.prefs)
-        report = self.shown[-1]
-        self.assertIn("LEFTOVERHERE1.mat", report, "premise: the report did not name the file")
-        self.assertTrue(os.path.exists(left), "the report moved the file it lists")
-        heading = report.split("\n", 1)[0].lower()
-        for claim in ("removed", "deleted", "finished"):
-            self.assertNotIn(claim, heading,
-                             "the report opens with %r above lines that "
-                             "say otherwise" % claim)
 
 
 class TheThumbnailImportFailureNeedsNoScreenTest(unittest.TestCase):

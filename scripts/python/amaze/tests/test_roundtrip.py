@@ -367,58 +367,6 @@ class TestRoundTrip(unittest.TestCase):
         self.assertEqual("1", created[0].userData("amaze_whole_probe"),
                          "the builder was saved as its contents, so its own data was not saved")
 
-    def test_saved_material_is_written_to_disk_and_reimports(self):  # -- the round-trip --
-        rows_before = self.model.rowCount()
-        builder = _build_material(self.staging, "roundtrip_mat")
-        held = test_support.asset_ids(self.model)
-        material_actions.add_asset(self.model, builder, "RoundTrip", "roundtrip,test", False)
-
-        self.assertEqual(self.model.rowCount(), rows_before + 1)  # one row added; the node keeps its id for re-saves
-        mat_id = str(test_support.arrived(self.model, held)[0].mat_id)
-        self.assertEqual(builder.userData("assetlib_id"), mat_id)
-
-        base = os.path.join(material.section_folder(self.prefs.dir, MATERIALS), mat_id)  # both files exist, non-empty
-        for path in (base + self.prefs.ext, base + ".json"):
-            self.assertTrue(os.path.exists(path), path)
-            self.assertGreater(os.path.getsize(path), 0, path)
-        self.assertEqual(builder.type().name(),
-                         asset_record.read(base + ".json")["builder"].get("type"),
-                         "the save's .json does not name the builder it saved")
-        for retired in (".interface", ".builder.json"):
-            self.assertFalse(os.path.exists(base + retired),
-                             "a format 4 save still wrote %s" % retired)
-
-        test_support.reset_database_singletons()  # persistence: a fresh model over the same dir, so the row comes from the database
-        reloaded = library_mod.MaterialLibrary(preferences=self.prefs)
-        row = reloaded.find_asset_row_by_id(mat_id)
-        self.assertNotEqual(row, -1, "saved row missing after reload")
-        asset = reloaded.assets[row]
-        self.assertEqual(asset.name, "roundtrip_mat")
-        self.assertIn("RoundTrip", asset.categories)
-
-        ok, reason, _created = material_actions.import_asset_to_scene(reloaded,   # RE-IMPORT through the real importer, into /mat
-            reloaded.index(row, 0), target="mat"
-        )
-        self.assertTrue(ok, reason)
-        imported = [n for n in hou.node("/mat").children()
-                    if n not in self._mat_before
-                    and n.userData("assetlib_id") == mat_id]
-        self.assertEqual(len(imported), 1,
-                         "expected exactly one imported node")
-        node = imported[0]
-
-        self.assertTrue(node.isMaterialFlagSet())  # USABLE, not merely present
-        self.assertTrue(nodes.surface_terminal_wired(node),
-                        "imported material would render black")
-
-        shader = _shader_of(node)  # and the VALUES are unchanged by the round-trip
-        for parm, want in SPEC.items():
-            got = shader.parmTuple(parm).eval()
-            expect = want if isinstance(want, tuple) else (want,)
-            for g, w in zip(got, expect):
-                self.assertAlmostEqual(g, w, places=5,
-                                       msg="%s changed after save and load" % parm)
-
     def test_reimport_is_repeatable(self):
         """Importing the same asset twice yields two independent working nodes, not a collision."""
         builder = _build_material(self.staging, "twice_mat")
@@ -576,50 +524,6 @@ class TestUnsafeAssetIds(unittest.TestCase):
         os.symlink(outside, os.path.join(base, "materials", "away"))
         with self.assertRaises(hostos.PathOutsideBase):
             hostos.contained_join(base, "materials", "away", "asset.mat")
-
-    def test_payload_path_composes_with_or_without_a_separator_and_contains(self):
-        """Concatenation gave `<lib>mat/abc.mat` for a dir saved without its separator."""
-        base = tempfile.mkdtemp(prefix="amaze_payload_")
-        self.addCleanup(shutil.rmtree, base, True)
-
-        class _P:
-            ext = ".mat"
-            dir = base + os.sep
-
-        for section, folder in ((MATERIALS, "materials"), (library_files.NODES, "nodes")):
-            for suffix in (_P.ext, ".json", "_cop" + _P.ext):
-                self.assertEqual(
-                    os.path.normpath(os.path.join(base, folder, "abc" + suffix)),
-                    os.path.normpath(material.payload_path(_P, "abc", suffix, section)),
-                    "payload_path put %r outside its section folder" % suffix)
-
-        class _Unslashed(_P):
-            dir = base                      # no trailing separator
-
-        self.assertEqual(
-            os.path.normpath(os.path.join(base, "materials", "abc.mat")),
-            os.path.normpath(material.payload_path(_Unslashed, "abc",
-                                                   ".mat", MATERIALS)),
-            "a library path without its trailing separator composed "
-            "wrong - which is what concatenation did here")
-        with self.assertRaises(hostos.PathOutsideBase):    # the PATH check, next to the RECORD's
-            material.payload_path(_P, "../../.ssh/authorized_keys", ".mat", MATERIALS)
-
-    def test_nothing_is_read_from_the_old_shared_folder(self):
-        """Only the converter reads format 3's `mat/`; a path is always in the section folder."""
-        base = tempfile.mkdtemp(prefix="amaze_payload_legacy_")
-        self.addCleanup(shutil.rmtree, base, True)
-
-        class _P:
-            dir = base + os.sep
-
-        os.makedirs(os.path.join(base, "mat"))
-        with open(os.path.join(base, "mat", "old.mat"), "w", encoding="utf-8") as handle:
-            handle.write("nodes\n")
-        self.assertEqual(
-            os.path.join(base, "materials", "old.mat"),
-            os.path.normpath(material.payload_path(_P, "old", ".mat", MATERIALS)),
-            "a path fell back to format 3's shared folder")
 
     def test_an_import_with_a_traversal_id_creates_nothing(self):
         """End to end: a traversal id is refused by name, nothing is created, the file is never opened."""

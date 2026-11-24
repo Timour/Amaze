@@ -2390,123 +2390,8 @@ class ALocationWriteIsAnnouncedOnlyWhenItSucceedsTest(unittest.TestCase):
             "old rows until the views are notified")
 
 
-def _check_ui(*wanted_labels):
-    """`hou.ui` for Check Library: each box picks the next wanted button by label, else close."""
-    wanted, shown = list(wanted_labels), []
-
-    def answer(text, *_args, **kwargs):
-        shown.append(text)
-        buttons = list(kwargs.get("buttons") or ())
-        hit = [at for at, label in enumerate(buttons) if wanted and wanted[0] in label]
-        if hit:
-            wanted.pop(0)
-            return hit[0]
-        return kwargs.get("close_choice", 0)
-
-    return mock.Mock(displayMessage=answer, selectFromList=lambda *a, **k: (), shown=shown)
-
-
-class CheckLibraryResetsTheFolderModelTest(unittest.TestCase):
-    """Missing locations leave the prefs, and the File model is reset before any box is shown."""
-
-    @classmethod
-    def setUpClass(cls):
-        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
-
-    def test_missing_locations_are_removed_with_a_structural_signal(self):
-        panel = self.panel
-        model = panel.pane.file_folders_model
-        missing_a, alive, missing_b = [
-            tempfile.mkdtemp(prefix="amaze_cleanup_%s_" % name)
-            for name in ("missing_a", "alive", "missing_b")
-        ]
-        for path in (missing_a, alive, missing_b):
-            self.addCleanup(shutil.rmtree, path, ignore_errors=True)
-            self.addCleanup(panel.pane.prefs.remove_file_folder, path)
-            model.add_folder(path)
-        for path in (missing_a, missing_b):
-            shutil.rmtree(path)
-
-        events = []
-        model.rowsRemoved.connect(lambda *_a: events.append("rows"))
-        model.modelReset.connect(lambda: events.append("reset"))
-        screen = _check_ui("Fix Safe")
-        answer = screen.displayMessage
-
-        def display_message(text, *args, **kwargs):
-            if not kwargs.get("buttons"):
-                events.append("said")
-            return answer(text, *args, **kwargs)
-
-        screen.displayMessage = display_message
-        with mock.patch.object(hou, "ui", screen, create=True):
-            test_support.repair_from_preferences(self, panel)
-
-        self.assertIn("said", events, "premise: nothing was set aside")
-        self.assertNotEqual("said", events[0], "the result box was shown before the model was reset, "
-                                             "so a view paints a stale row count under it")
-        survivors = list(panel.pane.prefs.file_folders)
-        self.assertIn(    # the locations API returns CANONICAL absolute paths, so the expectation converts too
-            hostos.canonical_path_key(alive), survivors,
-            "cleanup removed a location whose folder is still there")
-        for path in (missing_a, missing_b):
-            self.assertNotIn(
-                hostos.canonical_path_key(path), survivors,
-                "a missing location was not removed - the second removal "
-                "used a row index the first one had already shifted")
-
-
-class CheckLibraryReachesTheFoldersTest(unittest.TestCase):
-    """Check Library reports registered folders too, not only asset lists, and sets them aside."""
-
-    def test_a_missing_location_is_named_set_aside_and_reported(self):
-        panel = test_support.fixture_panel(self)
-        missing = tempfile.mkdtemp(prefix="amaze_missing_location_")
-        self.addCleanup(shutil.rmtree, missing, ignore_errors=True)
-        self.addCleanup(panel.pane.prefs.remove_file_folder, missing)
-        panel.pane.file_folders_model.add_folder(missing)
-        shutil.rmtree(missing)
-
-        screen = _check_ui("Fix Safe")
-        with mock.patch.object(hou, "ui", screen, create=True):
-            test_support.repair_from_preferences(self, panel)
-
-        self.assertNotIn(hostos.canonical_path_key(missing), list(panel.pane.prefs.file_folders),
-                         "Check Library left a location whose folder is gone")
-        self.assertIn("1 folder in the Files section is gone.", screen.shown[0],
-                      "the Repair dialog does not count the location")
-        self.assertIn("1 folder removed from the Files section.", screen.shown,
-                      "no message reports the location was set aside")
-
-
-class CheckLibraryDropsOnlyFileStarsTest(unittest.TestCase):
-    """The favourites store holds every section's stars; only a File one names a file to check."""
-
-    def test_a_material_star_is_kept_and_a_missing_file_star_is_removed(self):
-        panel = test_support.fixture_panel(self)
-        model = panel.pane.material_model
-        mat_id = model.assets[1].mat_id    # row 0 is the fixture's odd id -1
-        model.toggle_fav(1)
-        self.assertTrue(locations_mod.is_favourite(panel.pane.prefs, mat_id, model.DB_FILENAME),
-                        "premise: the material star did not set")
-        missing = os.path.join(panel.pane.prefs.file_folders[0], "gone.exr")
-        panel.pane.prefs.add_file_favorite(missing)
-        self.assertTrue(locations_mod.is_favourite(panel.pane.prefs, missing),
-                        "premise: the File star did not set")
-
-        from amaze.core import repair
-        findings = repair.survey(panel.pane.prefs)
-        lines = repair.report_lines(findings)
-        repair.drop_favorites_of_missing_files(findings, guard_session=False)
-
-        self.assertTrue(
-            locations_mod.is_favourite(panel.pane.prefs, mat_id, model.DB_FILENAME),
-            "Check Library removed a material's star - its bare asset id "
-            "was checked as a file path, and no file is named like an id")
-        self.assertNotIn(str(mat_id), "\n".join(lines),
-                         "the report lists a material id as a gone file")
-        self.assertFalse(locations_mod.is_favourite(panel.pane.prefs, missing),
-                         "Check Library kept a favourite whose file is gone")
+class TheFileFavouritesHoldOnlyFileStarsTest(unittest.TestCase):
+    """The favourites store holds every section's stars; the File favourites list only the files."""
 
     def test_the_file_favourites_list_no_asset_star(self):
         prefs, _library = _location_prefs(self, {})
@@ -2522,8 +2407,8 @@ class CheckLibraryDropsOnlyFileStarsTest(unittest.TestCase):
                          "the File favourites include a material id, or lost the file")
 
 
-class CheckLibrarySetsAFolderMissingHereAsideTest(unittest.TestCase):
-    """A folder missing HERE may be on another machine: it is unregistered, its files' data kept."""
+class TheSidebarRemoveDeletesAFoldersAnnotationsTest(unittest.TestCase):
+    """Remove in the sidebar unregisters a folder and deletes its files' comments, icons and stars."""
 
     ICON = {"name": "activity", "bg": "#ff8000"}
 
@@ -2559,37 +2444,6 @@ class CheckLibrarySetsAFolderMissingHereAsideTest(unittest.TestCase):
 
     def _registered(self):
         return [hostos.canonical_path_key(p) for p in self.prefs.file_folders]
-
-    def _clean_while_elsewhere(self):
-        from amaze.core import repair
-        os.rename(self.folder, self.folder + ".elsewhere")
-        findings = dict(repair._files_section(self.prefs), preferences=self.prefs, leftovers=[])
-        lines = repair.report_lines(dict(findings, directory=self.prefs.dir, lists=[],
-                                         unreadable_folders=[], unaccounted={}, complete=True))
-        repair.set_aside_folders(findings, guard_session=False)
-        return lines
-
-    def test_the_registration_is_removed_and_its_files_annotations_are_kept(self):
-        lines = self._clean_while_elsewhere()
-        self.assertNotIn(hostos.canonical_path_key(self.folder), self._registered(),
-                         "Check Library kept the registration of a folder that is not here")
-        self.assertEqual(self.lid, locations_mod.location_id(self.prefs, self.folder),
-                         "the location's id was removed with its registration")
-        self.assertEqual((True, True, True), self._kept(),
-                         "comment, icon and star of a file in it were deleted")
-        naming = [line for line in lines if os.path.basename(self.folder) in line]
-        self.assertEqual(1, len(naming), lines)
-        self.assertIn("aside", naming[0])
-        self.assertIn("keeps its comments, icons and favorites", naming[0])
-        self.assertNotIn("removed", naming[0])
-
-    def test_the_folder_coming_back_shows_its_annotations_again(self):
-        self._clean_while_elsewhere()
-        os.rename(self.folder + ".elsewhere", self.folder)
-        self.assertTrue(self.model.add_folder(self.folder), "premise: the folder was not re-added")
-        self.assertEqual(self.key, locations_mod.file_ident(self.prefs, self.rock),
-                         "the returning folder was given a new id")
-        self.assertEqual((True, True, True), self._kept())
 
     def test_the_sidebar_remove_still_deletes_everything(self):
         row = self._registered().index(hostos.canonical_path_key(self.folder)) + 1

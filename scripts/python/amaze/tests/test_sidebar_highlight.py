@@ -55,22 +55,6 @@ def _ui(**answers):
         selectFile=lambda *a, **k: answers.get("selectFile", ""))
 
 
-def _check_ui(*wanted_labels):
-    """A fake `hou.ui` for Check Library: each dialog picks the next wanted label, else closes."""
-    wanted = list(wanted_labels)
-
-    def answer(*_args, **kwargs):
-        buttons = list(kwargs.get("buttons") or ())
-        hit = [at for at, label in enumerate(buttons) if wanted and wanted[0] in label]
-        if hit:
-            wanted.pop(0)
-            return hit[0]
-        return kwargs.get("close_choice", 0)
-
-    return types.SimpleNamespace(displayMessage=answer, setStatusMessage=lambda *a, **k: None,
-                                 selectFromList=lambda *a, **k: ())
-
-
 class _HighlightCase:
     """A visible fixture panel on section KEY, and the mouse actions that change its sidebar."""
 
@@ -261,13 +245,6 @@ class _AssetSidebarPaths(_HighlightCase):
         self.check("the Favourites star", star, grid="Kept")
         panel.cb_favsonly.setChecked(False)
 
-        def clean_up():
-            self.select_row()
-            panel.pane.prefs.add_file_favorite(os.path.join(panel.pane.prefs.file_folders[0], "gone.exr"))
-            with mock.patch.object(hou, "ui", _check_ui("Fix Safe"), create=True):
-                test_support.repair_from_preferences(self, panel)
-        self.check("Check Library", clean_up, grid="")    # a re-read selects the first row, as Reload does
-
         def tab_and_back():
             self.select_row()
             panel.section_tabs.setChecked("file")
@@ -401,7 +378,7 @@ class CodeSidebarTest(_AssetSidebarPaths, unittest.TestCase):
 
 
 class FileSidebarTest(_HighlightCase, unittest.TestCase):
-    """Locations and their subfolders, file moves, and Check Library setting a location aside."""
+    """Locations and their subfolders, file moves, and the empty grid's Locate."""
 
     KEY = "file"
 
@@ -547,20 +524,9 @@ class FileSidebarTest(_HighlightCase, unittest.TestCase):
         self.check("a right press, Remove another location", remove_another, grid=loc)
         self.check("a library switch", self.switch_library)
 
-    def test_a_location_set_aside_or_located_from_the_blank(self):
-        """Check Library and the empty grid's Locate run through the panel's own functions."""
+    def test_a_location_located_from_the_blank(self):
+        """The empty grid's Locate runs through the panel's own functions."""
         panel = self.panel
-        made = tempfile.mkdtemp(prefix="amaze_gone_location_")
-        self.addCleanup(shutil.rmtree, made, ignore_errors=True)
-        gone = self.add(made)
-
-        def clean_up():
-            self.select_row(gone)
-            shutil.rmtree(gone)
-            with mock.patch.object(hou, "ui", _check_ui("Fix Safe"), create=True):
-                test_support.repair_from_preferences(self, panel)
-        self.check("Check Library sets the browsed location aside", clean_up)
-
         missing = tempfile.mkdtemp(prefix="amaze_missing_location_")
         self.add(missing)
         shutil.rmtree(missing)

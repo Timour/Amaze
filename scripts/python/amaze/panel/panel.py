@@ -111,7 +111,7 @@ _reload(captures)    # before library, file_library and scene_captures, which re
 _reload_loaded("amaze.core.file_moves")    # after captures and locations, whose keys it updates for moved files
 _reload(library)
 _reload(category)
-_reload_loaded("amaze.core.repair")
+_reload_loaded("amaze.core.check_library")
 _reload(folders)
 _reload(prefs)
 _reload(library_actions)    # after captures and prefs, which its steps call

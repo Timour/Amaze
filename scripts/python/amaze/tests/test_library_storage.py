@@ -10,7 +10,8 @@ import unittest
 
 from amaze import branding
 from amaze.core import asset_record, documents, guard, library_db, library_files, library_policy
-from amaze.core import library_settings
+from amaze.core import layout_conversion, library_settings, material, texstore, tile_icons
+from amaze.core import versions
 from amaze.helpers import hostos
 from amaze.prefs import prefs as prefs_mod
 from amaze.tests import faults, test_support
@@ -33,27 +34,7 @@ class Clock:
         self.at += datetime.timedelta(**how)
 
 
-def put(folder: str, relative: str, content) -> str:
-    path = os.path.join(folder, *relative.split("/"))
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    data = content if isinstance(content, bytes) else (
-        content.encode("utf-8") if isinstance(content, str) else guard.encode(content))
-    with open(path, "wb") as handle:
-        handle.write(data)
-    return path
-
-
-def state(folder: str) -> dict:
-    """Every file of the library and its bytes, without backups, scratches and the journal."""
-    found = {}
-    for root, _dirs, files in os.walk(folder):
-        for name in files:
-            relative = os.path.relpath(os.path.join(root, name), folder).replace(os.sep, "/")
-            if relative.startswith(guard.BACKUP_DIR + "/") or name.endswith(guard.SCRATCH):
-                continue
-            with open(os.path.join(root, name), "rb") as handle:
-                found[relative] = handle.read()
-    return found
+put, state = test_support.put, test_support.library_state
 
 
 def assets(count: int, word: str = "brick") -> dict:
@@ -183,6 +164,71 @@ class CutOffTest(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(last, guard.JOURNAL)))
         self.assertEqual(after, state(last))
         self.assertNotEqual(before, after)
+
+
+def lay_out_2_0(folder: str) -> dict:
+    """A 2.0 library: flat files, a version store, `matX/` folders, one of them used by two."""
+    put(folder, guard.MASTER, {"policy": {"library": {"version": library_policy.LAYOUT_2_0}}})
+    put(folder, MATERIALS, {ASSETS: {
+        "A1": {"name": "Brick", "textures": ["$AMAZELIB/matX/Brick__a1/textures/brick.png"]},
+        "A2": {"name": "Brick Red", "textures": ["$AMAZELIB/matX/Brick__a1/textures/brick.png",
+                                                 "$AMAZELIB/matX/Dl__x/textures/d.png"]}}})
+    put(folder, NODES, {ASSETS: {"N1": {"name": "Rig"}}})
+    files = {"materials/A1.mat": b"nodes of A1", "materials/A1.png": b"picture of A1",
+             "materials/A2.mat": b"nodes of A2", "materials/versions/A1/A1_1.mat": b"A1 before",
+             "nodes/N1.mat": b"nodes of N1", "matX/Brick__a1/textures/brick.png": b"brick",
+             "matX/Dl__x/d.mtlx": b"<materialx/>", "matX/Dl__x/textures/d.png": b"d",
+             "matX/Unused__z/textures/u.png": b"unused"}
+    for relative, data in files.items():
+        put(folder, relative, data)
+    return files
+
+
+class ConversionTest(unittest.TestCase):
+    """The 2.0 library converted to 3.0, and cut off at each of its steps."""
+
+    def library(self) -> str:
+        folder = tempfile.mkdtemp(prefix="amaze_storage_convert_")
+        self.addCleanup(shutil.rmtree, folder, True)
+        self.files = lay_out_2_0(folder)
+        return folder
+
+    def converted(self, folder: str, disk=None) -> dict:
+        try:
+            layout_conversion.convert(guard.Guard(folder, disk=disk, now=Clock()), "u1")
+        except faults.Cut:
+            pass
+        return state(folder)
+
+    def test_ls18_a_2_0_library_converts_whole_and_a_cut_off_conversion_finishes(self):
+        counting = faults.FaultDisk()
+        whole = self.converted(self.library(), counting)
+        own = {path: data for path, data in whole.items() if not path.startswith("trash/")}
+        self.assertEqual({
+            "materials/Brick__A1/A1.mat": b"nodes of A1", "materials/Brick__A1/A1.png": b"picture of A1",
+            "materials/Brick__A1/versions/A1_1.mat": b"A1 before",
+            "materials/Brick__A1/textures/brick.png": b"brick",
+            "materials/Brick Red__A2/A2.mat": b"nodes of A2",
+            "materials/Brick Red__A2/textures/brick.png": b"brick",
+            "materials/Brick Red__A2/textures/Dl__x/d.mtlx": b"<materialx/>",
+            "materials/Brick Red__A2/textures/Dl__x/textures/d.png": b"d",
+            "nodes/Rig__N1/N1.mat": b"nodes of N1"},
+            {path: data for path, data in own.items() if path not in library_files.DATABASES})
+        self.assertEqual([b"unused"], [data for path, data in whole.items()
+                                       if path.endswith("matX/Unused__z/textures/u.png")])
+        for step in range(1, counting.steps + 1):
+            folder = self.library()
+            cut = self.converted(folder, faults.FaultDisk(cut_at=step))
+            self.assertLessEqual(set(self.files.values()), set(cut.values()),
+                                 "a file was lost when the conversion was cut at step %d" % step)
+            self.assertEqual(whole, self.converted(folder), "cut at step %d" % step)
+
+    def test_ls19_a_2_0_library_is_not_opened_until_it_is_converted(self):
+        self.assertTrue(layout_conversion.needs_conversion(self.library()))
+        fresh = tempfile.mkdtemp(prefix="amaze_storage_3_")
+        self.addCleanup(shutil.rmtree, fresh, True)
+        self.assertTrue(prefs_mod.create_library(fresh))
+        self.assertFalse(layout_conversion.needs_conversion(fresh), "a new library is 3.0")
 
 
 class LibraryFilesTest(_Library):
@@ -507,7 +553,7 @@ class ThroughThePreferencesTest(_Settings):
     """Requirements met through `library_db` and `library_settings`."""
 
     def test_ls14_a_rows_changes_reach_its_record_in_the_same_save(self):
-        record = os.path.join(self.dir, library_files.SECTION_FOLDERS[MATERIALS], "A1.json")
+        record = os.path.join(material.claim_asset_dir(self.prefs, MATERIALS, "A1", "Brick"), "A1.json")
         put(os.path.dirname(record), "A1.json", asset_record.encode(
             {"format": asset_record.FORMAT, asset_record.METADATA: {"name": "old"}}))
         held = library_db.document(self.prefs, MATERIALS)
@@ -528,19 +574,57 @@ class ThroughThePreferencesTest(_Settings):
         self.assertFalse(library_settings.allow_overwrite(self.prefs))
         self.assertFalse(library_settings.set_allow_overwrite(self.prefs, True))
 
-    def test_ls34_the_library_records_this_amazes_format_and_shows_it_as_2_x(self):
+    def test_ls34_the_library_records_this_amazes_format_and_shows_it_as_3_x(self):
         self.assertEqual((library_policy.LIBRARY_VERSION, branding.LIBRARY_FORMAT,
                           asset_record.FORMAT), library_settings.THIS_AMAZE,
                          "library_policy.py names a number the code does not write")
         self.assertTrue(prefs_mod.create_library(self.dir))
-        self.assertEqual(library_policy.FORMAT_2_0, library_settings.library_formats(self.dir))
-        self.assertEqual("2.0", library_settings.version_label(
+        self.assertEqual(library_policy.FORMAT_3_0, library_settings.library_formats(self.dir))
+        self.assertEqual("3.0", library_settings.version_label(
             library_settings.library_formats(self.dir)))
-        version, database, record = library_policy.FORMAT_2_0
-        for found, shown in (((version, database + 1, record), "2.1"),
-                             ((version + 1, database + 1, record + 2), "2.4"),
-                             ((version - 1, 0, 0), "3")):
+        version, database, record = library_policy.FORMAT_3_0
+        for found, shown in (((version, database + 1, record), "3.1"),
+                             ((version + 1, database + 1, record + 2), "3.4"),
+                             ((library_policy.LAYOUT_2_0, 0, 0), "2.0")):
             self.assertEqual(shown, library_settings.version_label(found), found)
+
+    def test_ls36_each_asset_has_its_own_named_folder_and_a_rename_moves_it(self):
+        own = material.claim_asset_dir(self.prefs, MATERIALS, "A1", "Brick")
+        self.assertEqual(os.path.join(self.dir, "materials", "Brick__A1"), own)
+        self.assertEqual((own, own, os.path.join(own, library_files.VERSIONS)), (
+            os.path.dirname(material.payload_path(self.prefs, "A1", ".mat", MATERIALS)),
+            os.path.dirname(tile_icons.thumbnail_path(self.prefs, "A1", MATERIALS)),
+            versions.versions_dir(self.prefs, "A1")))
+        put(own, "A1.mat", b"nodes of A1")
+        put(own, "A1.json", asset_record.encode({"format": asset_record.FORMAT,
+                                                 asset_record.METADATA: {"name": "Brick"}}))
+        held = library_db.document(self.prefs, MATERIALS)
+        held.put(ASSETS, "A1", {"name": "Stone"})
+        self.assertTrue(library_db.save(self.prefs, MATERIALS))
+        moved = os.path.join(self.dir, "materials", "Stone__A1")
+        self.assertEqual((False, moved), (os.path.exists(own),
+                                          material.asset_dir(self.prefs, MATERIALS, "A1")))
+        self.assertEqual("Stone", asset_record.read(os.path.join(moved, "A1.json"))[
+            asset_record.METADATA]["name"])
+
+    def test_ls37_a_saved_material_keeps_its_own_copy_of_each_texture(self):
+        other = material.claim_asset_dir(self.prefs, MATERIALS, "B1", "Oak")
+        shared = put(other, "textures/oak.png", b"oak grain")
+        own = material.claim_asset_dir(self.prefs, MATERIALS, "A1", "Oak copy")
+        token = texstore.copy_file_into_library(shared, self.prefs, own)
+        self.assertEqual(texstore.OWN_PREFIX + "textures/oak.png", token)
+        copy = texstore.resolve(token, self.prefs, own)
+        self.assertEqual((os.path.join(own, "textures", "oak.png"), b"oak grain"),
+                         (copy, open(copy, "rb").read()))
+        self.assertEqual(token, texstore.copy_file_into_library(copy, self.prefs, own))
+
+    def test_ls38_a_texture_path_of_the_2_0_layout_is_read_in_the_materials_folder(self):
+        own = material.claim_asset_dir(self.prefs, MATERIALS, "A1", "Brick")
+        kept = put(own, "textures/brick.png", b"brick")
+        apart = put(own, "textures/Dl__x/textures/brick.png", b"another brick")
+        self.assertEqual((kept, apart), tuple(texstore.resolve(
+            "$AMAZELIB/matX/%s/textures/brick.png" % folder, self.prefs, own)
+            for folder in ("Brick__a1", "Dl__x")))
 
     def test_ls35_shared_settings_hold_plain_values_one_per_name(self):
         self.assertTrue(library_settings.set_values(self.prefs, {"rendersize": 512,

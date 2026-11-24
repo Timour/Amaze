@@ -28,7 +28,9 @@ NOUNS = {MASTER: "user", MATERIALS: "material", NODES: "node", CODE: "snippet",
          COLORS: "color", FILES: "location"}    # what one counted entry is called
 ASSET_SECTIONS = (MATERIALS, NODES)    # whose rows have asset files
 
-VERSIONS = "versions"    # a section folder's sub-folder of archives; its top holds the asset files
+VERSIONS = "versions"    # an asset folder's sub-folder of archives; Code's under its section folder
+TEXTURES = "textures"    # an asset folder's textures, every one its own copy
+FOLDER_SEPARATOR = "__"    # an asset folder is `<name>__<id>`, found by the id after the last one
 FILES_FOLDER = "files"    # the Files section's: `files/<sha1 of the file's key>.png`, a file's capture
 CODE_FOLDER = SECTION_FOLDERS[CODE]
 PACKAGE_FOLDER = "matX"    # a permanent store: the check does not enter it, the audit looks for scratch only
@@ -59,7 +61,9 @@ BACKUP = "backup"            # anything in `backup/`
 ASSET = "asset"              # `materials/<id>.mat`
 RECORD = "record"            # `materials/<id>.json`
 COMPANION = "companion"
-RENDER = "render"            # `materials/<id>.png`, the asset's one picture
+RENDER = "render"            # `materials/<name>__<id>/<id>.png`, the asset's one picture
+TEXTURE = "texture"          # anything under an asset folder's `textures/`
+SOURCE = "source"            # any other file in an asset's folder: a download's `.mtlx`, USD, pictures
 FILE_CAPTURE = "file-capture"    # `captures/file_<40 hex>.png`
 COMMENT_IMAGE = "comment-image"    # `img/comments/<32 hex>.<ext>`
 VERSION = "version"
@@ -73,11 +77,13 @@ OS_NOISE_KIND = "os-noise"
 UNREADABLE = "unreadable"    # a folder `walk` could not list; its detail is the error
 SUPERSEDED = "superseded"    # what the format 4 conversion left behind; `library_conversion` names it
 
-KNOWN = frozenset((LIST, JOURNAL_FILE, BACKUP, ASSET, RECORD, COMPANION, RENDER, FILE_CAPTURE,
-                   COMMENT_IMAGE, VERSION, VERSION_LEDGER, PACKAGE, FOLDER))
+KNOWN = frozenset((LIST, JOURNAL_FILE, BACKUP, ASSET, RECORD, COMPANION, RENDER, TEXTURE, SOURCE,
+                   FILE_CAPTURE, COMMENT_IMAGE, VERSION, VERSION_LEDGER, PACKAGE, FOLDER))
 COPIES = frozenset((BACKUP,))    # a duplicate of one of these is removed without comparing contents
+ANY_NAME = frozenset((TEXTURE, SOURCE))    # kinds of any name: `A1 2.mat` beside them is still a copy
 OUT_OF_PLACE = frozenset((SCRATCH, DUPLICATE, UNKNOWN))    # `walk` stats these, and only these
 
+_SAFE_ID = re.compile(r"[0-9A-Za-z._-]{1,64}\Z")    # an id that can name a file: `is_safe_id`
 _VERSION_STEM = re.compile(r"^([^\W_]+)_(\d+)$")    # `<id>_<n>`, the id its folder's name
 _FILE_CAPTURE = re.compile(r"^[0-9a-f]{40}\.png$")
 _COMMENT_IMAGE = re.compile(r"^[0-9a-f]{32}\.\w+$")
@@ -103,6 +109,18 @@ def section_of_folder(name: str) -> str:
 def owns_assets(top: str) -> bool:
     """Whether top folder `top` is an asset section's folder."""
     return section_of_folder(top) in ASSET_SECTIONS
+
+
+def is_safe_id(raw) -> bool:
+    """True when this id can name a file: letters, digits, `.`, `_` and `-`, never `.` or `..`."""
+    text = str(raw)
+    return text not in (".", "..") and bool(_SAFE_ID.match(text))
+
+
+def folder_id(name: str) -> str:
+    """The asset id an asset folder `<name>__<id>` is named by, or "" for any other folder name."""
+    head, separator, found = str(name).rpartition(FOLDER_SEPARATOR)
+    return found if separator and head and is_safe_id(found) else ""
 
 
 def asset_id(name: str, extensions: tuple, tail: str = ""):
@@ -143,7 +161,18 @@ def _backup(name: str):
     return (BACKUP, base) if base else None
 
 
-def _asset_folder(name: str):
+def _in_asset_folder(rest: list, owner: str):
+    """(kind, id) for a file inside the folder of asset `owner`: everything there is the asset's."""
+    name = rest[-1]
+    if rest[0] == TEXTURES and len(rest) > 1:
+        return TEXTURE, owner
+    if len(rest) == 2 and rest[0] == VERSIONS:
+        return _version_folder(name, VERSION_SUFFIXES, owner) or (SOURCE, owner)
+    found = _asset_file(name) if len(rest) == 1 else None
+    return found if found and found[1] == owner else (SOURCE, owner)    # a download's own files
+
+
+def _asset_file(name: str):
     if name[: -len(".mat")].endswith(COMPANION_TAIL):
         found = asset_id(name, (".mat",), COMPANION_TAIL)
         if found:
@@ -189,7 +218,9 @@ def _folder(parts: list) -> bool:
         return True
     if depth == 2 and parts[1] == COMMENT_FOLDER and top in DATABASE_FOLDERS.values():
         return True
-    if (owns_assets(top) or top == CODE_FOLDER) and parts[1] == VERSIONS:
+    if owns_assets(top) and folder_id(parts[1]):
+        return True    # an asset folder, and any folder in it: all of it is the asset's
+    if top == CODE_FOLDER and parts[1] == VERSIONS:
         return depth == 2 or (depth == 3 and parts[2].isalnum())
     return False
 
@@ -202,19 +233,18 @@ def _plain(parts: list):
     top = parts[0]
     if depth == 2 and top == BACKUP_FOLDER:
         return _backup(name)
+    if depth >= 3 and owns_assets(top) and folder_id(parts[1]):
+        return _in_asset_folder(parts[2:], folder_id(parts[1]))
     if depth == 2 and owns_assets(top):
-        return _asset_folder(name)
+        return None    # an asset's files are in its own folder
     if depth == 2 and section_of_folder(top):    # the Code and Colors folders hold at most a captured picture
         return _picture(name)
     if depth == 2 and top == FILES_FOLDER:
         return (FILE_CAPTURE, "") if _FILE_CAPTURE.match(name) else None
     if depth == 3 and parts[1] == COMMENT_FOLDER and top in DATABASE_FOLDERS.values():
         return (COMMENT_IMAGE, "") if _COMMENT_IMAGE.match(name.lower()) else None
-    if depth == 4 and parts[1] == VERSIONS and parts[2].isalnum():
-        if top == CODE_FOLDER:
-            return _version_folder(name, (CODE_VERSION_SUFFIX,), parts[2])
-        if owns_assets(top):
-            return _version_folder(name, VERSION_SUFFIXES, parts[2])
+    if depth == 4 and parts[1] == VERSIONS and parts[2].isalnum() and top == CODE_FOLDER:
+        return _version_folder(name, (CODE_VERSION_SUFFIX,), parts[2])
     return None
 
 
@@ -223,8 +253,31 @@ def split(relative: str) -> list:
 
 
 def library_of_file(path: str) -> str:
-    """The library holding a file in one of its folders, `<library>/<folder>/<file>`: two up."""
-    return os.path.dirname(os.path.dirname(os.path.abspath(str(path))))
+    """The library holding a file: the folder above the nearest library folder it is in."""
+    tops = set(DATABASE_FOLDERS.values()) | {PACKAGE_FOLDER, IMPORT_FOLDER}
+    start = os.path.dirname(os.path.abspath(str(path)))
+    folder = start
+    while os.path.basename(folder) not in tops:
+        parent = os.path.dirname(folder)
+        if parent == folder:    # in no library folder: the one above its own, as before
+            return os.path.dirname(start)
+        folder = parent
+    return os.path.dirname(folder)
+
+
+def where_now(path: str) -> str:
+    """`path`, or its name in its asset's folder as now named; "" when that asset has no folder."""
+    folder = os.path.dirname(str(path))
+    owner = folder_id(os.path.basename(folder))
+    if not owner or os.path.isdir(folder):
+        return str(path)
+    base = os.path.dirname(folder)
+    try:
+        names = os.listdir(base)
+    except OSError:
+        return ""
+    found = next((name for name in names if folder_id(name) == owner), "")
+    return os.path.join(base, found, os.path.basename(str(path))) if found else ""
 
 
 def join(parts) -> str:
@@ -248,13 +301,14 @@ def classify(relative: str, is_dir: bool = False) -> tuple:
     if is_dir:
         return (FOLDER, "") if _folder(parts) else (UNKNOWN, "folder")
     found = _plain(parts)
-    if found:
+    if found and found[0] not in ANY_NAME:
         return found
     for match in _COPY_NUMBER.finditer(name):
         original = parts[:-1] + [name[:match.start()] + name[match.end():]]
-        if _plain(original):
+        known = _plain(original)
+        if known and known[0] not in ANY_NAME:
             return DUPLICATE, join(original)
-    return UNKNOWN, ""
+    return found or (UNKNOWN, "")
 
 
 def walk(library_dir: str, packages: bool = False):
@@ -278,7 +332,8 @@ def walk(library_dir: str, packages: bool = False):
             if is_dir and kind == FOLDER:
                 if here[0] == TRASH_FOLDER:
                     pass    # `trash/` is counted by guard.py; `walk` never lists its contents
-                elif here[0] not in (PACKAGE_FOLDER, IMPORT_FOLDER) or packages:
+                elif (here[0] not in (PACKAGE_FOLDER, IMPORT_FOLDER)
+                      and TEXTURES not in here[2:3]) or packages:    # textures are listed only on request
                     pending.append(here)
                 yield join(here), kind, detail, None
                 continue

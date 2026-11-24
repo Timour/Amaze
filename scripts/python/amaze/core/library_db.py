@@ -140,29 +140,32 @@ def changed(preferences, name: str) -> None:
 
 
 def _records(key: str, held: documents.Document):
-    """`also` for a section with asset files: writes each changed row's metadata to its `<id>.json`."""
+    """`also` for a section with asset files: each changed row's `<id>.json`, and its folder's name."""
     if held.name not in library_files.ASSET_SECTIONS:
         return None
-    folder = library_files.SECTION_FOLDERS[held.name]
 
     def also(change):
         from amaze.core import asset_record, material
         for asset_id in held.changed("assets"):
             row = held.get("assets", asset_id)
-            relative = "%s/%s%s" % (folder, asset_id, library_files.RECORD_SUFFIX)
             if row is None or not material.is_safe_asset_id(asset_id):
                 continue    # the delete itself removes a deleted row's files
-            path = held.guard.path(folder, asset_id + library_files.RECORD_SUFFIX)
+            own = material.folder_in(held.guard.dir, held.name, asset_id)
+            path = os.path.join(own, asset_id + library_files.RECORD_SUFFIX)
             if not os.path.exists(path) and not os.path.exists(
-                    held.guard.path(folder, asset_id + ".mat")):
+                    os.path.join(own, asset_id + ".mat")):
                 continue    # no files of its own: nothing to rebuild a lost database from
             if asset_record.unreadable(path):
                 continue
             metadata = {field: value for field, value in row.items()
                         if field not in documents.STAMPS}
             if asset_record.read(path)[asset_record.METADATA] != metadata:
-                change.put_file(relative, asset_record.with_sections(
+                change.put_file(held.guard.inside(path), asset_record.with_sections(
                     path, {asset_record.METADATA: metadata}))
+            named = material.folder_name(row.get("name"), asset_id)
+            if os.path.basename(own).lower() != named.lower():    # renamed: its folder follows the record; case alone is no move on every disk
+                change.move(held.guard.inside(own), held.guard.inside(
+                    os.path.join(os.path.dirname(own), named)))
     return also
 
 

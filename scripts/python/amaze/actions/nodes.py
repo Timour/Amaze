@@ -17,16 +17,19 @@ def add_asset(model, node: hou.Node, cats: str, tags: str, fav: bool,
     label = (context or "NODE").upper()
     new_mat.set_data(name.strip() or node.name(), cats, tags, fav, label)
     new_mat.node_color = nodes.custom_node_color(node)
+    material.claim_asset_dir(model.preferences, model.DB_FILENAME, new_mat.mat_id, new_mat.name)
 
     handler.staging = []    # the files are committed together with the row, as one change
     if not handler.save_node_cop(node, new_mat.mat_id, items=items):
         asset_record.discard(handler.staging)
+        material.release_asset_dir(model.preferences, model.DB_FILENAME, new_mat.mat_id)
         return ""
     new_mat.cop_net = handler.cop_info    # holds `thumb_node`, read from the node's current display flag
     if not model.add_saved(new_mat, handler.staging):
         debug.event("save", "node setup not saved - its database took neither row nor files",
                     name=new_mat.name, mat_id=new_mat.mat_id)
         debug.refuse(messages.ASSET_NOT_SAVED_DATABASE_REFUSED % new_mat.name)
+        material.release_asset_dir(model.preferences, model.DB_FILENAME, new_mat.mat_id)
         return ""
     for render in handler.after_commit:
         render()

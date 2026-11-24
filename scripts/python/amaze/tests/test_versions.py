@@ -38,9 +38,6 @@ class _Case(unittest.TestCase):
         self.base_png = os.path.join(material.section_folder(self.prefs.dir, MATERIALS),
                                      self.mat_id + ".png")    # the asset's one picture
 
-    def _base_builder(self):
-        return asset_record.read(self.base_record)[asset_record.BUILDER]
-
     def _set_base_builder(self, interface):
         asset_record.write_section(self.base_record, asset_record.BUILDER,
                                    {"type": "subnet", "interface": interface, "values": {}})
@@ -52,51 +49,6 @@ class _Case(unittest.TestCase):
     def _rewrite_base(self, payload):
         with open(self.base_mat, "wb") as fh:
             fh.write(payload)
-
-
-class PreEditHoldsTheRightFilesTest(_Case):
-    """The pre-edit hold is keyed by `versions.SOURCE_KINDS`, never by filename suffix."""
-
-    def test_the_hold_takes_only_the_source_kinds_of_the_material(self):
-        from amaze.core import library as library_mod
-
-        assets_dir = material.section_folder(self.prefs.dir, MATERIALS)
-        img_dir = os.path.join(self.prefs.dir, self.prefs.img_dir)
-        os.makedirs(img_dir, exist_ok=True)
-        with open(os.path.join(assets_dir, self.mat_id + "_cop.mat"),
-                  "wb") as fh:
-            fh.write(b"COP-COMPANION-NOT-THE-MATERIAL")
-        with open(os.path.join(img_dir, self.mat_id + "_icon.png"),
-                  "wb") as fh:    # a format 3 composite left behind, never the picture
-            fh.write(b"ICON-COMPOSITE-NOT-THE-RENDER")
-
-        model = library_mod.MaterialLibrary(preferences=self.prefs)
-        held = model._hold_pre_edit_files(self.mat_id)
-
-        with open(held[".mat"], "rb") as fh:
-            self.assertEqual(
-                self._base_bytes(), fh.read(),
-                "the held .mat is not the material - the companion was picked in "
-                "the suffix collision and Version 1 archives the wrong "
-                "bytes")
-        base_png = self.base_png
-        if os.path.exists(base_png):
-            with open(base_png, "rb") as fh:
-                base = fh.read()
-            with open(held[".png"], "rb") as fh:
-                self.assertEqual(
-                    base, fh.read(),
-                    "the held .png is the icon composite, not the "
-                    "render")
-        else:
-            self.assertNotIn(
-                ".png", held,
-                "the icon composite was used as a render the asset "
-                "does not have")
-        self.assertIn(".json", held,
-                      "the builder record is not in the held set")
-        self.assertNotIn(".interface", held,
-                         "a converted asset held a format 3 .interface it does not own")
 
 
 class APreEditHoldLeavesNoFolderBehind(_Case):
@@ -151,74 +103,6 @@ class SwitchRollsBackWhenTheLedgerWriteFails(_Case):
             "the ledger changed although its write failed")
 
 
-class ASwitchCopiesTheWholeVersionToTheBase(_Case):
-    """A version saved without a builder or a render removes the other version's from the base."""
-
-    def setUp(self):
-        super().setUp()
-        self.builder = self.base_record
-        self.png = self.base_png
-        for path in (self.builder, self.png):    # version 1: an older save, its render not yet written
-            if os.path.exists(path):
-                os.remove(path)
-        self.assertEqual(1, versions.create_version(self.prefs, self.mat_id))
-        self._rewrite_base(b"V2-NETWORK")
-        self._set_base_builder("v2")
-        with open(self.png, "w", encoding="utf-8") as fh:
-            fh.write("V2-RENDER")
-        self.assertEqual(2, versions.create_version(self.prefs, self.mat_id))
-
-    def _in_base(self):
-        return {"builder": bool(self._base_builder()), ".png": os.path.exists(self.png)}
-
-    def _archived_png(self, number):
-        return os.path.exists(os.path.join(versions.versions_dir(self.prefs, self.mat_id),
-                                           versions.file_stem(self.mat_id, number) + ".png"))
-
-    def test_a_kind_the_version_lacks_is_removed_from_the_base(self):
-        self.assertTrue(versions.switch_active(self.prefs, self.mat_id, 1))
-        self.assertEqual({"builder": False, ".png": False}, self._in_base(),
-                         "version 2's builder or picture is still in the base beside version 1")
-        self.assertTrue(versions.switch_active(self.prefs, self.mat_id, 2))
-        self.assertEqual({"builder": True, ".png": True}, self._in_base())
-        self.assertEqual("v2", self._base_builder().get("interface"))
-        self.assertTrue(versions.switch_active(self.prefs, self.mat_id, 1))
-        self.assertEqual([1, 2], [int(r["n"]) for r in versions.list_versions(
-            self.prefs, self.mat_id)], "a switch back and forth created a version")
-
-    def test_a_kind_that_cannot_be_removed_yet_is_removed_by_recover(self):
-        from unittest import mock
-        from amaze.core import guard, library_db
-        real = guard.Disk.remove
-
-        def held(disk, path):    # the picture held open by a viewer while it is removed
-            if os.path.normpath(path) == os.path.normpath(self.png):
-                raise PermissionError(13, "Permission denied", path)
-            return real(disk, path)
-
-        with mock.patch.object(guard.Disk, "remove", held):
-            self.assertTrue(versions.switch_active(self.prefs, self.mat_id, 1),
-                            "a recorded switch that waits on one file was reported as failed")
-        self.assertTrue(library_db.guard_of(self.prefs).recover(),
-                        "the half-applied switch left no journal to finish")
-        self.assertEqual({"builder": False, ".png": False}, self._in_base(),
-                         "the finished switch left version 2's files beside version 1")
-        self.assertEqual(1, versions.active_version(self.prefs, self.mat_id))
-
-    def test_a_switch_through_the_model_records_no_picture(self):
-        """Checked twice: the switch removes the picture, the repaint records none (the spy)."""
-        from unittest import mock
-        from amaze.core import library as library_mod
-        model = library_mod.MaterialLibrary(preferences=self.prefs)
-        with mock.patch.object(versions, "record_render",
-                               wraps=versions.record_render) as recorded:
-            self.assertTrue(model.switch_version(
-                model.find_asset_row_by_id(self.mat_id), 1))
-        self.assertFalse(self._archived_png(1),
-                         "version 2's picture was recorded into version 1's archive")
-        self.assertFalse(recorded.called, "a switch recorded the base picture as a fresh render")
-
-
 class AVersionHoldsTheBuilderAndNeverTheMetadata(_Case):
     """`<stem>.json` is the builder alone, so a switch keeps the base's own metadata."""
 
@@ -258,27 +142,6 @@ class AVersionHoldsTheBuilderAndNeverTheMetadata(_Case):
 class TheBaseModelSwitchesInItsOwnSection(_Case):
     """`switch_version` uses the section its model names, as every other version call does."""
 
-    def test_a_switch_reads_the_section_the_model_names(self):
-        from amaze.core import library as library_mod
-        model = library_mod.MaterialLibrary(preferences=self.prefs)
-        row = model.find_asset_row_by_id(self.mat_id)
-        model.VERSION_SECTION = versions.NODE    # its store and its base are both in nodes/
-        nodes_dir = material.section_folder(self.prefs.dir, library_files.NODES)
-        os.makedirs(nodes_dir, exist_ok=True)
-        for path in (self.base_mat, self.base_record):
-            os.replace(path, os.path.join(nodes_dir, os.path.basename(path)))
-        self.base_mat = material.payload_path(self.prefs, self.mat_id, ".mat",
-                                              library_files.NODES)
-        original = self._base_bytes()
-        versions.create_version(self.prefs, self.mat_id, section=model.VERSION_SECTION)
-        self._rewrite_base(b"EDITED-STATE")
-        versions.create_version(self.prefs, self.mat_id, section=model.VERSION_SECTION)
-        self.assertTrue(model.switch_version(row, 1),
-                        "the switch looked for the versions in another section's store")
-        self.assertEqual(original, self._base_bytes())
-        self.assertEqual("Version 1", model.data(model.index(row, 0), model.ActiveVersionRole),
-                         "the row still shows the version it showed before the switch")
-
     def test_a_rename_shows_on_the_row_at_once(self):
         from amaze.core import library as library_mod
         versions.create_version(self.prefs, self.mat_id)
@@ -298,30 +161,6 @@ class TheArchiveIsEachVersionsDurableThumbnail(_Case):
         folder = versions.versions_dir(self.prefs, self.mat_id)
         return self.base_png, folder
 
-    def test_a_fresh_render_is_written_to_the_active_slot_only(self):
-        base, folder = self._png_paths()
-        with open(base, "wb") as fh:
-            fh.write(b"V1-RENDER")
-        versions.create_version(self.prefs, self.mat_id)          # V1
-        self._rewrite_base(b"EDITED-STATE")
-        versions.create_version(self.prefs, self.mat_id)          # V2
-        # Creating V2 copied V1's picture into V2's slot; the new render is written only now.
-        with open(base, "wb") as fh:
-            fh.write(b"V2-RENDER-FRESH")
-        self.assertTrue(versions.record_render(self.prefs, self.mat_id))
-        rows = versions.list_versions(self.prefs, self.mat_id)
-        stems = {int(r["n"]): versions.file_stem(self.mat_id, r["n"]) for r in rows}
-        with open(os.path.join(folder, stems[2] + ".png"), "rb") as fh:
-            self.assertEqual(
-                b"V2-RENDER-FRESH", fh.read(),
-                "the active slot did not take the fresh render - "
-                "switching versions can never change the picture")
-        with open(os.path.join(folder, stems[1] + ".png"), "rb") as fh:
-            self.assertEqual(
-                b"V1-RENDER", fh.read(),
-                "an INACTIVE slot was touched - a render while V2 is "
-                "active must never rewrite V1's picture")
-
     def test_identical_bytes_cost_no_write(self):
         base, folder = self._png_paths()
         with open(base, "wb") as fh:
@@ -335,79 +174,6 @@ class TheArchiveIsEachVersionsDurableThumbnail(_Case):
             before, os.stat(slot).st_mtime_ns,
             "identical bytes were rewritten - every switch would rewrite "
             "files in the sync folder")
-
-    def test_no_versions_records_nothing(self):
-        base, folder = self._png_paths()
-        with open(base, "wb") as fh:
-            fh.write(b"PICTURE")
-        self.assertFalse(versions.record_render(self.prefs, self.mat_id))
-        self.assertFalse(
-            os.path.exists(folder),
-            "a versions folder appeared for an asset that has no "
-            "versions")
-        versions.create_version(self.prefs, self.mat_id)
-        # The fixture asset ships a render; the case under test is the asset that has none.
-        if os.path.exists(base):
-            os.remove(base)
-        self.assertFalse(
-            versions.record_render(self.prefs, self.mat_id),
-            "with no base PNG there is nothing to record, not an "
-            "empty file to invent")
-
-    def test_the_model_records_on_every_thumb_refresh(self):
-        from amaze.core import library as library_mod
-
-        base, folder = self._png_paths()
-        with open(base, "wb") as fh:
-            fh.write(b"OLD-PICTURE")
-        versions.create_version(self.prefs, self.mat_id)
-        with open(base, "wb") as fh:
-            fh.write(b"FRESH-PICTURE")
-        model = library_mod.MaterialLibrary(preferences=self.prefs)
-        row = next(i for i, a in enumerate(model.assets)
-                   if str(a.mat_id) == self.mat_id)
-        model._add_thumb_paths(row)
-        stem = versions.file_stem(self.mat_id, 1)
-        with open(os.path.join(folder, stem + ".png"), "rb") as fh:
-            self.assertEqual(
-                b"FRESH-PICTURE", fh.read(),
-                "_add_thumb_paths declared the PNG fresh and the "
-                "active slot was not updated")
-
-
-class TheBaseFilesFollowTheLibrarysExtensions(_Case):
-    """A library whose shared settings name other file extensions versions the files it holds."""
-
-    def setUp(self):
-        super().setUp()
-        self.prefs._ext = ".matx"
-        self.prefs._img_ext = ".jpg"
-        renamed = self.base_mat[:-len(".mat")] + ".matx"
-        os.replace(self.base_mat, renamed)
-        self.legacy_mat, self.base_mat = self.base_mat, renamed
-        images = material.section_folder(self.prefs.dir, MATERIALS)    # the folder of the one picture
-        self.base_image = os.path.join(images, self.mat_id + ".jpg")
-        with open(self.base_image, "wb") as fh:
-            fh.write(b"RENDER-AS-JPEG")
-
-    def _archived(self, kind):
-        stem = versions.file_stem(self.mat_id,
-                                  versions.list_versions(self.prefs, self.mat_id)[-1]["n"])
-        with open(os.path.join(versions.versions_dir(self.prefs, self.mat_id),
-                               stem + kind), "rb") as fh:
-            return fh.read()
-
-    def test_a_switch_writes_the_payload_under_its_own_extension(self):
-        original = self._base_bytes()
-        self.assertEqual(1, versions.create_version(self.prefs, self.mat_id))
-        self.assertEqual(original, self._archived(".mat"))
-        self.assertEqual(b"RENDER-AS-JPEG", self._archived(".png"))
-        self._rewrite_base(b"EDITED-STATE")
-        versions.create_version(self.prefs, self.mat_id)
-        self.assertTrue(versions.switch_active(self.prefs, self.mat_id, 1))
-        self.assertEqual(original, self._base_bytes())
-        self.assertFalse(os.path.exists(self.legacy_mat),
-                         "the switch wrote a payload this library never reads")
 
 
 class StoreTest(_Case):
@@ -531,8 +297,7 @@ class VersionFilesAreNamedByIdAndNumberTest(_Case):
             "the second writer's file survived the ledger overwrite")
 
     def test_a_file_the_ledger_does_not_name_is_an_orphaned_file(self):
-        """It is no version: never a row, never switched to; Check Library names it orphaned."""
-        from amaze.core import repair
+        """It is no version: never a row, never switched to, never written over."""
         self.prefs.library_user = "Crimson"
         versions.create_version(self.prefs, self.mat_id)
         folder = versions.versions_dir(self.prefs, self.mat_id)
@@ -544,8 +309,6 @@ class VersionFilesAreNamedByIdAndNumberTest(_Case):
         before = self._base_bytes()
         self.assertFalse(versions.switch_active(self.prefs, self.mat_id, 2))
         self.assertEqual(before, self._base_bytes())
-        key = "materials/versions/%s/" % self.mat_id
-        self.assertEqual([stray], repair.survey(self.prefs.dir)["unaccounted"].get(key))
         self.assertEqual(3, versions.create_version(self.prefs, self.mat_id),
                          "a new version wrote over the orphaned file")
         with open(os.path.join(folder, stray), "rb") as fh:

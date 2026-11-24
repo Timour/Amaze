@@ -148,7 +148,7 @@ def release_formats(found) -> tuple:
 def updates_library(found, library_dir: str) -> bool:
     """Whether installing `found` updates the library at `library_dir`: the red Install Update."""
     from amaze.core import library_policy, library_settings
-    wanted = [one or base for one, base in zip(release_formats(found), library_policy.FORMAT_2_0)]
+    wanted = [one or base for one, base in zip(release_formats(found), library_policy.FORMAT_3_0)]
     wanted[0] = int(getattr(found, "library_version", 0) or 0)
     return (bool(found) and bool(library_dir) and bool(wanted[0]) and any(
         one > here for one, here in zip(wanted, library_settings.library_formats(library_dir))))
@@ -157,8 +157,10 @@ def updates_library(found, library_dir: str) -> bool:
 def configured_library() -> str:
     """The library the settings name; empty when unreadable, since no setting may block an update."""
     try:
-        from amaze.core import repair
-        return repair.configured_library()
+        from amaze.prefs import prefs as prefs_module
+        preferences = prefs_module.Prefs()
+        preferences.load()
+        return str(getattr(preferences, "dir", "") or "")
     except Exception as exc:                                  # noqa: BLE001
         debug.event("updater", "library unread", error=str(exc))
         return ""

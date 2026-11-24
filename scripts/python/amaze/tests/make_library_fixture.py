@@ -88,13 +88,15 @@ def main() -> int:
     parent = hou.node("/mat")
     written = []
     for asset_id, name, _category, colour in MATERIALS:
+        own = os.path.join(assets, material.folder_name(name, asset_id))    # 3.0: one folder per asset
+        os.makedirs(own)
         builder = build_material(parent, name, colour)
-        save_pair(builder, asset_id, assets)
-        thumb = os.path.join(assets, asset_id + ".png")    # the asset's only thumbnail, in the folder with its files
+        save_pair(builder, asset_id, own)
+        thumb = os.path.join(own, asset_id + ".png")    # the asset's only thumbnail, in the folder with its files
         make_thumbnail(thumb, colour)
         builder.destroy()
-        written += [os.path.join(assets, asset_id + ".mat"),
-                    os.path.join(assets, asset_id + ".json"),
+        written += [os.path.join(own, asset_id + ".mat"),
+                    os.path.join(own, asset_id + ".json"),
                     thumb]
         print("%s  %s" % (asset_id, name))
 
@@ -115,7 +117,7 @@ def main() -> int:
     verdicts = {name: held.read(name).verdict for name in os.listdir(OUT) if name.endswith(".json")}
     print("verdicts: %s" % verdicts)
     if set(verdicts.values()) != {library_guard.FINE}:
-        print("REFUSED: the fixture does not read as a whole 2.0 library")
+        print("REFUSED: the fixture does not read as a whole 3.0 library")
         return 1
 
     total = sum(os.path.getsize(p) for p in written if os.path.isfile(p))

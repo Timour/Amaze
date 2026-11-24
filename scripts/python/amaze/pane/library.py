@@ -23,10 +23,10 @@ _FOLDERS_GIVEN_ICONS = globals().get("_FOLDERS_GIVEN_ICONS", set())    # library
 
 
 def _give_folder_icons(library_dir: str) -> None:
-    """The library folder and its `matX` folder each shown with their own icon."""
+    """The library folder and its `materials` folder each shown with their own icon."""
     hostos.give_folder_icon(library_dir, amaze.package_file("ui", "library_folder"))
-    hostos.give_folder_icon(os.path.join(library_dir, library_files.PACKAGE_FOLDER),
-                            amaze.package_file("ui", "matx_folder"))
+    hostos.give_folder_icon(os.path.join(library_dir, library_files.SECTION_FOLDERS[
+        library_files.MATERIALS]), amaze.package_file("ui", "matx_folder"))
 
 
 def _flush_saves_on_close(schedule, *_destroyed) -> None:
@@ -94,7 +94,7 @@ class Library:
 
     def _repaired(self, folder: str) -> bool:
         """Offer a repair of `folder`'s unreadable index; True once the chosen fix makes it read."""
-        from amaze.dialogs import repair_dialog
+        from amaze.dialogs import check_dialog
         switching = getattr(self.pane, "material_model", None) is not None    # a library is open
         debug.event("session", "library index unreadable", dir=folder, switching=switching)
         ui = getattr(hou, "ui", None)
@@ -111,7 +111,7 @@ class Library:
         if choice != 0:
             debug.event("session", "index repair declined")
             return False
-        repair_dialog.check_failed_library(folder, self.pane.prefs)    # the user picks the fix there
+        check_dialog.repair_failed(folder, self.pane.prefs)    # the user picks the fix there
         if library_actions.index_unreadable(folder):
             debug.event("session", "index still unreadable after Check Library", dir=folder)
             ui.displayMessage(messages.DATABASE_STILL_UNREADABLE_SWITCHING if switching
@@ -153,6 +153,8 @@ class Library:
             return self._stay_closed(refused)
         if self._library_too_new():
             return self._stay_closed()    # the update is offered once Qt is idle
+        if self._library_to_convert():
+            return self._stay_closed()    # the conversion is offered once Qt is idle
         if (library_actions.index_unreadable(prefs.dir)
                 and not self._repaired(prefs.dir)):
             return self._stay_closed()
@@ -290,6 +292,41 @@ class Library:
             timer.timeout.connect(self._offer_amaze_update)
         timer.start()
         return True
+
+    def _library_to_convert(self) -> bool:
+        """A 2.0 library is not opened; converting it to 3.0 is offered once Qt is idle."""
+        from amaze.core import layout_conversion
+        if not layout_conversion.needs_conversion(str(self.pane.prefs.dir or "")):
+            return False
+        debug.event("session", "library is 2.0 - not opened until converted", dir=self.pane.prefs.dir)
+        timer = getattr(self, "_convert_offer_timer", None)
+        if timer is None:    # owned, so it is deleted with the pane ▸r/model-parent
+            timer = self._convert_offer_timer = QtCore.QTimer(self.pane)
+            timer.setSingleShot(True)
+            timer.setInterval(0)    # a modal inside onCreateInterface draws black
+            timer.timeout.connect(self._offer_conversion)
+        timer.start()
+        return True
+
+    def _offer_conversion(self) -> None:
+        """Convert or Cancel, for the 2.0 library left closed; headless, nothing is converted."""
+        from amaze.core import layout_conversion, library_settings
+        ui = getattr(hou, "ui", None)
+        prefs = self.pane.prefs
+        if ui is None or ui.displayMessage(
+                messages.LIBRARY_NEEDS_CONVERSION, buttons=messages.BUTTONS_CONVERT_LIBRARY,
+                default_choice=1, close_choice=1, severity=hou.severityType.Warning,
+                title=messages.TITLE_AMAZE) != 0:
+            return
+        try:
+            layout_conversion.convert(library_db.guard_of(prefs), str(prefs.library_user or ""))
+        except OSError as exc:
+            debug.event("library", "conversion to 3.0 failed", dir=prefs.dir, error=str(exc))
+            ui.displayMessage(messages.LIBRARY_CONVERSION_FAILED % exc, title=messages.TITLE_AMAZE,
+                              severity=hou.severityType.Error)
+            return
+        library_settings.stamp_version(prefs)
+        self.open_library()
 
     def _offer_amaze_update(self) -> None:
         """Update Amaze or Cancel, for the library left closed; headless, no dialog is shown."""

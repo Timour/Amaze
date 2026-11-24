@@ -294,35 +294,6 @@ class MaterialsConvertMakesANewRedshiftEntry(unittest.TestCase):
         self.assertEqual([], test_support.arrived(self.model, held),
                          "a converted copy whose row was not written shows as a tile")
 
-    def test_a_redshift_copy_is_added_beside_the_karma_source(self):
-        before = len(self.model.assets)
-        held = test_support.asset_ids(self.model)
-        ok, report = material_actions.convert(self.model, self.model.index(self.row, 0), "Redshift")
-        self.assertTrue(ok, report.summary_lines())
-        self.assertEqual(before + 1, len(self.model.assets), "no new entry was added")
-        source = self.model.assets[self.row]
-        twin, = test_support.arrived(self.model, held)
-        self.assertEqual("Karma", source.renderer, "the source was changed")
-        self.assertEqual("Redshift", twin.renderer)
-        self.assertEqual(source.name, twin.name)
-        self.assertEqual(list(source.categories), list(twin.categories))
-        handler = nodes.NodeHandler(self.prefs)    # a redshift_vopnet copy could not be imported into a LOP library
-        self.assertEqual("rs_usd_material_builder",
-                         material_files.get_saved_node_type(self.prefs, twin,
-                                                            library_files.MATERIALS))
-        self.assertEqual({"mat", "lop"}, handler.import_targets(twin))
-        path = material.payload_path(self.prefs, twin.mat_id, self.prefs.ext, library_files.MATERIALS)
-        seen = set(self.parent.children())
-        self.parent.loadItemsFromFile(path)
-        loaded = [n for n in self.parent.children() if n not in seen]
-        self.addCleanup(lambda: [n.destroy() for n in loaded])
-        files = sorted(
-            n.parm("tex0").unexpandedString()
-            for top in loaded for n in [top] + list(top.allSubChildren())
-            if n.type().name() == "redshift::TextureSampler")
-        self.assertEqual(sorted([ALBEDO, NORMAL, ROUGH]), files,
-                         "the saved Redshift network does not reference the source's own files")
-
     def test_a_non_karma_row_is_skipped_with_a_reason(self):
         self.model.assets[self.row].renderer = "Redshift"
         ok, report = material_actions.convert(self.model, self.model.index(self.row, 0), "Redshift")

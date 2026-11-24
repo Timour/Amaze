@@ -9,8 +9,8 @@ import amaze
 from amaze import amazetheme, branding, messages, tooltips
 from amaze.actions import check as check_actions
 from amaze.actions import library as library_actions
-from amaze.core import (debug, library_check, library_db, library_settings, model_registry,
-                        renderers, repair, section_list, texture_library, tile_icons, updater, users)
+from amaze.core import (check_library, debug, library_db, library_settings, model_registry,
+                        renderers, section_list, texture_library, tile_icons, updater, users)
 from amaze.dialogs import library_dialog, user_dialog
 from amaze.helpers import hostos, ui_helpers
 from amaze.pane import files as pane_files
@@ -142,9 +142,9 @@ RENDERER_SWITCHES = [{"label": renderer.label, "pref": renderer.switch} for rend
 SECTION_SWITCHES = [{"label": label, "pref": SECTION + key} for key, label in section_list.SECTIONS]
 
 FILE_TAB_SWITCHES = frozenset(("render_rat_files", "system_file_icons"))    # applied: File relists
-LIGHT_FILLS = {library_check.FOUND: amazetheme.P01_LIGHT_FOUND,    # the light: first state any part is in
-               library_check.UNCHECKED: amazetheme.P01_LIGHT_UNCHECKED,
-               library_check.CLEAN: amazetheme.P01_LIGHT_CLEAN}
+LIGHT_FILLS = {check_library.FOUND: amazetheme.P01_LIGHT_FOUND,    # the light: first state any part is in
+               check_library.UNCHECKED: amazetheme.P01_LIGHT_UNCHECKED,
+               check_library.CLEAN: amazetheme.P01_LIGHT_CLEAN}
 
 ABOUT_TEXT = (    # the About page's text under the logo, word for word as the P06 frame
     "<p>An asset library for Houdini by Fredrik Timour.</p>"
@@ -720,7 +720,7 @@ class AmazePrefsState(mainprefs.PrefsState):
 
     def _show_check(self, findings: dict) -> None:
         """Fill the row from one survey: the light's colour, its tip, the button."""
-        found = library_check.summary(findings)
+        found = check_library.summary(findings)
         states = {state for state, _number in found["lights"].values()}
         self.checkLight = next(fill for state, fill in LIGHT_FILLS.items() if state in states)
         self._check_found = findings if found["lines"] else None
@@ -730,10 +730,9 @@ class AmazePrefsState(mainprefs.PrefsState):
         """One survey of the open library on disk, the pane's pending changes saved first."""
         if self._pane is not None:
             check_actions.save_before_check(self._pane)
-        findings = repair.survey(self._prefs)
-        debug.event("repair", "surveyed", complete=findings["complete"],
-                    unaccounted=repair.unaccounted_total(findings),
-                    states={entry["filename"]: entry["state"] for entry in findings["lists"]})
+        findings = check_library.survey(str(self._prefs.dir), self._prefs)
+        debug.event("check", "surveyed", holding_back=findings["holding_back"],
+                    states={entry["name"]: entry["state"] for entry in findings["databases"]})
         return findings
 
     @QtCore.Slot()
@@ -745,15 +744,13 @@ class AmazePrefsState(mainprefs.PrefsState):
         if self._check_found is None:
             self._show_check(self._survey_open_library())
             return
-        from amaze.dialogs import repair_dialog
-        findings = self._survey_open_library()
-        if library_check.summary(findings)["lines"]:
-            pane = self._pane
-            repair_dialog.repair_found(
-                findings, guard=False,
-                changed=None if pane is None else lambda: check_actions.reload_after_check(pane))
-            findings = self._survey_open_library()
-        self._show_check(findings)
+        from amaze.dialogs import check_dialog
+        if self._pane is not None:
+            check_actions.save_before_check(self._pane)
+        pane = self._pane
+        check_dialog.show(str(self._prefs.dir), self._prefs,
+                          changed=None if pane is None else lambda: check_actions.reload_after_check(pane))
+        self._show_check(self._survey_open_library())
 
     @QtCore.Slot()
     def changeCachePath(self) -> None:

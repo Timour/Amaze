@@ -87,8 +87,8 @@ else
 fi
 status=$?
 
-tests_ran="$(printf '%s\n' "$output" | sed -n 's/^Ran \([0-9][0-9]*\) test.*/\1/p' | tail -1 || true)"
-tests_ran="${tests_ran:-0}"
+# Every `Ran` line added up: the fast lane's tests, then hython's.
+tests_ran="$(printf '%s\n' "$output" | awk '/^Ran [0-9]+ test/ { n += $2 } END { print n + 0 }')"
 failed="$(printf '%s\n' "$output" | grep -cE '^FAILED( \(|$)' || true)"
 leak="$(printf '%s\n' "$output" | grep -c 'LOG LEAK' || true)"
 

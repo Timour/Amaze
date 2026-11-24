@@ -220,11 +220,24 @@ class AssetLibrary(grid_engine.GridEngine,
     def rebuild_thumbs(self):
         """Rebuild the row->path and key->row maps; no loading happens here."""
         specs = [self.tile_icon(row) for row in range(self.rowCount())]    # one store read per row
+        self._folders_stamp = self._current_folders_stamp()
         self._mat_paths = [self._tile_image_path(row, spec)
                            for row, spec in enumerate(specs)]
         self._row_keys = [self._thumb_key(row, spec)
                           for row, spec in enumerate(specs)]    # row -> its key, the reverse of `_thumb_rows`
         self.rows_reordered()
+
+    def _current_folders_stamp(self) -> int:
+        if self.DB_FILENAME not in library_files.ASSET_SECTIONS:
+            return 0
+        return material.folders_stamp(self.preferences, self.DB_FILENAME)
+
+    def _picture_paths_current(self) -> None:
+        """Every row's picture path again once the asset folders changed: a rename moves a folder."""
+        stamp = self._current_folders_stamp()
+        if stamp != getattr(self, "_folders_stamp", None):
+            self._folders_stamp = stamp
+            self._mat_paths = [self._tile_image_path(row) for row in range(len(self._assets))]
 
     def rows_reordered(self) -> None:
         self._thumb_rows = {key: row for row, key in enumerate(self._row_keys)}
@@ -454,6 +467,7 @@ class AssetLibrary(grid_engine.GridEngine,
             return grid_engine.custom_picture(self.preferences, spec)
         if face == "generic":
             return grid_engine.Picture(art=self.tile_face_art(row))
+        self._picture_paths_current()
         files = ((self._mat_paths[row], self._thumb_key(row, spec), True),)    # a capture fills the tile
         painted = self.painted_preview(row)
         if painted is not None:
@@ -830,7 +844,8 @@ class AssetLibrary(grid_engine.GridEngine,
     def texture_paths(self, asset) -> list:
         """The texture files the record lists, as absolute paths; nothing is opened."""
         tokens = asset._extra.get("textures")
-        return [texstore.resolve(str(token), self.preferences)
+        own = self.asset_directories(asset.mat_id).get("folder", "")
+        return [texstore.resolve(str(token), self.preferences, own)
                 for token in (tokens if isinstance(tokens, list) else ()) if token]
 
     def own_file_paths(self, asset) -> list:
@@ -865,11 +880,13 @@ class AssetLibrary(grid_engine.GridEngine,
         return held
 
     def asset_directories(self, mat_id: str) -> dict:
-        """{kind: absolute path} of every directory of asset `mat_id`: now only the version store."""
+        """{kind: absolute path} of every directory of asset `mat_id`: its folder, or Code's store."""
         mat_id = str(mat_id)
         if not material.is_safe_asset_id(mat_id):
             return {}
         try:
+            if self.DB_FILENAME in library_files.ASSET_SECTIONS:
+                return {"folder": material.asset_dir(self.preferences, self.DB_FILENAME, mat_id)}
             return {"versions": versions.versions_dir(
                 self.preferences, mat_id, self.VERSION_SECTION)}
         except hostos.PathOutsideBase as exc:  # no valid directory path; must not raise out of remove_asset
@@ -918,9 +935,11 @@ class AssetLibrary(grid_engine.GridEngine,
         return len(going)
 
     def _owned_paths(self, mat_id) -> list:
-        """Every file and folder deleted with an asset, from `asset_files()`."""
-        return list(self.asset_files(mat_id).values()) + list(
-            self.asset_directories(mat_id).values())
+        """What a delete trashes: an asset's whole folder, or Code's and Colors' files and store."""
+        folders = list(self.asset_directories(mat_id).values())
+        if self.DB_FILENAME in library_files.ASSET_SECTIONS:
+            return folders
+        return list(self.asset_files(mat_id).values()) + folders
 
     def _report_refused_delete(self, asset) -> None:
         """Tell the user a delete did not happen because the list could not be written."""

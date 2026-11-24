@@ -459,20 +459,8 @@ class AListUnderShowDetailsEndsItsSentence(unittest.TestCase):
                 self.assertTrue(getattr(messages, name).endswith("."), getattr(messages, name))
 
 
-class CheckLibraryNamesWhereFilesGo(unittest.TestCase):
-    """Check Library moves a file into the holding folder; it does not delete it."""
-
-    def test_every_move_names_how_long_the_holding_folder_keeps_them(self):
-        from amaze.core import guard
-        kept = "%d days" % guard.TRASH_DAYS
-        for name in ("HELP_CHECK_LIBRARY", "HELP_MOVE_FILES_ASIDE", "HELP_MOVE_UNKNOWN_ASIDE",
-                     "FILES_MOVED_ASIDE_DONE", "FILES_MOVED_ASIDE_SOME_FAILED"):
-            with self.subTest(name=name):
-                self.assertIn(kept, getattr(messages, name),
-                              "it does not say files are kept in the holding folder, "
-                              "so it reads as a permanent delete")
-                self.assertIn("library's trash", getattr(messages, name),
-                              "it places the trash somewhere other than the library's own folder")
+class EverySentenceNamesWhatIsThere(unittest.TestCase):
+    """What a user reads names only tools, places and menus the panel actually has."""
 
     def _user_sentences(self):
         """Every sentence a user reads by name: the messages, the tooltips, each shelf tool's help."""

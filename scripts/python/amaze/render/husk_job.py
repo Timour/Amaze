@@ -11,7 +11,7 @@ import time
 import hou
 from PySide6 import QtCore
 
-from amaze.core import debug, guard
+from amaze.core import debug, guard, library_files
 from amaze.helpers import hostos
 
 DELEGATES ={"Karma": "BRAY_HdKarma", "Octane": "HdOctaneRendererPlugin",
@@ -328,14 +328,17 @@ class Jobs(QtCore.QObject):
         if not 1 <= frame <= len(job.frames):
             return
         asset_id, png = job.frames[frame - 1]
+        png = library_files.where_now(png)    # renamed since the job started: there; deleted: none
         exr = job.exr(frame)
         from amaze import preview
-        scratch = hostos.render_scratch(png)
-        made = os.path.exists(exr) and preview.exr_to_png(exr, scratch, job.batch["ocio"], asset_id)
+        scratch = hostos.render_scratch(png) if png else ""
+        made = bool(png) and os.path.exists(exr) and preview.exr_to_png(
+            exr, scratch, job.batch["ocio"], asset_id)
         if made and guard.put_rendered(png, scratch):
             self.thumbnailWritten.emit(asset_id)
         else:    # the tile keeps its old image: this log record is the only one
-            hostos.discard_scratch(scratch)
+            if scratch:
+                hostos.discard_scratch(scratch)
             debug.event("thumb", "frame done without a picture", asset_id=asset_id,
                         frame=frame, exr_found=os.path.exists(exr), renderer=job.renderer)
         try:

@@ -44,9 +44,7 @@ class Section:
 
 
 def _asset_section(database: str) -> Section:
-    return Section(lambda preferences: (library_files.SECTION_FOLDERS[database],
-                                        library_files.VERSIONS),
-                   _KINDS, SOURCE_KINDS, database)
+    return Section(None, _KINDS, SOURCE_KINDS, database)    # each store is in its asset's own folder
 
 
 MATERIAL = _asset_section(library_files.MATERIALS)
@@ -56,27 +54,24 @@ CODE = Section(lambda preferences: (library_files.CODE_FOLDER, library_files.VER
 
 
 def versions_dir(preferences, mat_id: str, section: Section = MATERIAL) -> str:
-    """`<section folder>/versions/<id>/`, contained like every id-derived path."""
+    """`<asset folder>/versions/`, or Code's `code/versions/<id>/`; contained like every id path."""
     if section.database in library_files.ASSET_SECTIONS:
-        return material.owned_path(preferences, section.database, library_files.VERSIONS,
-                                   str(mat_id))
+        return os.path.join(material.asset_dir(preferences, section.database, mat_id),
+                            library_files.VERSIONS)
     return hostos.contained_join(
         os.path.join(preferences.dir, *section.folder(preferences)), str(mat_id))
 
 
-def store_root(preferences, section: Section = MATERIAL) -> str:
-    """The folder holding every store of `section`: one listing shows which assets have one."""
-    return os.path.join(preferences.dir, *section.folder(preferences))
-
-
 def stored_ids(preferences, section: Section = MATERIAL) -> set:
-    """The ids with a store, by one listing of `store_root`."""
-    found = set()
+    """The ids with a version store: asset folders holding `versions/`, or Code's store listing."""
+    if section.database in library_files.ASSET_SECTIONS:
+        return {owner for owner, folder in material.asset_ids_with_folders(
+            preferences, section.database).items()
+            if os.path.isdir(os.path.join(folder, library_files.VERSIONS))}
     try:
-        found = set(os.listdir(store_root(preferences, section)))
+        return set(os.listdir(os.path.join(preferences.dir, *section.folder(preferences))))
     except OSError:
-        pass
-    return found
+        return set()
 
 
 def _ledger_path(preferences, mat_id: str, section: Section = MATERIAL) -> str:

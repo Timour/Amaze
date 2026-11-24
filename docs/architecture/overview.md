@@ -880,26 +880,24 @@ contracts other code and the docs rely on:
   check of the databases is `guard.health()`; every fix goes
   through `core/guard.py`: restore a backup, move to the trash, add orphaned
   files back, rebuild a lost database from each asset's `<id>.json`.
-- **One survey, two callers.** `repair.survey` reads the library once
-  (`library_files.walk`, one `os.scandir` per folder) and every report,
-  button and count reads that one dict. In the panel it is called from Preferences ▸
-  Library's Check Database row (`prefs_window.AmazePrefsState._survey_open_library`):
-  its button saves every model first (`check.save_before_check`), surveys, and
-  shows `library_check.summary` as one light, the worst of its three parts'; once something can be
-  fixed it reads Repair and opens `repair_dialog.repair_found`, whose
-  Fix Safe and Fix All act with `guard=False`, read every model again
-  (`check.reload_after_check`) and check again. A part that cannot be checked
-  (a database in use, a folder that cannot be listed) is never fixed.
-  The shelf tool's function (`repair_dialog.run`) acts with `guard=True`,
-  stops with a message while an Amaze pane is open, and only reports once this
-  session holds a list.
-- **The default Move Aside moves only files Amaze created**: unlisted asset
-  files, scratch past an hour (`repair.SCRATCH_MIN_AGE`), `.pre-adopt`
-  backups, and a sync service's duplicate of a backup tier, undo copy or
-  preserved copy, or of a live file whose bytes equal the original's. A
-  duplicate that differs, or whose original is absent, is listed and
-  left in place. An unknown file or folder moves only by its own button and its
-  own confirm.
+- **One survey, one flow.** `check_library.survey` reads the library once
+  (`library_files.walk`, one `os.scandir` per folder), and every report line,
+  count and fix reads that one dict. Preferences ▸ Library's Check row
+  (`prefs_window`) shows `check_library.summary` as one light and opens
+  `check_dialog.show`. The shelf tool runs `check_dialog.run`, which only
+  reports while this Houdini holds the library (`check_library.held_here`).
+  The report offers Fix All, Fix Safe or Cancel, and Fix All first names
+  what it will move to the trash. A fix acts only on what the check showed,
+  and nothing is trashed while a part could not be checked
+  (`holding_back`). A 2.0 library is not checked until it is converted.
+- **Fix Safe changes only what Amaze made**: it recovers unlisted asset
+  folders from their own records, puts rows with no category in
+  Uncategorized, sets aside locations that are not there with their
+  favorites, and trashes scratch past an hour (`check_library.SCRATCH_MIN_AGE`)
+  and a sync copy whose bytes equal the original's. **Fix All** also removes
+  the named rows whose files are gone and trashes the named unknown files
+  and orphan versions. A sync copy that differs, or whose original is
+  absent, is listed and kept.
 - **Stars are per user IN THE LIBRARY**: each section's database holds
   `favorites` {user: {id: true}}, `files.json` the File stars; a user writes
   only their own (`locations.set_favourites`).
@@ -1075,6 +1073,7 @@ core/guard.py             DATABASE ENGINE: the only module that reads and writes
 core/documents.py         each database as keyed sections, the merge
 core/library_db.py        one Library per open library, the save timer
 core/library_conversion.py  the only code that knows format 3's files
+core/layout_conversion.py  the only code that knows the 2.0 layout: converts it to 3.0
 render/nodes.py           MATERIAL ENGINE (build_karma_material) + save/import
 render/cop_nodes.py       the Node section's contexts and containers: which context
                           a network holds, which container to create, and
@@ -1086,7 +1085,7 @@ core/workers.py           how every engine stops its QThreads (one shared
 core/grid_engine.py       GRID ENGINE (every grid model's cells and row order)
 core/library.py           Library Model (Materials) + base for Cop/Code;
                           no cleanup of its own - Check Library is
-                          core/repair.py's
+                          core/check_library.py's
 core/model_registry.py    the ONE source-model set per library; panels are views
 core/material.py          Material record
 core/renderers.py         the renderer table: names, icons, switches, samples, converters,
@@ -1192,21 +1191,16 @@ core/scene_files.py       which file names are Houdini scenes (.hip,
 core/material_files.py    what a saved material's files contain, read as
                           text: its builder type and its shader type
 core/captures.py          the capture store: <library>/captures, any tile
-core/repair.py            CHECK LIBRARY's engine: one `survey` from one
-                          folder scan, the one `report_lines`, and every
-                          action (add back, put back, `repair_index`,
-                          `move_aside`, set aside, uncategorised), each
-                          taking `guard`; the only module that opens a
-                          format 3 stamp; no `hou`, no Qt, no dialog
-core/library_check.py     Preferences' Check Database row over `repair`: a
-                          light per part (`summary`: Errors, Files, Ref),
-                          the Repair dialog's lines, and the two fixes,
-                          `fix_safe` and `fix_all`; no `hou`, no Qt
-dialogs/repair_dialog.py  the shelf tool's report, buttons, confirms
-                          and answers (`run`, `check_failed_library`;
-                          past `MOST_BUTTONS` actions, Choose an
-                          Action), and `repair_found`, the Repair dialog
-                          Preferences opens; never imports the pane
+core/check_library.py     CHECK LIBRARY's engine: one `survey` from one
+                          folder scan, `report_lines`, `summary` (the
+                          light), and every fix (`fix_safe`, `fix_all`,
+                          `recover`, `restore`, `rebuild`, `trash`);
+                          no `hou`, no Qt, no dialog
+dialogs/check_dialog.py   Check Library's one flow: the report, Fix All,
+                          Fix Safe or Cancel, the confirm of what goes to
+                          the trash, and what the fixes did (`show`; `run`
+                          for the shelf; `repair_failed` for a database
+                          that cannot be read); never imports the pane
 core/updater.py           is a newer Amaze released, and can this one
                           update to it - checked only on request, never at
                           launch (shelf tool + the About tab button)

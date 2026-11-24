@@ -115,19 +115,19 @@ fi
 
 MODULES="test_category test_library test_generator \
 test_roundtrip test_thumbnail_shutdown test_addons test_addon_tab test_debug_log_repeats \
-test_library_storage test_lop_assign test_drag_gesture test_houdini_operations \
+test_library_storage test_check_library test_lop_assign test_drag_gesture test_houdini_operations \
 test_drop_targets test_drop_resolution test_cop_root \
 test_prefs_equality test_karma_batch \
 test_nodes_section test_tile_icons test_category_colors \
 test_shell_gates test_delegates test_folder_sections test_folder_tree test_file_moves \
 test_viewport_pick test_host_engines test_log_export \
 test_hip_section test_library_list test_library_tab test_prefs_window test_atomic_write \
-test_gradient_guard test_cleanup_counts test_check_library test_harness_reset \
+test_gradient_guard test_harness_reset \
 test_stale_proxy_index test_alert_sink \
 test_headless_dialogs test_save_from_node test_node_menu \
 test_versions test_code_versions test_grid_scroll test_file_section test_notes \
 test_file_info test_info_panel test_side_pane test_info_subjects test_image_preview \
-test_repair test_toolbar_filter test_shaderball_assets \
+test_toolbar_filter test_shaderball_assets \
 test_cancel_conversions test_section_tabs test_qml_pane test_code_tile \
 test_list_columns test_versions_dialog test_no_live_data test_screen_dpr \
 test_write_ordering test_thumbnail_paths test_panel_correctness \
@@ -175,9 +175,22 @@ else
     fi
 fi
 
+# A subset's requirement tests run first on Houdini's own Python, seconds instead of a hython start.
+# The full run stays in one hython, which maps every module. hython gets what needs Houdini.
+ci_tests="$tests_dir/../../../../tools/ci-tests.py"
+root="${HFS:-$(dirname "$(dirname "$(command -v hython)")")}"
+if [ -n "$wanted_modules" ] && [ -f "$ci_tests" ] && fast="$(amaze_plain_python "$root")"; then
+    left="$AMAZE_LOG_DIR/for-hython.txt"
+    # shellcheck disable=SC2086  # a list of module names, split on purpose
+    HFS="$root" "$fast" "$ci_tests" --rest "$left" $run_modules || status=$?
+    run_modules="$(cat "$left" 2>/dev/null || printf '%s' "$run_modules")"
+fi
+
 # `run_suite.py`, never `-m unittest`: it owns its exit, so a helper
 # wedged in uninterruptible I/O cannot hang the run after printing OK.
-if [ "$isolated" = "1" ]; then
+if [ -z "$run_modules" ]; then
+    echo "suite: every test of this subset ran without Houdini"
+elif [ "$isolated" = "1" ]; then
     for module in $run_modules; do
         echo "---------------------------"
         echo "Testing $module"

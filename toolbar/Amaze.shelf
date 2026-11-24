@@ -58,7 +58,7 @@ else:
 # Every check and sentence lives in the module. It must NOT import or
 # construct the panel - it exists for when the panel will not open.
 try:
-    from amaze.dialogs import repair_dialog
+    from amaze.dialogs import check_dialog
     from amaze.utils import rc_calls
 except ImportError as exc:
     hou.ui.displayMessage(
@@ -67,7 +67,7 @@ except ImportError as exc:
         "restarted after it changed." % exc)
 else:
     rc_calls.start()
-    repair_dialog.run()]]></script>
+    check_dialog.run()]]></script>
   </tool>
 
   <tool name="amaze_check_updates" label="Updates"

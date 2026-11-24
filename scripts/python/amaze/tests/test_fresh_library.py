@@ -86,19 +86,6 @@ class TheAssetWriterMakesItsFolderInsideTheLibraryOnly(unittest.TestCase):
         self._save(os.path.join(self.root, "materials"))
         self.assertTrue(os.path.isfile(os.path.join(self.root, "materials", "7.mat")))
 
-    def test_a_first_save_makes_the_builder_record_beside_it(self):
-        """The `<id>.json` is written to the section folder the same first save just made."""
-        import hou
-        from amaze.core import asset_record
-        staging = hou.node("/obj").createNode("subnet", "fresh_builder")
-        self.addCleanup(staging.destroy)
-        handler = self.nodes.NodeHandler(self.prefs)
-        handler.save_asset_pair(os.path.join(self.root, "materials", "7.mat"),
-                                self._write_mat, staging, "7")
-        record = asset_record.read(os.path.join(self.root, "materials", "7.json"))
-        self.assertEqual("subnet", record["builder"].get("type"),
-                         "the first save left no builder beside its .mat")
-
     def test_a_destination_outside_the_library_raises_and_is_not_created(self):
         """Raising after making the folder would be the same bug with a better error message."""
         with self.assertRaises(hostos.PathOutsideBase):

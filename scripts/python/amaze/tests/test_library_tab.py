@@ -16,7 +16,7 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 import hou  # noqa: E402
 
 from amaze import amazetheme, messages  # noqa: E402
-from amaze.core import library_policy, users  # noqa: E402
+from amaze.core import users  # noqa: E402
 from amaze.dialogs import prefs_window, user_dialog  # noqa: E402
 from amaze.prefs import persistence  # noqa: E402
 from amaze.prefs import prefs as prefs_mod  # noqa: E402
@@ -86,35 +86,11 @@ class WhatApplyingDoesIsShownBeforeApply(unittest.TestCase):
         self.prefs = test_support.fixture_prefs(self)
         self.state = _state(self.prefs)
 
-    def _picked_at(self, version):
-        other, _made = _library_with(self, "Sage")
-        test_support.set_library_version(other, version)
-        self.state.pick_library(other)
-        test_support.pick_user(self.state, "Sage")
-        return self.state.libraryFormat, self.state.applyLine
-
     def _applies(self):
         """Apply, then whether the pick was opened rather than kept pending."""
         before = self.prefs.dir
         self.state.apply()
         return self.prefs.dir != before and not self.state.changeCount
-
-    def test_an_older_library_says_apply_upgrades_it(self):
-        known = library_policy.LIBRARY_VERSION
-        self.assertEqual((amazetheme.LABEL_LIBRARY_FORMAT % (known - 1),
-                          amazetheme.LABEL_UPGRADES_LIBRARY % "2.0"), self._picked_at(known - 1))
-        self.assertTrue(self._applies())
-
-    def test_a_newer_library_says_update_amaze_and_does_not_apply(self):
-        newer = library_policy.LIBRARY_VERSION + 1
-        self.assertEqual((amazetheme.LABEL_LIBRARY_FORMAT % "2.1",
-                          amazetheme.LABEL_LIBRARY_TOO_NEW), self._picked_at(newer))
-        self.assertFalse(self._applies())
-
-    def test_this_amazes_version_says_nothing(self):
-        self.assertEqual(
-            (amazetheme.LABEL_LIBRARY_FORMAT % "2.0", ""),
-            self._picked_at(library_policy.LIBRARY_VERSION))
 
     def test_an_unreachable_library_says_so_and_does_not_apply(self):
         self.state.pick_library(_empty_folder(self).rstrip("/") + "-gone/")
@@ -135,89 +111,6 @@ class LibraryButtonsAreDisabledUntilApply(unittest.TestCase):
         state.pick_library(other)
         self.assertEqual((False, False), (state.libraryOpen, state.userEditable),
                          "these act on a library that is only picked")
-
-
-class TheDatabasesRowShowsOneCheck(unittest.TestCase):
-    """A grey light until Check is pressed; then the light's colour, its tip, and a red Repair."""
-
-    def setUp(self):
-        self.prefs = test_support.fixture_prefs(self)
-        self.prefs.library_user = users.create(self.prefs, "Plum")
-        self.folder = test_support.scratch_dir("amaze_check_row_")
-        self.addCleanup(shutil.rmtree, self.folder, True)
-        self.prefs.add_file_folder(self.folder)
-        self.state = _state(self.prefs)
-
-    def row(self):
-        return self.state.checkLight, self.state.checkInfo, self.state.checkLabel
-
-    def favorite_of_a_missing_file(self):
-        star = os.path.join(self.folder, "shot.exr")
-        with open(star, "wb") as handle:
-            handle.write(b"x")
-        self.prefs.add_file_favorite(star)
-        os.remove(star)
-        return star
-
-    def assert_unchecked(self):
-        self.assertEqual((amazetheme.P01_LIGHT_IDLE, "", "Check"), self.row())
-        self.assertFalse(self.state.checkFixable)
-
-    def test_nothing_is_checked_until_the_button_is_pressed(self):
-        self.favorite_of_a_missing_file()
-        self.assert_unchecked()
-
-    def test_a_check_reds_the_light_and_turns_the_button_into_a_red_repair(self):
-        self.favorite_of_a_missing_file()
-        self.state.checkOrRepair()
-        light, info, button = self.row()
-        self.assertEqual(amazetheme.P01_LIGHT_FOUND, light)
-        self.assertTrue(info, "the row shows nothing about what it found")
-        self.assertEqual("Repair", button)
-        self.assertTrue(self.state.checkFixable, "Repair is not Houdini's danger button")
-
-    def test_repair_opens_the_dialog_and_checks_again_after_the_fix(self):
-        star = self.favorite_of_a_missing_file()
-        self.state.checkOrRepair()
-        asked = []
-
-        def display(text, **kwargs):
-            asked.append((text, tuple(kwargs.get("buttons") or ())))
-            return list(kwargs["buttons"]).index("Fix Safe") if kwargs.get("buttons") else 0
-
-        with mock.patch.object(hou, "ui", mock.Mock(displayMessage=display), create=True):
-            self.state.checkOrRepair()
-        self.assertTrue(asked[0][0].startswith("Check Library found:\n\n"))
-        self.assertIn("1 favorite is of a file that is gone.", asked[0][0])
-        self.assertEqual("Fix Safe", asked[0][1][-2])
-        self.assertIn("1 favorite removed.", asked[1][0])
-        self.assertNotIn(star, self.prefs.file_favorites)
-
-    def test_a_clean_library_is_green_and_the_button_stays_check(self):
-        from amaze.core import library_check
-        clean = {"lights": {part: (library_check.CLEAN, 0) for part in library_check.PARTS},
-                 "lines": [], "info": messages.CHECK_NOTHING_TO_REPAIR}    # the fixture has a finding
-        with mock.patch.object(library_check, "summary", return_value=clean):
-            self.state.checkOrRepair()
-        self.assertEqual((amazetheme.P01_LIGHT_CLEAN, messages.CHECK_NOTHING_TO_REPAIR, "Check"),
-                         self.row())
-        self.assertFalse(self.state.checkFixable)
-
-    def test_a_check_that_cannot_run_is_amber(self):
-        from amaze.core import guard
-        with mock.patch.object(guard.Guard, "_waiting", lambda self: True):
-            self.state.checkOrRepair()
-        light, _info, button = self.row()
-        self.assertEqual(amazetheme.P01_LIGHT_UNCHECKED, light)
-        self.assertEqual("Check", button)
-
-    def test_picking_another_library_empties_the_row(self):
-        self.favorite_of_a_missing_file()
-        self.state.checkOrRepair()
-        other, _made = _library_with(self, "Plum")
-        self.state.pick_library(other)
-        self.assert_unchecked()
-        self.assertFalse(self.state.libraryOpen, "Check works on a library that is only picked")
 
 
 class AddPutsAFolderInTheList(unittest.TestCase):

@@ -1,4 +1,4 @@
-"""The texture store: referenced files are copied into the library as `$AMAZELIB/...` paths."""
+"""A material's textures: each file it uses is copied into its own folder, as `$AMAZEASSET/...`."""
 
 import json
 import os
@@ -82,46 +82,7 @@ class ReferenceScanTest(unittest.TestCase):
 
 
 class CopyIntoLibraryTest(unittest.TestCase):
-    """copy_into_library() copies files, rewrites parms to $AMAZELIB; the export packs its inventory."""
-
-    def _outside_texture(self):
-        outside = tempfile.mkdtemp(prefix="amaze_outside_")
-        self.addCleanup(shutil.rmtree, outside, ignore_errors=True)
-        path = os.path.join(outside, "brick_diff.png")
-        with open(path, "wb") as handle:
-            handle.write(b"pngbytes")
-        return path
-
-    def test_an_outside_file_is_copied_in_and_the_parm_rewritten(self):
-        from amaze.core import texstore
-        lib = _scratch_library(self)
-        prefs = _prefs_over(lib)
-        source = self._outside_texture()
-        builder, image = _network_with_image(self, source)
-        inventory = texstore.copy_into_library(builder, prefs, "Brick__test-1")
-        expected = "$AMAZELIB/matX/Brick__test-1/textures/brick_diff.png"
-        self.assertEqual([expected], inventory)
-        self.assertEqual(expected, image.parm("file").unexpandedString())
-        landed = os.path.join(lib, "matX", "Brick__test-1", "textures",
-                              "brick_diff.png")
-        self.assertTrue(os.path.isfile(landed), "the file was not copied in")
-        with open(landed, "rb") as handle:
-            self.assertEqual(b"pngbytes", handle.read())
-
-    def test_a_file_already_under_the_library_is_tokenized_not_copied(self):
-        from amaze.core import texstore
-        lib = _scratch_library(self)
-        prefs = _prefs_over(lib)
-        inside = os.path.join(lib, "matX", "Old_Pack", "t.png")
-        os.makedirs(os.path.dirname(inside))
-        with open(inside, "wb") as handle:
-            handle.write(b"x")
-        builder, image = _network_with_image(self, inside)
-        inventory = texstore.copy_into_library(builder, prefs, "ignored")
-        self.assertEqual(["$AMAZELIB/matX/Old_Pack/t.png"], inventory)
-        self.assertFalse(
-            os.path.exists(os.path.join(lib, "matX", "ignored")),
-            "a file already inside the library was copied a second time")
+    """copy_into_library() leaves a reference to a missing file as it was."""
 
     def test_a_missing_file_is_reported_and_left_alone(self):
         from amaze.core import texstore
@@ -135,90 +96,6 @@ class CopyIntoLibraryTest(unittest.TestCase):
                          "a dangling reference must stay visible, not "
                          "be rewritten into the library where no file "
                          "was copied")
-
-    def test_a_locked_parm_stays_visible_and_out_of_the_inventory(self):
-        from amaze.core import texstore
-        lib = _scratch_library(self)
-        prefs = _prefs_over(lib)
-        source = self._outside_texture()
-        builder, image = _network_with_image(self, source)
-        image.parm("file").lock(True)
-        inventory = texstore.copy_into_library(builder, prefs, "Brick__locked")
-        self.assertEqual([], inventory,
-                         "a token the network does not actually contain "
-                         "was added to the row - export would pack "
-                         "a texture nothing references")
-        self.assertEqual(source, image.parm("file").unexpandedString(),
-                         "the locked parm was rewritten")
-
-    def test_an_env_reference_is_expanded_before_the_copy(self):
-        from amaze.core import texstore
-        lib = _scratch_library(self)
-        prefs = _prefs_over(lib)
-        source = self._outside_texture()
-        hou.putenv("AMAZE_TEST_MAPS", os.path.dirname(source))
-        self.addCleanup(hou.unsetenv, "AMAZE_TEST_MAPS")
-        builder, image = _network_with_image(
-            self, "$AMAZE_TEST_MAPS/brick_diff.png")
-        inventory = texstore.copy_into_library(builder, prefs, "Brick__env")
-        self.assertEqual(
-            ["$AMAZELIB/matX/Brick__env/textures/brick_diff.png"],
-            inventory)
-        self.assertTrue(os.path.isfile(os.path.join(
-            lib, "matX", "Brick__env", "textures", "brick_diff.png")))
-
-
-class AReferencedParmTest(unittest.TestCase):
-    """A rewrite writes the staged parm; it follows a reference only to a parm inside the staged copy."""
-
-    def _outside_texture(self):
-        outside = tempfile.mkdtemp(prefix="amaze_outside_")
-        self.addCleanup(shutil.rmtree, outside, ignore_errors=True)
-        path = os.path.join(outside, "ref_diff.png")
-        with open(path, "wb") as handle:
-            handle.write(b"pngbytes")
-        return path
-
-    def _string_parm(self, node, name, value):
-        node.addSpareParmTuple(hou.StringParmTemplate(
-            name, name, 1, string_type=hou.stringParmType.FileReference))
-        node.parm(name).set(value)
-        return node.parm(name)
-
-    def test_a_reference_out_of_the_copy_leaves_the_scene_parm_alone(self):
-        from amaze.core import texstore
-        lib = _scratch_library(self)
-        source = self._outside_texture()
-        control = hou.node("/obj").createNode("null", "amaze_tex_control")
-        self.addCleanup(control.destroy)
-        scene = self._string_parm(control, "tex", source)
-        builder, image = _network_with_image(self, "")
-        image.parm("file").setExpression('chs("%s")' % scene.path(), hou.exprLanguage.Hscript)
-        self.assertEqual(scene, image.parm("file").getReferencedParm(),
-                         "premise: the staged parm references the scene one")
-        inventory = texstore.copy_into_library(builder, _prefs_over(lib), "Ref__out")
-        token = "$AMAZELIB/matX/Ref__out/textures/ref_diff.png"
-        self.assertEqual(source, scene.unexpandedString(),
-                         "a save rewrote a parm outside the copy it staged")
-        self.assertEqual(token, image.parm("file").unexpandedString(),
-                         "the staged parm does not hold the copied file")
-        self.assertEqual([token], inventory)
-
-    def test_a_reference_inside_the_copy_keeps_following(self):
-        """A promoted subnet parm is rewritten where it is promoted, and the image still reads it."""
-        from amaze.core import texstore
-        lib = _scratch_library(self)
-        source = self._outside_texture()
-        builder, image = _network_with_image(self, "")
-        promoted = self._string_parm(builder, "tex", source)
-        image.parm("file").setExpression('chs("../tex")', hou.exprLanguage.Hscript)
-        self.assertEqual(promoted, image.parm("file").getReferencedParm(), "premise")
-        inventory = texstore.copy_into_library(builder, _prefs_over(lib), "Ref__in")
-        token = "$AMAZELIB/matX/Ref__in/textures/ref_diff.png"
-        self.assertEqual(token, promoted.unexpandedString())
-        self.assertEqual(promoted, image.parm("file").getReferencedParm(),
-                         "the promotion inside the copy was broken")
-        self.assertEqual([token], inventory)
 
 
 class RawPathTest(unittest.TestCase):
@@ -295,37 +172,6 @@ class SaveFromNodeTest(unittest.TestCase):
         image = builder.createNode("mtlximage")
         image.parm("file").set(texture_path)
         return builder, image
-
-    def test_saving_copies_textures_and_the_scene_node_stays_untouched(self):
-        from amaze.core import library_files, material
-        model = self.panel.pane.material_model
-        prefs = model.preferences
-        source = self._outside_texture()
-        builder, image = self._saveable_builder("Copied_Fabric", source)
-        before = model.rowCount()
-        held = test_support.asset_ids(model)
-        renderer = material_actions.add_asset(model, builder, "Fabrics", "", False)
-        self.assertTrue(renderer, "premise: the save went through")
-        self.assertEqual(before + 1, model.rowCount())
-        self.assertEqual(source, image.parm("file").unexpandedString(),
-                         "the SCENE node was rewritten - the copy must "
-                         "happen on the staged copy only")
-        row, = test_support.arrived(model, held)
-        tokens = (row.get_as_dict().get("textures") or [])
-        self.assertEqual(1, len(tokens), "the row holds no inventory")
-        self.assertTrue(tokens[0].startswith("$AMAZELIB/matX/"), tokens)
-        from amaze.core import texstore
-        landed = texstore.resolve(tokens[0], prefs)
-        self.assertTrue(os.path.isfile(landed),
-                        "the referenced file was not copied in")
-        mat_file = material.payload_path(prefs, str(row.mat_id),
-                                         prefs.ext, library_files.MATERIALS)
-        with open(mat_file, "rb") as handle:
-            payload = handle.read()
-        self.assertIn(b"$AMAZELIB/matX/", payload,
-                      "the saved network still references the outside "
-                      "path")
-        self.assertNotIn(source.encode(), payload)
 
     def test_copy_to_scene_writes_textures_in_the_write_paths_as_form(self):
         """A placed material's library textures resolve, written under `$JOB` when that is chosen."""

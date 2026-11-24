@@ -17,7 +17,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import code_library, library_files, material, repair, versions  # noqa: E402
+from amaze.core import code_library, library_files, material, versions  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
 FIRST, SECOND, THIRD = "@P.y += 1;\n", "@P.y += 2;\r\n", "@P.y += 3;\n"
@@ -74,10 +74,6 @@ class TheCodeStoreIsBesideTheMaterialStore(_Case):
         inside = os.path.join(self.prefs.dir, "code", "versions", "X1")
         self.assertEqual(os.path.normpath(inside),
                          os.path.normpath(versions.versions_dir(self.prefs, "X1", versions.CODE)))
-
-    def test_the_material_store_is_in_the_materials_folder(self):
-        self.assertEqual(os.path.join(self.materials, "versions", "X1"),
-                         versions.versions_dir(self.prefs, "X1"))
 
     @property
     def materials(self):
@@ -376,23 +372,6 @@ class TheEditorWindowKeepsVersions(unittest.TestCase):
         self.assertEqual((before + 1, 1), (len(self.model.assets), len(added)),
                          "a second Apply added the snippet again")
         self.assertEqual(THIRD, added[0].code)
-
-
-class CheckLibraryLeavesCodeVersionsAlone(_Case):
-    """Check Library moves files no database lists, not the code store. ▸r/version-store"""
-
-    def test_check_library_moves_a_stray_and_leaves_the_code_store(self):
-        self._save(self.model.NEW_VERSION, SECOND, "helper fast")
-        stray = os.path.join(material.section_folder(self.prefs.dir, library_files.MATERIALS),
-                             "STRAYCODE.mat")
-        with open(stray, "w", encoding="utf-8") as handle:
-            handle.write("listed by nothing\n")
-        before = sorted(os.listdir(self.store))
-        test_support.reset_database_singletons()    # an action fails on a library this process has open
-        findings = repair.survey(self.prefs.dir, self.prefs.img_dir)
-        repair.move_aside(findings, "unlisted")
-        self.assertFalse(os.path.exists(stray), "premise: the move aside did not run")
-        self.assertEqual(before, sorted(os.listdir(self.store)))
 
 
 if __name__ == "__main__":

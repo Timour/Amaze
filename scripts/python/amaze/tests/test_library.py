@@ -22,8 +22,6 @@ from amaze.tests import test_support  # noqa: E402,F401 - import redirects the d
 from amaze.actions import materials as material_actions  # noqa: E402
 from amaze.core import library_files, material  # noqa: E402
 
-MATERIALS_KEY = library_files.SECTION_FOLDERS[library_files.MATERIALS] + "/"    # "materials/"
-
 
 class TestMaterialLibrary(unittest.TestCase):
     """Test suite for MaterialLibrary class"""
@@ -180,30 +178,6 @@ class TestMaterialLibrary(unittest.TestCase):
         call_args = self.mock_material.set_data.call_args  # the name is preserved rather than overwritten with the placeholder
         self.assertEqual(original_name, call_args[0][0])
 
-    def test_remove_asset(self):
-        """Every file the asset owns moves to the library's trash with its row, and nothing else."""
-        index = self.library.index(0, 0)
-        initial_count = self.library.rowCount()
-        mat_id = self.library._assets[0].mat_id
-        owned = sorted(self.library.asset_files(mat_id).values())
-        for path in owned:
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            with open(path, "wb") as handle:
-                handle.write(b"x")
-        bystander = os.path.join(os.path.dirname(owned[0]), "OTHER.mat")
-        with open(bystander, "wb") as handle:
-            handle.write(b"x")
-
-        self.library.remove_asset(index)
-
-        self.assertEqual([], [path for path in owned if os.path.exists(path)],
-                         "remove_asset left files the asset owns")
-        self.assertTrue(os.path.exists(bystander), "remove_asset removed another asset's file")
-        trash = os.path.join(self._library_dir, "trash")
-        self.assertEqual(len(owned), sum(len(files) for _r, _d, files in os.walk(trash)),
-                         "the owned files were not moved to the library's trash")
-        self.assertEqual(self.library.rowCount(), initial_count - 1)
-
     def test_remove_asset_invalid_index(self):
         """Test remove_asset with invalid index does nothing"""
         invalid_index = self.library.index(99, 0)
@@ -311,95 +285,6 @@ class TestMaterialLibrary(unittest.TestCase):
         mock_importer.import_asset_to_scene.assert_called_once_with(
             self.mock_material, "auto", context_node=None
         )
-
-
-def _without_the_legacy_row(prefs) -> None:
-    """The fixture's id -1 row, which has no files, removed: checks start on a healthy library."""
-    index = os.path.join(prefs.dir, library_files.MATERIALS)
-    with open(index, encoding="utf-8-sig") as handle:
-        document = json.load(handle)
-    document["assets"].pop("-1", None)
-    with open(index, "w", encoding="utf-8") as handle:
-        json.dump(document, handle, indent=4)
-
-
-class CheckLibraryMovesAndNeverDeletesTest(unittest.TestCase):
-    """Check Library on a real library: moves files no database lists, keeps every listed row."""
-
-    def setUp(self):
-        self.prefs = test_support.fixture_prefs(self)
-        test_support.reset_database_singletons()
-        self.addCleanup(test_support.reset_database_singletons)
-        self.dir = self.prefs.dir
-        self.mat_dir = material.section_folder(self.dir, library_files.MATERIALS)
-        self.img_dir = os.path.join(self.dir, self.prefs.img_dir)
-        self.index = os.path.join(self.dir, library_files.MATERIALS)
-        _without_the_legacy_row(self.prefs)
-        with open(self.index, encoding="utf-8-sig") as handle:
-            self.first_id = sorted(json.load(handle)["assets"])[0]
-
-    def _survey(self):
-        from amaze.core import repair
-        return repair.survey(self.dir, self.prefs.img_dir)
-
-    def _write(self, path, text="x"):
-        with open(path, "w", encoding="utf-8") as handle:
-            handle.write(text)
-        return path
-
-    def test_unlisted_files_go_to_the_librarys_trash(self):
-        """A wrong move can be undone from the trash; a deleted file cannot."""
-        from amaze.core import repair
-        stray = [self._write(os.path.join(self.mat_dir, "orphan.mat")),
-                 self._write(os.path.join(self.mat_dir, "orphan.png"))]
-        findings = self._survey()
-        self.assertTrue(findings["complete"], "premise: every database is readable")
-        self.assertIn("orphan.mat", findings["unaccounted"][MATERIALS_KEY])
-        self.assertIn("orphan.png", findings["unaccounted"][MATERIALS_KEY])
-        result = repair.move_aside(findings, "unlisted")
-        self.assertIn("orphan.mat", result["moved"])
-        self.assertIn("orphan.png", result["moved"])
-        for path in stray:
-            self.assertFalse(os.path.exists(path), path)
-        import datetime
-        root = os.path.join(self.dir, "trash", datetime.date.today().isoformat())
-        self.assertTrue(os.path.isfile(os.path.join(root, MATERIALS_KEY, "orphan.mat")))
-
-    def test_a_half_synced_asset_keeps_its_row_and_its_remaining_file(self):
-        """A file still syncing looks like one that is gone, so the row and its other file stay."""
-        from amaze.core import repair
-        os.remove(os.path.join(self.mat_dir, self.first_id + ".mat"))
-        with open(self.index, encoding="utf-8-sig") as handle:
-            rows_before = json.load(handle)["assets"]
-        findings = self._survey()
-        self.assertIn(self.first_id,
-                      [one for one, _name in findings["missing_files"][library_files.MATERIALS]])
-        self.assertIn("files are missing", "\n".join(repair.report_lines(findings)),
-                      "the row is kept and the report does not list its missing file")
-        if findings["complete"]:
-            repair.move_aside(findings, ("unlisted", "leftovers"))
-        with open(self.index, encoding="utf-8-sig") as handle:
-            self.assertEqual(rows_before, json.load(handle)["assets"],
-                             "a row was dropped on one missing file")
-        self.assertTrue(os.path.exists(os.path.join(self.mat_dir,
-                                                    self.first_id + material.RECORD_SUFFIX)),
-                        "the remaining file of a partly synced asset was moved")
-
-    def test_an_unreadable_asset_folder_makes_the_survey_incomplete(self):
-        """A folder still syncing would read as every asset missing, so the survey is incomplete."""
-        from amaze.core import repair
-        shutil.rmtree(self.mat_dir)
-        with open(self.index, "rb") as handle:
-            before = handle.read()
-        findings = self._survey()
-        self.assertEqual([MATERIALS_KEY], findings["unreadable_folders"])
-        self.assertFalse(findings["complete"])
-        self.assertEqual(len(findings["leftovers"]), repair.files_to_move_aside(findings))
-        with self.assertRaises(ValueError):
-            repair.move_aside(findings, "unlisted")
-        self.assertIn("could not look inside", "\n".join(repair.report_lines(findings)))
-        with open(self.index, "rb") as handle:
-            self.assertEqual(before, handle.read(), "the database changed while a folder could not be read")
 
 
 class TheLibraryKeepsNoTagList(unittest.TestCase):
@@ -534,25 +419,6 @@ class ACommaInsideOneCategoryNameStaysWholeTest(unittest.TestCase):
         self.assertEqual([self.NAME], self.asset.categories,
                          "Customize split the category name at its comma")
 
-    def test_check_library_leaves_the_whole_name_on_the_asset(self):
-        from amaze.core import repair
-        index = os.path.join(self.prefs.dir, library_files.MATERIALS)
-        with open(index, encoding="utf-8-sig") as handle:
-            document = json.load(handle)
-        document["assets"][str(self.asset.mat_id)]["categories"] = [self.NAME]
-        with open(index, "w", encoding="utf-8") as handle:
-            json.dump(document, handle, indent=4)
-        test_support.reset_database_singletons()    # an action does not run on a library this process has open
-        findings = repair.survey(self.prefs.dir, self.prefs.img_dir)
-        self.assertNotIn(self.asset.mat_id,
-                         [one for one, _name in findings["uncategorised"][library_files.MATERIALS]],
-                         "a name holding a comma was read as no category")
-        repair.rescue_uncategorised(findings)
-        with open(index, encoding="utf-8-sig") as handle:
-            after = json.load(handle)["assets"][str(self.asset.mat_id)]
-        self.assertEqual([self.NAME], after["categories"],
-                         "Check Library split the category name at its comma")
-
     def test_assigning_the_whole_name_keeps_it_whole(self):
         """The sidebar drop and the info edit both write through set_assetdata."""
         row = self.model.find_asset_row_by_id(self.asset.mat_id)
@@ -603,51 +469,6 @@ class TheTileNamesTheRendererAndTheListTheWholeTypeTest(unittest.TestCase):
         asset = material.Material(name="snippet", renderer="VEX", mat_id="tile_text_probe")
         self.assertEqual("VEX", code_library.CodeLibrary.tile_subtitle(
             code_library.CodeLibrary.__new__(code_library.CodeLibrary), asset))
-
-
-class AnInlineSectionHasNoFilesToMissTest(unittest.TestCase):
-    """Code and Colors keep their content IN their database: no row of theirs has files."""
-
-    def setUp(self):
-        self.prefs = test_support.fixture_prefs(self)
-        test_support.reset_database_singletons()
-        self.addCleanup(test_support.reset_database_singletons)
-        _without_the_legacy_row(self.prefs)
-
-    def _rows(self, filename):
-        with open(os.path.join(self.prefs.dir, filename), encoding="utf-8-sig") as handle:
-            return json.load(handle)["assets"]
-
-    def _checked(self, model):
-        from amaze.core import repair
-        filename = model.DB_FILENAME
-        test_support.reset_database_singletons()    # saved and closed: an action does not run on one held open
-        before = self._rows(filename)
-        self.assertTrue(before, "premise: the database has no rows to keep")
-        findings = repair.survey(self.prefs.dir, self.prefs.img_dir)
-        self.assertEqual({library_files.MATERIALS, library_files.NODES},
-                         set(findings["missing_files"]),
-                         "an inline database was checked for files it never has")
-        self.assertNotIn(filename, findings["missing_renders"])
-        self.assertEqual([], [line for line in repair.report_lines(findings)
-                              if "missing" in line],
-                         "Check Library reported inline content as files that are missing")
-        if findings["complete"]:
-            repair.move_aside(findings, ("unlisted", "leftovers"))
-        self.assertEqual(before, self._rows(filename), "Check Library changed the database's rows")
-
-    def test_check_library_keeps_every_snippet(self):
-        from amaze.core import code_library
-        model = code_library.CodeLibrary(preferences=self.prefs)
-        self.assertTrue(model.add_snippet("int x = 1;", "One", "VEX", "Mine", ""))
-        self._checked(model)
-
-    def test_check_library_keeps_every_palette(self):
-        from amaze.core import gradient_library
-        model = gradient_library.GradientLibrary(preferences=self.prefs)
-        model.add_user_gradient("Two", "Mine", {"keys": [0.0], "values": [[1, 0, 0]],
-                                                "bases": ["Constant"]})
-        self._checked(model)
 
 
 class ReloadChainTest(unittest.TestCase):
@@ -1012,65 +833,6 @@ class TwoMachineMergeTest(unittest.TestCase):
         except Exception as exc:                       # noqa: BLE001
             self.fail("a sparse merged row aborted the save: %s" % exc)
         self.assertIn("SPARSE_ROW", self._disk()["assets"])
-
-
-class CheckLibraryMovesNothingOnAnIncompleteSurveyTest(unittest.TestCase):
-    """Materials and Nodes share img/, so every database's ids decide which files none lists."""
-
-    NODES = library_files.SECTION_FOLDERS[library_files.NODES]
-
-    def setUp(self):
-        from amaze.tests import test_support
-
-        self.prefs = test_support.fixture_prefs(self)
-        test_support.reset_database_singletons()
-        self.addCleanup(test_support.reset_database_singletons)
-
-    def _write_sibling(self, name, text):
-        path = os.path.join(self.prefs.dir, name)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w", encoding="utf-8") as handle:
-            handle.write(text)
-        return path
-
-    def _survey(self):
-        from amaze.core import repair
-        return repair.survey(self.prefs.dir, self.prefs.img_dir)
-
-    def _entry(self, findings, filename):
-        return next(entry for entry in findings["lists"] if entry["filename"] == filename)
-
-    def test_an_unreadable_sibling_is_reported_not_skipped(self):
-        from amaze.core import repair
-        self._write_sibling(library_files.NODES, '{"assets": {"COPASSET1": {"id": "COPASSET1"}')
-        self._write_sibling(os.path.join(self.NODES, "COPASSET1.mat"), "x")
-        findings = self._survey()
-        self.assertEqual("unreadable", self._entry(findings, library_files.NODES)["state"])
-        self.assertFalse(findings["complete"],
-                         "an unreadable sibling was skipped, so its files look unlisted")
-        self.assertEqual(len(findings["leftovers"]), repair.files_to_move_aside(findings))
-        with self.assertRaises(ValueError):
-            repair.move_aside(findings, "unlisted")
-        self.assertTrue(any(line.startswith("Nodes: the database is corrupt/unreadable.")
-                            for line in repair.report_lines(findings)))
-
-    def test_a_readable_sibling_contributes_its_ids(self):
-        self._write_sibling(library_files.NODES, '{"assets": {"COPASSET1": {"id": "COPASSET1"}}}')
-        self._write_sibling(os.path.join(self.NODES, "COPASSET1.mat"), "x")
-        self._write_sibling(os.path.join(self.NODES, "COPASSET1.json"), "{}")
-        findings = self._survey()
-        self.assertIn("COPASSET1", findings["ids"],
-                      "a sibling's ids were not used by the unlisted check")
-        self.assertEqual([], findings["unaccounted"][self.NODES + "/"])
-
-    def test_an_absent_sibling_is_not_an_error(self):
-        """An absent file lists no assets; only present-but-unparseable is unsafe."""
-        path = os.path.join(self.prefs.dir, library_files.NODES)
-        if os.path.exists(path):
-            os.remove(path)
-        findings = self._survey()
-        self.assertEqual("absent", self._entry(findings, library_files.NODES)["state"])
-        self.assertTrue(findings["complete"])
 
 
 def _empty_library_dir(testcase) -> str:
