@@ -516,18 +516,6 @@ class TwoSessionsTest(_TwoUsers):
         self.assertEqual([documents.Collision(MATERIALS, ASSETS, "A1", "name", ANNA)],
                          self.erik.take_collisions())
 
-    def test_ls13_data_a_newer_amaze_wrote_is_kept_by_a_save(self):
-        raw = self.on_disk()
-        raw["later"] = {"new": 1}
-        raw[ASSETS]["A1"]["later_field"] = [1, 2]
-        with open(os.path.join(self.dir, MATERIALS), "w", encoding="utf-8") as handle:
-            json.dump(raw, handle)
-        document = self.open(ANNA).document(MATERIALS)
-        document.edit(ASSETS, "A2", name="Touched")
-        self.assertTrue(document.save())
-        after = self.on_disk()
-        self.assertEqual(({"new": 1}, [1, 2]), (after["later"], after[ASSETS]["A1"]["later_field"]))
-
     def test_ls30_with_no_user_selected_the_library_takes_no_change(self):
         nobody = self.open("").document(MATERIALS)
         self.assertFalse(nobody.put(ASSETS, "A9", {"name": "Ghost"}))
@@ -611,6 +599,24 @@ class ThroughThePreferencesTest(_Settings):
                          asset_record.read(record)[asset_record.METADATA])
         self.assertEqual("Brick", library_db.guard_of(self.prefs).read(
             MATERIALS).document[ASSETS]["A1"]["name"])
+
+    def test_ls13_data_a_newer_amaze_wrote_is_kept_by_a_save(self):
+        from amaze.core import notes
+        newer = {"t": "sketch", "id": "s1", "author": ERIK, "strokes": [[0, 1]]}
+        put(self.dir, MATERIALS, {"later": {"new": 1}, notes.SECTION: {"A1": {"items": [
+            {"t": "text", "text": "one", "id": "t1", "author": ERIK}, newer,
+            {"t": "todo", "label": "two", "id": "t2", "author": ERIK, "due": "12-01"}]}},
+            ASSETS: {"A1": {"name": "Brick", "later_field": [1, 2]}, "A2": {"name": "Oak"}}})
+        library_db.document(self.prefs, MATERIALS).edit(ASSETS, "A2", name="Touched")
+        self.assertTrue(notes.set_note(self.prefs, notes.note_key("material", "A1"), [
+            {"t": "text", "text": "one"}, {"t": "todo", "label": "two", "done": True}]))
+        library_db.flush(self.prefs)
+        after = library_db.guard_of(self.prefs).read(MATERIALS).document
+        items = {item["id"]: item for item in after[notes.SECTION]["A1"]["items"]}
+        self.assertEqual(({"new": 1}, [1, 2], "Touched"), (
+            after["later"], after[ASSETS]["A1"]["later_field"], after[ASSETS]["A2"]["name"]))
+        self.assertEqual((["t1", "s1", "t2"], newer, "12-01"),
+                         (list(items), items.get("s1"), items["t2"].get("due")))
 
     def test_ls20_saving_over_an_asset_is_refused_when_the_policy_cannot_be_read(self):
         self.assertTrue(library_settings.allow_overwrite(self.prefs))
