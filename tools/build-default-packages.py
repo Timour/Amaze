@@ -16,7 +16,7 @@ from PySide6 import QtWidgets  # noqa: E402
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 from amaze.actions import library as library_actions  # noqa: E402
-from amaze.core import code_library, gradient_library, packages  # noqa: E402
+from amaze.core import code_library, gradient_library, packages, users  # noqa: E402
 from amaze.prefs import prefs as prefs_mod  # noqa: E402
 
 
@@ -38,37 +38,37 @@ def main() -> int:
         prefs_mod.create_library(scratch)
         prefs = prefs_mod.Prefs()
         prefs.dir = os.path.join(scratch, "")    # keep the trailing separator: the connector appends the filename
+        prefs.library_user = users.create(prefs, "Amaze")    # a library takes no change without a user
         library_actions.ensure_library_dirs(prefs)
         gradients = gradient_library.GradientLibrary(prefs)
         gradients.seed_curated_palettes(_Cats())
         code = code_library.CodeLibrary(prefs)
         code.seed_starter_snippets(_Cats())
 
-        def tagged(model, prefix):
-            for asset in model.assets:
-                tag = str((getattr(asset, "_extra", None) or {})
-                          .get("curated") or "")
-                if tag.startswith(prefix + "/"):
-                    yield asset
-
-        wrote = []
-        for curated in gradient_library.CURATED_SETS:
-            items = [packages.collect_asset(gradients, a.mat_id)
-                     for a in tagged(gradients, curated["key"])]
+        wanted = [(gradients, curated["key"]) for curated in gradient_library.CURATED_SETS]
+        wanted.append((code, "starter"))
+        collected = {id(model): [packages.collect_asset(model, a.mat_id) for a in model.assets]
+                     for model in (gradients, code)}
+        unmarked = [name for items in collected.values() for name in packages.unmarked(items)]
+        if unmarked:    # Restore finds a preset by its mark, so none may ship without one
+            print("UNMARKED refused: %s" % ", ".join(unmarked))
+            return 1
+        wrote, placed = [], set()
+        for model, key in wanted:
+            items = [item for item in collected[id(model)]
+                     if str(item["record"]["curated"]).startswith(key + "/")]
             if not items:
-                print("EMPTY SET refused: %s" % curated["key"])
+                print("EMPTY SET refused: %s" % key)
                 return 1
-            path = os.path.join(out_dir, curated["key"] + packages.SUFFIX)
+            path = os.path.join(out_dir, key + packages.SUFFIX)
             packages.write_package(path, items)
             wrote.append((path, len(items)))
-        items = [packages.collect_asset(code, a.mat_id)
-                 for a in tagged(code, "starter")]
-        if not items:
-            print("EMPTY SET refused: starter")
+            placed.update(id(item) for item in items)
+        strays = [str(item["record"]["curated"]) for items in collected.values()
+                  for item in items if id(item) not in placed]
+        if strays:
+            print("NO SET for: %s" % ", ".join(strays))
             return 1
-        path = os.path.join(out_dir, "starter" + packages.SUFFIX)
-        packages.write_package(path, items)
-        wrote.append((path, len(items)))
 
         for path, count in wrote:
             problems = packages.verify_package(path)

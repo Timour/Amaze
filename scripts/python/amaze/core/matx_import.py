@@ -115,16 +115,17 @@ def record_name(record) -> str:
         wording.sanitize_usd_path(record.title) or "Material")
 
 
-def package_dirname(record) -> str:
-    """The folder a record's package is downloaded into: title, then source and uid."""
-    tail = hostos.safe_filename(
-        "%s-%s" % (record.source or "src", record.uid or "0"))
+def package_dirname(record, resolution: str = "") -> str:
+    """The folder a record's package is downloaded into: title, then source, uid and resolution."""
+    tail = hostos.safe_filename("-".join(str(part) for part in (
+        record.source or "src", record.uid or "0", resolution) if part))
     return "%s__%s" % (record_name(record), tail)
 
 
-def _scene_download(record) -> str:
-    """Where a package built in the scene is downloaded and kept: `$HIP/tex/`, never the library."""
-    return os.path.join(hou.text.expandString("$HIP"), SCENE_DOWNLOADS, package_dirname(record))
+def _scene_download(record, resolution: str = "") -> str:
+    """Where a package built in the scene is kept, one per resolution: `$HIP/tex/`, not the library."""
+    return os.path.join(hou.text.expandString("$HIP"), SCENE_DOWNLOADS,
+                        package_dirname(record, resolution))
 
 
 @contextlib.contextmanager
@@ -305,20 +306,15 @@ def build_in_scene(record, source, resolution, destination,
     debug.event("import", "start to scene", title=record.title, name=name,
                 source=record.source, kind=record.kind,
                 destination=destination.path(), resolution=resolution)
-    folder = _scene_download(record)
+    folder = _scene_download(record, resolution or "")    # a repeat reuses it only at one resolution
     with _staged_build(record, source, resolution, folder, progress,
                        renderer) as (builder, note, error):
         if error:
             return (None, error)
-        moved = hou.moveNodesTo((builder,), destination)
-        if not moved:
-            return (None, "Could not move %s into %s"
-                    % (name, destination.path()))
-        builder = moved[0]
+        builder, _registered = nodes_mod.place_built(builder, destination)
+        if builder is None:
+            return (None, "Could not move %s into %s" % (name, destination.path()))
         texstore.write_paths_under(builder, folder, helpers.houdini_path, path_style)    # Write Paths As
-        helpers.auto_place(builder)
-        if destination.type().name() == "materiallibrary":   # registered, or it may not render
-            nodes_mod.register_in_materiallibrary(destination, builder)
         try:
             comment = _credit_text(record, source)   # the node comment holds credit and licence
             if record.licence:

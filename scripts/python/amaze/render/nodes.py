@@ -436,6 +436,19 @@ def node_type_available(type_name: str) -> bool:
     return False
 
 
+def place_built(builder, destination) -> tuple:
+    """A builder made in staging, moved into `destination`, placed and registered: (node, registered)."""
+    from amaze.helpers import helpers
+    moved = hou.moveNodesTo((builder,), destination)
+    if not moved:
+        return None, False
+    builder = moved[0]
+    helpers.auto_place(builder)
+    registered = (destination.type().name() != "materiallibrary"
+                  or register_in_materiallibrary(destination, builder))    # or it may not render
+    return builder, registered
+
+
 def register_in_materiallibrary(library, builder) -> bool:
     """Make ONE library entry match `builder`; True when one does. ▸r/matlib-entries"""
     from amaze.helpers import helpers

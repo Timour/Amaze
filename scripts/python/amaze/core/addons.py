@@ -9,7 +9,7 @@ import zipfile
 import zlib
 
 from amaze import branding, messages
-from amaze.core import packages
+from amaze.core import debug, guard, packages
 from amaze.helpers import hostos, wording
 
 KIND = "houdini-package"
@@ -169,20 +169,13 @@ def _checked(bundle, path) -> dict:
 
 def read(path: str) -> dict:
     """An add-on package's manifest, opening the file once; PackageError unless it is one."""
-    try:
-        with zipfile.ZipFile(path) as bundle:
-            return _checked(bundle, path)
-    except (OSError, zipfile.BadZipFile) as exc:
-        raise packages.PackageError("cannot read %s: %s" % (path, exc)) from None
+    with packages.open_bundle(path) as bundle:
+        return _checked(bundle, path)
 
 
-def install(path: str, amaze_root: str, running=None) -> dict:
+def install(path: str, amaze_root: str, running=None, disk=None) -> dict:
     """Install `path` as `<amaze_root>/addons/<folder>`, all or nothing; `running`: Houdini's version."""
-    try:
-        bundle = zipfile.ZipFile(path)
-    except (OSError, zipfile.BadZipFile) as exc:
-        raise packages.PackageError("cannot read %s: %s" % (path, exc)) from None
-    with bundle:
+    with packages.open_bundle(path) as bundle:
         manifest = _checked(bundle, path)
         needed = tuple(int(part) for part in manifest["houdini_min"].split("."))
         if running and tuple(running[:2]) < needed:    # an unknown Houdini version is allowed
@@ -191,20 +184,18 @@ def install(path: str, amaze_root: str, running=None) -> dict:
         target = os.path.join(amaze_root, ROOT, manifest["folder"])
         staging = target + ".installing"
         hostos.check_sandbox(staging)
-        shutil.rmtree(staging, ignore_errors=True)
         try:
-            for member in manifest["files"]:
-                dest = os.path.join(staging, *member.split("/"))
-                os.makedirs(os.path.dirname(dest), exist_ok=True)
-                with open(dest, "wb") as handle:
-                    packages.copy_member(bundle, member, handle)
-            with open(os.path.join(staging, packages.MANIFEST), "w", encoding="utf-8",
-                      newline="\n") as handle:
-                json.dump(manifest, handle, indent=2)
+            guard.finish_swap(target, disk)
+            held = installed(amaze_root, manifest["folder"]) or {}
+            if held and held.get("name") != manifest["name"]:
+                raise packages.PackageError(messages.ADDON_FOLDER_TAKEN % (
+                    manifest["name"], manifest["folder"], held.get("name")))
+            shutil.rmtree(staging, ignore_errors=True)
+            _unpack(bundle, manifest, staging, _off_types(amaze_root, manifest["folder"]))
+            guard.swap_folder(staging, target, disk)
         except (OSError, zipfile.BadZipFile, zlib.error) as exc:
             shutil.rmtree(staging, ignore_errors=True)
             raise packages.PackageError("%s did not install: %s" % (manifest["name"], exc)) from None
-    _swap(staging, target)
     try:
         hostos.write_json_atomic(package_file(amaze_root, manifest["folder"]),
                                  {"hpath": ["$HOUDINI_PACKAGE_PATH/" + manifest["folder"]]})
@@ -214,25 +205,23 @@ def install(path: str, amaze_root: str, running=None) -> dict:
     return manifest
 
 
+def _unpack(bundle, manifest, staging: str, off: set) -> None:
+    """The package's files into `staging`; a row with a node type in `off` stays off, in `off/`."""
+    kept_off = {node["file"] for row in rows(manifest) for node in row["nodes"]
+                if off & {one["type"] for one in row["nodes"]}}
+    for member in manifest["files"]:
+        dest = os.path.join(staging, *([OFF] if member in kept_off else []) + member.split("/"))
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        with open(dest, "wb") as handle:
+            packages.copy_member(bundle, member, handle)
+    with open(os.path.join(staging, packages.MANIFEST), "w", encoding="utf-8",
+              newline="\n") as handle:
+        json.dump(manifest, handle, indent=2)
+
+
 def package_file(amaze_root: str, folder: str) -> str:
     """The Houdini package file beside an add-on's folder, which the template's package_path reads."""
     return os.path.join(amaze_root, ROOT, folder + ".json")
-
-
-def _swap(staging: str, target: str) -> None:
-    """Put `staging` where `target` is; the old folder is renamed aside for the swap, then deleted."""
-    aside = target + ".replacing"
-    shutil.rmtree(aside, ignore_errors=True)
-    if os.path.isdir(target):
-        os.rename(target, aside)
-    try:
-        os.rename(staging, target)
-    except OSError as exc:
-        if os.path.isdir(aside):
-            os.rename(aside, target)
-        shutil.rmtree(staging, ignore_errors=True)
-        raise packages.PackageError("the add-on did not replace %s: %s" % (target, exc)) from None
-    shutil.rmtree(aside, ignore_errors=True)
 
 
 def installed(amaze_root: str, folder: str):
@@ -252,6 +241,12 @@ def installed_all(amaze_root: str) -> list:
         folders = sorted(os.listdir(os.path.join(amaze_root, ROOT)))
     except OSError:
         return []
+    for aside in (name for name in folders if name.endswith(guard.ASIDE)):
+        try:    # a swap a crash cut off: one whole version is put back in place
+            guard.finish_swap(os.path.join(amaze_root, ROOT, aside[:-len(guard.ASIDE)]))
+        except OSError as exc:
+            debug.event("addons", "swap not finished", folder=aside, error=str(exc))
+    folders = sorted(os.listdir(os.path.join(amaze_root, ROOT)))
     found = [(folder, installed(amaze_root, folder)) for folder in folders if _FOLDER.match(folder)]
     found = [(folder, manifest) for folder, manifest in found if manifest and not problems(manifest)]
     return sorted(found, key=lambda pair: str(pair[1]["name"]).lower())
@@ -335,14 +330,9 @@ def fetch_and_install(url: str, amaze_root: str, running=None, temp_dir=None,
         with downloading() as on_bytes:
             path = matx_sources.download(url, os.path.join(scratch, url.rsplit("/", 1)[-1]),
                                          on_bytes)
-        was_off = _off_types(amaze_root, read(path)["folder"])
-        manifest = install(path, amaze_root, running)
+        return install(path, amaze_root, running)
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
-    for row in rows(manifest):
-        if was_off & {node["type"] for node in row["nodes"]}:
-            set_on(amaze_root, manifest["folder"], row, False)
-    return manifest
 
 
 def _place(amaze_root: str, folder: str, node, on: bool) -> str:
@@ -365,16 +355,21 @@ def is_on(amaze_root: str, folder: str, row) -> bool:
 
 
 def set_on(amaze_root: str, folder: str, row, on: bool) -> None:
-    """Move the row's node files into place, or into `off/`; Houdini applies it at its next start."""
-    for node in row["nodes"]:
-        source, dest = (_place(amaze_root, folder, node, not on),
-                        _place(amaze_root, folder, node, on))
-        if not os.path.isfile(source):
-            continue
-        hostos.check_sandbox(dest)
-        try:
+    """Move all the row's node files into place, or into `off/`, or none; applied at Houdini's start."""
+    moved = []
+    try:
+        for node in row["nodes"]:
+            source, dest = (_place(amaze_root, folder, node, not on),
+                            _place(amaze_root, folder, node, on))
+            if not os.path.isfile(source):
+                continue
+            hostos.check_sandbox(dest)
             os.makedirs(os.path.dirname(dest), exist_ok=True)
             os.replace(source, dest)
-        except OSError as exc:
-            raise packages.PackageError("%s could not be turned %s: %s" % (
-                row["name"], "on" if on else "off", exc)) from None
+            moved.append((source, dest))
+    except OSError as exc:
+        for source, dest in reversed(moved):    # a row is never left half on
+            with contextlib.suppress(OSError):
+                os.replace(dest, source)
+        raise packages.PackageError("%s could not be turned %s: %s" % (
+            row["name"], "on" if on else "off", exc)) from None

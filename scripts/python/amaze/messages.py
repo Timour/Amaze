@@ -46,6 +46,7 @@ LOCATION_ALREADY_ADDED = "That location is already added."
 REMOVE_LOCATION_CONFIRM = "Remove %s from the File section? The files stay on disk. Their comments, icons and favorites in Amaze are removed for every user."
 NO_LIBRARY_CONFIGURED = "Set up a library first."
 PACKAGE_IMPORT_SUMMARY = "Imported %d asset(s) and %d file(s) into the Import category."
+PACKAGE_COMMENTS_NOT_WRITTEN = "The comments of %s could not be saved."
 PACKAGE_EXPORTED = "Exported %d items to %s."
 PACKAGE_EXPORTED_ONE = "Exported 1 item to %s."
 PACKAGE_EXPORT_EMPTY = "Nothing to export. This category is empty."
@@ -61,6 +62,8 @@ GALLERY_IMPORT_FINISHED_IMPORTED_SKIPPED = "Gallery import complete.\nImported: 
 GALLERY_IMPORT_FINISHED_RENDERING = 'Gallery import complete.\n\nImported: %d\nSkipped: %d\nFailed: %d\n\nTheir thumbnails are rendering now.'
 
 GALLERY_IMPORT_INTERRUPTED = 'Gallery import stopped.\n\nImported: %d\nSkipped: %d\nFailed: %d\n\nTo render them, select the new materials and use Render Image.'
+GALLERY_IMPORT_INTERRUPTED_RENDERING = 'Gallery import stopped.\n\nImported: %d\nSkipped: %d\nFailed: %d\n\nTheir thumbnails are rendering now.'
+GALLERY_NOT_PUT_BACK = "Amaze read the gallery %s, but could not put it back in Houdini's gallery list."
 
 NO_LIBRARY_OPEN = "Open a library first."
 AMAZE_COULD_NOT = "%d of %d items could not be imported."
@@ -173,6 +176,7 @@ UPDATE_OFFER = "%s\n\nRestart Houdini after installing."
 UPDATE_LIBRARY_AVAILABLE = "Amaze v%s is available. The library will be updated to v%s."
 LIBRARY_UPDATE_WARNING = "The library will be updated and won't work with Amaze versions older than %s."
 LIBRARY_NEEDS_NEWER_AMAZE = "This library is version %s and needs a newer Amaze. Update Amaze to open it."
+LIBRARY_OLDER_THAN_2_0 = "it is older than version 2.0, which this Amaze cannot convert. Open it once in Amaze 1.48, which updates it to 2.0, then open it here."
 LIBRARY_NEEDS_CONVERSION = ("This library is version 2.0. To open it, Amaze converts it to version 3.0: "
                             "each material and node gets its own folder with all its files, and the "
                             "matX folder goes to the library's trash. An older Amaze can't open it after that.")
@@ -194,6 +198,7 @@ ADDON_VERSION = 'version %s'
 ADDON_FIELD_NOT_TEXT = '%s is not text'
 ADDON_NODE_FIELD_NOT_TEXT = '%s: %s is not text'
 ADDON_TOO_LARGE = 'it unpacks to %s, more than the %s an add-on may hold'
+ADDON_FOLDER_TAKEN = "%s was not installed: its folder %s holds the add-on %s, which it may not replace."
 
 ADDON_AUTHOR = 'author: %s'
 

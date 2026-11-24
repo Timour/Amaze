@@ -32,3 +32,19 @@ def confirmed(found, library_dir: str) -> bool:
         messages.LIBRARY_UPDATE_WARNING % found.library_since,
         buttons=messages.BUTTONS_CONTINUE, default_choice=1, close_choice=1,
         severity=hou.severityType.Warning, title=messages.TITLE_AMAZE) == 0
+
+
+def check_and_install(library_dir: str, offer: bool = True) -> bool:
+    """Check, show what was found, offer it, ask Continue if the library changes, install it."""
+    found = updater.check()
+    if not found:    # up to date, no release, or unreachable: that message is all that is shown
+        hou.ui.displayMessage(found.sentence, title=messages.TITLE_AMAZE, severity=(
+            hou.severityType.Warning if found.verdict == updater.UNREACHABLE
+            else hou.severityType.Message))
+        return False
+    if offer and hou.ui.displayMessage(
+            messages.UPDATE_OFFER % updater.offer_line(found, library_dir),
+            buttons=messages.BUTTONS_INSTALL_UPDATE, close_choice=1,
+            title=messages.TITLE_AMAZE, severity=hou.severityType.Message) != 0:
+        return False
+    return confirmed(found, library_dir) and install_and_report(found)

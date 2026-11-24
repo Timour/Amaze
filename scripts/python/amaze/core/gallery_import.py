@@ -1,9 +1,11 @@
 """Gallery Import: .gal entries into the library, each through the normal save. ▸r/gallery-entries"""
 
+import contextlib
 import os
 
 import hou
 
+from amaze import messages
 from amaze.core import debug
 
 _MATERIAL_CATEGORIES = ("Vop", "Lop")    # anything else is skipped ▸r/gallery-entries
@@ -20,8 +22,9 @@ def default_gallery_dir() -> str:
     return os.path.expanduser("~")
 
 
-def entries_from_file(gallery_path: str) -> list:
-    """(entry, type_name, category) per material in one .gal, its registration kept. ▸r/gallery-entries"""
+@contextlib.contextmanager
+def opened(gallery_path: str):
+    """(entry, type_name, category) per material in one .gal, live until the gallery is put back."""
     gallery_path = os.path.abspath(os.path.expanduser(gallery_path))
     was_installed = bool(hou.galleries.removeGallery(gallery_path))    # False: not registered; neither call raises ▸r/gallery-entries
     gallery = hou.galleries.installGallery(gallery_path)    # the file's own gallery, or None
@@ -29,22 +32,19 @@ def entries_from_file(gallery_path: str) -> list:
         debug.event("gallery", "install failed", file=gallery_path,
                     error="not a gallery, or missing")
         if was_installed and hou.galleries.installGallery(gallery_path) is None:    # put the user's gallery back ▸r/gallery-entries
-            debug.event("gallery", "could NOT put the user's gallery "
-                        "back", file=gallery_path)
-        return []
-    try:
+            debug.event("gallery", "could NOT put the user's gallery back", file=gallery_path)
+            debug.alert(messages.GALLERY_NOT_PUT_BACK % gallery_path, key="gallery-not-put-back")
+        yield []
+        return
+    try:    # an entry is dead once its gallery is removed, so the import runs inside this block
         entries = gallery.galleryEntries()
-        found = [
-            (entry, node_type.name(), _category_of(entry))
-            for entry, node_type in (
-                (e, _best_type(e)) for e in entries
-            )
-            if node_type is not None
-            and node_type.category().name() in _MATERIAL_CATEGORIES
-        ]
+        found = [(entry, node_type.name(), _category_of(entry))
+                 for entry, node_type in ((e, _best_type(e)) for e in entries)
+                 if node_type is not None
+                 and node_type.category().name() in _MATERIAL_CATEGORIES]
         debug.event("gallery", "read file", file=gallery_path,
                     entries=len(entries), materials=len(found))
-        return found
+        yield found
     finally:
         if not was_installed:    # leave the user's gallery path as it was found
             hou.galleries.removeGallery(gallery_path)
@@ -126,13 +126,22 @@ def import_entries(save, entries, staging_parent=None,
                     parent.destroy()
             except hou.Error:
                 pass
-    debug.event("gallery", "import finished", **{
-        k: v for k, v in summary.items() if k != "categories"
-    })
-    if library is not None and library.preferences.render_on_import:
+        debug.event("gallery", "import finished", **{
+            k: v for k, v in summary.items() if k != "categories"
+        })
+        _render_saved(library, saved_ids)    # after Esc too: what was saved gets its picture
+    return summary
+
+
+def _render_saved(library, saved_ids) -> None:
+    """One render batch of the saved rows, when Render on Import is on; a failure is only logged."""
+    if library is None or not library.preferences.render_on_import:
+        return
+    try:
         from amaze.render import thumbs
         rows = [library.find_asset_row_by_id(key) for key in saved_ids if key]
         mats = [library.assets[row] for row in rows if row != -1]
         if mats:
             thumbs.ThumbNailRenderer.render_assets(library.preferences, mats)
-    return summary
+    except Exception as exc:                          # noqa: BLE001 - never masks the import's own end
+        debug.exception("gallery render", exc)

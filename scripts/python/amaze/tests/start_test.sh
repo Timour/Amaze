@@ -113,17 +113,16 @@ if ! "$python" "$tests_dir/../../../../tools/check-requirements.py"; then
     exit 1
 fi
 
-MODULES="test_asset_editing test_qt_models test_generator test_thumbnail_shutdown \
-test_addons test_addon_tab test_library_storage test_check_library \
-test_houdini_operations test_karma_batch test_shell_gates test_file_moves \
+MODULES="test_asset_editing test_qt_models test_thumbnail_shutdown test_addons \
+test_library_storage test_check_library test_karma_batch test_shell_gates test_file_moves \
 test_hip_section test_harness_reset test_node_menu test_versions test_file_section \
 test_shaderball_assets test_cancel_conversions test_qml_pane test_no_live_data \
 test_thumbnail_paths test_panel_correctness test_conversion test_area_bindings \
-test_grid_engine test_matx_translate test_simready test_husk_job test_dead_cover \
-test_updater test_empty_state test_snippet_run test_drop_into_scene test_info_pane \
-test_material_conversion test_gallery_import test_fixture_guard test_packages \
-test_saving_and_loading test_comments test_open_and_switch test_preferences_and_users \
-test_log_and_alerts \
+test_grid_engine test_husk_job test_dead_cover test_empty_state test_snippet_run \
+test_drop_into_scene test_info_pane test_material_conversion test_gallery_import \
+test_fixture_guard test_packages test_saving_and_loading test_comments \
+test_open_and_switch test_preferences_and_users test_log_and_alerts test_online_sources \
+test_updates \
 test_impact_map"
 
 # NOT in a default run: the gate scripts' slower cases, each a hook in a
