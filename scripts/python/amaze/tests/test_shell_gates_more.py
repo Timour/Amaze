@@ -20,7 +20,7 @@ from amaze.tests.test_shell_gates import (
 class SyncInstallGateTest(GateFixture):
     """`sync-install.sh`'s slower cases; its checks on the real install stay in the default run."""
 
-    def test_it_copies_and_runs_no_suite(self):
+    def test_gt26_it_copies_and_runs_no_suite(self):
         """The push and `run-tests.sh` test the commit; a sync only copies it and checks the copy."""
         result = self.sync("crash")
         self.assertEqual(result.returncode, 0, self.both(result))
@@ -36,7 +36,7 @@ class SyncInstallGateTest(GateFixture):
                 os.path.isfile(os.path.join(self.install, relative)),
                 "%s was not copied to the install" % relative)
 
-    def test_a_scratch_destination_accepts_a_dirty_tree(self):
+    def test_gt27_a_scratch_destination_accepts_a_dirty_tree(self):
         """A sabotage is a dirty tree, so it gets a different DESTINATION rather than an exemption."""
         _write(os.path.join(self.repo, "scripts", "python", "amaze",
                             "stray.py"), "# sabotaged, never committed\n")
@@ -56,7 +56,7 @@ class SyncInstallGateTest(GateFixture):
             "knowingly-broken code was copied to the folder a running Houdini "
             "reads")
 
-    def test_a_populated_directory_is_not_treated_as_scratch(self):
+    def test_gt28_a_populated_directory_is_not_treated_as_scratch(self):
         """Without the marker, a scratch destination holding somebody's files would be mirrored over."""
         scratch = self._scratch()
         _write(os.path.join(scratch, "someones_work.txt"), "do not lose me\n")
@@ -69,7 +69,7 @@ class SyncInstallGateTest(GateFixture):
             os.path.exists(os.path.join(scratch, "someones_work.txt")),
             "it exited with an error and overwrote the directory anyway")
 
-    def test_a_committed_change_ships_without_being_pushed(self):
+    def test_gt29_a_committed_change_ships_without_being_pushed(self):
         """Committed, not pushed: the runner syncs before it tests, so a push cannot be required."""
         _write(os.path.join(self.repo, "scripts", "python", "amaze",
                             "widget.py"), "# edited\n")
@@ -84,7 +84,7 @@ class SyncInstallGateTest(GateFixture):
         self.assertEqual(result.returncode, 0, self.both(result))
         self.assertIn(SYNC_SHIPPED_MSG, result.stdout)
 
-    def test_it_sets_core_hooks_path_in_a_fresh_clone(self):
+    def test_gt30_it_sets_core_hooks_path_in_a_fresh_clone(self):
         """A fresh clone has no hook until the sync sets it; without that, no push is checked."""
         self.assertEqual(
             subprocess.run(("git", "-C", self.repo, "config", "--get",
@@ -101,7 +101,7 @@ class SyncInstallGateTest(GateFixture):
 class PrePushGateTest(GateFixture):
     """`pre-push`'s slower cases; the process gate and failing-suite check run by default."""
 
-    def test_green_suite_allows_the_push_and_prints_so(self):
+    def test_gt36_green_suite_allows_the_push_and_prints_so(self):
         self._commit(os.path.join("scripts", "python", "amaze", "widget.py"))
         result = self.push("green")
         self.assertEqual(result.returncode, 0, self.both(result))
@@ -112,7 +112,7 @@ class PrePushGateTest(GateFixture):
         self.assertEqual(lines[-1], PUSH_END,
                          "pre-push stopped early:\n%s" % result.stdout)
 
-    def test_a_suite_that_cannot_run_blocks_the_push(self):
+    def test_gt37_a_suite_that_cannot_run_blocks_the_push(self):
         self._commit(os.path.join("scripts", "python", "amaze", "widget.py"))
         for mode in ("crash", "no_tests", "silent", "leak"):    # crashes, runs no test, prints nothing, or leaks
             with self.subTest(mode=mode):
@@ -124,7 +124,7 @@ class PrePushGateTest(GateFixture):
                 self.assertIn("PUSH REFUSED", result.stderr)
                 self.assertReachedEnd(result, PUSH_RED_END)
 
-    def test_a_stale_amaze_skip_tests_does_not_skip_the_suite(self):
+    def test_gt35_a_stale_amaze_skip_tests_does_not_skip_the_suite(self):
         """Exported and forgotten - set, but to a sha that is no longer HEAD, so the suite still runs."""
         self._commit(os.path.join("scripts", "python", "amaze", "widget.py"))
         result = self.push("red", AMAZE_SKIP_TESTS=self.base_sha)
@@ -180,7 +180,7 @@ class PrePushSelectionTest(GateFixture):
                          % " ".join("'%s'" % root for root in roots))
         return roots
 
-    def test_a_push_runs_only_the_tests_its_change_reaches(self):
+    def test_gt38_a_push_runs_only_the_tests_its_change_reaches(self):
         self._mapped()
         self._change("return 1", "return 2")
         result = self.push("green")
@@ -191,7 +191,7 @@ class PrePushSelectionTest(GateFixture):
                          "a run of some tests updated the live install")
         self.assertIn(PUSH_END, result.stdout)
 
-    def test_a_red_selection_blocks_the_push(self):
+    def test_gt39_a_red_selection_blocks_the_push(self):
         self._mapped()
         self._change("return 1", "return 2")
         result = self.push("red")
@@ -199,7 +199,7 @@ class PrePushSelectionTest(GateFixture):
         self.assertIn("PUSH REFUSED", result.stderr)
         self.assertEqual(["red " + SIZE], self.suite_calls())
 
-    def test_a_push_that_reaches_no_test_runs_none(self):
+    def test_gt40_a_push_that_reaches_no_test_runs_none(self):
         self._mapped()
         self._commit(os.path.join("docs", "a.md"))
         result = self.push("green")
@@ -208,20 +208,20 @@ class PrePushSelectionTest(GateFixture):
         self.assertEqual([], self.suite_calls())
         self.assertIn(PUSH_END, result.stdout)
 
-    def test_a_new_minor_version_runs_the_whole_suite_on_one_houdini(self):
+    def test_gt42_a_new_minor_version_runs_the_whole_suite_on_one_houdini(self):
         """An older major installed beside it is not run: only the newest is tested."""
         self._houdinis("Houdini21", "Houdini22")
         self._mapped()
         self._change('"1.0.0"', '"1.1.0"', BRANDING)
         self.assertWhole(self.push("green"), "a new minor or major version")
 
-    def test_a_new_major_version_runs_the_whole_suite_on_one_houdini(self):
+    def test_gt43_a_new_major_version_runs_the_whole_suite_on_one_houdini(self):
         self._houdinis("Houdini21", "Houdini22")
         self._mapped()
         self._change('"1.0.0"', '"2.0.0"', BRANDING)
         self.assertWhole(self.push("green"), "a new minor or major version")
 
-    def test_a_run_by_hand_on_every_houdini_fails_on_a_test_skipped_on_all(self):
+    def test_gt56_a_run_by_hand_on_every_houdini_fails_on_a_test_skipped_on_all(self):
         """The push no longer runs every Houdini; `run-tests.sh --all-versions` keeps the check."""
         self._houdinis("Houdini21", "Houdini22")
         self._mapped()
@@ -233,13 +233,13 @@ class PrePushSelectionTest(GateFixture):
         self.assertNotEqual(result.returncode, 0, self.both(result))
         self.assertIn("DEAD COVER", result.stdout + result.stderr)
 
-    def test_a_whole_run_for_any_other_reason_tests_one_houdini(self):
+    def test_gt51_a_whole_run_for_any_other_reason_tests_one_houdini(self):
         self._houdinis("Houdini21", "Houdini22")
         self._mapped()
         self._commit(os.path.join("scripts", "python", "amaze", "fresh.py"))
         self.assertWhole(self.push("green"), "the map cannot answer")
 
-    def test_a_patch_runs_only_what_it_reaches(self):
+    def test_gt41_a_patch_runs_only_what_it_reaches(self):
         self._mapped()
         self._change('"1.0.0"', '"1.0.1"', BRANDING)
         result = self.push("green")
@@ -247,39 +247,39 @@ class PrePushSelectionTest(GateFixture):
         self.assertNotIn("running the suite", result.stdout)
         self.assertIn(PUSH_END, result.stdout)
 
-    def test_a_change_the_map_cannot_answer_runs_the_whole_suite(self):
+    def test_gt44_a_change_the_map_cannot_answer_runs_the_whole_suite(self):
         self._mapped()
         self._commit(os.path.join("scripts", "python", "amaze", "fresh.py"))
         self.assertWhole(self.push("green"), "the map cannot answer")
 
-    def test_no_map_runs_the_whole_suite(self):
+    def test_gt45_no_map_runs_the_whole_suite(self):
         self._commit(os.path.join("scripts", "python", "amaze", "widget.py"))
         self.assertWhole(self.push("green"), "the map cannot answer")
 
-    def test_uncommitted_files_run_the_whole_suite(self):
+    def test_gt46_uncommitted_files_run_the_whole_suite(self):
         self._mapped()
         self._change("return 1", "return 2")
         _write(os.path.join(self.repo, "docs", "draft.md"), "draft\n")
         self.assertWhole(self.push("green"), "uncommitted files")
 
-    def test_a_ref_that_is_not_head_runs_the_whole_suite(self):
+    def test_gt47_a_ref_that_is_not_head_runs_the_whole_suite(self):
         self._mapped()
         self._change("return 1", "return 2")
         self.assertWhole(self.push("green", stdin=self.ref_line(self.base_sha)),
                          "a pushed ref is not the checked-out commit")
 
-    def test_a_new_branch_runs_the_whole_suite(self):
+    def test_gt48_a_new_branch_runs_the_whole_suite(self):
         self._mapped()
         self._change("return 1", "return 2")
         stdin = self.ref_line(self._git("rev-parse", "HEAD"), remote_sha="0" * 40)
         self.assertWhole(self.push("green", stdin=stdin), "a new branch")
 
-    def test_no_refs_run_the_whole_suite(self):
+    def test_gt49_no_refs_run_the_whole_suite(self):
         self._mapped()
         self._change("return 1", "return 2")
         self.assertWhole(self.push("green", stdin=""), "no refs on stdin")
 
-    def test_a_selector_that_fails_runs_the_whole_suite(self):
+    def test_gt50_a_selector_that_fails_runs_the_whole_suite(self):
         self._mapped()
         self._git("rm", "-q", os.path.join("tools", "select-tests.py"))
         self._git("commit", "-q", "-m", "no selector")
@@ -288,7 +288,7 @@ class PrePushSelectionTest(GateFixture):
 
 class RunTestsWrapperTest(GateFixture):
 
-    def test_it_syncs_then_runs_the_suite_exactly_once(self):
+    def test_gt52_it_syncs_then_runs_the_suite_exactly_once(self):
         """Without `AMAZE_SYNC_NO_VERIFY` the suite runs twice on every push."""
         result = self._run(os.path.join("tools", "run-tests.sh"), "green",
                            cwd=self.tmp)
@@ -299,7 +299,7 @@ class RunTestsWrapperTest(GateFixture):
             self.install, "scripts", "python", "amaze", "widget.py")),
             "run-tests.sh did not sync before testing")
 
-    def test_a_green_whole_run_leaves_a_newer_install_as_it_is_and_stays_green(self):
+    def test_gt53_a_green_whole_run_leaves_a_newer_install_as_it_is_and_stays_green(self):
         """The run proved the commit, so a push goes on; only the copy into the install is left out."""
         self._versions(checkout="1.35.1", installed="1.36.0")
         result = self._run(os.path.join("tools", "run-tests.sh"), "green", cwd=self.tmp)
@@ -312,7 +312,7 @@ class RunTestsWrapperTest(GateFixture):
             self.install, "scripts", "python", "amaze", "widget.py")),
             "a checkout that is behind was copied over the newer install")
 
-    def test_it_passes_its_arguments_through(self):
+    def test_gt54_it_passes_its_arguments_through(self):
         script = os.path.join(self.repo, "tools", "run-tests.sh")
         result = subprocess.run([test_support.bash(), script, "--isolated"],
                                 capture_output=True, text=True, cwd=self.tmp,
@@ -320,7 +320,7 @@ class RunTestsWrapperTest(GateFixture):
         self.assertEqual(result.returncode, 0, self.both(result))
         self.assertEqual(self.suite_calls(), ["green --isolated"])
 
-    def test_a_red_suite_propagates(self):
+    def test_gt55_a_red_suite_propagates(self):
         result = self._run(os.path.join("tools", "run-tests.sh"), "red",
                            cwd=self.tmp)
         self.assertNotEqual(result.returncode, 0, self.both(result))

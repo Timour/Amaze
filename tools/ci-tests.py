@@ -10,10 +10,20 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 CODE = os.path.join(os.path.dirname(HERE), "scripts", "python")
 
-_spec = importlib.util.spec_from_file_location(
-    "check_requirements", os.path.join(HERE, "check-requirements.py"))
-check_requirements = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(check_requirements)
+
+def _tool(name):
+    """A script in tools/, loaded as a module for what it defines."""
+    spec = importlib.util.spec_from_file_location(
+        name.replace("-", "_"), os.path.join(HERE, name + ".py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+check_requirements = _tool("check-requirements")
+_code = _tool("check-code")
+HOUDINI = _code.HOUDINI | _code.HOUDINI_LIBS    # the modules only a Houdini install has
+MISSING = re.compile(r"No module named '(\w+)")
 
 
 def environment():
@@ -36,8 +46,13 @@ def environment():
     return env if probe.returncode == 0 else None
 
 
+def needs_houdini(out) -> list:
+    """The modules only Houdini has that a run reached and this Python lacks, on import or in a test."""
+    return sorted(set(MISSING.findall(out)) & HOUDINI)
+
+
 def run_module(names, env):
-    """(verdict, tests run, output) for test ids of one module: green, skipped, hou or fail."""
+    """(verdict, tests run, output) for test ids of one module: green, skipped, houdini or fail."""
     proc = subprocess.run(
         [sys.executable, "-m", "unittest", "-q"] + ["amaze.tests." + name for name in names],
         capture_output=True, text=True, timeout=300, env=env)
@@ -46,8 +61,8 @@ def run_module(names, env):
     ran = int(match.group(1)) if match else 0
     if proc.returncode == 0 and ran:
         return ("skipped" if "skipped=" in out else "green"), ran, out
-    if "No module named 'hou'" in out:
-        return "hou", 0, out
+    if needs_houdini(out):
+        return "houdini", 0, out
     return "fail", ran, out
 
 
@@ -71,11 +86,15 @@ def main(argv):
     status = total = 0
     for module, ids in modules.items():
         verdict, ran, out = run_module(ids, env)
-        if rest_file and verdict in ("hou", "skipped"):    # hython runs it whole, nothing skipped
+        if rest_file and verdict in ("houdini", "skipped"):    # hython runs it whole, nothing skipped
             rest.extend(ids)
             continue
+        if verdict == "houdini":
+            print("%-34s needs Houdini (%s): not run here, hython runs it"
+                  % (module, ", ".join(needs_houdini(out))))
+            continue
         print("%-34s %s  (%d tests)" % (module, verdict, ran))
-        if verdict == "fail" or (verdict == "hou" and not rest_file):
+        if verdict == "fail":
             status = 1
             print(out)
         else:
