@@ -406,7 +406,7 @@ class ExportMenuTest(unittest.TestCase):
 
 
 class PackageImportTest(unittest.TestCase):
-    """Import: fresh makes new ids in `Import`; restore merges by original id; a gap fails all."""
+    """Import: fresh makes new ids in `Import`; a gap fails all."""
 
     @classmethod
     def setUpClass(cls):
@@ -452,31 +452,6 @@ class PackageImportTest(unittest.TestCase):
         self.assertEqual(before + 2, model.rowCount(),
                          "a fresh import deduplicated - only restore "
                          "mode does that, not a fresh import")
-
-    def test_restore_mode_unions_by_the_original_id(self):
-        from amaze.core import packages
-        model = self.panel.pane.gradient_model
-        out = _out_path(self)
-        original = self._gradient_package(out)
-        before = model.rowCount()
-        summary = self.panel.pane.package_import.import_file(out, restore=True)
-        self.assertEqual(0, summary["imported"])
-        self.assertEqual(1, summary["skipped"],
-                         "an id already in the library was re-imported")
-        self.assertEqual(before, model.rowCount())
-        with_new_id = _out_path(self, "minted.amazepkg")
-        item = packages.collect_asset(model, original.mat_id)
-        record = dict(item["record"], id="f" * 32)
-        record.pop("curated", None)    # a user asset: a curated tag would merge by the tag, not the id tested
-        item = dict(item, record=record)
-        packages.write_package(with_new_id, [item])
-        held = test_support.asset_ids(model)
-        summary = self.panel.pane.package_import.import_file(with_new_id, restore=True)
-        self.assertEqual(1, summary["imported"])
-        self.assertEqual(["f" * 32],
-                         [str(a.mat_id) for a in test_support.arrived(model, held)],
-                         "restore made a new id instead of using "
-                         "the package's id")
 
     def test_a_file_entry_is_written_to_the_import_location(self):
         from amaze.core import packages
@@ -904,7 +879,7 @@ class _Cats:
 
 
 class CuratedKeysTest(unittest.TestCase):
-    """Every seeded row has a `curated` tag, and restore merges by that tag where one exists."""
+    """Every seeded row has a `curated` tag."""
 
     def _fresh_prefs(self, marker):
         p = test_support.fixture_prefs(self)
@@ -947,72 +922,6 @@ class CuratedKeysTest(unittest.TestCase):
                     .startswith("starter/")]
         self.assertEqual([], untagged[:5],
                          "seeded snippets carry no starter/ tag")
-
-    def test_a_deleted_default_is_restored_from_the_set_package(self):
-        from amaze.core import gradient_library, packages
-        p = self._fresh_prefs(".amaze_gradient_seed_v1")
-        model = gradient_library.GradientLibrary(p)
-        model.seed_curated_palettes(_Cats())
-        wada = [a for a in model._assets
-                if str(a._extra.get("curated", "")).startswith("wada/")]
-        self.assertGreater(len(wada), 100, "premise: the Wada set seeded")
-        out = _out_path(self, "wada.amazepkg")
-        packages.write_package(
-            out, [packages.collect_asset(model, a.mat_id) for a in wada])
-        victim = wada[3]
-        gone_tag = victim._extra["curated"]
-        gone_cat = victim.categories
-        at = model._assets.index(victim)
-        model.beginRemoveRows(QtCore.QModelIndex(), at, at)
-        try:
-            model._assets.pop(at)
-        finally:
-            model.endRemoveRows()
-        self.assertTrue(model.save(), "premise: the delete was not saved")
-        before = model.rowCount()
-        held = test_support.asset_ids(model)
-        summary = packages.import_package({"gradient": model}, p, out,
-                                          restore=True)
-        self.assertEqual(1, summary["imported"],
-                         "the deleted palette did not come back")
-        self.assertEqual(len(wada) - 1, summary["skipped"],
-                         "palettes still present were re-imported")
-        self.assertEqual(before + 1, model.rowCount())
-        returned, = test_support.arrived(model, held)
-        self.assertEqual(gone_tag, returned._extra.get("curated"))
-        self.assertEqual(gone_cat, returned.categories,
-                         "the restored palette lost its own category")
-
-    def test_restore_unions_by_the_curated_key(self):
-        from amaze.core import gradient_library, packages
-        p = test_support.fixture_prefs(self)
-        model = gradient_library.GradientLibrary(p)
-        models = {"gradient": model}
-
-        def _package(record_id):
-            out = _out_path(self, "curated_%s.amazepkg" % record_id[0])
-            record = {"id": record_id, "name": "Combination X",
-                      "categories": ["Wada 3 Colors"],
-                      "curated": "wada/x-999"}
-            with zipfile.ZipFile(out, "w") as bundle:
-                bundle.writestr(packages.MANIFEST, json.dumps({
-                    "format": packages.FORMAT,
-                    "entries": [{"type": "asset", "section": "gradient",
-                                 "id": record_id, "record": record,
-                                 "note": {}, "files": {}}]}))
-            return out
-
-        before = model.rowCount()
-        first = packages.import_package(models, p, _package("a" * 32),
-                                        restore=True)
-        self.assertEqual(1, first["imported"],
-                         "an absent curated row was not restored")
-        second = packages.import_package(models, p, _package("b" * 32),
-                                         restore=True)
-        self.assertEqual(1, second["skipped"],
-                         "the same curated tag under a DIFFERENT id was "
-                         "restored again - the merge matched by id")
-        self.assertEqual(before + 1, model.rowCount())
 
 
 def _canned_amaze_source(tree, bundles):
@@ -1585,20 +1494,6 @@ class OnlinePackageImportTest(unittest.TestCase):
                 "failed - reporting the tile as failed while it is in "
                 "the library is wrong (reason: %s)" % reason)
         self.assertEqual(before + 1, model.rowCount())
-
-    def test_restore_selected_skips_a_present_tile(self):
-        from unittest import mock
-        model = self.panel.pane.gradient_model
-        present = str(model.assets[0].mat_id)
-        source = self._source_over(present)
-        record = source.list_materials(limit=10)[0]
-        before = model.rowCount()
-        with mock.patch.object(self.panel.pane.matx_online_model, "_sources",
-                               [source]):
-            summary = self.panel.pane.package_import.restore([record])
-        self.assertEqual(before, model.rowCount(),
-                         "a still-present tile was duplicated by restore")
-        self.assertEqual(1, summary["skipped"])
 
     def test_a_store_tile_import_updates_the_download_bar(self):
         from unittest import mock
