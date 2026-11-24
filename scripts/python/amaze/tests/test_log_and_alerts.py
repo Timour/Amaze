@@ -52,8 +52,8 @@ class LogTest(_Log):
 
     def test_lg01_an_export_never_writes_over_a_file_in_the_folder(self):
         debug.event("test", "something to export")
-        with mock.patch.object(debug, "datetime", types.SimpleNamespace(datetime=types.SimpleNamespace(
-                now=lambda: STAMP))):
+        clock = types.SimpleNamespace(datetime=types.SimpleNamespace(now=lambda: STAMP))
+        with mock.patch.object(debug, "datetime", clock):
             first = debug.export_log(self.out)
             theirs = os.path.join(self.out, os.path.basename(first)[:-6] + "-1.jsonl")
             test_support.put(self.out, os.path.basename(theirs), b"the user's own file")
@@ -176,7 +176,8 @@ class AlertTest(_Log):
         debug.redirect(self.log)
         debug.event("test", "something to export")
         full = OSError(errno.ENOSPC, "No space left on device")
-        with self.assertRaises(debug.ExportRefused), mock.patch("shutil.copyfileobj", side_effect=full):
+        with self.assertRaises(debug.ExportRefused), \
+                mock.patch("shutil.copyfileobj", side_effect=full):
             debug.export_log(refused)
         with self.assertRaises(debug.ExportRefused):
             debug.export_log(os.path.join(test_support.put(self.dir, "plain", b""), "out"))

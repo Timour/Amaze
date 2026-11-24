@@ -145,8 +145,9 @@ class SettingsFileTest(_Settings):
             one.save()
         racing[0].join()
         saved = self.stored()
-        self.assertEqual((1, 240, "list"), (saved.get("rival"), saved["users"][ANNA]["sidebar_width"],
-                                           saved["users"][ANNA]["view_mode"]))
+        block = saved["users"][ANNA]
+        self.assertEqual((1, 240, "list"), (saved.get("rival"), block["sidebar_width"],
+                                           block["view_mode"]))
 
     def test_pr22_a_damaged_or_unknown_settings_file_opens_without_a_library(self):
         for damaged in ("[1, 2]", "{ ruined", json.dumps({"directory": 5, "later": 1})):
@@ -233,7 +234,7 @@ class UsersTest(_Settings):
                 was[users.SECTION].pop(erik)
             for section in (STARS, FOLDERS):
                 if section in was:
-                    self.assertIn(erik, was[section], "premise: %s holds Erik's %s" % (path, section))
+                    self.assertIn(erik, was[section], "premise: %s holds no %s" % (path, section))
                     was[section].pop(erik)
             self.assertEqual(was, json.loads(after[path]), path)
 

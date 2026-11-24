@@ -7,15 +7,12 @@ import types
 import unittest
 from unittest import mock
 
-try:
-    import hou
-except ImportError:    # the pane engine is Houdini's: hython runs this module
-    raise unittest.SkipTest("the pane engine needs Houdini")
-
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6 import QtWidgets  # noqa: E402
 
-_app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])    # ▸p/first-app-picks-the-platform
+_app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
+import hou  # noqa: E402 - the pane engine is Houdini's: hython runs this module
 
 from amaze import messages  # noqa: E402
 from amaze.actions import library as library_actions  # noqa: E402
@@ -51,7 +48,7 @@ class _Pane(unittest.TestCase):
         return test_support.posix_path(folder) + "/"
 
     def apply(self, folder: str, user: str = "", state_=None) -> bool:
-        """Preferences picks `folder` and the user called `user`, then Apply; True once it opened."""
+        """Preferences picks `folder` and the user named `user`, then Apply; True once open."""
         holder = types.SimpleNamespace(pane=self.pane)
         return test_support.apply_library(self, holder, folder, user=user, state=state_)
 
@@ -86,7 +83,7 @@ class SwitchTest(_Pane):
         first = state(self.first)
         self.edit_everything()
         library_db.flush()
-        self.assertEqual(first, state(self.first), "a write after the switch reached the old library")
+        self.assertEqual(first, state(self.first), "a write after the switch reached the old one")
         now = self.rows(other)
         self.assertLessEqual(set(now), set(held), "a row of the old library was written here")
         self.assertNotIn("only in the first library", [row.get("name") for row in now.values()])
@@ -97,7 +94,7 @@ class SwitchTest(_Pane):
         with test_support.captured_log():
             self.edit_everything()
             library_db.flush()
-        self.assertEqual(untouched, state(third), "rows read from one library were written into another")
+        self.assertEqual(untouched, state(third), "rows of one library were written into another")
 
     def test_sw02_a_change_waiting_when_the_library_or_user_switches_keeps_its_place(self):
         other, made = self.library("Sage")
@@ -110,7 +107,8 @@ class SwitchTest(_Pane):
         stars = guard.Guard(self.first).read(MATERIALS).document["favorites"]
         self.assertEqual({key: True}, stars.get(anna), "the star was lost or saved elsewhere")
         self.assertNotIn(made["Sage"], stars)
-        self.assertNotIn(made["Sage"], guard.Guard(other).read(MATERIALS).document.get("favorites", {}))
+        self.assertNotIn(made["Sage"], guard.Guard(other).read(MATERIALS).document.get(
+            "favorites", {}))
         sage = self.pane.prefs.library_user
         mine = library_db.document(self.pane.prefs, MATERIALS)
         self.assertTrue(mine.edit("assets", key, name="named by Sage"))
@@ -186,7 +184,8 @@ class OpenTest(_Pane):
         picked = prefs_window.AmazePrefsState(self.pane.prefs, pane=self.pane)
         picked.pick_library(other)
         test_support.pick_user(picked, "Sage")
-        self.assertEqual((self.first, self.first), (self.pane.prefs.dir, self.pane.library.models_dir))
+        self.assertEqual((self.first, self.first),
+                         (self.pane.prefs.dir, self.pane.library.models_dir))
         model = self.pane.material_model
         with mock.patch.object(model, "switch_model_data", wraps=model.switch_model_data) as switch:
             self.assertTrue(self.apply(other, "Sage", state_=picked))
