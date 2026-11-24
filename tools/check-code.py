@@ -59,7 +59,7 @@ LAYER_BREAKS = {    # accepted on purpose; the list only shrinks
     "render/nodes.py talks displayMessage x5",
     "render/thumbs.py talks displayMessage x3",
 }
-HOUDINI = {"hou", "husd", "toolutils", "loputils", "voptoolutils", "nodegraphutils",
+HOUDINI = {"hou", "husd", "hutil", "toolutils", "loputils", "voptoolutils", "nodegraphutils",
            "hdefereval", "stateutils", "viewerstate", "soptoolutils", "objecttoolutils"}
 HOUDINI_LIBS = {"pxr", "MaterialX", "OpenImageIO"}
 UI_CALLS = {"displayMessage", "displayConfirmation", "displayCustomConfirmation", "readInput",
