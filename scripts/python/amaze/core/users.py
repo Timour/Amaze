@@ -6,7 +6,7 @@ import os
 import types
 import uuid
 
-from amaze.core import documents, library_db, library_files
+from amaze.core import documents, guard, library_db, library_files
 
 SECTION = "users"
 
@@ -97,11 +97,18 @@ def create(preferences, name: str, library: str = "") -> str:
 
 
 def delete(preferences, uid) -> bool:
-    """Remove a user; their stars stay in the file under their UID, not given to another user."""
+    """Remove a user, their favourites and folder list; their comments and all else they made stay."""
     uid = str(uid)
     held = _master(preferences)
     if not held.get(SECTION, uid):
         return False
+    library_db.flush(preferences)    # changes still waiting are saved first, as the user who made them
+    for name, kind in guard.DATABASES.items():
+        own = library_db.document(preferences, name)
+        dropped = [section for section, how in kind.sections.items()
+                   if how == guard.PER_USER and own.drop_user(section, uid)]
+        if dropped and not library_db.save(preferences, name):
+            return False    # the user stays, so a second delete removes the rest
     if not held.drop(SECTION, uid):
         return False
     if not library_db.save(preferences, library_files.MASTER):

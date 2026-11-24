@@ -603,8 +603,7 @@ class AmazePrefsState(mainprefs.PrefsState):
         """Remove from List on the current and selected rows, as Node Search reads its table's."""
         folders = [str(index.data(LibraryRows.FOLDER_ROLE)) for index in [current, *indexes]
                    if index.isValid()]
-        folders = [one for one in folders if not _same_folder(one, self._prefs.dir)]    # it stays
-        if not folders or not self._prefs.remove_libraries(folders):
+        if not self._prefs.remove_libraries(folders):
             return
         self._prefs.save()
         self.libraryRows.fill([row for row in self.libraryRows.rows
@@ -687,7 +686,7 @@ class AmazePrefsState(mainprefs.PrefsState):
         self.rename_user(name)
 
     def delete_user(self, uid: str) -> None:
-        """Delete `uid` and everything tagged theirs from the open library; nobody is picked after."""
+        """Delete `uid`, their favourites and folder list from the open library; nobody is picked after."""
         if users.delete(self._prefs, uid):
             self._overlay.pop((USER, ""), None)
             self._updateFlags()

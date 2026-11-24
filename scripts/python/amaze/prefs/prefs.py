@@ -120,8 +120,9 @@ class Prefs(_Persistence):
         return True
 
     def remove_libraries(self, folders) -> bool:
-        """Take `folders` off the Library list, the folders untouched; True when any was removed."""
+        """Take `folders` off the Library list, never the open one; True when any was removed."""
         gone = {hostos.comparable_path(folder) for folder in folders if folder}
+        gone.discard(hostos.comparable_path(self.dir) if self.dir else None)
         kept = [known for known in self.libraries
                 if hostos.comparable_path(known) not in gone]
         if len(kept) == len(self.libraries):
