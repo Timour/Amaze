@@ -31,10 +31,10 @@ DropRule = collections.namedtuple(
 )    # context: the childTypeCategory a network must have to accept this drop ("" = any network)
 
 
-MenuEntry = collections.namedtuple(
+MenuEntry = collections.namedtuple(    # opens: the asks.Asks window the row opens, greyed where a host lacks it
     "MenuEntry",
-    "label handler needs shown children count_suffix checkable",
-    defaults=("", "any", "", "", False, ""),
+    "label handler needs shown children count_suffix checkable opens",
+    defaults=("", "any", "", "", False, "", ""),
 )
 
 
@@ -44,7 +44,7 @@ SEPARATOR = MenuEntry("")  # the empty label is what makes it a divider
 GRID_MENU_TAIL = (    # the tile's picture rows, Render Image only where one renders, as in C01
     MenuEntry("Render Image", handler="menu_update_preview", shown="menu_offers_preview"),
     MenuEntry("Capture Image", handler="menu_capture", needs="menu_capture_enabled"),
-    MenuEntry("Customize", handler="menu_customize"),
+    MenuEntry("Customize", handler="menu_customize", opens="open_customize"),
     SEPARATOR,
     MenuEntry("Favorite", handler="menu_favourite"),
     MenuEntry("Delete", handler="menu_delete", shown="deletes_rows"),
@@ -449,8 +449,8 @@ class AssetSection(Section):
     takes_category_drops = True
 
     SIDEBAR_MENU = (  # shared by Material, Node and Code; Rename acts on one category, the rest on the selection
-        MenuEntry("Add", handler="menu_add_category", needs="always"),
-        MenuEntry("Rename", handler="menu_rename_category", needs="one"),
+        MenuEntry("Add", handler="menu_add_category", needs="always", opens="ask_name"),
+        MenuEntry("Rename", handler="menu_rename_category", needs="one", opens="ask_name"),
         MenuEntry("Delete", handler="menu_remove_category"),
         SEPARATOR,
         MenuEntry("Sort by name", handler="menu_sort_categories",

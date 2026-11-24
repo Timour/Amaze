@@ -18,6 +18,11 @@ CustomizeQuestion = collections.namedtuple(    # what Customize opens with
 CustomizeAnswer = collections.namedtuple("CustomizeAnswer", "spec name tags category")
 
 
+def answers(host, ask: str) -> bool:
+    """Whether `host` gives its own answer to `ask`, not the protocol's NotImplementedError."""
+    return getattr(type(host), ask, None) is not getattr(Asks, ask, None)
+
+
 class Asks:
     """The host's side: each `then` is called once, None for a cancel; a modal host calls it at once."""
 

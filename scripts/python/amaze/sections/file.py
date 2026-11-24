@@ -488,14 +488,16 @@ class FileSection(FolderSection):
     )
 
     GRID_MENU = UNDO_MOVE + (  # the selection's KINDS decide the actions; no Delete: these are the user's own files
-        base.MenuEntry("New Folder", handler="menu_new_folder", needs="menu_new_enabled"),
+        base.MenuEntry("New Folder", handler="menu_new_folder", needs="menu_new_enabled",
+                       opens="ask_name"),
         base.SEPARATOR,
         base.MenuEntry("Copy", handler="menu_copy"),
         base.MenuEntry("Paste", handler="menu_paste", needs="menu_paste_enabled"),
         base.SEPARATOR,
         base.MenuEntry("Open Scene", handler="menu_load_scene", needs="one",
                   shown="selection_has_scene"),
-        base.MenuEntry("Save Scene", handler="menu_save_scene", needs="menu_new_enabled"),
+        base.MenuEntry("Save Scene", handler="menu_save_scene", needs="menu_new_enabled",
+                       opens="ask_name"),
         base.SEPARATOR,
         base.MenuEntry("Load Asset", handler="menu_import", needs="menu_import_enabled",
                   shown="selection_has_importable"),

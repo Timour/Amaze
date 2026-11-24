@@ -32,7 +32,7 @@ class CodeSection(base.AssetSection):
         base.MenuEntry("New File", handler="menu_new_snippet", needs="always"),
         base.SEPARATOR,
         base.MenuEntry("Load Asset", handler="menu_apply", needs="one"),
-        base.MenuEntry("Edit", handler="menu_edit", needs="one"),
+        base.MenuEntry("Edit", handler="menu_edit", needs="one", opens="open_code"),
         base.SEPARATOR,
     ) + base.GRID_MENU_TAIL
 

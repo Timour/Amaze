@@ -8,34 +8,7 @@ from amaze import amazetheme
 from amaze.core import debug, grid_columns, grid_engine
 from amaze.helpers import theme, ui_helpers
 from amaze.panel import delegates
-
-
-
-
-def _resolve(context, name, indexes, current, default):
-    """A named value on the section: an attribute as is, or a method called with the selection."""
-    if not name:
-        return default
-    fact = getattr(context, name, None)
-    if callable(fact):
-        return bool(fact(indexes, current))
-    return bool(fact)
-
-
-def _enabled(context, entry, indexes, current):
-    """Whether an entry is enabled; one lacking what it needs greys out and is never hidden."""
-    if entry.needs == "always":
-        return True
-    if entry.needs == "one":
-        return len(indexes) == 1
-    if entry.needs == "any":
-        return bool(indexes)
-    return _resolve(context, entry.needs, indexes, current, False)
-
-
-def _is_chip(icon) -> bool:
-    """A child's icon that is a colour ("#rrggbb"), painted as a chip; any other names a ui/ icon."""
-    return bool(icon) and icon.startswith("#")
+from amaze.pane import menus
 
 
 def _chip_room():
@@ -62,92 +35,42 @@ class _ChipMenu(QtWidgets.QMenu):
         painter.end()
 
 
-def _tidy_separators(rows):
-    """No leading, doubled or trailing divider - a table with conditional rows produces all three."""
-    out = []
-    for row in rows:
-        if row is None:
-            if out and out[-1] is not None:
-                out.append(None)
-        else:
-            out.append(row)
-    while out and out[-1] is None:
-        out.pop()
-    return out
-
-
 def build_menu(panel, context, entries, indexes, current):
-    """The QMenu for one entry table and its {action: (handler, payload)}, without showing it."""
+    """The QMenu drawn from the menu engine's rows, its {action: row key}, and the engine's menu."""
+    engine = menus.Menu(context, entries, indexes, current, host=panel)
     menu = QtWidgets.QMenu(panel)
-    handlers = {}
-    _fill(menu, panel, context, entries, indexes, current, handlers)
-    return menu, handlers
+    keys = {}
+    _draw(menu, panel, engine.rows, keys)
+    return menu, keys, engine
 
 
-def _fill(menu, panel, context, entries, indexes, current, handlers) -> None:
-    """Add one entry table's rows to `menu`; `children` names rows or is a table of entries."""
-    rows = []
-    for entry in entries:
-        if not entry.label:
-            rows.append(None)
-            continue
-        if not _resolve(context, entry.shown, indexes, current, True):
-            continue
-        rows.append(entry)
-
-    for entry in _tidy_separators(rows):
-        if entry is None:
+def _draw(menu, panel, rows, keys) -> None:
+    """Add the engine's rows to `menu`; a row with `rows` is a submenu, one with chips paints them."""
+    for row in rows:
+        if row.get("separator"):
             menu.addSeparator()
             continue
-        label = entry.label
-        if entry.count_suffix and len(indexes) > 1:
-            label += " (%d)" % len(indexes)
-        enabled = _enabled(context, entry, indexes, current)
-        if isinstance(entry.children, tuple):    # a fixed submenu: each row keeps its own shown/needs
-            submenu = menu.addMenu(label)
-            submenu.menuAction().setEnabled(enabled)
-            _fill(submenu, panel, context, entry.children, indexes, current, handlers)
-            continue
-        if entry.children:
-            children = getattr(context, entry.children)(indexes, current)
-            if any(child and _is_chip(child[2]) for child in children):    # colour chips: the menu paints them
-                submenu = _ChipMenu(label, menu)
+        if "rows" in row:
+            if any(child.get("chip") for child in row["rows"]):    # colour chips: the menu paints them
+                submenu = _ChipMenu(row["text"], menu)
                 menu.addMenu(submenu)
             else:
-                submenu = menu.addMenu(label)
-            submenu.menuAction().setEnabled(enabled)    # the parent action holds the enabled state: an openable submenu with nothing to pick looks broken
-            for child in children:    # (label, payload, icon, live[, checked]); None is a divider
-                if child is None:
-                    submenu.addSeparator()
-                    continue
-                child_label, payload, icon, live = child[:4]
-                checked = child[4] if len(child) > 4 else None
-                if _is_chip(icon):
-                    action = submenu.addAction(_chip_room(), child_label)
-                    submenu.chips[action] = icon
-                elif icon:    # a ui/ icon, drawn as the Filter menu draws its own
-                    action = submenu.addAction(
-                        ui_helpers.menu_icon(icon, panel), child_label)
-                else:
-                    action = submenu.addAction(child_label)
-                action.setEnabled(bool(live))    # greys when it has nothing to act on, as at the top
-                if checked is None:
-                    handlers[action] = (entry.handler, payload)
-                else:    # a toggle: the handler gets the state the user just asked for
-                    action.setCheckable(True)
-                    action.setChecked(bool(checked))
-                    handlers[action] = (entry.handler, (payload, not checked))
+                submenu = menu.addMenu(row["text"])
+            submenu.menuAction().setEnabled(row["enabled"])    # an openable submenu with nothing to pick looks broken
+            _draw(submenu, panel, row["rows"], keys)
             continue
-        action = menu.addAction(label)
-        action.setEnabled(enabled)
-        if entry.checkable:
-            action.setCheckable(True)    # a TOGGLE: the handler is handed the state the user just asked for
-            state = _resolve(context, entry.checkable, indexes, current,
-                             False)
-            action.setChecked(state)
-            handlers[action] = (entry.handler, not state)
+        if row.get("chip"):
+            action = menu.addAction(_chip_room(), row["text"])
+            menu.chips[action] = row["chip"]
+        elif row.get("icon"):    # a ui/ icon, drawn as the Filter menu draws its own
+            action = menu.addAction(ui_helpers.menu_icon(row["icon"], panel), row["text"])
         else:
-            handlers[action] = (entry.handler, None)
+            action = menu.addAction(row["text"])
+        action.setEnabled(row["enabled"])
+        if "checked" in row:
+            action.setCheckable(True)
+            action.setChecked(row["checked"])
+        keys[action] = row["key"]
 
 
 def build_grid_menu(panel, context, indexes, current):
@@ -195,27 +118,12 @@ def _open(panel, context, entries, indexes, view) -> None:
         return
     current = selected_current(view, indexes)    # the row the menu is about is ALWAYS a selected row
 
-    menu, handlers = build_menu(panel, context, entries, indexes, current)
-    persistent = [QtCore.QPersistentModelIndex(index) for index in indexes]    # exec_ runs Qt's loop: a model can reset
-    persistent_current = QtCore.QPersistentModelIndex(current) if current is not None else None
+    menu, keys, engine = build_menu(panel, context, entries, indexes, current)    # the engine keeps the rows across Qt's loop
     chosen = menu.exec_(QtGui.QCursor.pos())
-    handler, payload = handlers.get(chosen, ("", None))    # a dismissed menu and a never-built entry are both None - a dict lookup, never `==` chains
+    key = keys.get(chosen)    # a dismissed menu and a never-built entry are both None
     menu.deleteLater()    # after the lookup, which is keyed by its QActions ▸r/menu-lifetime
-    if not handler:
-        return
-    live = [QtCore.QModelIndex(index) for index in persistent if index.isValid()]
-    if persistent and not live and _needs(entries, handler) != "always":
-        return    # every row the menu was opened on was removed from the model
-    if persistent_current is not None and persistent_current.isValid():
-        current = QtCore.QModelIndex(persistent_current)
-    else:
-        current = live[0] if live else None
-    getattr(context, handler)(live, current, payload)
-
-
-def _needs(entries, handler) -> str:
-    """What the entry naming `handler` needs; its submenu rows use the same handler."""
-    return next((entry.needs for entry in entries if entry.handler == handler), "any")
+    if key is not None:
+        engine.run(key)
 
 
 def restore_drag_mode(panel) -> None:

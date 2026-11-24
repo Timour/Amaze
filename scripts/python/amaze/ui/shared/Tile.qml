@@ -16,6 +16,7 @@ Item {
     signal clicked(int modifiers)    // the user's click on the tile, away from a badge that takes clicks
     signal doubleClicked()
     signal badgeClicked(string name)
+    signal menuRequested()    // the user's right-click on the tile
 
     readonly property real side: width - 2 * root.drawn.pad    // the picture's side; the card is as wide
     readonly property real textTop: root.drawn.pad + root.side + root.drawn.img_text_gap
@@ -48,6 +49,11 @@ Item {
         gesturePolicy: TapHandler.WithinBounds
         onTapped: root.clicked(point.modifiers)
         onDoubleTapped: root.doubleClicked()
+    }
+    TapHandler {    // the right button, as Houdini's own QML lists take it
+        acceptedButtons: Qt.RightButton
+        gesturePolicy: TapHandler.WithinBounds
+        onTapped: root.menuRequested()
     }
 
     Rectangle {    // a selected tile is Houdini's selection around its picture and under its text

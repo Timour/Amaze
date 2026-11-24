@@ -123,8 +123,8 @@ class GradientSection(base.AssetSection):
         return name in self.pane.gradient_model.user_categories()    # excludes any synthetic sidebar row
 
     SIDEBAR_MENU = (  # everything below All is a real user category, so the per-category entries exist only on such a row
-        base.MenuEntry("Add", handler="menu_add_category", needs="always"),
-        base.MenuEntry("Rename", handler="menu_rename_category", needs="one",
+        base.MenuEntry("Add", handler="menu_add_category", needs="always", opens="ask_name"),
+        base.MenuEntry("Rename", handler="menu_rename_category", needs="one", opens="ask_name",
                   shown="on_a_category"),
         base.MenuEntry("Delete", handler="menu_remove_category",
                   shown="on_a_category"),
