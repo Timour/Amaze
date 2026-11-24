@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.0.0
+
+- Library format 3.0: each material, node setup, snippet and color keeps everything it owns in one folder named after it: its network, record, picture, textures, versions and the pictures pasted into its comments. Renaming an asset renames its folder, and deleting it moves the folder to the library's trash.
+- Opening a 2.0 library asks once to convert it to 3.0. Until then this Amaze does not open or change it. An older Amaze cannot open a 3.0 library.
+- Each material keeps its own copy of every texture it uses, in its folder.
+- Versions are for materials only. In the code editor, Apply saves the snippet.
+- Check Library: one report, then Fix Safe or Fix All. Fix Safe changes nothing that could be lost. Fix All also moves the files it names to the library's trash.
+- Info: Size counts every file in the asset's folder.
+- Convert to keeps the material's licence.
+- A save that fails or is stopped leaves no files behind, and an asset's record that cannot be read is never written over.
+
 ## 1.48.3
 
 - Moving files: the scene open in Houdini is still never moved; the move itself now checks it.
