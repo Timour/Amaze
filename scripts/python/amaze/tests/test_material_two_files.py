@@ -108,7 +108,7 @@ class _Library(unittest.TestCase):
                 write(self.at("img", asset_id + "_icon.png"), b"icon " + asset_id.encode())]
 
     def metadata(self, asset_id: str, **changed) -> None:
-        asset_record.write_section(asset_record.path_for(self.prefs, asset_id, MATERIALS),
+        test_support.write_section(asset_record.path_for(self.prefs, asset_id, MATERIALS),
                                    asset_record.METADATA, dict(ROW, id=asset_id, **changed))
 
 
@@ -249,15 +249,15 @@ class OneSectionNeverClobbersTheOtherTest(_Library):
 
     def test_a_metadata_write_keeps_the_builder(self):
         path = asset_record.path_for(self.prefs, "KEEP1", MATERIALS)
-        asset_record.write_section(path, asset_record.BUILDER,
+        test_support.write_section(path, asset_record.BUILDER,
                                    {"type": "t", "interface": "", "values": {}})
-        asset_record.write_section(path, asset_record.METADATA, {"name": "n"})
+        test_support.write_section(path, asset_record.METADATA, {"name": "n"})
         self.assertEqual("t", asset_record.read(path)["builder"]["type"])
 
     def test_a_builder_write_keeps_the_metadata(self):
         path = asset_record.path_for(self.prefs, "KEEP2", MATERIALS)
-        asset_record.write_section(path, asset_record.METADATA, {"name": "n"})
-        asset_record.write_section(path, asset_record.BUILDER,
+        test_support.write_section(path, asset_record.METADATA, {"name": "n"})
+        test_support.write_section(path, asset_record.BUILDER,
                                    {"type": "t", "interface": "", "values": {}})
         self.assertEqual({"name": "n"}, asset_record.read(path)["metadata"])
 
@@ -267,7 +267,7 @@ class OneSectionNeverClobbersTheOtherTest(_Library):
         write(os.path.join(self.materials, "BAD1.mat"), "nodes of BAD1\n")
         self.assertEqual({"metadata": {}, "builder": {}}, asset_record.read(path))
         with self.assertRaises(OSError):
-            asset_record.write_section(path, asset_record.METADATA, {"name": "n"})
+            test_support.write_section(path, asset_record.METADATA, {"name": "n"})
         held = library_db.document(self.prefs, MATERIALS)
         self.assertTrue(held.put("assets", "BAD1", dict(ROW, id="BAD1")))
         test_support.settle_stamps()
@@ -301,7 +301,7 @@ class AMetadataEditMakesNoVersionTest(_Library):
     def test_a_builder_change_does_differ(self):
         path = asset_record.path_for(self.prefs, self.ASSET, MATERIALS)
         versions.create_version(self.prefs, self.ASSET)
-        asset_record.write_section(path, asset_record.BUILDER,
+        test_support.write_section(path, asset_record.BUILDER,
                                    {"type": "subnet", "interface": "", "values": {"x": {"val": 1}}})
         versions.keep_base(self.prefs, self.ASSET)
         self.assertEqual(2, versions.version_count(self.prefs, self.ASSET))
@@ -310,7 +310,7 @@ class AMetadataEditMakesNoVersionTest(_Library):
         path = asset_record.path_for(self.prefs, self.ASSET, MATERIALS)
         self.metadata(self.ASSET)
         versions.create_version(self.prefs, self.ASSET)
-        asset_record.write_section(path, asset_record.BUILDER,
+        test_support.write_section(path, asset_record.BUILDER,
                                    {"type": "other", "interface": "", "values": {}})
         versions.create_version(self.prefs, self.ASSET)
         self.assertTrue(versions.switch_active(self.prefs, self.ASSET, 1))

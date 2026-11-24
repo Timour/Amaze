@@ -7,7 +7,7 @@ import hou
 from PySide6 import QtCore
 
 from amaze import messages
-from amaze.core import asset_record, debug, library, library_db, material, versions
+from amaze.core import asset_record, debug, guard, library, library_db, material, versions
 from amaze.render import husk_job, nodes
 
 
@@ -167,7 +167,7 @@ def update_asset_content(model, row: int, node: hou.Node) -> str:
                 change = held.change(str(getattr(model.preferences, "library_user", "") or ""))
                 change.trash(held.inside(cop_path))
                 change.commit()
-            except OSError as exc:
+            except (OSError, guard.Refused) as exc:
                 debug.event(
                     "library",
                     "stale cop file remove skipped",

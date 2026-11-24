@@ -43,7 +43,7 @@ def create_library(lib_dir: str) -> bool:
         return reading.verdict == guard.FINE
     version = {"version": library_policy.LIBRARY_VERSION, documents.BY: "",
                documents.AT: held.stamp()}
-    change = held.change("")
+    change = held.change("", setup=True)    # a new library has no user yet
     change.put(reading.ticket, {library_settings.POLICY: {
         library_settings.VERSION_ENTRY: version}})
     change.commit()

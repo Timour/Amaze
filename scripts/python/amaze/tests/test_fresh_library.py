@@ -71,6 +71,7 @@ class TheAssetWriterMakesItsFolderInsideTheLibraryOnly(unittest.TestCase):
         self.prefs.path = tempfile.mkdtemp(prefix="amaze_fresh_settings_")
         self.addCleanup(shutil.rmtree, self.prefs.path, ignore_errors=True)
         self.prefs.dir = self.root + os.sep     # the connectors concatenate ▸r/atomic-writes
+        self.prefs.library_user = test_support.FIXTURE_USER    # no write happens without a user
 
     @staticmethod
     def _write_mat(path):
@@ -114,7 +115,7 @@ class TheBuilderFieldIsRetired(unittest.TestCase):
 
 
 class EveryWayIntoAnEmptyFolderReadiesIt(unittest.TestCase):
-    """Opening the pane, Reload Library and Preferences' Apply each give an empty folder a library."""
+    """Preferences' Apply, with the user it makes there, gives an empty folder a library."""
 
     def setUp(self):
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -134,14 +135,6 @@ class EveryWayIntoAnEmptyFolderReadiesIt(unittest.TestCase):
         for name in ("DataBase.json", "materials", "nodes"):
             self.assertTrue(os.path.exists(os.path.join(self.empty, name)),
                             "the empty folder was opened without its %s" % name)
-
-    def test_a_pane_opened_on_it(self):
-        test_support.reopened_panel(self)
-        self._assert_ready()
-
-    def test_reload_library(self):
-        self.panel.pane.library.reload()
-        self._assert_ready()
 
     def test_preferences_apply(self):
         self.assertTrue(test_support.apply_library(self, self.panel, self.empty, user="Tester"))

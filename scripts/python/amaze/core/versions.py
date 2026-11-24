@@ -66,7 +66,7 @@ def _ledger_bytes(ledger: dict) -> bytes:
 
 def _commit_files(preferences, writes: dict, removals=(), why: str = "") -> bool:
     """{path: bytes} written and `removals` removed as ONE commit via guard.py; whether it succeeded."""
-    from amaze.core import library_db
+    from amaze.core import guard, library_db
     held = library_db.guard_of(preferences)
     change = held.change(str(getattr(preferences, "library_user", "") or ""))
     try:
@@ -79,7 +79,7 @@ def _commit_files(preferences, writes: dict, removals=(), why: str = "") -> bool
         for path in removals:
             change.remove(held.inside(path))
         change.commit()
-    except OSError as exc:
+    except (OSError, guard.Refused) as exc:
         debug.event("versions", "not written - nothing changed", why=why, error=str(exc))
         return False
     return True

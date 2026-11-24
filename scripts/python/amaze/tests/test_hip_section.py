@@ -202,7 +202,7 @@ class CaptureRaisesCaptureRefusedTest(unittest.TestCase):
 
     def test_the_headless_capture_refused_message_gives_the_reason(self):
         with self.assertRaises(scene_captures.CaptureRefused) as caught:
-            scene_captures.capture_viewport(self.out)
+            scene_captures.capture_viewport(self.out, user=test_support.FIXTURE_USER)
         message = str(caught.exception)
         self.assertTrue(message.strip(), "refused with no reason given")
         self.assertTrue(
@@ -212,7 +212,7 @@ class CaptureRaisesCaptureRefusedTest(unittest.TestCase):
 
     def test_a_failed_capture_raises_instead_of_returning(self):
         try:
-            result = scene_captures.capture_viewport(self.out)
+            result = scene_captures.capture_viewport(self.out, user=test_support.FIXTURE_USER)
         except scene_captures.CaptureRefused:
             return
         self.fail("capture_viewport returned %r instead of refusing"
@@ -276,7 +276,7 @@ class ScratchNameKeepsTheImageFormatTest(unittest.TestCase):
         assetutils.saveThumbnailFromViewer = record
 
     def test_the_scratch_file_is_still_a_png(self):
-        scene_captures.capture_viewport(self.out, viewer=_FakeViewer())
+        scene_captures.capture_viewport(self.out, user=test_support.FIXTURE_USER, viewer=_FakeViewer())
         self.assertTrue(self.asked_for, "the flipbook was never called")
         scratch = self.asked_for[0]
         self.assertEqual(
@@ -286,14 +286,14 @@ class ScratchNameKeepsTheImageFormatTest(unittest.TestCase):
             % os.path.basename(scratch))
 
     def test_the_scratch_does_not_collide_with_the_real_slot(self):
-        scene_captures.capture_viewport(self.out, viewer=_FakeViewer())
+        scene_captures.capture_viewport(self.out, user=test_support.FIXTURE_USER, viewer=_FakeViewer())
         self.assertNotEqual(self.out,
                             self.asked_for[0],
                             "the capture wrote straight over the live "
                             "thumbnail - the scratch-file write is gone")
 
     def test_the_capture_is_written_to_the_real_slot(self):
-        result = scene_captures.capture_viewport(self.out, viewer=_FakeViewer())
+        result = scene_captures.capture_viewport(self.out, user=test_support.FIXTURE_USER, viewer=_FakeViewer())
         self.assertEqual(self.out, result)
         self.assertTrue(os.path.isfile(result))
         self.assertFalse(os.path.isfile(self.asked_for[0]),
@@ -582,7 +582,7 @@ class SlowCapturePromptTest(unittest.TestCase):
         _patch(self, scene_captures, "current_scene_path", lambda: self.scene)
         _patch(self, scene_captures, "viewport_state",
                lambda *a: {"blocking": True, "renderer": "Karma CPU"})
-        _patch(self, scene_captures, "capture_viewport", lambda out, viewer=None: self.fail(
+        _patch(self, scene_captures, "capture_viewport", lambda out, viewer=None, user="": self.fail(
             "captured through a rendering delegate - the refusal did "
             "not stop it, so the capture could stall without limit"))
         original = scene_captures.debug.is_on
@@ -615,7 +615,7 @@ class SlowCapturePromptTest(unittest.TestCase):
         _patch(self, scene_captures, "viewport_state",
                lambda *a: order.append("state") or {"blocking": False})
         _patch(self, scene_captures, "capture_viewport",
-               lambda out, viewer=None: order.append("capture") or out)
+               lambda out, viewer=None, user="": order.append("capture") or out)
         scene_captures.capture_open_scene(self.prefs, self.scene)
         self.assertEqual(["state", "capture"], order)
 
@@ -1088,7 +1088,7 @@ class CaptureDecisionPathTest(unittest.TestCase):
         _patch(self, scene_captures, "viewport_state",
                lambda *a: {"blocking": True, "renderer": "Karma CPU"})
         _patch(self, scene_captures, "capture_viewport",
-               lambda out, viewer=None: self.fail("captured through a renderer"))
+               lambda out, viewer=None, user="": self.fail("captured through a renderer"))
         with self.assertRaises(scene_captures.CaptureRefused) as caught:
             scene_captures.capture_open_scene(self.prefs, self.scene)
         self.assertIn("stop the viewport render", str(caught.exception))
@@ -1104,7 +1104,7 @@ class CaptureDecisionPathTest(unittest.TestCase):
                lambda v=None: handed.append(("guard", v))
                or {"blocking": False})
         _patch(self, scene_captures, "capture_viewport",
-               lambda out, viewer=None: handed.append(("shot", viewer)) or out)
+               lambda out, viewer=None, user="": handed.append(("shot", viewer)) or out)
         scene_captures.capture_open_scene(self.prefs, self.scene)
         self.assertEqual(2, len(handed), "guard or capture did not run")
         self.assertEqual(
@@ -1122,7 +1122,7 @@ class CaptureDecisionPathTest(unittest.TestCase):
         _patch(self, scene_captures, "current_scene_path", lambda: self.scene)
         _patch(self, scene_captures, "viewport_state", lambda *a: {"blocking": False})
         _patch(self, scene_captures, "capture_viewport",
-               lambda out, viewer=None: taken.append(out) or out)
+               lambda out, viewer=None, user="": taken.append(out) or out)
         out = scene_captures.capture_open_scene(self.prefs)
         expected = captures.file_path(self.prefs, captures.file_key(self.prefs, self.scene))
         self.assertEqual([expected], taken, "the open scene's capture went somewhere else")
@@ -1236,7 +1236,7 @@ class CaptureBlankFrameAndRefusalCasesTest(unittest.TestCase):
 
     def test_an_unsaved_scene_raises_capture_refused(self):
         _patch(self, scene_captures, "current_scene_path", lambda: "/nope/untitled.hip")
-        _patch(self, scene_captures, "capture_viewport", lambda out, viewer=None: self.fail(
+        _patch(self, scene_captures, "capture_viewport", lambda out, viewer=None, user="": self.fail(
             "captured a scene that is not on disk"))
         with self.assertRaises(scene_captures.CaptureRefused) as caught:
             scene_captures.capture_open_scene(_library_prefs(self))
@@ -1249,7 +1249,7 @@ class CaptureBlankFrameAndRefusalCasesTest(unittest.TestCase):
         _patch(self, scene_captures, "current_scene_path", lambda: scene)
         _patch(self, scene_captures, "viewport_state", lambda *a: {"blocking": False})
         _patch(self, scene_captures, "scene_viewer", lambda: "V")
-        _patch(self, scene_captures, "capture_viewport", lambda out, viewer=None: out)
+        _patch(self, scene_captures, "capture_viewport", lambda out, viewer=None, user="": out)
         scene_captures.capture_open_scene(_library_prefs(self), scene)      # must NOT raise
 
 
@@ -1279,7 +1279,7 @@ class AnyViewerContextCanBeCapturedTest(unittest.TestCase):
         _patch(self, scene_captures, "current_scene_path", lambda: scene)
         _patch(self, scene_captures, "scene_viewer", lambda: self._Viewer(category))
         _patch(self, scene_captures, "viewport_state", lambda *a: {"blocking": False})
-        _patch(self, scene_captures, "capture_viewport", lambda out, viewer=None: "/tmp/shot.png")
+        _patch(self, scene_captures, "capture_viewport", lambda out, viewer=None, user="": "/tmp/shot.png")
         return scene_captures.capture_open_scene(_library_prefs(self), scene)
 
     def test_every_context_including_COP_and_an_unreadable_one_is_captured(self):
@@ -1798,7 +1798,7 @@ class CaptureFromTheMenuTest(unittest.TestCase):
         row = proxy.mapToSource(chosen[0]).row()
         taken = []
 
-        def capture(out, key):
+        def capture(out, key, user=""):
             _write_png(out, _two_tone_png_bytes())
             taken.append((out, key))
             return out
@@ -1830,7 +1830,7 @@ class CaptureFromTheMenuTest(unittest.TestCase):
         row = proxy.mapToSource(chosen[0]).row()
         before = model.tile_icon(row)
 
-        def raise_capture_refused(out, key):
+        def raise_capture_refused(out, key, user=""):
             raise scene_captures.CaptureRefused("Please stop the viewport render before capturing.")
 
         _patch(self, scene_captures, "capture_tile", raise_capture_refused)
@@ -1844,7 +1844,7 @@ class CaptureFromTheMenuTest(unittest.TestCase):
         self._select("material", [])
         displayed = self._capture_warnings()
         _patch(self, scene_captures, "capture_tile",
-               lambda out, key: self.fail("captured onto no tile"))
+               lambda out, key, user="": self.fail("captured onto no tile"))
         self.panel.pane.tile_capture.from_toolbar()
         self.assertEqual([messages.CAPTURE_SELECT_ONE_TILE], displayed)
 

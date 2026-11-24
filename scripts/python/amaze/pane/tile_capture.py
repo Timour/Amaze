@@ -35,7 +35,9 @@ class TileCapture:
             captured = self.capture_and_report(scene)    # raises CaptureRefused unless `scene` is open
         else:
             captured = self.run(
-                lambda: scene_captures.capture_tile(model.capture_path(row), model.tile_key(row)),
+                lambda: scene_captures.capture_tile(
+                    model.capture_path(row), model.tile_key(row),
+                    str(getattr(model.preferences, "library_user", "") or "")),
                 model.tile_key(row))
         if captured:
             self.pane.assets.apply_icon_spec(model, [row], {"face": "image"})

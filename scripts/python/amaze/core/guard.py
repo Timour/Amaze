@@ -397,16 +397,16 @@ class Guard:
             if (not entry.endswith(UNDO_TAIL) and entry not in keep) or old_undo:
                 self._quietly(self.disk.remove, self.path(BACKUP_DIR, entry))
 
-    def change(self, user: str = "") -> "Change":
+    def change(self, user: str = "", setup: bool = False) -> "Change":
         """A change to the library's files, applied whole by its `commit()` or not at all."""
-        return Change(self, user)
+        return Change(self, user, setup)
 
-    def put_whole(self, target: str, written: str = "", data=None) -> None:
+    def put_whole(self, target: str, written: str = "", data=None, user: str = "") -> None:
         """One file as its own change: `written`, a finished file, or `data`; OSError when refused."""
         relative = self.inside(target)
         if not relative:
             raise OSError("%s is outside the library %s" % (target, self.dir))
-        change = Change(self, "")
+        change = Change(self, user)
         try:
             if data is None:
                 change.take(relative, written)
@@ -416,7 +416,7 @@ class Guard:
         except Refused as exc:
             raise OSError(str(exc)) from exc
 
-    def restore(self, name: str, backup: str) -> None:
+    def restore(self, name: str, backup: str, user: str = "") -> None:
         """Restore one backup as its database, keeping the current file as an undo copy."""
         kind = DATABASES.get(name)
         if kind is None or not any(backup == entry for entry, _when in self.backups(name)):
@@ -424,7 +424,7 @@ class Guard:
         data = self.disk.read(self.path(BACKUP_DIR, backup))
         if _parse(data, kind)[0] is None:
             raise Refused("that backup cannot be read")
-        change = Change(self, "")
+        change = Change(self, user, setup=name == MASTER)    # its users list: needed to pick a user
         change._forced[name] = data
         change.commit()
 
@@ -464,9 +464,10 @@ class Guard:
 class Change:
     """Files to write, remove and trash as ONE unit: all of it is applied, or none of it is."""
 
-    def __init__(self, guard: Guard, user: str) -> None:
+    def __init__(self, guard: Guard, user: str, setup: bool = False) -> None:
         self.guard = guard
         self.user = str(user or "")
+        self.setup = setup    # a new library's first database, or its users list restored: no user yet
         self._documents = {}    # name -> (ticket, bytes)
         self._forced = {}    # name -> bytes, written whatever is there: a restore, a rebuild
         self._replacing = set()    # forced names whose old bytes are a plain backup, not an undo copy
@@ -516,6 +517,8 @@ class Change:
     def commit(self) -> dict:
         """Apply the change; {name: Ticket} for each database written. `Moved`: read and redo."""
         guard, disk = self.guard, self.guard.disk
+        if not (self.user or self.setup):    # one gate for every write: no user, no change at all
+            raise Refused("no user is selected for this library, so nothing was written")
         with guard._lock, hostos.file_lock(guard.path(JOURNAL)) as locked:
             if not locked:    # another session here is mid-change: nothing is written at the same time
                 raise OSError("another Amaze session on this computer is writing to the library")
@@ -630,14 +633,14 @@ class Change:
         return target
 
 
-def put_rendered(target: str, scratch: str) -> bool:
+def put_rendered(target: str, scratch: str, user: str = "") -> bool:
     """A picture a renderer wrote to `scratch`, put whole at `target` in its library; False: none."""
     from amaze.core import library_files
     try:
         target = library_files.where_now(target)    # its asset renamed meanwhile: there; deleted: nowhere
         if not target or not os.path.isfile(scratch) or not os.path.getsize(scratch):
             return False
-        Guard(library_files.library_of_file(target)).put_whole(target, written=scratch)
+        Guard(library_files.library_of_file(target)).put_whole(target, written=scratch, user=user)
         return True
     except OSError as exc:
         debug.event("guard", "a rendered picture was not put in place", target=target,

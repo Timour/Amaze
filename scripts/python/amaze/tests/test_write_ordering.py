@@ -143,7 +143,7 @@ class SwitchingVersionsIsAllOrNothing(unittest.TestCase):
     def _write(self, kind, text):
         """Write `text` as the whole `.mat`, or as the `.json` builder's interface."""
         if kind == ".json":
-            asset_record.write_section(self.base[kind], asset_record.BUILDER,
+            test_support.write_section(self.base[kind], asset_record.BUILDER,
                                        {"type": "subnet", "interface": text, "values": {}})
             return
         with open(self.base[kind], "w", encoding="utf-8") as fh:

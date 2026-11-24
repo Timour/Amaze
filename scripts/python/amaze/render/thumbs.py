@@ -47,6 +47,10 @@ class ThumbNailRenderer:
         self._preferences = preferences  # the caller's own Prefs, not reloaded here
         self._builder = None
 
+    def _user(self) -> str:
+        """The library's selected user, whom every picture this renderer writes is by."""
+        return str(getattr(self._preferences, "library_user", "") or "")
+
     @staticmethod
     def render_batch(preferences, renderer: str, items) -> bool:
         """Every (asset_id, node) in ONE background husk, a frame each; False if none can start."""
@@ -77,6 +81,7 @@ class ThumbNailRenderer:
         frames = [(asset_id, tile_icons.thumbnail_path(preferences, asset_id, nodes.MATERIALS))
                   for (asset_id, _node), prim in zip(items, batch["prims"]) if prim]
         batch["prims"] = [prim for prim in batch["prims"] if prim]
+        batch["user"] = str(getattr(preferences, "library_user", "") or "")    # who the pictures are by
         if not frames:    # no material node in any of them
             shutil.rmtree(job_dir, ignore_errors=True)
             return False
@@ -374,7 +379,7 @@ class ThumbNailRenderer:
             try:
                 picture_parm.set(scratch)
                 rop.render()
-                placed = guard.put_rendered(out_path, scratch)
+                placed = guard.put_rendered(out_path, scratch, self._user())
             finally:
                 hostos.discard_scratch(scratch)
             if not placed:  # an ESC also ends up here: an interrupted flipbook returns without raising
@@ -531,7 +536,7 @@ class ThumbNailRenderer:
                     rop.render()
                 else:
                     execute_parm.pressButton()
-                placed = guard.put_rendered(out_path, scratch)
+                placed = guard.put_rendered(out_path, scratch, self._user())
             finally:
                 hostos.discard_scratch(scratch)
             if not placed:

@@ -101,7 +101,7 @@ class CutOffTest(unittest.TestCase):
         change.commit()
 
     def a_restore(self, g):
-        g.restore(MATERIALS, g.backups(MATERIALS)[0][0])
+        g.restore(MATERIALS, g.backups(MATERIALS)[0][0], "u1")
 
     def a_taken_file(self, g):
         written = put(g.dir, "materials/A009.mat.houdini" + guard.SCRATCH, b"nodes Houdini wrote")
@@ -224,12 +224,11 @@ class ConversionTest(unittest.TestCase):
             "materials/Brick__A1/comments/" + PASTED: b"pasted",
             "materials/Brick Red__A2/comments/" + PASTED: b"pasted",
             "nodes/Rig__N1/N1.mat": b"nodes of N1",
-            "code/Loop__C1/C1.png": b"picture of C1", "colors/Sunset__K1/K1.png": b"picture of K1"},
+            "code/Loop__C1/C1.png": b"picture of C1", "code/Loop__C1/versions/C1_1.txt": b"print(0)",
+            "colors/Sunset__K1/K1.png": b"picture of K1"},
             {path: data for path, data in own.items() if path not in library_files.DATABASES})
-        for kept, data in (("matX/Unused__z/textures/u.png", b"unused"),    # in the trash
-                           ("code/versions/C1/C1_1.txt", b"print(0)")):    # only materials keep versions
-            self.assertEqual([data], [found for path, found in whole.items()
-                                      if path.startswith("trash/") and path.endswith(kept)])
+        self.assertEqual([b"unused"], [found for path, found in whole.items() if path.startswith(
+            "trash/") and path.endswith("matX/Unused__z/textures/u.png")])
         pages = json.loads(whole[MATERIALS])["comments"]
         self.assertEqual({texstore.OWN_PREFIX + "comments/" + PASTED}, {
             item["src"] for page in pages.values() for item in page["items"]})
@@ -352,7 +351,7 @@ class LibraryFilesTest(_Library):
         self.save(MATERIALS, assets(2, "mistake"))
         mistake = self.bytes_of(MATERIALS)
         self.clock.forward(minutes=1)
-        self.guard.restore(MATERIALS, self.guard.backups(MATERIALS)[0][0])
+        self.guard.restore(MATERIALS, self.guard.backups(MATERIALS)[0][0], "u1")
         self.assertEqual(old, self.bytes_of(MATERIALS))
         undo = [name for name, _when in self.guard.backups(MATERIALS)
                 if name.endswith(guard.UNDO_TAIL)]
@@ -360,7 +359,7 @@ class LibraryFilesTest(_Library):
         self.assertEqual(mistake, self.bytes_of(guard.BACKUP_DIR, undo[0]))
         put(self.dir, "backup/%s.2026-11-01_090000.bak" % MATERIALS, b"not json")
         with self.assertRaises(guard.Refused):
-            self.guard.restore(MATERIALS, "%s.2026-11-01_090000.bak" % MATERIALS)
+            self.guard.restore(MATERIALS, "%s.2026-11-01_090000.bak" % MATERIALS, "u1")
         self.assertEqual(old, self.bytes_of(MATERIALS), "an unreadable backup replaced the file")
 
     def test_ls11_a_deleted_file_goes_to_the_days_trash_and_leaves_after_thirty_days(self):
@@ -535,6 +534,25 @@ class TwoSessionsTest(_TwoUsers):
         self.assertFalse(nobody.put_mine(STARS, "A1", True))
         self.assertEqual(documents.UNCHANGED, nobody.save().reason)
         self.assertNotIn("A9", self.on_disk()[ASSETS])
+        held, outside = guard.Guard(self.dir), tempfile.mkdtemp(prefix="amaze_storage_nobody_")
+        self.addCleanup(shutil.rmtree, outside, True)
+        for name, data in ((guard.MASTER, {"users": {}}), (MATERIALS, {ASSETS: {}})):
+            put(self.dir, "%s/%s.2026-11-01_090000.bak" % (guard.BACKUP_DIR, name), data)
+        before, own = state(self.dir), os.path.join(self.dir, "materials", "Brick__A1")
+        change = held.change("")
+        change.put_file("materials/Brick__A1/A1.mat", b"nodes")
+        with self.assertRaises(guard.Refused):
+            change.commit()
+        with self.assertRaises(OSError):
+            held.put_whole(os.path.join(own, "A1.png"), data=b"picture")
+        prefs = types.SimpleNamespace(dir=self.dir, library_user="")
+        self.assertEqual(0, versions.create_version(
+            prefs, "A1", source_paths={".mat": put(outside, "A1.mat", b"nodes")}))
+        with self.assertRaises(guard.Refused):
+            held.restore(MATERIALS, "%s.2026-11-01_090000.bak" % MATERIALS)
+        self.assertEqual(before, state(self.dir), "a write with no user changed the library")
+        held.restore(guard.MASTER, "%s.2026-11-01_090000.bak" % guard.MASTER)    # its users list
+        self.assertTrue(prefs_mod.create_library(outside), "a new library is set up with no user")
 
     def test_ls31_favorites_are_each_users_own_and_follow_their_file_moved_or_deleted(self):
         self.erik.put_mine(STARS, "A2", True)

@@ -220,8 +220,9 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
         from amaze.render import nodes
 
         class _Prefs:
-            """Only what the asset paths read: the library folder."""
+            """Only what the asset writes read: the library folder and its user."""
             dir = self.dir + os.sep
+            library_user = test_support.FIXTURE_USER
 
         handler = nodes.NodeHandler.__new__(nodes.NodeHandler)
         handler._preferences = _Prefs()
@@ -478,7 +479,7 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
         handler, builder, mat_path, record_path = self._asset_writer("ASSET2")
         os.makedirs(os.path.dirname(mat_path), exist_ok=True)
         old = {"type": "subnet", "interface": "the good old interface", "values": {}}
-        asset_record.write_section(record_path, asset_record.BUILDER, old)
+        test_support.write_section(record_path, asset_record.BUILDER, old)
         with open(mat_path, "w", encoding="utf-8") as handle:
             handle.write("the good old network\n")
         builder.parm("amaze_n").set(7)
@@ -1042,7 +1043,7 @@ class SandboxRaisesInEveryWritePrimitiveTest(unittest.TestCase):
         leftover = os.path.join(library, "materials", "LEFTOVER.mat")
         with open(leftover, "w", encoding="utf-8") as handle:
             handle.write("x")
-        change = guard.Guard(library).change("")
+        change = guard.Guard(library).change(test_support.FIXTURE_USER)
         change.trash("materials/LEFTOVER.mat")
         with self.assertRaises(hostos.WriteOutsideSandbox):
             change.commit()

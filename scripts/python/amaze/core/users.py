@@ -61,10 +61,10 @@ def named(preferences, name: str, library: str = "", besides: str = "") -> str:
                  if wanted and uid != str(besides) and other.strip().casefold() == wanted), "")
 
 
-def _put(preferences, uid: str, record: dict) -> bool:
-    """Store one user's record; with no user chosen yet, the row's author is the new UID itself."""
-    held = _master(preferences)
-    if held.user():
+def _put(preferences, uid: str, record: dict, library: str = "") -> bool:
+    """Store one user's record; written by the new UID itself unless a user of the open one writes it."""
+    held = _master(preferences, library)
+    if not library and str(getattr(preferences, "library_user", "") or "") in all_users(preferences):
         if not held.put(SECTION, uid, record):
             return False
         saved = library_db.save(preferences, library_files.MASTER)
@@ -87,13 +87,13 @@ def _put(preferences, uid: str, record: dict) -> bool:
     return True
 
 
-def create(preferences, name: str) -> str:
-    """A new user's UID, or "" for a blank name, a name already taken, or a refused write."""
+def create(preferences, name: str, library: str = "") -> str:
+    """A new user's UID in this library or `library`; "" for a blank or taken name or a refused write."""
     name = str(name or "").strip()
-    if not name or name_taken(preferences, name):
+    if not name or name_taken(preferences, name, library=library):
         return ""
     uid = uuid.uuid4().hex
-    return uid if _put(preferences, uid, {"name": name}) else ""
+    return uid if _put(preferences, uid, {"name": name}, library) else ""
 
 
 def delete(preferences, uid) -> bool:

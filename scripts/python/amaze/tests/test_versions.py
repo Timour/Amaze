@@ -39,7 +39,7 @@ class _Case(unittest.TestCase):
                                      self.mat_id + ".png")    # the asset's one picture
 
     def _set_base_builder(self, interface):
-        asset_record.write_section(self.base_record, asset_record.BUILDER,
+        test_support.write_section(self.base_record, asset_record.BUILDER,
                                    {"type": "subnet", "interface": interface, "values": {}})
 
     def _base_bytes(self):
@@ -111,7 +111,7 @@ class AVersionHoldsTheBuilderAndNeverTheMetadata(_Case):
                             versions.file_stem(self.mat_id, number) + suffix)
 
     def _set_metadata(self, name):
-        asset_record.write_section(self.base_record, asset_record.METADATA,
+        test_support.write_section(self.base_record, asset_record.METADATA,
                                    {"id": self.mat_id, "name": name})
 
     def test_an_archive_holds_no_metadata_and_a_metadata_edit_creates_no_version(self):
@@ -246,15 +246,6 @@ class StoreTest(_Case):
         self.assertEqual(0, versions.create_version(self.prefs, self.mat_id),
                          "a create wrote over an unreadable ledger")
         self.assertFalse(versions.switch_active(self.prefs, self.mat_id, 1))
-
-    def test_a_version_saved_with_nobody_picked_is_unsigned(self):
-        """With nobody picked a version is saved unsigned, and nobody is made."""
-        from amaze.core import users
-        self.prefs.library_user = ""
-        versions.create_version(self.prefs, self.mat_id)
-        row = versions.list_versions(self.prefs, self.mat_id)[0]
-        self.assertEqual("", row["author"])
-        self.assertEqual({}, users.all_users(self.prefs), "saving a version made a user")
 
 
 class VersionFilesAreNamedByIdAndNumberTest(_Case):

@@ -5,7 +5,7 @@ import os
 import hou
 
 from amaze import messages
-from amaze.core import check_library, debug, library_files
+from amaze.core import check_library, debug, guard, library_files
 from amaze.helpers import wording
 
 
@@ -54,7 +54,7 @@ def show(library_dir: str, preferences=None, changed=None, report_only: bool = F
                     return False
                 keys = keys if answer == 0 else []
             done = check_library.fix_all(library_dir, preferences, findings, keys, user)
-    except (check_library.Refused, OSError) as exc:
+    except (guard.Refused, OSError) as exc:    # a fix refused, or no user selected
         debug.event("check", "a fix was refused", error=str(exc))
         _say(messages.NOTHING_CHANGED_REASON % str(exc).rstrip("."), warn=True)
         return False
@@ -121,6 +121,6 @@ def repair_failed(library_dir: str, preferences) -> None:
                     check_library.rebuild(library_dir, name, user)
             elif _ask(messages.CHECK_PICK_REBUILD % label, messages.BUTTONS_REBUILD_ONLY) == 0:
                 check_library.rebuild(library_dir, name, user)
-        except (check_library.Refused, OSError) as exc:
+        except (guard.Refused, OSError) as exc:    # a fix refused, or no user selected
             debug.event("check", "a repair was refused", database=name, error=str(exc))
             _say(messages.NOTHING_CHANGED_REASON % str(exc).rstrip("."), warn=True)

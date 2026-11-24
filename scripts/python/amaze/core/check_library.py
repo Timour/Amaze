@@ -19,7 +19,7 @@ _STATES = {guard.FINE: "ok", guard.FRESH: "absent", guard.CORRUPT: "unreadable",
            guard.MISSING: "missing", guard.NEWER: "newer", guard.HELD: "held"}
 
 
-class Refused(Exception):
+class Refused(guard.Refused):
     """A fix that may not run now; the message says why."""
 
 
@@ -394,7 +394,7 @@ def restore(library_dir: str, name: str, backup: str, user: str = "") -> int:
     """A backup as its database, then its assets brought up to date from their records."""
     held = _guard(library_dir)
     try:
-        held.restore(name, backup)
+        held.restore(name, backup, user)
     except guard.Refused as exc:
         raise Refused(str(exc)) from exc
     if name not in ASSET_SECTIONS:

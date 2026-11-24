@@ -734,7 +734,8 @@ class NodeHandler:
             if isinstance(self.staging, list):
                 self.staging.append(staged)    # it arrives with the row, or is discarded with it
                 return True
-            return guard.put_rendered(target, staged[2])
+            return guard.put_rendered(target, staged[2],
+                                      str(getattr(self._preferences, "library_user", "") or ""))
         except (OSError, hostos.PathOutsideBase) as exc:
             debug.event("save", "picture not written", error=str(exc))
             return False

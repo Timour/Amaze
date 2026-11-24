@@ -39,7 +39,7 @@ def exists(path: str) -> bool:
 
 def move_file_capture(preferences, old_key: str, new_key: str) -> bool:
     """Move a moved file's capture to its new key; a capture already at the new key is trashed."""
-    from amaze.core import library_db
+    from amaze.core import guard, library_db
     old, new = file_path(preferences, old_key), file_path(preferences, new_key)
     if not exists(old):
         return False
@@ -50,7 +50,7 @@ def move_file_capture(preferences, old_key: str, new_key: str) -> bool:
     change.take(held.inside(new), old)
     try:
         change.commit()
-    except OSError as exc:
+    except (OSError, guard.Refused) as exc:
         debug.event("capture", "a moved file's capture stays under its old key", error=str(exc))
         return False
     signal_capture_saved(new_key)

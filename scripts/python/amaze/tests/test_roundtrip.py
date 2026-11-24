@@ -103,7 +103,7 @@ class TestRoundTrip(unittest.TestCase):
         for why, writer in (("the write raises", raise_disk_full),
                             ("the writer returns with no file", lambda path: None)):
             with self.subTest(why):
-                asset_record.write_section(record, asset_record.BUILDER, old)
+                test_support.write_section(record, asset_record.BUILDER, old)
                 with open(mat, "w", encoding="utf-8") as handle:
                     handle.write("OLD MAT")
                 with self.assertRaises(hou.Error):
@@ -1207,7 +1207,7 @@ class TheBuilderTypeIsReadFromTheRecordFirst(unittest.TestCase):
     def test_the_record_names_the_builder(self):
         usd = renderers.REDSHIFT.usd_builder
         self.assertEqual("subnet", self._type(), "premise: the fixture's record names a subnet")
-        asset_record.write_section(self.record, asset_record.BUILDER,
+        test_support.write_section(self.record, asset_record.BUILDER,
                                    {"type": usd, "interface": "", "values": {}})
         self.assertEqual(usd, self._type())
         self.assertTrue(self.model.is_usd_material(self.asset))

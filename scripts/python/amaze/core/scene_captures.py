@@ -138,7 +138,7 @@ def _looks_blank(png_path: str) -> bool:
         return False
 
 
-def capture_viewport(out: str, viewer=None) -> str:
+def capture_viewport(out: str, viewer=None, user: str = "") -> str:
     """Save a Scene View screenshot to the PNG `out`; raises CaptureRefused. ▸r/tile-captures"""
     if not out:
         raise CaptureRefused("No file was given for the capture.")
@@ -229,7 +229,7 @@ def capture_viewport(out: str, viewer=None) -> str:
             "The captured frame was a single flat colour, so nothing was "
             "stored. The existing thumbnail is untouched.")
     try:
-        guard.Guard(library_files.library_of_file(out)).put_whole(out, written=scratch)
+        guard.Guard(library_files.library_of_file(out)).put_whole(out, written=scratch, user=user)
     except OSError as exc:
         _discard(scratch)
         raise CaptureRefused(
@@ -288,12 +288,13 @@ def capture_open_scene(preferences, target: str = "") -> str:
             "file a thumbnail against.\n\nSave the scene first.")
 
     key = captures.file_key(preferences, target)
-    return capture_tile(captures.file_path(preferences, key), key)
+    return capture_tile(captures.file_path(preferences, key), key,
+                        str(getattr(preferences, "library_user", "") or ""))
 
 
-def capture_tile(out: str, key: str) -> str:
-    """Capture the Scene View as the thumbnail of tile `key`, then signal every model."""
-    path = capture_viewport(out, _viewer_for_capture())
+def capture_tile(out: str, key: str, user: str = "") -> str:
+    """Capture the Scene View as the thumbnail of tile `key`, by `user`, then signal every model."""
+    path = capture_viewport(out, _viewer_for_capture(), user)
     captures.signal_capture_saved(key)    # the engine serves a decoded copy until the model drops it
     return path
 

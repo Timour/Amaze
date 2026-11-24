@@ -100,7 +100,7 @@ class OpeningALibraryPutsItFirst(unittest.TestCase):
 
     def test_a_switch_puts_the_new_library_first(self):
         first = self.panel.pane.prefs.dir
-        other = test_support.fresh_library(self)
+        other = test_support.with_fixture_user(test_support.fresh_library(self))    # opens with a user only
         self.panel.pane.prefs.dir = other
         path = os.path.join(self.panel.pane.prefs.path, "settings.json")
         with open(path, encoding="utf-8") as handle:

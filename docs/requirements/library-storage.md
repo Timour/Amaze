@@ -25,7 +25,7 @@ in `core/material.py`, `core/texstore.py` and the comment pictures in `core/note
 - LS-15 Catastrophe: Two Amaze sessions on one computer never write the library at the same moment.
 - LS-16 Catastrophe: A file another program holds delays a change instead of losing it: the change is kept and finished on a later read or save.
 - LS-17 Catastrophe: A failed write, a full disk included, leaves the library as it was, leaves no stray files, and tells the user.
-- LS-18 Catastrophe: Converting a 2.0 library to 3.0 moves every asset's files into its own folder: a material's or node's files, a snippet's or color's picture, a material's versions, and each picture pasted into its comments; any other section's versions go to the trash, as only materials keep versions; every `matX` texture and every comment picture goes into each asset that uses it, a copy for each one after the first; a conversion cut off at any moment loses nothing and is finished when it runs again.
+- LS-18 Catastrophe: Converting a 2.0 library to 3.0 moves every asset's files into its own folder: a material's or node's files, a snippet's or color's picture, its old versions, and each picture pasted into its comments; every `matX` texture and every comment picture goes into each asset that uses it, a copy for each one after the first; a conversion cut off at any moment loses nothing and is finished when it runs again.
 - LS-19 Catastrophe: A 2.0 library is not opened or written by this Amaze until the user chose to convert it.
 
 ## Severe
@@ -34,7 +34,7 @@ in `core/material.py`, `core/texstore.py` and the comment pictures in `core/note
 
 ## Wrong output
 
-- LS-30 Wrong output: With no user selected, the library takes no change at all.
+- LS-30 Wrong output: With no user selected, no library opens or converts, and the library takes no change at all; the only exceptions are setting up a new library's `DataBase.json` and Check Library restoring `DataBase.json`, which holds the users, from its backup.
 - LS-31 Wrong output: A user's favorites and folder list are their own: one user's change never alters another user's, except that a file's favorites go the same way as its comments, for everyone: moved with it, and dropped when it is deleted or its folder is removed.
 - LS-32 Wrong output: Every shared entry records which user changed it last, and when.
 - LS-33 Wrong output: What another session saved appears here without a restart.

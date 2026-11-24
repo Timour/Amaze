@@ -84,7 +84,7 @@ class Library:
 
     def _open_at_start(self) -> bool:
         """Open the library only once this computer's user is set; `ensure_library_user` prompts."""
-        return self.open_library(needs_user=True)
+        return self.open_library()
 
     def serves(self, folder: str) -> bool:
         """Whether the models are open on `folder`."""
@@ -145,7 +145,7 @@ class Library:
             return False
         return not library_actions.index_unreadable(folder) or self._repaired(folder)
 
-    def open_library(self, needs_user: bool = False) -> bool:
+    def open_library(self) -> bool:
         """Every library opening runs these steps in this order; False when it stays closed."""
         prefs = self.pane.prefs
         refused = library_actions.index_unopenable(prefs.dir)
@@ -153,6 +153,9 @@ class Library:
             return self._stay_closed(refused)
         if self._library_too_new():
             return self._stay_closed()    # the update is offered once Qt is idle
+        if users.current(prefs) is None:    # no library opens, converts or is set up without one
+            debug.event("session", "library not opened - no user picked", dir=prefs.dir)
+            return self._stay_closed()    # it is opened from Preferences, where its user is picked
         if self._library_to_convert():
             return self._stay_closed()    # the conversion is offered once Qt is idle
         if (library_actions.index_unreadable(prefs.dir)
@@ -161,9 +164,6 @@ class Library:
         library_actions.prepare(prefs)
         if not library_actions.index_present(prefs.dir):    # prepare could not set one up
             return self._stay_closed()
-        if needs_user and users.current(prefs) is None:
-            debug.event("session", "library not opened - no user picked", dir=prefs.dir)
-            return self._stay_closed()    # it is opened from Preferences, where its user is picked
         why = self._open_models()
         if why:
             return self._stay_closed(why)

@@ -6,7 +6,7 @@ import os
 import types
 import uuid
 
-from amaze.core import debug, library_db, library_files, material, texstore
+from amaze.core import debug, guard, library_db, library_files, material, texstore
 from amaze.helpers import hostos
 
 SECTION = "comments"
@@ -178,7 +178,7 @@ def copy_image_into_library(preferences, source: str, key: str) -> str:
         change = held.change(str(getattr(preferences, "library_user", "")))
         change.put_file(relative, data)
         change.commit()
-    except (OSError, hostos.PathOutsideBase) as exc:
+    except (OSError, hostos.PathOutsideBase, guard.Refused) as exc:
         debug.event("notes", "image not copied", source=source, error=str(exc))
         return ""
     return src

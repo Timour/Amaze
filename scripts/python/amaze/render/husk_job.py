@@ -334,7 +334,7 @@ class Jobs(QtCore.QObject):
         scratch = hostos.render_scratch(png) if png else ""
         made = bool(png) and os.path.exists(exr) and preview.exr_to_png(
             exr, scratch, job.batch["ocio"], asset_id)
-        if made and guard.put_rendered(png, scratch):
+        if made and guard.put_rendered(png, scratch, job.batch.get("user", "")):
             self.thumbnailWritten.emit(asset_id)
         else:    # the tile keeps its old image: this log record is the only one
             if scratch:

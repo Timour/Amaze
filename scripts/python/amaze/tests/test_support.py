@@ -544,9 +544,15 @@ def set_library_version(library, version: int) -> None:
     document = dict(reading.document or {})
     policy = dict(document.get("policy") or {})
     policy["library"] = {"version": int(version)}
-    change = held.change("")
+    change = held.change(FIXTURE_USER)
     change.replace("DataBase.json", dict(document, policy=policy))
     change.commit()
+
+
+def write_section(path: str, section: str, data: dict) -> None:
+    """`asset_record.write_section` as the fixture user: no write happens without a user."""
+    from amaze.core import asset_record
+    asset_record.write_section(path, section, data, FIXTURE_USER)
 
 
 def with_fixture_location(library, folder) -> None:

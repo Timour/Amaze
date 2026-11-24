@@ -507,14 +507,17 @@ class AmazePrefsState(mainprefs.PrefsState):
         if not switching and uid == self._prefs.library_user:
             return True
         self._prefs.save()    # before the switch: unsaved edits belong to the library they were made in
-        if switching and not self._switch_library(folder, uid):
-            return False
-        if uid.startswith(NEW_USER):
-            name, uid = uid[len(NEW_USER):], users.create(self._prefs, uid[len(NEW_USER):])
+        if switching and self._pane is not None and not self._pane.library.takes_library(folder):
+            return False    # checked before anything is written to it
+        if uid.startswith(NEW_USER):    # made first: no library opens without its user
+            name = uid[len(NEW_USER):]
+            uid = users.create(self._prefs, name, library=folder if switching else "")
             if not uid:
-                if users.name_taken(self._prefs, name):
+                if users.name_taken(self._prefs, name, library=folder if switching else ""):
                     self._show_name_taken(name)
                 return False
+        if switching and not self._switch_library(folder, uid):
+            return False
         library_db.flush()    # pending changes are saved as the user who made them
         users.set_current_user(self._prefs, uid)
         debug.event("prefs", "library and user applied", library=self._prefs.dir, user=uid)
