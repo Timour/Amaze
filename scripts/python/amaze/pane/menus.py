@@ -3,6 +3,7 @@
 from PySide6 import QtCore
 
 from amaze.pane import asks
+from amaze.sections import base
 
 
 def resolve(context, name, indexes, current, default):
@@ -138,3 +139,23 @@ class Menu:
             current = live[0] if live else None
         getattr(self.context, handler)(live, current, payload)
         return True
+
+
+class Choice:
+    """One of `labels` ("" a divider) picked from a menu: `place` is then its place in `labels`."""
+
+    ENTRY = base.MenuEntry("Choice", handler="menu_pick", needs="always", children="choices")
+
+    def __init__(self, labels) -> None:
+        self.labels = list(labels)
+        self.place = None    # stays None when the menu is dismissed
+
+    def menu(self, host=None) -> Menu:
+        """The engine's menu of the labels; its one row holds their rows."""
+        return Menu(self, (self.ENTRY,), [], None, host=host)
+
+    def choices(self, indexes, current) -> list:
+        return [(label, place, "", True) if label else None for place, label in enumerate(self.labels)]
+
+    def menu_pick(self, indexes, current, payload) -> None:
+        self.place = payload

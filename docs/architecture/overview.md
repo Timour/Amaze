@@ -801,7 +801,10 @@ tag and the red X are `ui_helpers.DragMarks`, handed to it by the view. The widg
 views start it past the drag distance (`GridGestureMixin`); the QML grid and list start it
 from `ui/shared/DragOut.qml`, a DragHandler, and the pane's view, which keeps the mouse while
 a button is down, hands it the moves and the release. A grid or list holds its flicking while
-a tile or row is pressed, or at a UI scale under 1 the flick takes a downward drag.
+a tile or row is pressed, or at a UI scale under 1 the flick takes a downward drag. Over the
+sidebar, `Sidebar.drop_target` says which row a tile may drop on, for both panes; the QML tree
+lights that row as it lights its selected rows. The QML pane's drop menu is the one menu engine
+in an `AmazeMenu` at the cursor, waited on as the widget panel's QMenu is.
 The name tag is hidden while another application is in front.
 Sections' release handlers call the import code. What a release does is one engine call,
 `DropPlacement.release(section_key, key, pane_tab, pane_kind)` in `pane/drop_placement.py`: the
@@ -1072,8 +1075,8 @@ sections/{material,node,code,color,file}.py  one Section each: its GRID_MENU and
 sections/online.py        The Online context, a Section's interface, no tab
 panel/grid.py             The GRID area - the one right-click menu
                           builder over those tables
-panel/sidebar.py          The SIDEBAR area - what a row means and what
-                          may be dropped on it (the drag-hover handling)
+panel/sidebar.py          The SIDEBAR area - what a row means, and the
+                          drag-hover over it (`pane.sidebar.drop_target` decides)
 panel/empty_state.py      the widget panel's empty page: its labels and button
 panel/dragdrop_widgets.py The widget panel's views: the press that starts a drag, a
                           node dropped in to save it

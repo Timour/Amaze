@@ -18,14 +18,25 @@ PaneRoot {
             menu.show(rows)
         return menu
     }
+    function onSidebar(x, y) {    // (x, y) in the pane's widget as a point in the sidebar, null off it
+        if (!sidebarArea.visible)
+            return null
+        const side = root.mapToItem(sidebar, x, y)
+        return side.x >= 0 && side.y >= 0 && side.x <= sidebar.width && side.y <= sidebar.height ? side : null
+    }
+    function sidebarIndexAt(x, y) {    // the sidebar row at (x, y) in the pane's widget, invalid off it
+        const side = root.onSidebar(x, y)
+        return side ? sidebar.indexAt(side.x, side.y) : sidebar.index(-1, 0)
+    }
+    function showSidebarDrop(index) {    // the row a dragged tile would drop on; an invalid index for none
+        sidebar.dropRow = index.valid ? sidebar.rowAtIndex(index) : -1
+    }
     function menuAt(x, y) {    // Qt's context menu request at (x, y), from the pane's widget: the row under it
-        if (sidebarArea.visible) {
-            const side = root.mapToItem(sidebar, x, y)
-            if (side.x >= 0 && side.y >= 0 && side.x <= sidebar.width && side.y <= sidebar.height) {
-                sidebar.forceActiveFocus(Qt.MouseFocusReason)
-                root.openMenu(SharedState.sidebarMenu(sidebar.indexAt(side.x, side.y)))
-                return
-            }
+        const side = root.onSidebar(x, y)
+        if (side) {
+            sidebar.forceActiveFocus(Qt.MouseFocusReason)
+            root.openMenu(SharedState.sidebarMenu(sidebar.indexAt(side.x, side.y)))
+            return
         }
         const shown = grid.active ? grid : list
         const view = shown.item
@@ -36,6 +47,13 @@ PaneRoot {
             return    // outside the grid's area
         view.forceActiveFocus(Qt.MouseFocusReason)
         root.openMenu(SharedState.tileMenu(view.rowAt(at.x, at.y)))
+    }
+    Connections {    // a menu the engine opens itself, at the cursor; one that cannot open is closed at once
+        target: SharedState
+        function onMenuOffered(rows) {
+            if (!root.openMenu(rows))
+                SharedState.menuClosed()
+        }
     }
     Component {
         id: menuMaker

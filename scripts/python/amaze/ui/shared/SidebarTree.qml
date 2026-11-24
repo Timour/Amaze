@@ -10,6 +10,7 @@ TreeView {
     property bool counts: true    // each row's count after its name; All always shows its total
     property var drawn: ({})    // `amazetheme.drawn_sidebar`: the colour bar's place, off G01
     property bool wheelFix: false    // the wheel as Houdini's Context Options list takes it; off, Qt's
+    property int dropRow: -1    // the row a dragged tile would drop on, lit as the selected rows are
     signal stepped()    // a key that Qt's own navigation moves the current row by; no other key
     readonly property var steps: [Qt.Key_Up, Qt.Key_Down, Qt.Key_Left, Qt.Key_Right,
                                   Qt.Key_PageUp, Qt.Key_PageDown, Qt.Key_Home, Qt.Key_End]
@@ -49,12 +50,13 @@ TreeView {
         readonly property var count: entry.model.count    // undefined or null where nothing is counted
         readonly property bool counted: (count !== undefined && count !== null
                                          && (root.counts || entry.model.key === ""))
+        readonly property bool lit: entry.highlighted || entry.row === root.dropRow    // Houdini's selection
 
         leftMargin: root.drawn.bar_x * 2 + root.drawn.bar    // Houdini's tree starts after the bar
         // Houdini's QML arrow takes this colour; its widget trees draw it in primary (parts.drawTreeBranch)
-        effectiveTextColor: entry.highlighted ? entry.background.fg : Theme.primary
+        effectiveTextColor: entry.lit ? entry.background.fg : Theme.primary
         background: RowGround {
-            highlighted: entry.highlighted
+            highlighted: entry.lit
             failed: entry.lost
             alternate: root.alternatingRows && entry.row % 2 === 1
         }

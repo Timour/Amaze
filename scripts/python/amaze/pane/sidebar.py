@@ -92,6 +92,19 @@ class Sidebar:
             return ""
         return str(index.data(category.SIDEBAR_KEY_ROLE) or "")    # DisplayRole drops a leading "_"
 
+    def drop_target(self, index) -> tuple:
+        """(category, folder) a tile dropped on sidebar row `index` goes to; (None, None) where none may."""
+        context = self.pane.active_section()
+        if context is None or index is None or not index.isValid():
+            return None, None
+        if context.takes_file_drops:    # a folder row: the tiles' files move there, on disk
+            return None, (context.drop_folder(index) if context.accepts_file_drop(index) else None)
+        name = self.raw_category_name(index)
+        if (not context.takes_category_drops or not name or category.is_all(name)
+                or not context.accepts_category_drop(index, name)):
+            return None, None
+        return name, None
+
     def selected_category_name(self) -> str:
         """The sidebar's category, "" for All: selection, then current index; no section check."""
         indexes = self.rows()

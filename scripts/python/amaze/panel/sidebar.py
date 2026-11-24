@@ -132,42 +132,25 @@ class SidebarTreeView(ui_helpers.Table):
         self._reopen()
 
 
+def _drop_target(panel, pos) -> tuple:
+    """(category, folder) a tile dropped at a sidebar point goes to, by the pane's `drop_target`."""
+    index = panel.cat_list.indexAt(pos) if panel.cat_list is not None else None
+    return panel.pane.sidebar.drop_target(index)
+
+
 def droppable_index(panel, pos):
-    """The only place the drop-target rules are defined; None if no tile may be dropped here."""
-    context = panel.pane.active_section()
-    if context is None or not (context.takes_category_drops or context.takes_file_drops):
-        return None
-    if panel.cat_list is None:
-        return None
-    index = panel.cat_list.indexAt(pos)
-    if not index.isValid():
-        return None
-    if context.takes_file_drops:    # a folder row: the tile's file moves there, on disk
-        return index if context.accepts_file_drop(index) else None
-    name = panel.pane.sidebar.raw_category_name(index)
-    if not name or category.is_all(name):
-        return None
-    if not context.accepts_category_drop(index, name):
-        return None
-    return index
+    """The row a tile dropped at a point goes to, None if no tile may be dropped here."""
+    return panel.cat_list.indexAt(pos) if _drop_target(panel, pos) != (None, None) else None
 
 
 def category_at_point(panel, pos):
     """The droppable category at a point, by its STORED name - the form the write needs."""
-    context = panel.pane.active_section()
-    if context is None or not context.takes_category_drops:
-        return None
-    index = droppable_index(panel, pos)
-    return None if index is None else panel.pane.sidebar.raw_category_name(index)
+    return _drop_target(panel, pos)[0]
 
 
 def folder_at_point(panel, pos):
     """The folder a tile dropped at a point moves into, or None."""
-    context = panel.pane.active_section()
-    if context is None or not context.takes_file_drops:
-        return None
-    index = droppable_index(panel, pos)
-    return None if index is None else context.drop_folder(index)
+    return _drop_target(panel, pos)[1]
 
 
 def _cursor_in_sidebar(panel):
