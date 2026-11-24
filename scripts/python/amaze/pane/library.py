@@ -42,6 +42,7 @@ class Library:
         self.pane = pane
         self.models_dir = None    # the library the models use, for closing Preferences and for a Cancel
         self.models_user = ""    # the user they show the stars and locations of
+        self._conversion_for = ("", "")    # the folder and user the waiting conversion offer is for
         self._save_timer = None
 
     def start(self) -> bool:
@@ -296,9 +297,11 @@ class Library:
     def _library_to_convert(self) -> bool:
         """A 2.0 library is not opened; converting it to 3.0 is offered once Qt is idle."""
         from amaze.core import layout_conversion
-        if not layout_conversion.needs_conversion(str(self.pane.prefs.dir or "")):
+        prefs = self.pane.prefs
+        if not layout_conversion.needs_conversion(str(prefs.dir or "")):
             return False
-        debug.event("session", "library is 2.0 - not opened until converted", dir=self.pane.prefs.dir)
+        debug.event("session", "library is 2.0 - not opened until converted", dir=prefs.dir)
+        self._conversion_for = (str(prefs.dir), str(prefs.library_user or ""))    # `_stay_closed` resets prefs
         timer = getattr(self, "_convert_offer_timer", None)
         if timer is None:    # owned, so it is deleted with the pane ▸r/model-parent
             timer = self._convert_offer_timer = QtCore.QTimer(self.pane)
@@ -309,23 +312,27 @@ class Library:
         return True
 
     def _offer_conversion(self) -> None:
-        """Convert or Cancel, for the 2.0 library left closed; headless, nothing is converted."""
+        """Convert or Cancel, for the 2.0 library left closed: that one converted and opened."""
         from amaze.core import layout_conversion, library_settings
+        folder, user = self._conversion_for
         ui = getattr(hou, "ui", None)
-        prefs = self.pane.prefs
         if ui is None or ui.displayMessage(
                 messages.LIBRARY_NEEDS_CONVERSION, buttons=messages.BUTTONS_CONVERT_LIBRARY,
                 default_choice=1, close_choice=1, severity=hou.severityType.Warning,
                 title=messages.TITLE_AMAZE) != 0:
             return
+        offered = types.SimpleNamespace(dir=folder, library_user=user)
         try:
-            layout_conversion.convert(library_db.guard_of(prefs), str(prefs.library_user or ""))
+            layout_conversion.convert(library_db.guard_of(offered), user)
         except OSError as exc:
-            debug.event("library", "conversion to 3.0 failed", dir=prefs.dir, error=str(exc))
+            debug.event("library", "conversion to 3.0 failed", dir=folder, error=str(exc))
             ui.displayMessage(messages.LIBRARY_CONVERSION_FAILED % exc, title=messages.TITLE_AMAZE,
                               severity=hou.severityType.Error)
             return
-        library_settings.stamp_version(prefs)
+        library_settings.stamp_version(offered)
+        prefs = self.pane.prefs
+        prefs.dir, prefs.library_user = folder, user
+        prefs.save()    # the open re-reads the settings
         self.open_library()
 
     def _offer_amaze_update(self) -> None:

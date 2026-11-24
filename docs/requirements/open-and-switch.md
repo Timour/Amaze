@@ -10,6 +10,7 @@ LS-30, Repair CL-26. The levels and the rules for tests are in the [README](READ
 - SW-01 Catastrophe: After a switch, every write goes to the library now open: no row, category, icon, star or delete read from one library is written into another.
 - SW-02 Catastrophe: A change still waiting to be saved when the library or the user is switched is saved in the library it was made in, as the user who made it.
 - SW-03 Catastrophe: A new library is made only in an empty folder; a folder holding other files is refused and nothing is written to it.
+- SW-04 Catastrophe: Convert on a 2.0 library's offer converts that library, as the user picked for it, and then opens it; a library open or switched to before the offer is answered is never converted.
 
 ## Wrong output
 

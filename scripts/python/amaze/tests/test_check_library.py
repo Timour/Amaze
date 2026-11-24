@@ -311,6 +311,30 @@ class WhatTheReportSaysTest(_Library):
         self.assertEqual(["Uncategorized"], asset_record.read(self.at(
             "materials", "Loose__A3", "A3.json"))[asset_record.METADATA]["categories"])
 
+    def test_cl29_a_folder_holding_only_scratch_or_nothing_is_a_leftover(self):
+        spent = {"materials/Half__S1": ("S1.mat.x1", "textures/brick.png.x2"),
+                 "nodes/Half__S2": ("S2.json.x3",), "materials/Bare__S3": ()}
+        for folder, names in spent.items():
+            os.makedirs(self.at(*folder.split("/")), exist_ok=True)
+            for name in names:
+                put(self.dir, "%s/%s%s" % (folder, name, guard.SCRATCH), b"a save cut off")
+            old = time.time() - 2 * check_library.SCRATCH_MIN_AGE
+            for here, _folders, files in os.walk(self.at(*folder.split("/")), topdown=False):
+                for path in [os.path.join(here, name) for name in files] + [here]:
+                    os.utime(path, (old, old))
+        live = put(self.dir, "materials/Live__S4/S4.mat.x4" + guard.SCRATCH, b"another first save")
+        self.fix_all(named=False)
+        rows = set(self.rows()) | set(self.rows(NODES))
+        self.assertFalse({"S1", "S2", "S3", "S4"} & rows, "a folder holding no asset became a row")
+        for folder in spent:
+            self.assertFalse(os.path.exists(self.at(*folder.split("/"))), folder + " stayed")
+        trashed = pathlib.Path(self.at(guard.TRASH_DIR)).glob("*/materials/Half__S1/textures/*")
+        self.assertTrue(list(trashed), "the folder did not go to the trash whole")
+        self.assertTrue(os.path.exists(live), "a scratch younger than an hour was trashed")
+        put(self.dir, MATERIALS, b"{ not a database")
+        check_library.rebuild(self.dir, MATERIALS, USER)
+        self.assertNotIn("S4", self.rows(), "a rebuild made a row of a folder holding no asset")
+
 
 if __name__ == "__main__":
     unittest.main()

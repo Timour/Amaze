@@ -34,3 +34,4 @@ own folder. The levels and the rules for tests are in the [README](README.md).
 - CL-26 Wrong output: When a library with a corrupt Materials or Nodes database opens, or is switched to, Repair is offered: restore a backup or rebuild from records, whichever the user picks.
 - CL-27 Wrong output: After a fix, the library is read again and the panel shows the change without a restart.
 - CL-28 Wrong output: `tools/library-audit.py` lists what does not belong in a library, by kind; it changes nothing and runs without Houdini.
+- CL-29 Wrong output: An asset folder no database lists that holds only scratch files, or nothing, is a leftover, not an asset: Recover and a rebuild never make it a row, and Fix All trashes it whole once it is an hour old.
