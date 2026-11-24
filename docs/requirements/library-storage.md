@@ -2,9 +2,9 @@
 
 What the library's storage must do. The engine is `core/guard.py`, `core/documents.py`,
 `core/library_db.py`, `core/library_settings.py`, `core/library_policy.py`, the asset folders
-in `core/material.py` and `core/texstore.py`, and `core/layout_conversion.py`.
-Check Library and repair are their own engine, with their own list. The levels and the rules
-for tests are in the [README](README.md).
+in `core/material.py`, `core/texstore.py` and the comment pictures in `core/notes.py`, and
+`core/layout_conversion.py`. Check Library is its own engine, with its own
+[list](check-library.md). The levels and the rules for tests are in the [README](README.md).
 
 ## Catastrophe
 
@@ -25,7 +25,7 @@ for tests are in the [README](README.md).
 - LS-15 Catastrophe: Two Amaze sessions on one computer never write the library at the same moment.
 - LS-16 Catastrophe: A file another program holds delays a change instead of losing it: the change is kept and finished on a later read or save.
 - LS-17 Catastrophe: A failed write, a full disk included, leaves the library as it was, leaves no stray files, and tells the user.
-- LS-18 Catastrophe: Converting a 2.0 library to 3.0 moves every material's and node's files into its own folder and every `matX` texture into each material that uses it, a copy for each one after the first; a conversion cut off at any moment loses nothing and is finished when it runs again.
+- LS-18 Catastrophe: Converting a 2.0 library to 3.0 moves every asset's files into its own folder: a material's or node's files, a snippet's or color's picture and versions, and each picture pasted into its comments; every `matX` texture and every comment picture goes into each asset that uses it, a copy for each one after the first; a conversion cut off at any moment loses nothing and is finished when it runs again.
 - LS-19 Catastrophe: A 2.0 library is not opened or written by this Amaze until the user chose to convert it.
 
 ## Severe
@@ -40,7 +40,8 @@ for tests are in the [README](README.md).
 - LS-33 Wrong output: What another session saved appears here without a restart.
 - LS-34 Wrong output: The library records the format this Amaze writes, and shows its format as 3.x.
 - LS-35 Wrong output: Shared settings hold one plain value per name, and a cleared one is gone.
-- LS-36 Wrong output: Each material and node has its own folder, `<name>__<id>` in its section's folder, holding all its files: record, network, picture, versions, textures and downloaded sources; renaming it renames its folder in the same save.
+- LS-36 Wrong output: Every asset has its own folder, `<name>__<id>` in its section's folder, holding all its files: record, network, picture, versions, textures, downloaded sources and the pictures pasted into its comments. A material or node has it from its first save, a snippet or color from its first file; renaming it renames its folder in the same save.
 - LS-37 Wrong output: A saved material keeps its own copy of every texture it uses and names it in its own folder, so a copy or an import of it never uses another material's texture.
 - LS-38 Wrong output: A texture path saved in the 2.0 layout is read as the same file in the material's own folder.
-- LS-39 Wrong output: Deleting a material or a node moves its whole folder to the trash.
+- LS-39 Wrong output: Deleting an asset moves its whole folder to the trash.
+- LS-40 Wrong output: A picture pasted into an asset's comment is kept in that asset's folder and still shows after the asset is renamed; the comment text stays in its section's database.

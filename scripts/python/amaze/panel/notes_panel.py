@@ -82,6 +82,7 @@ class _NoteEdit(QtWidgets.QTextEdit):
         self.setPalette(palette)
         self.setAcceptRichText(False)    # PASTING only - a programmatic insertImage still works ▸r/qtextdocument-images
         self.library_dir = ""            # set by the panel; what an image's relative `src` resolves against
+        self.note_key = ""               # set by the panel; whose folder a `$AMAZEASSET/` picture is in
         self.setPlaceholderText("Write a comment...")
         self.viewport().setMouseTracking(True)   # the hover cursor swap needs move events with no button held
 
@@ -169,12 +170,8 @@ class _NoteEdit(QtWidgets.QTextEdit):
         return float(min(image.width(), room))
 
     def resolve_image(self, src: str) -> str:
-        """A library-relative `src` as an absolute path; the stored form stays relative. ▸p/comment-images"""
-        if not src:
-            return ""
-        if os.path.isabs(src):
-            return src
-        return os.path.join(self.library_dir or "", src)
+        """A stored `src` as an absolute path; the stored form stays relative. ▸p/comment-images"""
+        return notes.image_path(self.library_dir, self.note_key, src)
 
     @staticmethod
     def block_done(block) -> bool:
@@ -524,6 +521,7 @@ class NotesPanel(side_pane.SidePage):
             self.set_header(subject.name, subject.type)
             note = notes.note_for(self.preferences, key)
             self.text_edit.library_dir = library    # what an image's relative src resolves against ▸p/comment-images
+            self.text_edit.note_key = key
             self.text_edit.load_items(note.get("items", []))
         finally:
             self._loading = False

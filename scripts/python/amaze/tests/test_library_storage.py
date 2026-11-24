@@ -16,7 +16,7 @@ from amaze.helpers import hostos
 from amaze.prefs import prefs as prefs_mod
 from amaze.tests import faults, test_support
 
-MATERIALS, NODES = "materials.json", "nodes.json"
+MATERIALS, NODES, CODE, COLORS = "materials.json", "nodes.json", "code.json", "colors.json"
 ASSETS, STARS = "assets", "favorites"
 ANNA, ERIK = "u-anna", "u-erik"
 
@@ -166,19 +166,28 @@ class CutOffTest(unittest.TestCase):
         self.assertNotEqual(before, after)
 
 
+PASTED = "a" * 32 + ".png"    # a picture pasted into a comment
+
+
 def lay_out_2_0(folder: str) -> dict:
-    """A 2.0 library: flat files, a version store, `matX/` folders, one of them used by two."""
+    """A 2.0 library: flat files, version stores, `matX/` folders and a comment picture, each shared."""
     put(folder, guard.MASTER, {"policy": {"library": {"version": library_policy.LAYOUT_2_0}}})
+    shown = {"items": [{"t": "image", "src": "materials/comments/" + PASTED}]}
     put(folder, MATERIALS, {ASSETS: {
         "A1": {"name": "Brick", "textures": ["$AMAZELIB/matX/Brick__a1/textures/brick.png"]},
         "A2": {"name": "Brick Red", "textures": ["$AMAZELIB/matX/Brick__a1/textures/brick.png",
-                                                 "$AMAZELIB/matX/Dl__x/textures/d.png"]}}})
+                                                 "$AMAZELIB/matX/Dl__x/textures/d.png"]}},
+        "comments": {"A1": shown, "A2": shown}})
     put(folder, NODES, {ASSETS: {"N1": {"name": "Rig"}}})
+    put(folder, CODE, {ASSETS: {"C1": {"name": "Loop"}}})
+    put(folder, COLORS, {ASSETS: {"K1": {"name": "Sunset"}, "K2": {"name": "Plain"}}})
     files = {"materials/A1.mat": b"nodes of A1", "materials/A1.png": b"picture of A1",
              "materials/A2.mat": b"nodes of A2", "materials/versions/A1/A1_1.mat": b"A1 before",
              "nodes/N1.mat": b"nodes of N1", "matX/Brick__a1/textures/brick.png": b"brick",
              "matX/Dl__x/d.mtlx": b"<materialx/>", "matX/Dl__x/textures/d.png": b"d",
-             "matX/Unused__z/textures/u.png": b"unused"}
+             "matX/Unused__z/textures/u.png": b"unused", "materials/comments/" + PASTED: b"pasted",
+             "code/C1.png": b"picture of C1", "code/versions/C1/C1_1.txt": b"print(0)",
+             "colors/K1.png": b"picture of K1"}
     for relative, data in files.items():
         put(folder, relative, data)
     return files
@@ -212,10 +221,17 @@ class ConversionTest(unittest.TestCase):
             "materials/Brick Red__A2/textures/brick.png": b"brick",
             "materials/Brick Red__A2/textures/Dl__x/d.mtlx": b"<materialx/>",
             "materials/Brick Red__A2/textures/Dl__x/textures/d.png": b"d",
-            "nodes/Rig__N1/N1.mat": b"nodes of N1"},
+            "materials/Brick__A1/comments/" + PASTED: b"pasted",
+            "materials/Brick Red__A2/comments/" + PASTED: b"pasted",
+            "nodes/Rig__N1/N1.mat": b"nodes of N1",
+            "code/Loop__C1/C1.png": b"picture of C1", "code/Loop__C1/versions/C1_1.txt": b"print(0)",
+            "colors/Sunset__K1/K1.png": b"picture of K1"},
             {path: data for path, data in own.items() if path not in library_files.DATABASES})
         self.assertEqual([b"unused"], [data for path, data in whole.items()
                                        if path.endswith("matX/Unused__z/textures/u.png")])
+        pages = json.loads(whole[MATERIALS])["comments"]
+        self.assertEqual({texstore.OWN_PREFIX + "comments/" + PASTED}, {
+            item["src"] for page in pages.values() for item in page["items"]})
         for step in range(1, counting.steps + 1):
             folder = self.library()
             cut = self.converted(folder, faults.FaultDisk(cut_at=step))
@@ -377,6 +393,19 @@ class LibraryFilesTest(_Library):
         guard.Guard(self.dir, now=self.clock)
         self.assertFalse(os.path.exists(self.at(guard.JOURNAL)), "the journal was not set aside")
         self.assertEqual(guard.FINE, self.guard.read(MATERIALS).verdict)
+        from amaze.core import notes
+        prefs = types.SimpleNamespace(dir=self.dir, library_user="u1")
+        shot = put(self.dir, "shot.png", b"pasted")
+        before = state(self.dir)
+        for unsafe in ("..", "../..", "../../outside", "a/b"):
+            for path_of in (lambda: material.asset_dir(prefs, CODE, unsafe),
+                            lambda: versions.versions_dir(prefs, unsafe, versions.CODE),
+                            lambda: material.payload_path(prefs, unsafe, ".mat", MATERIALS),
+                            lambda: tile_icons.thumbnail_path(prefs, unsafe, COLORS)):
+                with self.assertRaises(hostos.PathOutsideBase, msg=unsafe):
+                    path_of()
+            self.assertEqual("", notes.copy_image_into_library(prefs, shot, "material:" + unsafe))
+        self.assertEqual(before, state(self.dir))
 
     def test_ls15_two_sessions_on_one_computer_never_write_at_the_same_moment(self):
         before = state(self.dir)
@@ -606,6 +635,57 @@ class ThroughThePreferencesTest(_Settings):
                                           material.asset_dir(self.prefs, MATERIALS, "A1")))
         self.assertEqual("Stone", asset_record.read(os.path.join(moved, "A1.json"))[
             asset_record.METADATA]["name"])
+        snippets, row, snippet = self.snippet("Loop")
+        loop = os.path.join(snippets.preferences.dir, "code", "Loop__" + snippet)
+        self.assertEqual((False, os.path.join(loop, snippet + ".png")),
+                         (os.path.exists(loop), snippets.capture_path(row)),
+                         "a snippet has no folder before its first file, then one named for it")
+        self.assertTrue(snippets.save_version(row, snippets.NEW_VERSION, "print(2)", "Spin",
+                                              "Python", "", ""))
+        spin = os.path.join(snippets.preferences.dir, "code", "Spin__" + snippet)
+        self.assertEqual((False, True), (os.path.exists(loop), os.path.isfile(
+            os.path.join(spin, library_files.VERSIONS, versions.LEDGER))))
+
+    def snippet(self, name: str) -> tuple:
+        """(the Code model on a fixture library, the row and the id of a new snippet `name`)."""
+        from amaze.core import code_library
+        model = code_library.CodeLibrary(preferences=test_support.fixture_prefs(self))
+        model.add_asset("print(1)", name, "Python", "", "", False)
+        row = next(row for row, asset in enumerate(model.assets) if asset.name == name)
+        return model, row, str(model.assets[row].mat_id)
+
+    def test_ls39_deleting_an_asset_moves_its_whole_folder_to_the_trash(self):
+        snippets, row, snippet = self.snippet("Loop")
+        self.assertTrue(snippets.save_version(row, snippets.NEW_VERSION, "print(2)", "Loop",
+                                              "Python", "", ""))
+        own = material.asset_dir(snippets.preferences, CODE, snippet)
+        held = set(os.listdir(own))
+        self.assertEqual(1, snippets.remove_rows([row]))
+        self.assertFalse(os.path.exists(own))
+        trashed = [os.path.join(root, name) for root, names, _files in os.walk(
+            os.path.join(snippets.preferences.dir, guard.TRASH_DIR)) for name in names
+            if name == os.path.basename(own)]
+        self.assertEqual([held], [set(os.listdir(path)) for path in trashed])
+
+    def test_ls40_a_comment_picture_is_kept_in_its_assets_folder_and_found_after_a_rename(self):
+        from amaze.core import notes
+        own = material.claim_asset_dir(self.prefs, MATERIALS, "A1", "Brick")
+        put(own, "A1.mat", b"nodes of A1")
+        held = library_db.document(self.prefs, MATERIALS)
+        held.put(ASSETS, "A1", {"name": "Brick"})
+        self.assertTrue(library_db.save(self.prefs, MATERIALS))
+        shot = put(tempfile.mkdtemp(prefix="amaze_storage_shot_"), "shot.png", b"pasted")
+        self.addCleanup(shutil.rmtree, os.path.dirname(shot), True)
+        key = notes.note_key("material", "A1")
+        src = notes.copy_image_into_library(self.prefs, shot, key)
+        self.assertTrue(src.startswith(texstore.OWN_PREFIX + library_files.COMMENT_FOLDER + "/"), src)
+        self.assertEqual(os.path.join(own, library_files.COMMENT_FOLDER),
+                         os.path.dirname(notes.image_path(self.dir, key, src)))
+        held.put(ASSETS, "A1", {"name": "Stone"})
+        self.assertTrue(library_db.save(self.prefs, MATERIALS))
+        found = notes.image_path(self.dir, key, src)
+        self.assertEqual((os.path.join(self.dir, "materials", "Stone__A1"), b"pasted"),
+                         (os.path.dirname(os.path.dirname(found)), open(found, "rb").read()))
 
     def test_ls37_a_saved_material_keeps_its_own_copy_of_each_texture(self):
         other = material.claim_asset_dir(self.prefs, MATERIALS, "B1", "Oak")

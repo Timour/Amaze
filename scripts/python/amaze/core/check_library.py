@@ -39,10 +39,12 @@ def survey(library_dir: str, preferences=None) -> dict:
     listing, out_of_place, unreadable = _walk(library_dir)
     findings = {"directory": library_dir, "databases": databases, "unreadable_folders": unreadable,
                 "missing_files": {}, "no_picture": {}, "no_category": {}, "unlisted": [],
-                "orphans": _orphan_pictures(listing, ids) + _orphan_versions(library_dir, listing),
-                "trash": held.trash_held()}
-    for section in ASSET_SECTIONS:
-        _assets(findings, section, rows.get(section, {}), listing, ids)
+                "orphans": _orphan_versions(library_dir, listing), "trash": held.trash_held()}
+    for section in LISTS:
+        if section in ASSET_SECTIONS:
+            _assets(findings, section, rows.get(section, {}), listing, ids)
+        else:
+            _inline_folders(findings, section, listing, ids)
     findings.update(_out_of_place(library_dir, out_of_place))
     findings.update(_files_section(preferences))
     findings["holding_back"] = _holding_back(findings)
@@ -114,16 +116,13 @@ def _assets(findings: dict, section: str, rows: dict, listing: dict, ids: set) -
                                          "record": record[asset_record.METADATA] or None})
 
 
-def _orphan_pictures(listing: dict, ids: set) -> list:
-    """Code's and Colors' pictures of rows no database lists."""
-    found = []
-    for section in LISTS:
-        if section in ASSET_SECTIONS:
-            continue
-        top = library_files.SECTION_FOLDERS[section]
-        found += ["%s/%s" % (top, name) for name, (kind, detail) in (listing.get(top) or {}).items()
-                  if kind == library_files.RENDER and detail not in ids]
-    return found
+def _inline_folders(findings: dict, section: str, listing: dict, ids: set) -> None:
+    """Code's and Colors' folders no database lists; with no record, none can be recovered."""
+    top = library_files.SECTION_FOLDERS[section]
+    for asset_id, name in sorted(_asset_folders(listing, section).items()):
+        if asset_id not in ids:
+            findings["unlisted"].append({"section": section, "id": asset_id,
+                                         "folder": top + "/" + name, "record": None})
 
 
 def _orphan_versions(library_dir: str, listing: dict) -> list:
@@ -134,12 +133,9 @@ def _orphan_versions(library_dir: str, listing: dict) -> list:
         parts = library_files.split(folder)
         if len(parts) != 3:
             continue
-        if library_files.owns_assets(parts[0]) and parts[2] == library_files.VERSIONS:
-            owner = library_files.folder_id(parts[1])
-        elif parts[0] == library_files.CODE_FOLDER and parts[1] == library_files.VERSIONS:
-            owner = parts[2]
-        else:
+        if not (library_files.owns_assets(parts[0]) and parts[2] == library_files.VERSIONS):
             continue
+        owner = library_files.folder_id(parts[1])
         numbers = _ledger_numbers(os.path.join(library_dir, *parts))
         if owner and numbers is not None:
             found += ["%s/%s" % (folder, name) for name, (kind, _detail) in sorted(names.items())

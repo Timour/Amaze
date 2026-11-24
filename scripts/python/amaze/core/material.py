@@ -105,16 +105,18 @@ def _stamp_of(base: str) -> int:
         return 0
 
 
-def asset_dir(preferences, section: str, asset_id) -> str:
+def asset_dir(preferences, section: str, asset_id, name: str = "") -> str:
     """The asset's own folder, `<section folder>/<name>__<id>`; `PathOutsideBase` for an unsafe id."""
-    return folder_in(preferences.dir, section, asset_id)
+    return folder_in(preferences.dir, section, asset_id, name)
 
 
-def folder_in(library_dir: str, section: str, asset_id) -> str:
-    """`asset_dir` for a library folder: the asset's folder there, or the one it would get unnamed."""
+def folder_in(library_dir: str, section: str, asset_id, name: str = "") -> str:
+    """`asset_dir` for a library folder: the folder there, or the one a first write names `name`."""
     from amaze.helpers import hostos
+    if not is_safe_asset_id(asset_id):
+        raise hostos.PathOutsideBase("%r cannot name a folder" % (asset_id,))
     base = section_folder(library_dir, section)
-    return hostos.contained_join(base, _own_name(base, asset_id))
+    return hostos.contained_join(base, _own_name(base, asset_id, name))
 
 
 def listed_dir(library_dir: str, section: str, asset_id) -> str:
@@ -123,18 +125,14 @@ def listed_dir(library_dir: str, section: str, asset_id) -> str:
     return os.path.join(base, _own_name(base, asset_id))
 
 
-def _own_name(base: str, asset_id) -> str:
-    return _folders(base).get(str(asset_id)) or folder_name("", asset_id)
+def _own_name(base: str, asset_id, name: str = "") -> str:
+    return _folders(base).get(str(asset_id)) or folder_name(name, asset_id)
 
 
 def claim_asset_dir(preferences, section: str, asset_id, name) -> str:
     """The asset's folder, made as `<name>__<id>` when it has none: a first save names it."""
-    from amaze.helpers import hostos
-    found = asset_dir(preferences, section, asset_id)
-    if not os.path.isdir(found):
-        found = hostos.contained_join(section_folder(preferences.dir, section),
-                                      folder_name(name, asset_id))
-        os.makedirs(found, exist_ok=True)
+    found = asset_dir(preferences, section, asset_id, name)
+    os.makedirs(found, exist_ok=True)
     return found
 
 
@@ -146,13 +144,13 @@ def release_asset_dir(preferences, section: str, asset_id) -> None:
         pass
 
 
-def payload_path(preferences, asset_id, suffix: str, section: str) -> str:
+def payload_path(preferences, asset_id, suffix: str, section: str, name: str = "") -> str:
     """`<asset folder>/<id><suffix>`, checked whole: `PathOutsideBase` for a path or link leaving it."""
     from amaze.helpers import hostos
     if not is_safe_asset_id(asset_id):
         raise hostos.PathOutsideBase("%r cannot name a file" % (asset_id,))
     base = section_folder(preferences.dir, section)
-    return hostos.contained_join(base, _own_name(base, asset_id), str(asset_id) + suffix)
+    return hostos.contained_join(base, _own_name(base, asset_id, name), str(asset_id) + suffix)
 
 
 def category_names(value) -> list:

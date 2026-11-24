@@ -363,7 +363,7 @@ def _import_asset(models, prefs, bundle, entry, restore, summary, taken):
         row["categories"] = ["Import"]
     asset = model._asset_from_row(row)
     own = (material.claim_asset_dir(prefs, model.DB_FILENAME, asset.mat_id, asset.name)
-           if model.DB_FILENAME in library_files.ASSET_SECTIONS else "")
+           if model.DB_FILENAME in library_files.ASSET_SECTIONS or entry.get("files") else "")
     targets = model.asset_files(asset.mat_id)
     held = {}    # the builder's members, read into `<id>.json` rather than written as files
     written = []    # (asset_record.TAKE, target, scratch) and the record: committed with the row

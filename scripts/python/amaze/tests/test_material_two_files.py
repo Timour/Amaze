@@ -361,22 +361,6 @@ class OnePicturePerAssetTest(_Library):
         self.assertIsNotNone(model.shown_picture(row)[0], "no icon was composed")
 
 
-class PicturesLiveInTheirSectionTest(_Library):
-    """File captures are `files/<key hash>.png`; a comment's picture is in its section's `comments`."""
-
-    def test_a_new_comment_picture_is_written_to_its_section(self):
-        from amaze.core import captures, notes
-        source = write(os.path.join(test_support.scratch_dir("amaze_pic_"), "p.png"), b"png")
-        self.addCleanup(shutil.rmtree, os.path.dirname(source), True)
-        for section, folder in (("material", "materials"), ("gradient", "colors"),
-                                ("file", "files")):
-            src = notes.copy_image_into_library(self.prefs, source, notes.note_key(section, "X1"))
-            self.assertTrue(src.startswith(folder + "/comments/"), (section, src))
-            self.assertTrue(os.path.isfile(self.at(*src.split("/"))))
-        self.assertEqual("files", os.path.basename(os.path.dirname(
-            captures.file_path(self.prefs, "loc:L1/a.exr"))))
-
-
 class AFreshLibraryTest(unittest.TestCase):
     """A new library is created with a folder per asset section and no `mat/`."""
 

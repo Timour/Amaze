@@ -1,10 +1,10 @@
-"""Code versions use `versions.py`, as materials do: code/versions/<id>/, the same ledger."""
+"""Code versions use `versions.py`, as materials do: `versions/` in the asset folder, one ledger."""
 
 import json
 import os
 import sys
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6 import QtWidgets  # noqa: E402
@@ -17,7 +17,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import code_library, library_files, material, versions  # noqa: E402
+from amaze.core import code_library, library_files, versions  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
 FIRST, SECOND, THIRD = "@P.y += 1;\n", "@P.y += 2;\r\n", "@P.y += 3;\n"
@@ -38,7 +38,6 @@ class _Case(unittest.TestCase):
         self.assertTrue(self.model.add_asset(FIRST, "helper", "VEX", "Examples", "", False))
         self.row = len(self.model.assets) - 1
         self.mat_id = str(self.model.assets[self.row].mat_id)
-        self.store = os.path.join(self.prefs.dir, "code", "versions", self.mat_id)
 
     def _save(self, number, code, name):
         return self.model.save_version(self.row, number, code, name, "VEX", "Examples", "")
@@ -52,46 +51,6 @@ class _Case(unittest.TestCase):
         library_db.flush()
         with open(os.path.join(self.prefs.dir, library_files.CODE), encoding="utf-8") as handle:
             return json.load(handle)["assets"][self.mat_id]
-
-
-class TheCodeStoreIsBesideTheMaterialStore(_Case):
-
-    def test_a_code_version_is_one_text_file_with_the_ledger(self):
-        self.assertTrue(self._save(self.model.NEW_VERSION, SECOND, "helper fast"))
-        names = sorted(os.listdir(self.store))
-        self.assertIn(versions.LEDGER, names)
-        texts = [name for name in names if name.endswith(versions.CODE_SUFFIX)]
-        self.assertEqual(2, len(texts), "the original and the new version: %s" % names)
-        self.assertFalse(os.path.exists(os.path.join(
-            self.materials, "versions", self.mat_id)),
-            "a code version was written to the material store")
-
-    def test_a_snippet_id_never_names_a_folder_outside_the_code_versions(self):
-        from amaze.helpers import hostos
-        for unsafe in ("..", "../..", "../../outside"):
-            with self.assertRaises(hostos.PathOutsideBase, msg=unsafe):
-                versions.versions_dir(self.prefs, unsafe, versions.CODE)
-        inside = os.path.join(self.prefs.dir, "code", "versions", "X1")
-        self.assertEqual(os.path.normpath(inside),
-                         os.path.normpath(versions.versions_dir(self.prefs, "X1", versions.CODE)))
-
-    @property
-    def materials(self):
-        return material.section_folder(self.prefs.dir, library_files.MATERIALS)
-
-    def test_a_text_file_the_ledger_lacks_is_no_version(self):
-        """Only the ledger names a version; a file it does not name is an orphaned file."""
-        os.makedirs(self.store)
-        with open(os.path.join(self.store, "%s_4.txt" % self.mat_id), "w",
-                  encoding="utf-8") as handle:
-            handle.write(SECOND)
-        self.assertEqual([], self._listed(), "a file the ledger does not name became a version")
-
-    def test_a_code_version_is_named_by_its_id_and_number(self):
-        self.assertTrue(self._save(self.model.NEW_VERSION, SECOND, "helper fast"))
-        self.assertEqual(["%s_1.txt" % self.mat_id, "%s_2.txt" % self.mat_id],
-                         sorted(name for name in os.listdir(self.store)
-                                if name.endswith(versions.CODE_SUFFIX)))
 
 
 class TheEditorSavesVersions(_Case):
@@ -207,12 +166,6 @@ class TheModelHoldsCodeVersions(_Case):
         self.assertEqual((2, "helper fast"), shown(), "after a save the row still read its cached roles")
         self.assertTrue(self.model.switch_version(self.row, 1))
         self.assertEqual((2, "helper"), shown(), "after a select the row still read its cached roles")
-
-    def test_deleting_the_snippet_deletes_its_versions(self):
-        self._save(self.model.NEW_VERSION, SECOND, "helper fast")
-        with patch.object(hou, "ui", MagicMock(), create=True):
-            self.assertEqual(1, self.model.remove_rows([self.row]))
-        self.assertFalse(os.path.exists(self.store), "the snippet's versions were not deleted with it")
 
 
 class TheEditorWindowKeepsVersions(unittest.TestCase):

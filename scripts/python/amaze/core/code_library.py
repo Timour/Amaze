@@ -117,7 +117,7 @@ class CodeLibrary(library.AssetLibrary):
     TILE_FACE = "face_code"    # T05
 
     DB_FILENAME = library_files.CODE
-    VERSION_SECTION = versions.CODE    # code/versions/<id>/, the text handed in as a file
+    VERSION_SECTION = versions.CODE    # `versions/` in the snippet's folder, the text handed in as a file
     NEW_VERSION = 0    # save_version's number for a version the editor has not saved yet
 
     def add_asset(
@@ -210,6 +210,11 @@ class CodeLibrary(library.AssetLibrary):
         asset = self._assets[row]
         mat_id = str(asset.mat_id)
         name = str(name or "").strip() or asset.name    # a tile shows its active version's name
+        try:
+            material.claim_asset_dir(self.preferences, library_files.CODE, mat_id, asset.name)
+        except (OSError, ValueError) as exc:    # its folder could not be made: no version is
+            debug.event("versions", "code folder not made", mat_id=mat_id, error=str(exc))
+            return False
         held, typed = _staged(asset.code), _staged(code)
         try:
             if not (held and typed) or not versions.keep_base(
@@ -231,6 +236,7 @@ class CodeLibrary(library.AssetLibrary):
                     self.preferences, mat_id, number, name, versions.CODE)
         finally:
             _unstage(held, typed)
+            material.release_asset_dir(self.preferences, library_files.CODE, mat_id)    # if still empty
             self._versions_changed(asset)
 
     def switch_version(self, row: int, number: int) -> bool:

@@ -28,13 +28,12 @@ NOUNS = {MASTER: "user", MATERIALS: "material", NODES: "node", CODE: "snippet",
          COLORS: "color", FILES: "location"}    # what one counted entry is called
 ASSET_SECTIONS = (MATERIALS, NODES)    # whose rows have asset files
 
-VERSIONS = "versions"    # an asset folder's sub-folder of archives; Code's under its section folder
+VERSIONS = "versions"    # an asset folder's sub-folder of archives
 TEXTURES = "textures"    # an asset folder's textures, every one its own copy
 FOLDER_SEPARATOR = "__"    # an asset folder is `<name>__<id>`, found by the id after the last one
 FILES_FOLDER = "files"    # the Files section's: `files/<sha1 of the file's key>.png`, a file's capture
-CODE_FOLDER = SECTION_FOLDERS[CODE]
 PACKAGE_FOLDER = "matX"    # a permanent store: the check does not enter it, the audit looks for scratch only
-COMMENT_FOLDER = "comments"    # `<section folder>/comments/`: the pictures pasted into its comments
+COMMENT_FOLDER = "comments"    # pictures pasted into comments: `<asset folder>/comments/`, `files/comments/`
 DATABASE_FOLDERS = dict(SECTION_FOLDERS, **{FILES: FILES_FOLDER})    # every database, and its folder
 IMPORT_FOLDER = "import"    # where Package Import writes plain files: a File location, its contents the user's
 LEDGER = "versions.json"
@@ -58,14 +57,14 @@ OS_NOISE = (".DS_Store", "Thumbs.db", "desktop.ini", ".Spotlight-V100",    # the
 LIST = "list"    # the kinds that belong in a library
 JOURNAL_FILE = "journal"
 BACKUP = "backup"            # anything in `backup/`
-ASSET = "asset"              # `materials/<id>.mat`
-RECORD = "record"            # `materials/<id>.json`
+ASSET = "asset"              # `materials/<name>__<id>/<id>.mat`
+RECORD = "record"            # `materials/<name>__<id>/<id>.json`
 COMPANION = "companion"
-RENDER = "render"            # `materials/<name>__<id>/<id>.png`, the asset's one picture
+RENDER = "render"            # `<section>/<name>__<id>/<id>.png`, the asset's one picture
 TEXTURE = "texture"          # anything under an asset folder's `textures/`
-SOURCE = "source"            # any other file in an asset's folder: a download's `.mtlx`, USD, pictures
-FILE_CAPTURE = "file-capture"    # `captures/file_<40 hex>.png`
-COMMENT_IMAGE = "comment-image"    # `img/comments/<32 hex>.<ext>`
+SOURCE = "source"            # any other file in an asset's folder: its comments' pictures, a download's
+FILE_CAPTURE = "file-capture"    # `files/<40 hex>.png`
+COMMENT_IMAGE = "comment-image"    # `files/comments/<32 hex>.<ext>`
 VERSION = "version"
 VERSION_LEDGER = "ledger"
 PACKAGE = "package"
@@ -107,8 +106,8 @@ def section_of_folder(name: str) -> str:
 
 
 def owns_assets(top: str) -> bool:
-    """Whether top folder `top` is an asset section's folder."""
-    return section_of_folder(top) in ASSET_SECTIONS
+    """Whether top folder `top` is a section's folder, where each asset's files are in its own."""
+    return bool(section_of_folder(top))
 
 
 def is_safe_id(raw) -> bool:
@@ -167,7 +166,7 @@ def _in_asset_folder(rest: list, owner: str):
     if rest[0] == TEXTURES and len(rest) > 1:
         return TEXTURE, owner
     if len(rest) == 2 and rest[0] == VERSIONS:
-        return _version_folder(name, VERSION_SUFFIXES, owner) or (SOURCE, owner)
+        return _version_folder(name, VERSION_SUFFIXES + (CODE_VERSION_SUFFIX,), owner) or (SOURCE, owner)
     found = _asset_file(name) if len(rest) == 1 else None
     return found if found and found[1] == owner else (SOURCE, owner)    # a download's own files
 
@@ -183,10 +182,6 @@ def _asset_file(name: str):
             return kind, found
     return None
 
-
-def _picture(name: str):
-    found = asset_id(name, (PICTURE_SUFFIX,))
-    return (RENDER, found) if found else None
 
 
 def version_number(name: str, owner: str, suffixes: tuple):
@@ -216,13 +211,9 @@ def _folder(parts: list) -> bool:
             PACKAGE_FOLDER, IMPORT_FOLDER, BACKUP_FOLDER, TRASH_FOLDER)
     if top in (PACKAGE_FOLDER, TRASH_FOLDER):
         return True
-    if depth == 2 and parts[1] == COMMENT_FOLDER and top in DATABASE_FOLDERS.values():
+    if depth == 2 and parts[1] == COMMENT_FOLDER and top == FILES_FOLDER:
         return True
-    if owns_assets(top) and folder_id(parts[1]):
-        return True    # an asset folder, and any folder in it: all of it is the asset's
-    if top == CODE_FOLDER and parts[1] == VERSIONS:
-        return depth == 2 or (depth == 3 and parts[2].isalnum())
-    return False
+    return owns_assets(top) and bool(folder_id(parts[1]))    # an asset folder, and all in it
 
 
 def _plain(parts: list):
@@ -237,14 +228,10 @@ def _plain(parts: list):
         return _in_asset_folder(parts[2:], folder_id(parts[1]))
     if depth == 2 and owns_assets(top):
         return None    # an asset's files are in its own folder
-    if depth == 2 and section_of_folder(top):    # the Code and Colors folders hold at most a captured picture
-        return _picture(name)
     if depth == 2 and top == FILES_FOLDER:
         return (FILE_CAPTURE, "") if _FILE_CAPTURE.match(name) else None
-    if depth == 3 and parts[1] == COMMENT_FOLDER and top in DATABASE_FOLDERS.values():
+    if depth == 3 and parts[1] == COMMENT_FOLDER and top == FILES_FOLDER:
         return (COMMENT_IMAGE, "") if _COMMENT_IMAGE.match(name.lower()) else None
-    if depth == 4 and parts[1] == VERSIONS and parts[2].isalnum() and top == CODE_FOLDER:
-        return _version_folder(name, (CODE_VERSION_SUFFIX,), parts[2])
     return None
 
 

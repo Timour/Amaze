@@ -140,33 +140,41 @@ def changed(preferences, name: str) -> None:
 
 
 def _records(key: str, held: documents.Document):
-    """`also` for a section with asset files: each changed row's `<id>.json`, and its folder's name."""
-    if held.name not in library_files.ASSET_SECTIONS:
+    """`also` for a section database: each changed row's `<id>.json`, and its folder's name."""
+    if held.name not in library_files.SECTION_FOLDERS:
         return None
 
     def also(change):
-        from amaze.core import asset_record, material
+        from amaze.core import material
         for asset_id in held.changed("assets"):
             row = held.get("assets", asset_id)
             if row is None or not material.is_safe_asset_id(asset_id):
                 continue    # the delete itself removes a deleted row's files
             own = material.folder_in(held.guard.dir, held.name, asset_id)
-            path = os.path.join(own, asset_id + library_files.RECORD_SUFFIX)
-            if not os.path.exists(path) and not os.path.exists(
-                    os.path.join(own, asset_id + ".mat")):
-                continue    # no files of its own: nothing to rebuild a lost database from
-            if asset_record.unreadable(path):
+            if not os.path.isdir(own):
+                continue    # a snippet or color with no file yet has no folder
+            if held.name in library_files.ASSET_SECTIONS and not _record(change, held, own, asset_id, row):
                 continue
-            metadata = {field: value for field, value in row.items()
-                        if field not in documents.STAMPS}
-            if asset_record.read(path)[asset_record.METADATA] != metadata:
-                change.put_file(held.guard.inside(path), asset_record.with_sections(
-                    path, {asset_record.METADATA: metadata}))
             named = material.folder_name(row.get("name"), asset_id)
             if os.path.basename(own).lower() != named.lower():    # renamed: its folder follows the record; case alone is no move on every disk
                 change.move(held.guard.inside(own), held.guard.inside(
                     os.path.join(os.path.dirname(own), named)))
     return also
+
+
+def _record(change, held, own: str, asset_id: str, row: dict) -> bool:
+    """The row's metadata into its `<id>.json`; False with no network or record, or one unreadable."""
+    from amaze.core import asset_record
+    path = os.path.join(own, asset_id + library_files.RECORD_SUFFIX)
+    if not os.path.exists(path) and not os.path.exists(os.path.join(own, asset_id + ".mat")):
+        return False    # no files of its own: nothing to rebuild a lost database from
+    if asset_record.unreadable(path):
+        return False
+    metadata = {field: value for field, value in row.items() if field not in documents.STAMPS}
+    if asset_record.read(path)[asset_record.METADATA] != metadata:
+        change.put_file(held.guard.inside(path), asset_record.with_sections(
+            path, {asset_record.METADATA: metadata}))
+    return True
 
 
 def _save_one(key: str, held: documents.Document, also=None) -> documents.Saved:

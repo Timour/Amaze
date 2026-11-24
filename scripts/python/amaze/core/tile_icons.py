@@ -10,7 +10,7 @@ from PySide6 import QtCore, QtGui
 
 import amaze
 from amaze import amazetheme, messages
-from amaze.core import debug, library_files, material
+from amaze.core import debug, material
 from amaze.helpers import hostos
 
 ICON_DIR = amaze.package_file("ui", "feather")  # the icon set, joined by amaze.package_file
@@ -312,27 +312,17 @@ def _picture_name(preferences, asset_id) -> str:
     return str(asset_id) + (getattr(preferences, "img_ext", "") or ".png")
 
 
-def _picture_folder(preferences, asset_id: str, section: str) -> str:
-    """Where an asset's picture is, by a plain join: its own folder, or Code's and Colors' folder."""
-    if section in library_files.ASSET_SECTIONS:
-        return material.listed_dir(preferences.dir, section, asset_id)
-    return material.section_folder(preferences.dir, section)
-
-
-def thumbnail_path(preferences, asset_id: str, section: str) -> str:
-    """The asset's one picture, `<id>.png` in its folder, render or capture; contained."""
-    if section in library_files.ASSET_SECTIONS:
-        return material.payload_path(preferences, asset_id,
-                                     getattr(preferences, "img_ext", "") or ".png", section)
-    return hostos.contained_join(material.section_folder(preferences.dir, section),
-                                 _picture_name(preferences, asset_id))
+def thumbnail_path(preferences, asset_id: str, section: str, name: str = "") -> str:
+    """The asset's one picture, `<id>.png` in its folder, render or capture; `name` names a new one."""
+    return material.payload_path(preferences, asset_id,
+                                 getattr(preferences, "img_ext", "") or ".png", section, name)
 
 
 def tile_read_path(preferences, asset_id: str, section: str) -> str:
-    """A tile's picture path; empty for an unsafe id, which a plain join cannot contain."""
+    """A tile's picture path by a plain join; empty for an unsafe id, which a join cannot contain."""
     if not material.is_safe_asset_id(asset_id):
         return ""
-    return os.path.join(_picture_folder(preferences, asset_id, section),
+    return os.path.join(material.listed_dir(preferences.dir, section, asset_id),
                         _picture_name(preferences, asset_id))
 
 

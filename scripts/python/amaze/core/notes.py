@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import os
 import types
 import uuid
 
-from amaze.core import debug, library_db, library_files
+from amaze.core import debug, library_db, library_files, material, texstore
+from amaze.helpers import hostos
 
 SECTION = "comments"
 
@@ -155,29 +157,41 @@ def set_notes(preferences, pages: dict) -> bool:
     return taken
 
 
-def image_folder(database: str) -> str:
-    """`<section folder>/comments`, where the images of `database`'s comments are stored."""
-    return "%s/%s" % (library_files.DATABASE_FOLDERS[database], library_files.COMMENT_FOLDER)
-
-
 def copy_image_into_library(preferences, source: str, key: str) -> str:
-    """Copy image `source` into the comments folder of `key`'s section; its relative path, or empty."""
-    import os
-
+    """Copy image `source` into the comments folder of the asset `key` names, or of Files; its src."""
     library = str(getattr(preferences, "dir", "") or "")
-    database = _split(key)[0]
+    database, ident = _split(key)
     if not library or not database or not source or not os.path.isfile(source):
         return ""
-    extension = os.path.splitext(source)[1].lower() or ".png"
-    relative = "%s/%s%s" % (image_folder(database), uuid.uuid4().hex, extension)
+    name = uuid.uuid4().hex + (os.path.splitext(source)[1].lower() or ".png")
     try:
+        held = library_db.guard_of(preferences)
+        if database == library_files.FILES:
+            src = relative = "%s/%s/%s" % (library_files.FILES_FOLDER, library_files.COMMENT_FOLDER, name)
+        else:
+            row = _document(preferences, database).get("assets", ident) or {}
+            folder = material.folder_in(library, database, ident, row.get("name", ""))
+            relative = held.inside(os.path.join(folder, library_files.COMMENT_FOLDER, name))
+            src = texstore.OWN_PREFIX + library_files.COMMENT_FOLDER + "/" + name
         with open(source, "rb") as handle:
             data = handle.read()
-        change = library_db.guard_of(preferences).change(str(getattr(preferences,
-                                                                     "library_user", "")))
+        change = held.change(str(getattr(preferences, "library_user", "")))
         change.put_file(relative, data)
         change.commit()
-    except OSError as exc:
+    except (OSError, hostos.PathOutsideBase) as exc:
         debug.event("notes", "image not copied", source=source, error=str(exc))
         return ""
-    return relative
+    return src
+
+
+def image_path(library_dir: str, key: str, src: str) -> str:
+    """A comment picture's file: `$AMAZEASSET/` in its asset's own folder, else in the library."""
+    if not src or os.path.isabs(src):
+        return src or ""
+    if not src.startswith(texstore.OWN_PREFIX):
+        return os.path.join(library_dir or "", src)
+    database, ident = _split(key)
+    if not database or not material.is_safe_asset_id(ident):
+        return ""
+    return os.path.join(material.listed_dir(library_dir, database, ident),
+                        *src[len(texstore.OWN_PREFIX):].split("/"))

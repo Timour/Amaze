@@ -28,12 +28,11 @@ CODE_SUFFIX = ".txt"    # a code version is its snippet's text, one file
 
 
 class Section:
-    """Where one section keeps its versions, and the files one version holds."""
+    """One section whose assets keep versions in their own folders, and the files one version holds."""
 
-    __slots__ = ("folder", "kinds", "source_kinds", "database")
+    __slots__ = ("kinds", "source_kinds", "database")
 
-    def __init__(self, folder, kinds: tuple, source_kinds: dict, database: str) -> None:
-        self.folder = folder                # preferences -> the store's path parts in the library
+    def __init__(self, kinds: tuple, source_kinds: dict, database: str) -> None:
         self.kinds = kinds                  # ((suffix, required), ...)
         self.source_kinds = source_kinds    # asset_files() kind -> suffix; {}: the caller passes the files in
         self.database = database            # the section's database, which names its folder
@@ -43,35 +42,22 @@ class Section:
         return next(suffix for suffix, required in self.kinds if required)
 
 
-def _asset_section(database: str) -> Section:
-    return Section(None, _KINDS, SOURCE_KINDS, database)    # each store is in its asset's own folder
-
-
-MATERIAL = _asset_section(library_files.MATERIALS)
-NODE = _asset_section(library_files.NODES)
-CODE = Section(lambda preferences: (library_files.CODE_FOLDER, library_files.VERSIONS),
-               ((CODE_SUFFIX, True),), {}, "code.json")    # its text is in code.json
+MATERIAL = Section(_KINDS, SOURCE_KINDS, library_files.MATERIALS)
+NODE = Section(_KINDS, SOURCE_KINDS, library_files.NODES)
+CODE = Section(((CODE_SUFFIX, True),), {}, library_files.CODE)    # its text is in code.json
 
 
 def versions_dir(preferences, mat_id: str, section: Section = MATERIAL) -> str:
-    """`<asset folder>/versions/`, or Code's `code/versions/<id>/`; contained like every id path."""
-    if section.database in library_files.ASSET_SECTIONS:
-        return os.path.join(material.asset_dir(preferences, section.database, mat_id),
-                            library_files.VERSIONS)
-    return hostos.contained_join(
-        os.path.join(preferences.dir, *section.folder(preferences)), str(mat_id))
+    """`<asset folder>/versions/`; contained like every id path."""
+    return os.path.join(material.asset_dir(preferences, section.database, mat_id),
+                        library_files.VERSIONS)
 
 
 def stored_ids(preferences, section: Section = MATERIAL) -> set:
-    """The ids with a version store: asset folders holding `versions/`, or Code's store listing."""
-    if section.database in library_files.ASSET_SECTIONS:
-        return {owner for owner, folder in material.asset_ids_with_folders(
-            preferences, section.database).items()
-            if os.path.isdir(os.path.join(folder, library_files.VERSIONS))}
-    try:
-        return set(os.listdir(os.path.join(preferences.dir, *section.folder(preferences))))
-    except OSError:
-        return set()
+    """The ids whose asset folder holds `versions/`."""
+    return {owner for owner, folder in material.asset_ids_with_folders(
+        preferences, section.database).items()
+        if os.path.isdir(os.path.join(folder, library_files.VERSIONS))}
 
 
 def _ledger_path(preferences, mat_id: str, section: Section = MATERIAL) -> str:

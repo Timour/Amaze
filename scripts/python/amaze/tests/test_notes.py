@@ -1406,18 +1406,6 @@ class ThePictureButtonIsActuallyRun(unittest.TestCase):
 
         return mock.patch.object(hou, "ui", _Ui, create=True)
 
-    def test_clicking_it_copies_and_inserts(self):
-        picked = self._a_picture_on_disk()
-        with self._fake_ui(picked):
-            self._menu_entry("Image").trigger()
-
-        items = self.widget.text_edit.serialize()
-        pictures = [i for i in items if i.get("t") == "image"]
-        self.assertEqual(1, len(pictures), items)
-        landed = os.path.join(self.prefs.dir, *pictures[0]["src"].split("/"))
-        self.assertTrue(os.path.isfile(landed),
-                        "the picture was not copied into the library")
-
     def test_cancelling_the_picker_adds_nothing(self):
         seen = {}
         with self._fake_ui("", seen):
@@ -1454,16 +1442,6 @@ class APictureIsCOPIEDIntoTheLibrary(unittest.TestCase):
         return path
 
     KEY = "material:X1"    # the comment the picture is added to: it is copied to its section's folder
-
-    def test_the_file_is_copied_into_its_section_s_comments(self):
-        original = self._a_picture_outside_the_library()
-        self.assertEqual(self.KEY, self.notes.note_key("material", "X1"), "premise: the key's shape")
-        src = self.notes.copy_image_into_library(self.prefs, original, self.KEY)
-        self.assertTrue(src.startswith("materials/comments/"), src)
-        landed = os.path.join(self.prefs.dir, *src.split("/"))
-        self.assertTrue(os.path.isfile(landed), "nothing was copied in")
-        self.assertTrue(os.path.isfile(original),
-                        "copying a picture into the library MOVED the user's own file")
 
     def test_two_pictures_of_the_same_name_do_not_collide(self):
         first = self.notes.copy_image_into_library(

@@ -16,7 +16,6 @@ from amaze.core import material
 from amaze.core import multifilterproxy_model
 from amaze.core import thumbnails
 from amaze.core import tile_icons
-from amaze.helpers import hostos
 from amaze import messages
 
 THUMB_SIZE = 256
@@ -256,13 +255,6 @@ class GradientLibrary(library.AssetLibrary):
                 key="colors-not-saved")
             return
         self.row_changed(0)
-
-    def _owned_paths(self, mat_id) -> list:
-        """A palette has at most one file, its captured picture: the rest is stored inline."""
-        try:
-            return list(self.asset_files(mat_id).values())
-        except hostos.PathOutsideBase:
-            return []
 
     def _report_refused_delete(self, asset) -> None:
         """A palette's failed delete, reported with the Colors section's message."""

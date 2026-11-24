@@ -38,13 +38,6 @@ def as_stored(record: dict) -> dict:
     return json.loads(json.dumps(record, sort_keys=True))
 
 
-def _picture_sources(page) -> list:
-    """The library-relative path of each picture a comment page shows."""
-    items = page.get("items") if isinstance(page, dict) else None
-    return [str(item["src"]) for item in items or ()
-            if isinstance(item, dict) and item.get("src")]
-
-
 class ListNotSaved(str):
     """The return value of a save whose files were written but whose list entry was not saved."""
 
@@ -185,10 +178,11 @@ class AssetLibrary(grid_engine.GridEngine,
         """Where a capture of this row is written: its one picture; "" for no row or an unsafe id."""
         if not 0 <= row < len(self._assets):
             return ""
-        mat_id = str(self._assets[row].mat_id)
+        asset = self._assets[row]
+        mat_id = str(asset.mat_id)
         if not material.is_safe_asset_id(mat_id):
             return ""
-        return tile_icons.thumbnail_path(self.preferences, mat_id, self.DB_FILENAME)
+        return tile_icons.thumbnail_path(self.preferences, mat_id, self.DB_FILENAME, asset.name)
 
     def _on_capture_saved(self, key) -> None:
         """A capture was saved for `key`: refresh that tile's paths, drop its cached picture, repaint."""
@@ -228,8 +222,6 @@ class AssetLibrary(grid_engine.GridEngine,
         self.rows_reordered()
 
     def _current_folders_stamp(self) -> int:
-        if self.DB_FILENAME not in library_files.ASSET_SECTIONS:
-            return 0
         return material.folders_stamp(self.preferences, self.DB_FILENAME)
 
     def _picture_paths_current(self) -> None:
@@ -880,15 +872,12 @@ class AssetLibrary(grid_engine.GridEngine,
         return held
 
     def asset_directories(self, mat_id: str) -> dict:
-        """{kind: absolute path} of every directory of asset `mat_id`: its folder, or Code's store."""
+        """{kind: absolute path} of every directory of asset `mat_id`: its own folder."""
         mat_id = str(mat_id)
         if not material.is_safe_asset_id(mat_id):
             return {}
         try:
-            if self.DB_FILENAME in library_files.ASSET_SECTIONS:
-                return {"folder": material.asset_dir(self.preferences, self.DB_FILENAME, mat_id)}
-            return {"versions": versions.versions_dir(
-                self.preferences, mat_id, self.VERSION_SECTION)}
+            return {"folder": material.asset_dir(self.preferences, self.DB_FILENAME, mat_id)}
         except hostos.PathOutsideBase as exc:  # no valid directory path; must not raise out of remove_asset
             debug.event("library", "version store path refused",
                         mat_id=mat_id, error=str(exc))
@@ -917,12 +906,7 @@ class AssetLibrary(grid_engine.GridEngine,
         self.rebuild_thumbs()
         with library_db.library_for(self.preferences).holding():
             self._stage_rows(self._doc())
-            taken = self._unlist_what_belongs(going)
-        folder = "%s/%s/" % (library_files.DATABASE_FOLDERS[self.DB_FILENAME],
-                             library_files.COMMENT_FOLDER)
-        owned += [src for _key, (page, _icon, _star) in taken.items()
-                  for src in _picture_sources(page) if src.startswith(folder)
-                  and os.path.lexists(guard.path(*src.split("/")))]
+            taken = self._unlist_what_belongs(going)    # its comments' pictures are in its folder
 
         def trash(change):
             for relative in owned:
@@ -935,11 +919,8 @@ class AssetLibrary(grid_engine.GridEngine,
         return len(going)
 
     def _owned_paths(self, mat_id) -> list:
-        """What a delete trashes: an asset's whole folder, or Code's and Colors' files and store."""
-        folders = list(self.asset_directories(mat_id).values())
-        if self.DB_FILENAME in library_files.ASSET_SECTIONS:
-            return folders
-        return list(self.asset_files(mat_id).values()) + folders
+        """What a delete trashes: the asset's whole folder."""
+        return list(self.asset_directories(mat_id).values())
 
     def _report_refused_delete(self, asset) -> None:
         """Tell the user a delete did not happen because the list could not be written."""
