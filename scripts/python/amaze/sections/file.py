@@ -567,8 +567,6 @@ class FileSection(FolderSection):
             kind = (index.data(file_library.FileFiles.KindRole)
                     or file_library.kind_for(os.path.basename(source)))
             items.append(packages.collect_file(source, kind))
-        if not items:
-            return 0
         return packages.write_package(path, items)
 
     def click_import_geo(self, index) -> bool:

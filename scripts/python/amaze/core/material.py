@@ -73,6 +73,13 @@ def payload_path(preferences, asset_id, suffix: str, section: str) -> str:
     return owned_path(preferences, section, "", str(asset_id) + suffix)
 
 
+def category_names(value) -> list:
+    """A record's `categories` as a list of names; a string is one name, its commas included."""
+    if not isinstance(value, (list, tuple)):
+        value = [value] if isinstance(value, str) else []
+    return [name.strip() for name in value if isinstance(name, str) and name.strip()]
+
+
 class Material:
     """One asset record; keys in `_RETIRED_KEYS` are dropped on load, unknown keys kept."""
 
@@ -286,10 +293,7 @@ class Material:
 
     @categories.setter
     def categories(self, cats) -> None:
-        if not isinstance(cats, (list, tuple)):
-            cats = [cats or ""]    # a string is ONE name, its commas included
-        found = [str(c).strip() for c in cats if str(c).strip()]
-        self._cats = found[:1]
+        self._cats = category_names(cats)[:1]
 
     def remove_category(self, cat: str) -> None:
         if cat in self._cats:

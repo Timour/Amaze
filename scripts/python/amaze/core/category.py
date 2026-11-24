@@ -124,16 +124,8 @@ class Categories(sidebar_model.SidebarModel):
                 if not self._asset_matches_renderer(asset):
                     continue
                 total += 1
-                cats = asset.get("categories", [])
-                if isinstance(cats, str):
-                    cats = [cats]    # one name, its commas included
-                seen = set()
-                for cat in cats:
-                    if isinstance(cat, str):
-                        cleaned = cat.strip()
-                        if cleaned and cleaned not in seen:
-                            seen.add(cleaned)
-                            counts[cleaned] = counts.get(cleaned, 0) + 1
+                for name in set(material.category_names(asset.get("categories"))):
+                    counts[name] = counts.get(name, 0) + 1
             counts["_All"] = total
             self._count_cache = counts
         if raw_name == "_All":

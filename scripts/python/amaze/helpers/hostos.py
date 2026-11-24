@@ -949,6 +949,16 @@ def safe_filename(name: str, fallback: str = "unnamed") -> str:
     return cleaned
 
 
+def free_name(folder: str, name: str, taken=os.path.exists) -> str:
+    """`folder/name`, else `name_1`, `name_2`... before the extension: the first `taken` says is free."""
+    stem, ext = os.path.splitext(name)
+    target, bump = os.path.join(folder, name), 0
+    while taken(target):
+        bump += 1
+        target = os.path.join(folder, "%s_%d%s" % (stem, bump, ext))
+    return target
+
+
 def bundled_binary(hfs: str, name: str) -> str | None:
     """Absolute path of a binary in Houdini's own bin folder, or None."""
     path = os.path.join(hfs or "", "bin", name)

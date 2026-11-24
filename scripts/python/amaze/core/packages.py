@@ -73,7 +73,10 @@ def collect_file(path: str, kind: str) -> dict:
 
 
 def write_package(out_path: str, items) -> int:
-    """Write collector items as one package, in one atomic step; returns how many entries went in."""
+    """Write collector items as one package, in one atomic step; how many went in, 0 writes nothing."""
+    items = list(items)
+    if not items:
+        return 0
     hostos.check_sandbox(out_path)
     entries = []
     payload = []
@@ -235,8 +238,6 @@ def read_manifest(path: str) -> dict:
 
 def import_package(models, prefs, path: str, restore: bool = False) -> dict:
     """Import a package, new ids under `Import` or own ids with `restore`; PackageError if incomplete."""
-    if not getattr(prefs, "dir", ""):
-        raise PackageError("no library set - nowhere to import into")
     try:
         bundle = zipfile.ZipFile(path)
     except (OSError, zipfile.BadZipFile) as exc:
@@ -338,9 +339,8 @@ def _commit_assets(prefs, staged, summary) -> None:
             section = str(entry.get("section") or "")
             if page.get("items"):
                 pages[notes.note_key(section, asset.mat_id)] = page["items"]
-            cats = row.get("categories") or []
             summary["categories"].setdefault(section, set()).update(
-                [cats] if isinstance(cats, str) else cats)
+                material.category_names(row.get("categories")))
             summary["imported"] += 1
     if not pages:
         return
@@ -441,14 +441,8 @@ def _staged_builder(model, mat_id, held: dict) -> list:
 
 def _import_file(prefs, bundle, entry, summary) -> None:
     """One plain-file entry into `<library>/import/`, a numbered suffix avoiding an existing name."""
-    folder = os.path.join(prefs.dir, "import")
-    name = os.path.basename(str(entry.get("name") or "package_file"))
-    target = os.path.join(folder, name)
-    stem, ext = os.path.splitext(name)
-    bump = 0
-    while os.path.exists(target):
-        bump += 1
-        target = os.path.join(folder, "%s_%d%s" % (stem, bump, ext))
+    target = hostos.free_name(os.path.join(prefs.dir, "import"),
+                              os.path.basename(str(entry.get("name") or "package_file")))
     asset_record.commit_staged_files(prefs, [_staged_member(bundle, entry["arc"], target)])
     summary["files"] += 1
 

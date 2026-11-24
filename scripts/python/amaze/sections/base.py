@@ -505,10 +505,8 @@ class AssetSection(Section):
         """Write the selected rows into one `.amazepkg`; returns the entry count."""
         from amaze.core import packages
         model, rows = self._model_and_rows(indexes)
-        items = [packages.collect_asset(model, model.assets[row].mat_id) for row in rows]
-        if not items:
-            return 0
-        return packages.write_package(path, items)
+        return packages.write_package(
+            path, [packages.collect_asset(model, model.assets[row].mat_id) for row in rows])
 
     def export_category_to(self, category, path: str) -> int:
         """Sidebar export: write the assets in `category` (None: all) into one package."""
@@ -516,17 +514,9 @@ class AssetSection(Section):
         from amaze.core import packages
         if st is None:
             return 0
-        items = []
-        for asset in st.model.assets:
-            cats = asset.categories
-            if isinstance(cats, str):    # the record field is "" for none and may be a single name - `in` on a string would substring-match
-                cats = [cats] if cats else []
-            if category is None or category in cats:
-                items.append(packages.collect_asset(st.model,
-                                                    asset.mat_id))
-        if not items:
-            return 0
-        return packages.write_package(path, items)
+        return packages.write_package(path, [
+            packages.collect_asset(st.model, asset.mat_id) for asset in st.model.assets
+            if category is None or category in asset.categories])
 
     exports_categories = True
 

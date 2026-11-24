@@ -135,16 +135,10 @@ def resolve_parms(node, prefs, write_path=None) -> int:
 
 def _target_path(destination: str, source: str, waiting=None) -> str:
     """`source`'s basename, numbered while a different file has it, on disk or `waiting` to go."""
-    name = hostos.safe_filename(os.path.basename(source))
-    target = os.path.join(destination, name)
-    stem, ext = os.path.splitext(name)
-    bump = 0
-    while True:
+    def taken(target):
         there = (waiting or {}).get(target) or (target if os.path.exists(target) else "")
-        if not there or filecmp.cmp(source, there, shallow=False):
-            return target
-        bump += 1
-        target = os.path.join(destination, "%s_%d%s" % (stem, bump, ext))
+        return bool(there) and not filecmp.cmp(source, there, shallow=False)
+    return hostos.free_name(destination, hostos.safe_filename(os.path.basename(source)), taken)
 
 
 def _set(parm, value: str, root) -> bool:
