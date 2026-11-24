@@ -3,6 +3,7 @@
 import math
 import os
 import re
+import time
 
 from PySide6 import QtWidgets, QtCore, QtGui, QtQml, QtQuick, QtSvg
 
@@ -34,6 +35,93 @@ def name_tag_pixmap(name: str) -> QtGui.QPixmap:
     label.adjustSize()
     label.ensurePolished()
     return label.grab()
+
+
+def cursor_overlay(text: str = "") -> QtWidgets.QLabel:
+    """Frameless, always-on-top, click-through label: the window every cursor overlay is."""
+    label = QtWidgets.QLabel(text)
+    label.setWindowFlags(    # WindowTransparentForInput is the OS-level click-through ▸r/qt-windows-macos
+        QtCore.Qt.WindowType.ToolTip
+        | QtCore.Qt.WindowType.FramelessWindowHint
+        | QtCore.Qt.WindowType.WindowStaysOnTopHint
+        | QtCore.Qt.WindowType.WindowDoesNotAcceptFocus
+        | QtCore.Qt.WindowType.WindowTransparentForInput
+    )
+    label.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+    label.setAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating)    # showing it never activates
+    return label
+
+
+class DragMarks:
+    """What a drag shows at the cursor, for both panes: its name tag, and a miss's red X."""
+
+    MISS_MS = 167    #: how long the red X stays on screen (ms) ▸r/qt-windows-macos
+    MISS_ICON, MISS_COLOUR = "icon_drop_miss.svg", "#ff3319"
+
+    def __init__(self) -> None:
+        self._tag = None
+        self._miss = None    # one window, reused for every miss
+        self._miss_serial = 0    # stops a stale timer hiding a newer miss
+
+    def show_tag(self, name: str) -> None:
+        tag = self._tag = cursor_overlay(str(name or ""))
+        tag.setStyleSheet(DRAG_TAG_STYLE)    # as `name_tag_pixmap` draws it: every drag tag alike
+        tag.adjustSize()
+        self.move_tag()
+        tag.show()
+
+    def move_tag(self) -> None:
+        if self._tag is not None:
+            pos = QtGui.QCursor.pos()
+            self._tag.move(pos.x() + theme.ui_px(12), pos.y() + theme.ui_px(14))    # where Qt's file tag sits
+
+    def tag_shown(self, shown: bool) -> None:
+        if self._tag is not None:
+            self._tag.setVisible(shown)
+
+    @staticmethod
+    def tag_picture(name: str) -> QtGui.QPixmap:
+        return name_tag_pixmap(name)
+
+    def hide_tag(self) -> None:
+        tag, self._tag = self._tag, None
+        if tag is not None:
+            tag.hide()
+            tag.close()
+            tag.deleteLater()
+
+    def show_miss(self) -> None:
+        """The red X at the cursor for MISS_MS."""
+        size = theme.ui_px(22)
+        pixmap = render_svg_pixmap(amaze.package_file("ui", self.MISS_ICON), size,
+                                   {"currentColor": self.MISS_COLOUR})
+        if pixmap.isNull():
+            return
+        label = self._miss
+        if label is None:
+            label = self._miss = cursor_overlay()
+            label.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground)
+        label.setPixmap(pixmap)
+        label.adjustSize()
+        pos = QtGui.QCursor.pos()
+        label.move(pos.x() - size // 2, pos.y() - size // 2)
+        label.show()
+        shown_at = time.time()
+        self._miss_serial += 1
+        serial = self._miss_serial
+
+        def done(window=label):
+            """Hide the X, unless a newer miss took the window since."""
+            if self._miss_serial != serial:
+                return
+            debug.event("drag", "indicator hidden", shown_ms=round((time.time() - shown_at) * 1000))
+            try:
+                window.clear()
+                window.hide()
+            except RuntimeError:
+                pass
+
+        QtCore.QTimer.singleShot(self.MISS_MS, done)
 
 
 _svg_image_cache: dict = {}    # rendered ui/ SVGs keyed by (name, side); a stored False means tried and failed

@@ -6,9 +6,7 @@ import hou
 from amaze.core import debug
 from amaze.helpers import helpers, theme
 from amaze.helpers import ui_helpers
-from amaze import sections
-from amaze.sections import base as section_base
-from amaze.render import cop_nodes
+from amaze.pane import drag_session
 
 
 def _find_panel(widget: QtWidgets.QWidget):
@@ -22,21 +20,17 @@ def _find_panel(widget: QtWidgets.QWidget):
 
 
 class GridGestureMixin:
-    """The self-managed drag gesture, mixed into both views. ▸r/pick-boundary ▸r/native-drag-paint"""
-
-    DRAG_SECTIONS = ("material", "gradient", "cop", "code", "file")    #: every section whose rows can start a drag; drop behaviour is per section (section_base.DropRule)
+    """The press that starts a drag, mixed into both views; the drag is the view's `drag_session`."""
 
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
-        self._drag_start = None    # None whenever no left-button press is in progress
+        self._drag_start = None    # None whenever no left press may still start a drag
         self._drag_section = None
         self._drag_index = None
         self._drag_panel = None    # cached at press, so the gesture never re-walks the widget tree per move
-        self._dragging = False
         self._ended_early = False    # the left press whose drag Esc, another button or an error ended: its moves go nowhere
-        self._preview = None
+        self.drag = drag_session.DragSession(self, ui_helpers.DragMarks())
         super().__init__(parent)
 
-    INDICATOR_MS = 167    #: how long an outcome icon stays on screen (ms) ▸r/qt-windows-macos
     WHEEL_NOTCH_PX = theme.ui_px(60)    #: classic wheel px per notch, through the UI scale
 
     @debug.guarded("DragDropListView.wheelEvent")
@@ -100,26 +94,19 @@ class GridGestureMixin:
 
     @debug.guarded("DragDropListView.mousePressEvent")
     def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
-        if self._dragging:
+        if self.drag.running:
             event.accept()    # a stray right/middle press mid-gesture must not clear live drag state
             return
         self._ended_early = False
         panel = _find_panel(self)
-        section = (
-            panel.pane.current_section if panel is not None else None
-        )
-        online = bool(panel is not None and panel.pane.is_online())    # an online row is a catalogue entry with no node and no file
+        section = panel.pane.current_section if panel is not None else None
         point = event.position().toPoint()    # whole pixels, converted once: everything downstream is integer geometry
-        if (
-            event.button() == QtCore.Qt.MouseButton.LeftButton
-            and not online
-            and section in self.DRAG_SECTIONS
-            and self.indexAt(point).isValid()    # only over a real item
-        ):
+        index = self.indexAt(point)
+        if (event.button() == QtCore.Qt.MouseButton.LeftButton and panel is not None
+                and drag_session.drags(panel.pane, section) and index.isValid()):    # only over a real item
             self._drag_start = point
             self._drag_section = section
-            self._drag_index = QtCore.QPersistentModelIndex(    # THE ROW, not the cell ▸r/row-selection
-                self.indexAt(point).siblingAtColumn(0))    # persistent: it stays valid across a model reset
+            self._drag_index = QtCore.QPersistentModelIndex(index.siblingAtColumn(0))    # THE ROW ▸r/row-selection
             self._drag_panel = panel
         else:
             self._drag_start = None
@@ -142,110 +129,40 @@ class GridGestureMixin:
 
     @debug.guarded("DragDropListView.mouseMoveEvent")
     def mouseMoveEvent(self, event: QtGui.QMouseEvent) -> None:
-        """Update the drag; a File row over a Parameters pane becomes a QDrag. ▸r/pick-boundary"""
+        """Past the drag distance the press begins a drag, which then takes every move. ▸r/pick-boundary"""
         if self._ended_early:
             if event.buttons() & QtCore.Qt.MouseButton.LeftButton:
                 event.accept()    # Qt still holds the press: a move it saw would start its own drag of the tile
                 return
             self._ended_early = False
+        if self.drag.running:
+            self._follow_drag()
+            return
         if self._drag_start is not None:
-            moved = (event.position().toPoint()
-                     - self._drag_start).manhattanLength()
-            if not self._dragging and moved >= (
-                QtWidgets.QApplication.startDragDistance()
-            ):
+            moved = (event.position().toPoint() - self._drag_start).manhattanLength()
+            if moved >= QtWidgets.QApplication.startDragDistance():
                 self._begin_drag()
-            if self._dragging:
-                try:
-                    self._follow_drag()
-                except Exception:    # logged by the guard, which re-raises: the drag does not stay half on
-                    self._end_drag(miss=True)
-                    self._end_press_early()
-                    raise
+                self._follow_drag()
             return
         super().mouseMoveEvent(event)
 
-    def _follow_drag(self) -> None:
-        """One move of a running drag: the tag, the drop targets and the highlight follow."""
-        from amaze.core import dragengine
-        if self._switch_to_qdrag_over_parm_pane():
-            return
-        self._move_preview()
-        if self._drag_panel is None:
-            return
-        pane_tab, pane_kind, _fresh = dragengine.pane_under_cursor_tracked()    # one lookup per move ▸p/drag-move-cost
-        self._drag_panel._update_category_drag_hover_global()
-        dragengine.hover_update(self._drag_panel, self._drag_section, pane_tab, pane_kind)
-        self._update_drop_outline(self._drag_panel, pane_tab, pane_kind)    # the outline; _end_drag clears it
-
-    def _overlay_label(self, text: str = "") -> QtWidgets.QLabel:
-        """Frameless, always-on-top, click-through label - the shared window setup for cursor overlays."""
-        label = QtWidgets.QLabel(text)
-        label.setWindowFlags(    # WindowTransparentForInput is the OS-level click-through ▸r/qt-windows-macos
-            QtCore.Qt.WindowType.ToolTip
-            | QtCore.Qt.WindowType.FramelessWindowHint
-            | QtCore.Qt.WindowType.WindowStaysOnTopHint
-            | QtCore.Qt.WindowType.WindowDoesNotAcceptFocus
-            | QtCore.Qt.WindowType.WindowTransparentForInput
-        )
-        label.setAttribute(
-            QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents
-        )
-        label.setAttribute(    # showing the overlay never touches activation
-            QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating
-        )
-        return label
-
-    def _drag_row(self):
-        """The pressed row as an index, None once it was removed from the model during the drag."""
-        row = self._drag_index
-        if row is None or not row.isValid():
-            return None
-        return QtCore.QModelIndex(row)
-
     def _begin_drag(self) -> None:
-        """Start the self-managed drag for any DRAG_SECTIONS row: a name tag following the cursor."""
-        from amaze.core import dragengine
-        self._dragging = True
-        dragengine.begin(self._drag_section or "")
-        self.grabKeyboard()    # Esc reaches keyPressEvent whatever has the focus; released in _end_drag
-        QtWidgets.QApplication.instance().applicationStateChanged.connect(self._on_application_state)
-        name = ""
-        index = self._drag_row()
-        if index is not None:
-            name = index.data(QtCore.Qt.ItemDataRole.DisplayRole) or ""
-        label = self._overlay_label(str(name))
-        label.setStyleSheet(ui_helpers.DRAG_TAG_STYLE)    # shared with the native drags' pixmap, so every drag tag looks identical
-        label.adjustSize()
-        self._preview = label
-        self._move_preview()
-        label.show()
+        """The pressed row's drag begins; this press starts no other."""
+        panel, row = self._drag_panel, self._drag_index
+        self._drag_start = None
+        name = row.data(QtCore.Qt.ItemDataRole.DisplayRole) if row.isValid() else ""
+        self.drag.begin(panel.pane, self._drag_section, row, name, sidebar=PanelSidebar(panel))
 
-    def _end_drag(self, miss: bool = False) -> None:
-        """The one end of a drag, for every way out: what the drag set is taken back."""
-        from amaze.core import dragengine
-        if not self._dragging:
-            return
-        self._dragging = False
-        self.releaseKeyboard()
+    def _follow_drag(self) -> None:
         try:
-            QtWidgets.QApplication.instance().applicationStateChanged.disconnect(
-                self._on_application_state)
-        except (RuntimeError, TypeError):
-            pass    # not connected: the drag was not begun through _begin_drag
-        dragengine.end()
-        if self._drag_panel is not None:
-            self._drag_panel._set_drag_hover_row(-1)
-        self._finish_preview(not miss)
-
-    def _on_application_state(self, state) -> None:
-        """The name tag is hidden while another application is in front."""
-        if self._preview is not None:
-            self._preview.setVisible(state == QtCore.Qt.ApplicationState.ApplicationActive)
+            self.drag.move()
+        except Exception:    # the drag ended itself; the guard logs it
+            self._end_press_early()
+            raise
 
     def keyPressEvent(self, event: QtGui.QKeyEvent) -> None:
-        if self._dragging and event.key() == QtCore.Qt.Key.Key_Escape:
-            self._end_drag()
+        if self.drag.running and event.key() == QtCore.Qt.Key.Key_Escape:
+            self.drag.cancel()
             self._end_press_early()
             event.accept()
             return
@@ -257,120 +174,19 @@ class GridGestureMixin:
         self._ended_early = True
 
     def hideEvent(self, event: QtGui.QHideEvent) -> None:
-        self._end_drag()    # a view hidden or closed mid-drag gets no release
+        self.drag.cancel()    # a view hidden or closed mid-drag gets no release
         self._end_press_early()    # nor a hover after it may start one
         super().hideEvent(event)
-
-    def _move_preview(self) -> None:
-        if self._preview is not None:
-            pos = QtGui.QCursor.pos()
-            self._preview.move(    # below-right of the cursor, where the native file-drag tag sits
-                pos.x() + theme.ui_px(12), pos.y() + theme.ui_px(14)
-            )
-
-    def _finish_preview(self, outcome) -> None:
-        """Remove the name tag at once; a failed drop also shows a red X at the cursor."""
-        preview = self._preview
-        self._preview = None
-        if preview is not None:
-            preview.hide()
-            preview.close()
-            preview.deleteLater()
-        if not outcome:
-            self._show_drop_indicator("icon_drop_miss.svg", "#ff3319")
-
-    def _show_drop_indicator(self, icon_file: str, color: str) -> None:
-        """Show the drop outcome as a small icon at the cursor for INDICATOR_MS."""
-        panel = self._drag_panel
-        if panel is None:
-            return
-        path = panel._ui_icon_path(icon_file)
-        size = theme.ui_px(22)
-        pm = ui_helpers.render_svg_pixmap(
-            path, size, {"currentColor": color}
-        )
-        if pm.isNull():
-            return
-        label = getattr(self, "_indicator_label", None)    # one persistent window per view, reused for every drop
-        if label is None:
-            label = self._overlay_label()
-            label.setAttribute(
-                QtCore.Qt.WidgetAttribute.WA_TranslucentBackground
-            )
-            self._indicator_label = label
-        label.setPixmap(pm)
-        label.adjustSize()
-        pos = QtGui.QCursor.pos()
-        label.move(pos.x() - size // 2, pos.y() - size // 2)
-        label.show()
-
-        import time as _time    # the serial stops a stale timer hiding a newer drop's icon
-        shown_at = _time.time()
-        self._indicator_serial = getattr(self, "_indicator_serial", 0) + 1
-        my_serial = self._indicator_serial
-
-        def _done(w=label):
-            if self._indicator_serial != my_serial:
-                return
-            debug.event(
-                "drag", "indicator hidden",
-                shown_ms=round((_time.time() - shown_at) * 1000),
-            )
-            try:
-                w.clear()
-                w.hide()
-            except RuntimeError:
-                pass
-
-        QtCore.QTimer.singleShot(self.INDICATOR_MS, _done)
-
-    def _switch_to_qdrag_over_parm_pane(self) -> bool:
-        """Switch a File row drag over a Parameters pane to a real QDrag; Qt then runs the drag."""
-        if self._drag_section != "file":
-            return False
-        ui = getattr(hou, "ui", None)
-        if ui is None:
-            return False
-        try:
-            pane = ui.paneTabUnderCursor()
-        except AttributeError:
-            return False
-        if pane is None or pane.type() != hou.paneTabType.Parm:
-            return False
-        self._end_drag()    # a switch to QDrag, not a failed drop: no red X
-        self._drag_start = None
-        self._run_file_path_drag()
-        return True
-
-    @staticmethod
-    def _file_drag_mime(panel, path: str) -> QtCore.QMimeData:
-        """File-path drag mime: the path per Write Paths As as text, no URL. ▸r/drag-file-url"""
-        mime_data = QtCore.QMimeData()
-        mime_data.setText(helpers.houdini_path(
-            path, getattr(panel.pane.prefs, "path_style", "home")))
-        return mime_data
-
-    def _run_file_path_drag(self) -> None:
-        """The only real `QDrag`: `_file_drag_mime` with the shared name-tag pixmap."""
-        index = self._drag_row()    # the PRESSED row: currentIndex() can name another
-        if index is None:
-            return
-        panel = _find_panel(self)
-        if panel is None:
-            return
-        path = index.data(panel.pane.file_files_model.PathRole)
-        if not path:
-            return
-        drag = QtGui.QDrag(self)
-        drag.setMimeData(self._file_drag_mime(panel, path))
-        name = index.data(QtCore.Qt.ItemDataRole.DisplayRole) or ""
-        drag.setPixmap(ui_helpers.name_tag_pixmap(name))
-        drag.exec(QtCore.Qt.DropAction.CopyAction)
 
     @debug.guarded("DragDropListView.mouseReleaseEvent")
     def mouseReleaseEvent(self, event: QtGui.QMouseEvent) -> None:
         try:
-            self._release(event)
+            if self.drag.running and event.button() != QtCore.Qt.MouseButton.LeftButton:    # another button ends it
+                self.drag.cancel(miss=True)
+                self._ended_early = True    # the left button is still down
+                event.accept()
+            elif self.drag.running:
+                self.drag.release()
         finally:    # `guarded()` re-raises, so the press state is cleared here
             self._drag_start = None
             self._drag_section = None
@@ -380,110 +196,23 @@ class GridGestureMixin:
                 self._ended_early = False    # that press is over
         super().mouseReleaseEvent(event)
 
-    def _release(self, event: QtGui.QMouseEvent) -> None:
-        if self._dragging and event.button() != QtCore.Qt.MouseButton.LeftButton:    # a right or middle release mid-drag cancels the drag and removes the tag
-            self._end_drag(miss=True)
-            self._ended_early = True    # the left button is still down
-            event.accept()
-            return
-        if self._dragging:
-            self._end_drag()    # before any drop work: the tag and every highlight are gone
-            panel = self._drag_panel
-            idx = self._drag_row()    # None when the row was removed mid-drag: a failed drop
-            outcome = False
-            try:
-                if panel is not None and idx is not None:
-                    section = self._drag_section
-                    category = panel._category_under_cursor()    # the sidebar comes before a node target; None for folder sections and the All row
-                    folder = None if category is not None else panel._folder_under_cursor()
-                    if category is not None:
-                        panel.pane.sidebar.assign_category(category)
-                        outcome = True
-                    elif folder is not None:    # File: the tiles' files move into that folder, on disk
-                        outcome = panel.pane.files.move_files(folder)
-                    else:    # the shared release; no rule or no target shows only the red X
-                        model, proxy = panel.pane.sections.get(section).tile_models()
-                        outcome = panel.pane.drop_placement.release(
-                            section, model.tile_key(proxy.mapToSource(idx).row()))
-            except hou.PermissionError as refusal:    # only this class: a locked network raises it; any other error propagates
-                debug.exception("drop failed - permission error", refusal,
-                                section=self._drag_section)
-                debug.refuse(str(refusal),    # Houdini's own message; `outcome` stays False so the red X shows ▸p/refuse-vs-alert
-                             section=self._drag_section)
-            finally:
-                if not outcome:
-                    self._show_drop_indicator("icon_drop_miss.svg", "#ff3319")
 
-    @staticmethod
-    def _preview_node_type(panel, rule, section, dest, index=None) -> str:
-        """The node type an on_space drop would create in `dest`; `""` is none: a plain box."""
-        cls = sections.SECTION_INDEX.get(section)
-        name = rule.holder_node_type or getattr(cls, "holder_node_type", "")
-        handler = getattr(cls, "holder_node_type_method", "")
-        if not name and handler and index is not None:
-            try:
-                live = panel.pane.sections.get(section)
-                name = section_base.drop_handler(live, handler)(index, dest)
-            except (AttributeError, hou.OperationFailed):
-                name = ""
-        return name or ""
+class PanelSidebar:
+    """The widget panel's sidebar under the cursor, as the drag session asks for it."""
 
-    def _update_drop_outline(self, panel, pane_tab, pane_type) -> None:
-        """Per move: outline where the node would go; pass the tracked pane. ▸p/drag-move-cost"""
-        from amaze.core import dragengine
-        section = self._drag_section
-        idx = self._drag_row()
-        if panel is None or idx is None:
-            dragengine.ghost_clear()
-            return
-        rule = self._drop_rule(panel, section, idx)
-        if rule is None:
-            dragengine.ghost_clear()
-            return
-        preview = getattr(self, "_preview", None)
-        if preview is not None:    # the cursor tag hides over a network editor, where the outline is the feedback
-            preview.setVisible(
-                pane_type != hou.paneTabType.NetworkEditor)
-        try:
-            if (pane_tab is None
-                    or pane_type != hou.paneTabType.NetworkEditor):
-                dragengine.ghost_clear()
-                return
-            if getattr(rule, "context", "") and not \
-                    cop_nodes.accepts_context(pane_tab.pwd(),
-                                                rule.context):    # the network does not accept this node type, so no outline is drawn
-                dragengine.ghost_clear()
-                return
-            spot = pane_tab.cursorPosition()
-            if dragengine.ghost_tick(pane_tab):
-                blocked = bool(
-                    rule.on_node
-                    and panel.pane.drop_placement.node_under_cursor(pane_tab, pane_type)
-                    is not None)
-                target = (None, "", -1)    # a wire under the cursor means an insert, checked only where the node can join a chain
-                type_name = ""
-                if not blocked:
-                    if rule.on_space or rule.resolve:
-                        target = dragengine.wire_under_cursor(
-                            pane_tab, spot)
-                    type_name = self._preview_node_type(
-                        panel, rule, section, pane_tab.pwd(), idx)
-                dragengine.set_ghost_tick_results(blocked, target, type_name)
-                dragengine.wire_highlight(pane_tab, target)
-            blocked, target, type_name = dragengine.ghost_tick_results()
-            if blocked:
-                dragengine.ghost_clear()    # Houdini's own node highlight shows this case
-                return
-            dragengine.ghost_show(pane_tab, spot, type_name,
-                                  connection=target[0])
-        except (AttributeError, hou.OperationFailed):
-            dragengine.ghost_clear()
+    def __init__(self, panel) -> None:
+        self.panel = panel
 
-    @staticmethod
-    def _drop_rule(panel, section, idx):
-        """This row's declared drop behaviour by section key, resolved by `section_base.drop_rule`."""
-        return section_base.drop_rule(
-            sections.SECTION_INDEX.get(section), panel.pane, idx)
+    def hover(self) -> None:
+        self.panel._update_category_drag_hover_global()
+
+    def clear(self) -> None:
+        self.panel._set_drag_hover_row(-1)
+
+    def target(self) -> tuple:
+        """(category, folder) under the cursor: a category first, None for folder sections and All."""
+        category = self.panel._category_under_cursor()
+        return category, (None if category is not None else self.panel._folder_under_cursor())
 
 
 def _node_paths_from_mime(mime) -> list:
