@@ -30,7 +30,6 @@ def add_asset(model, node: hou.Node, cats: str, tags: str, fav: bool,
     handler.render_after_save = render    # False: the caller renders its rows in one batch
     renderer = handler.get_renderer_from_node(node)
     new_mat = material.Material()
-    tags = model.sanitize_tags(tags)
     new_mat.set_data(name or node.name(), cats, tags, fav, renderer, about=about, license=license)
     new_mat.node_color = nodes.custom_node_color(node)
     own = material.claim_asset_dir(model.preferences, model.DB_FILENAME, new_mat.mat_id, new_mat.name)

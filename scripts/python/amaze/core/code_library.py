@@ -1,6 +1,5 @@
 """The Code section's library: snippets inline in code.json, the `renderer` field is the language."""
 
-import os
 import functools
 import json
 
@@ -8,7 +7,8 @@ from PySide6 import QtCore, QtGui
 
 import amaze
 from amaze import amazetheme
-from amaze.core import debug, library, library_db, library_files, category, material
+from amaze import messages
+from amaze.core import debug, library, library_files, category, material
 from amaze.core import thumbnails
 
 _STARTER_DEF = "res/def/starter_snippets.json"  # shipped example snippets, seeded once per library
@@ -107,16 +107,15 @@ class CodeLibrary(library.AssetLibrary):
         return (language or "Code") if self.add_snippet(code, name, language, cats, tags) else ""
 
     def add_snippet(self, code: str, name: str, language: str, cats: str, tags: str) -> str:
-        """Add a snippet and return its id, empty for no code; a failed code.json save is reported."""
+        """Add a snippet and return its id; empty for no code, or when the library refused it."""
         if not code.strip():
             return ""
         new_mat = material.Material()
-        new_mat.set_data(name.strip() or "Snippet", cats, self.sanitize_tags(tags), False,
-                         language or "Code")
+        new_mat.set_data(name.strip() or "Snippet", cats, tags, False, language or "Code")
         new_mat.code = code
-        self._append_record(new_mat)
-        if not self.save():    # inline, so it stays in memory until a later save succeeds
-            self.report_failed_index_write(new_mat)
+        if not self.add_saved(new_mat):    # nothing was saved: no row is shown
+            debug.refuse(messages.ASSET_NOT_SAVED_DATABASE_REFUSED % new_mat.name)
+            return ""
         return str(new_mat.mat_id)
 
     def save_from_editor(self, mat_id: str, code: str, name: str, language: str,
@@ -128,15 +127,14 @@ class CodeLibrary(library.AssetLibrary):
         if row < 0:
             debug.event("code", "edited snippet gone from the library", mat_id=mat_id)
             return ""
-        if not self._write_snippet(self._assets[row], code, name, language, cats, tags):
-            self.report_failed_index_write(self._assets[row], updated=True)
+        if not self.takes_edits():    # refused: the snippet keeps its old text, the user is told
             return ""
+        self._write_snippet(self._assets[row], code, name, language, cats, tags)
         return mat_id
 
     def _write_snippet(self, asset, code, name, language, cats, tags) -> bool:
         """Set a snippet's text and fields and save the list; True when the save succeeded."""
-        asset.set_data(name.strip() or asset.name, cats, self.sanitize_tags(tags),
-                       asset.fav, language or "Code")
+        asset.set_data(name.strip() or asset.name, cats, tags, asset.fav, language or "Code")
         return self._store_text(asset, code)
 
     def _store_text(self, asset, code: str) -> bool:
@@ -166,60 +164,28 @@ class CodeLibrary(library.AssetLibrary):
             return said or None  # no name: the tile shows it
         return super().row_data(row, role)
 
-    def seed_starter_snippets(self, category_model) -> None:
-        """Add an `Examples` category of snippets once per library, recorded as a mark; never raises."""
-        from amaze.core import library_settings, notes
+    def seed_starter_snippets(self, category_model) -> int:
+        """The shipped `Examples` snippets added once per library; how many were added."""
+        from amaze.core import notes
+        records, pages = [], {}
         try:
-            lib_dir = self.preferences.dir
-            if not lib_dir or library_settings.marked(self.preferences, _STARTER_MARK):
-                return
-            def_path = amaze.package_file(_STARTER_DEF)
-            if not os.path.exists(def_path):
-                return
-            with open(def_path, encoding="utf-8") as f:
+            with open(amaze.package_file(_STARTER_DEF), encoding="utf-8") as f:
                 data = json.load(f)
-            cat = data.get("category", "Examples")
-            snippets = data.get("snippets", [])
-            added = 0
-            pages = {}
-            for snip in snippets:
-                code = snip.get("code", "")
-                if not code.strip():
-                    continue
+            for snip in (snip for snip in data.get("snippets", []) if snip.get("code", "").strip()):
                 mat = material.Material()
-                mat.set_data(
-                    snip.get("name", "Snippet"),
-                    cat,
-                    "",  # tags
-                    False,  # favorite
-                    snip.get("language", "VEX"),
-                )
-                mat.code = code
-                mat._extra["curated"] = (    # the stable id a restore matches on, kept in the record's extra keys, which saves preserve
-                    "starter/%s" % snip.get("name", "Snippet"))
+                mat.set_data(snip.get("name", "Snippet"), data.get("category", "Examples"), "",
+                             False, snip.get("language", "VEX"))
+                mat.code = snip["code"]
+                mat._extra["curated"] = "starter/" + snip.get("name", "Snippet")    # restores match it
                 text = str(snip.get("description", "") or "").strip()
                 if text:    # a snippet's description is its comment
                     pages[notes.note_key(self.NOTES_SECTION, mat.mat_id)] = [
                         {"t": "text", "text": text}]
-                self._append_record(mat)
-                added += 1
-            if added:
-                if not self.save():  # no mark unless the snippets were saved
-                    debug.event("session", "starter snippets not marked - save() returned False")
-                    return
-                library_db.flush(self.preferences)
-                if pages:
-                    notes.set_notes(self.preferences, pages)
-                category_model.check_add_category(cat)  # so the category shows in the sidebar
-        except Exception as exc:  # noqa: BLE001 - never block startup
-            debug.event("session", "starter snippet seeding failed",  # an event: nothing for the user to do
-                        error=str(exc))
-            return
-        library_settings.mark(self.preferences, _STARTER_MARK, added=added)
-        if added:
-            debug.event(
-                "session", "snippets seeded", count=added, category=cat
-            )
+                records.append(mat)
+        except (OSError, ValueError, AttributeError, TypeError) as exc:    # never blocks the open
+            debug.event("session", "starter snippets not read", error=str(exc))
+            return 0
+        return self.add_shipped(_STARTER_MARK, records, pages, category_model)
 
     @staticmethod
     def _preview_key(asset):

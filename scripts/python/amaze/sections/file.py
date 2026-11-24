@@ -38,29 +38,22 @@ class FolderSection(base.Section):
 
     def __init__(self, pane) -> None:
         super().__init__(pane)
-        changed = getattr(self._p(self.sidebar_attr), "scene_folder_changed", None)
-        if changed is not None:
-            changed.connect(self._scene_moved)
-        left = getattr(self._p(self.sidebar_attr), "scene_folder_left", None)
-        if left is not None:
-            left.connect(self._scene_left)
+        for name, slot in (("scene_folder_changed", self._scene_moved),
+                           ("scene_folder_left", self._scene_left)):
+            signal = getattr(self._p(self.sidebar_attr), name, None)
+            if signal is not None:
+                self.follow(signal, slot)
 
     def _scene_left(self, old: str) -> None:
         """The scene row was removed: a grid showing its folder calls `activate` again."""
-        try:
-            active = self.pane.active_section() is self
-        except RuntimeError:    # the pane was deleted, and the shared model outlives it
-            return
         shown = self.shown_sidebar_key()
+        active = self.pane.active_section() is self
         if active and shown and (shown.rstrip("/") + "/").startswith(old):
             self.activate()
 
     def _scene_moved(self, old: str, new: str) -> None:
         """The scene's folder moved: a grid on the scene row, or inside it, shows the new folder."""
-        try:
-            folders = self._shown_sidebar()
-        except RuntimeError:    # the pane was deleted, and the shared model outlives it
-            return
+        folders = self._shown_sidebar()
         if folders is None:
             return
         if folders.is_scene_row(sidebar_model.top_level(self.pane.sidebar.selection.currentIndex())):

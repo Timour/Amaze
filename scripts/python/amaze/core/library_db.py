@@ -74,6 +74,15 @@ def accepts(preferences, name: str) -> bool:
     return found.writable and bool(found.user())
 
 
+def takes_change(preferences, name: str) -> bool:
+    """`accepts`, and when it does not, the user is told why: no user picked, or read-only."""
+    if accepts(preferences, name):
+        return True
+    debug.refuse(messages.NO_USER_PICKED if not document(preferences, name).user()
+                 else messages.CHANGE_REFUSED_READ_ONLY % library_files.section_label(name))
+    return False
+
+
 def _read_again(key: str, held: documents.Document) -> None:
     """Read a database that takes no change once more: a file in use a moment ago may open now."""
     if held.writable:

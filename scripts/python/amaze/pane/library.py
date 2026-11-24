@@ -448,13 +448,6 @@ class Library:
         pane.code_sorted_model, pane.code_selection_model = self._grid_proxy(
             multifilterproxy_model.MultiFilterProxyModel(pane), pane.code_model)
 
-        for _model in (pane.material_model, pane.cop_model, pane.code_model):    # every asset keeps its first category only; idempotent
-            try:
-                _model.collapse_multicategory()
-            except Exception as exc:
-                debug.event("session", "category collapse failed",
-                            error=str(exc))
-
         pane.matx_online_model = matx_library.MatxOnlineLibrary(    # the online MaterialX browser, with MaterialLibrary's role numbers
             preferences=pane.prefs
         )
