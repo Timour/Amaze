@@ -16,8 +16,8 @@ import hou  # noqa: E402 - the pane engine is Houdini's: hython runs this module
 
 from amaze import messages  # noqa: E402
 from amaze.actions import library as library_actions  # noqa: E402
-from amaze.core import (documents, guard, library_db, library_files, model_registry,  # noqa: E402
-                        users)
+from amaze.core import (documents, guard, layout_conversion, library_db,  # noqa: E402
+                        library_files, library_policy, model_registry, users)
 from amaze.dialogs import prefs_window  # noqa: E402
 from amaze.prefs import persistence  # noqa: E402
 from amaze.prefs import prefs as prefs_mod  # noqa: E402
@@ -41,6 +41,16 @@ class _Pane(unittest.TestCase):
         made = {name: users.create(holder, name, library=folder) for name in names}
         library_db.release(holder)
         return folder, made
+
+    def old_library(self) -> str:
+        """A 2.0 library holding one flat material and the user Anna."""
+        folder = self.empty_folder()
+        test_support.put(folder, guard.MASTER, {
+            "policy": {"library": {"version": library_policy.LAYOUT_2_0}},
+            "users": {"u-anna": {"name": "Anna"}}})
+        test_support.put(folder, MATERIALS, {"assets": {"A1": {"name": "Brick"}}})
+        test_support.put(folder, "materials/A1.mat", b"nodes of A1")
+        return folder
 
     def empty_folder(self) -> str:
         folder = test_support.scratch_dir("amaze_new_library_")
@@ -131,6 +141,30 @@ class SwitchTest(_Pane):
         os.remove(os.path.join(folder, "notes.txt"))
         self.assertTrue(self.apply(folder, "Fern"), "an empty folder was refused")
         self.assertTrue(os.path.isfile(os.path.join(folder, guard.MASTER)))
+
+    def test_sw04_a_conversion_offer_converts_the_library_it_was_made_for(self):
+        old, asked = self.old_library(), []
+        other, _made = self.library("Sage")
+
+        def answer(text, buttons=(), **how):
+            asked.append(text)
+            return 0    # Convert
+
+        with mock.patch.object(hou, "ui", types.SimpleNamespace(displayMessage=answer), create=True):
+            self.assertFalse(self.apply(old, "Anna"), "premise: a 2.0 library opens once converted")
+            self.assertTrue(self.apply(other, "Sage"), "premise: the switch before the offer shows")
+            library_db.flush()
+            before = state(other)
+            with mock.patch.object(prefs_mod.Prefs, "save", persistence._Persistence.save):
+                test_support.pump_until(lambda: asked and self.pane.library.serves(old), 5)
+        after = state(other)
+        self.assertEqual([messages.LIBRARY_NEEDS_CONVERSION], asked)
+        self.assertFalse(layout_conversion.needs_conversion(old), "the offer's library stayed 2.0")
+        self.assertEqual([], sorted(path for path in set(before) | set(after)
+                                    if before.get(path) != after.get(path)),
+                         "the library switched to meanwhile was written")
+        self.assertTrue(self.pane.library.serves(old), "the converted library was not opened")
+        self.assertEqual("u-anna", self.pane.prefs.library_user)
 
 
 class OpenTest(_Pane):
