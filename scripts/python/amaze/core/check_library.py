@@ -36,15 +36,17 @@ def survey(library_dir: str, preferences=None) -> dict:
     rows = {entry["name"]: entry["rows"] for entry in databases if entry["name"] in LISTS}
     ids = set().union(*(set(found) for found in rows.values()))
     listing, out_of_place, unreadable = _walk(library_dir)
+    spent = _spent_folders(library_dir, listing, ids)
+    accounted = ids | {library_files.folder_id(library_files.split(one)[-1]) for one in spent}
     findings = {"directory": library_dir, "databases": databases, "unreadable_folders": unreadable,
                 "missing_files": {}, "no_picture": {}, "no_category": {}, "unlisted": [],
                 "orphans": _orphan_versions(library_dir, listing), "trash": held.trash_held()}
     for section in LISTS:
         if section in ASSET_SECTIONS:
-            _assets(findings, section, rows.get(section, {}), listing, ids)
+            _assets(findings, section, rows.get(section, {}), listing, accounted)
         else:
-            _inline_folders(findings, section, listing, ids)
-    findings.update(_out_of_place(library_dir, out_of_place))
+            _inline_folders(findings, section, listing, accounted)
+    findings.update(_out_of_place(library_dir, out_of_place, spent))
     findings.update(_files_section(preferences))
     findings["holding_back"] = _holding_back(findings)
     return findings
@@ -75,6 +77,37 @@ def _walk(library_dir: str) -> tuple:
         if kind in library_files.OUT_OF_PLACE:
             out.append((relative, kind, detail, info))
     return listing, out, unreadable
+
+
+def _spent_folders(library_dir: str, listing: dict, ids: set) -> dict:
+    """{folder: its newest change} of each unlisted asset folder holding no asset file."""
+    found = {}
+    for section in LISTS:
+        top = library_files.SECTION_FOLDERS[section]
+        for asset_id, name in _asset_folders(listing, section).items():
+            when = None if asset_id in ids else _scratch_only(os.path.join(library_dir, top, name))
+            if when is not None:
+                found[top + "/" + name] = when
+    return found
+
+
+def _scratch_only(folder: str):
+    """The newest change in a folder of only scratch, or nothing; None once it holds a file."""
+    def stop(error):
+        raise error
+    newest = 0.0
+    try:
+        for here, _folders, names in os.walk(folder, onerror=stop):
+            newest = max(newest, os.stat(here).st_mtime)
+            for name in names:
+                if library_files.is_os_noise(name):
+                    continue
+                if not library_files.is_scratch(name):
+                    return None
+                newest = max(newest, os.stat(os.path.join(here, name)).st_mtime)
+    except OSError:    # a part that cannot be read may hold the asset
+        return None
+    return newest
 
 
 def _asset_folders(listing: dict, section: str) -> dict:
@@ -155,10 +188,12 @@ def _ledger_numbers(folder: str):
         return None
 
 
-def _out_of_place(library_dir: str, out: list) -> dict:
+def _out_of_place(library_dir: str, out: list, spent: dict) -> dict:
     """Leftovers to trash, conflict copies kept, and what matches no name Amaze writes."""
     now, found = time.time(), {"leftovers": [], "conflicts": [], "unknown": []}
     for relative, kind, detail, info in out:
+        if library_files.join(library_files.split(relative)[:2]) in spent:
+            continue    # its folder goes whole, once its newest change is an hour old
         when = info.st_mtime if info is not None else now
         if kind == library_files.SCRATCH:
             if now - when >= SCRATCH_MIN_AGE:
@@ -171,6 +206,8 @@ def _out_of_place(library_dir: str, out: list) -> dict:
                 found["leftovers"].append(relative)
         else:
             found["unknown"].append(relative)
+    found["leftovers"] += sorted(folder for folder, when in spent.items()
+                                 if now - when >= SCRATCH_MIN_AGE)
     return found
 
 
@@ -359,12 +396,13 @@ def _row_of(asset_id: str, record) -> dict:
 
 
 def _records_of(library_dir: str, section: str) -> dict:
-    """{id: its record or None} of every asset folder of a section."""
+    """{id: its record or None} of every asset folder of a section that holds an asset file."""
     base = material.section_folder(library_dir, section)
     found = {}
     for name in sorted(os.listdir(base)) if os.path.isdir(base) else ():
         owner = library_files.folder_id(name)
-        if owner and os.path.isdir(os.path.join(base, name)):
+        if (owner and os.path.isdir(os.path.join(base, name))
+                and _scratch_only(os.path.join(base, name)) is None):
             found[owner] = asset_record.read(os.path.join(
                 base, name, owner + library_files.RECORD_SUFFIX))[asset_record.METADATA] or None
     return found
