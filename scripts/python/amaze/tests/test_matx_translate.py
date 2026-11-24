@@ -224,6 +224,7 @@ class BothOnlineDestinationsRunOneSequence(unittest.TestCase):
 
     def setUp(self):
         test_support.pin_env(self, "OCIO", "/dev/null")
+        test_support.hip_in_scratch(self)
         self.prefs = test_support.fixture_prefs(self)
         self.prefs.render_on_import = 0
         test_support.reset_database_singletons()
@@ -351,6 +352,7 @@ class HostedPictureImportTest(unittest.TestCase):
 
     def setUp(self):
         test_support.pin_env(self, "OCIO", "/dev/null")
+        test_support.hip_in_scratch(self)
         self.prefs = test_support.fixture_prefs(self)
         self.prefs.render_on_import = 1
         test_support.reset_database_singletons()
@@ -427,6 +429,7 @@ class TheCreditCommentClaimsNoRequirement(unittest.TestCase):
 
     def setUp(self):
         test_support.pin_env(self, "OCIO", "/dev/null")
+        test_support.hip_in_scratch(self)
         self.prefs = test_support.fixture_prefs(self)
         self.prefs.render_on_import = 0
         test_support.reset_database_singletons()

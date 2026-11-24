@@ -463,6 +463,7 @@ class SimReadyImportTest(unittest.TestCase):
     def test_every_image_points_at_a_downloaded_file(self):
         from amaze.core import matx_import, matx_sources
         test_support.pin_env(self, "OCIO", "/dev/null")
+        test_support.hip_in_scratch(self)
         prefs = test_support.fixture_prefs(self)
         prefs.render_on_import = 0
         _release(self)
@@ -471,14 +472,18 @@ class SimReadyImportTest(unittest.TestCase):
                       if r.uid == "Stone/Volga_Blue")
         destination = hou.node("/mat") or hou.node("/").createNode("mat")
         builder, why = matx_import.build_in_scene(record, source, "original",
-                                                  destination)
+                                                  destination, path_style="hip")
         self.assertIsNotNone(builder, why)
         self.addCleanup(builder.destroy)
-        files = [node.parm("file").eval() for node in builder.children()
-                 if node.type().name().startswith("mtlxtiledimage")]
+        images = [node.parm("file") for node in builder.children()
+                  if node.type().name().startswith("mtlxtiledimage")]
+        files = [parm.eval() for parm in images]
         self.assertEqual(3, len(files), "premise: Volga Blue reads three maps")
         self.assertEqual([], [f for f in files if not os.path.isfile(f)],
                          "an image points at a file that is not there - it renders black")
+        self.assertEqual([], [p.unexpandedString() for p in images
+                              if not p.unexpandedString().startswith("$HIP/tex/")],
+                         "a download is not in the scene folder, written as Write Paths As")
 
 
 class MaterialSpecTest(unittest.TestCase):

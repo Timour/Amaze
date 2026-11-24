@@ -166,6 +166,15 @@ def resolve_parms(node, prefs, write_path=None, own_dir: str = "") -> int:
     return changed
 
 
+def write_paths_under(node, folder: str, write_path, style: str) -> int:
+    """Each path under the node that points into `folder`, written as `write_path` spells it."""
+    changed, inside = 0, os.path.normpath(folder) + os.sep
+    for parm, raw in references(node):
+        if os.path.normpath(raw).startswith(inside):
+            changed += bool(_set(parm, write_path(raw, style), node))
+    return changed
+
+
 def _target_path(destination: str, source: str, waiting=None) -> str:
     """`source`'s basename, numbered while a different file has it, on disk or `waiting` to go."""
     def taken(target):

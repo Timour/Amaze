@@ -158,6 +158,7 @@ class OnlineImport:
                         builder, reason = matx_import.build_in_scene(
                             rec, source, resolution, destination,
                             progress=on_progress, renderer=renderer,
+                            path_style=self.pane.prefs.path_style,
                         )
                     except hou.OperationInterrupted:
                         stopped_after = i

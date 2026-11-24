@@ -401,6 +401,16 @@ def pin_env(scope, name: str, value: str) -> None:
     hou.putenv(name, value)
 
 
+def hip_in_scratch(scope) -> str:
+    """`$HIP` set to a scratch folder for `scope`, so a scene download lands in no repository."""
+    import hou
+    folder = scratch_dir("amaze_hip_")
+    scope.addCleanup(shutil.rmtree, folder, True)
+    scope.addCleanup(hou.putenv, "HIP", hou.text.expandString("$HIP"))
+    hou.putenv("HIP", folder)
+    return folder
+
+
 def clear_obj() -> None:
     """Delete every node at object level, whatever a test built there."""
     import hou

@@ -15,7 +15,7 @@ from amaze.helpers import helpers, hostos, wording
 from amaze.render import nodes as nodes_mod
 from amaze.render.material_conversion import engine as conversion_engine
 
-SCENE_DOWNLOADS = "downloads"    # in the cache: the packages built in the scene, which reads them there
+SCENE_DOWNLOADS = "tex"    # in `$HIP`: the packages built in the scene, which reads them there
 
 
 def _credit_text(record, source) -> str:
@@ -123,8 +123,8 @@ def package_dirname(record) -> str:
 
 
 def _scene_download(record) -> str:
-    """Where a package built in the scene is downloaded and kept: the cache, never the library."""
-    return os.path.join(hostos.cache_root(), SCENE_DOWNLOADS, package_dirname(record))
+    """Where a package built in the scene is downloaded and kept: `$HIP/tex/`, never the library."""
+    return os.path.join(hou.text.expandString("$HIP"), SCENE_DOWNLOADS, package_dirname(record))
 
 
 @contextlib.contextmanager
@@ -296,7 +296,8 @@ def _staged_build(record, source, resolution, dest, progress,
 
 
 def build_in_scene(record, source, resolution, destination,
-                   progress=None, renderer: str = renderers.INTERMEDIATE.key):
+                   progress=None, renderer: str = renderers.INTERMEDIATE.key,
+                   path_style: str = "home"):
     """One online record built under `destination` in the scene, the library untouched: (builder, why)."""
     if destination is None:
         return (None, "No destination network for the material.")
@@ -304,7 +305,8 @@ def build_in_scene(record, source, resolution, destination,
     debug.event("import", "start to scene", title=record.title, name=name,
                 source=record.source, kind=record.kind,
                 destination=destination.path(), resolution=resolution)
-    with _staged_build(record, source, resolution, _scene_download(record), progress,
+    folder = _scene_download(record)
+    with _staged_build(record, source, resolution, folder, progress,
                        renderer) as (builder, note, error):
         if error:
             return (None, error)
@@ -313,6 +315,7 @@ def build_in_scene(record, source, resolution, destination,
             return (None, "Could not move %s into %s"
                     % (name, destination.path()))
         builder = moved[0]
+        texstore.write_paths_under(builder, folder, helpers.houdini_path, path_style)    # Write Paths As
         helpers.auto_place(builder)
         if destination.type().name() == "materiallibrary":   # registered, or it may not render
             nodes_mod.register_in_materiallibrary(destination, builder)

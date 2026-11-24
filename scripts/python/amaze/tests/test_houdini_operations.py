@@ -132,7 +132,7 @@ class TheSceneImportRunsInsideHoudinisOperation(_OnThePanel):
         from amaze.render import nodes
         built = []
 
-        def build(rec, source, resolution, destination, progress=None, renderer=None):
+        def build(rec, source, resolution, destination, progress=None, renderer=None, path_style=None):
             progress(1.0)
             builder = hou.node("/mat").createNode("subnet", "esc_probe_" + rec.title)
             self.addCleanup(test_support.drop_node, builder)
