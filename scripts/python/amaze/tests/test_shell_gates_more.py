@@ -56,7 +56,7 @@ class SyncInstallGateTest(GateFixture):
             "knowingly-broken code was copied to the folder a running Houdini "
             "reads")
 
-    def test_gt28_a_populated_directory_is_not_treated_as_scratch(self):
+    def test_gt01_a_populated_directory_is_not_treated_as_scratch(self):
         """Without the marker, a scratch destination holding somebody's files would be mirrored over."""
         scratch = self._scratch()
         _write(os.path.join(scratch, "someones_work.txt"), "do not lose me\n")

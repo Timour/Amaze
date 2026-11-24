@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Refuses shipped code that breaks a rule no test run would show; check-requirements.py runs it."""
+"""Refuses code that breaks a rule no test run would show; check-requirements.py runs it."""
 import ast
 import os
 import re
@@ -7,7 +7,9 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PACKAGE = os.path.join(ROOT, "scripts", "python", "amaze")
+TESTS = os.path.join(PACKAGE, "tests")
 NOT_SHIPPED = {"tests", "res", "ui", "__pycache__"}
+OFFSCREEN = 'os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")'
 
 ALLOWED = {    # the layers each layer may use: all below it, but models and houdini not each other
     "base": {"base"},
@@ -413,21 +415,174 @@ def doc_pictures() -> list:
     return found
 
 
+def _text(*parts) -> str:
+    """A repository file's text, its path given from the repository's root."""
+    with open(os.path.join(ROOT, *parts), encoding="utf-8") as handle:
+        return handle.read()
+
+
+def _constant(relative, name):
+    """The literal a script binds to `name` at its top, or None."""
+    for node in ast.parse(_text(relative)).body:
+        if isinstance(node, ast.Assign) and any(
+                isinstance(target, ast.Name) and target.id == name for target in node.targets):
+            return ast.literal_eval(node.value)
+    return None
+
+
+def suite_lists() -> list:
+    """Every test module is in a list of start_test.sh, each listed one exists, gate ones run."""
+    runner, lists = _text(TESTS, "start_test.sh"), {}
+    for name in ("MODULES", "GATE_MODULES"):
+        match = re.search(r'^%s="(.*?)"' % name, runner, re.S | re.M)
+        lists[name] = set(match.group(1).replace("\\\n", " ").split()) if match else None
+    found = ["start_test.sh has no %s list" % name for name, held in lists.items() if held is None]
+    modules, gate = lists["MODULES"] or set(), lists["GATE_MODULES"] or set()
+    on_disk = {name[:-3] for name in os.listdir(TESTS)
+               if name.startswith("test_") and name.endswith(".py")} - {"test_support"}
+    found += ["tests/%s.py is in no list of start_test.sh, so no push runs it" % name
+              for name in sorted(on_disk - modules - gate)]
+    found += ["start_test.sh lists %s, which is gone" % name
+              for name in sorted((modules | gate) - on_disk)]
+    found += ["start_test.sh has %s in both lists" % name for name in sorted(modules & gate)]
+    pushed = set(_constant("tools/select-tests.py", "GATE_TESTS") or ())
+    return found + ["GATE_MODULES holds %s and select-tests.py's GATE_TESTS does not, so no push "
+                    "runs it" % name for name in sorted(gate - pushed)]
+
+
+def test_runner() -> list:
+    """start_test.sh refuses a wrong name before Houdini starts and runs what it was given."""
+    runner = _text(TESTS, "start_test.sh")
+    lines = "\n".join(line for line in runner.splitlines() if not line.lstrip().startswith("#"))
+    found = [] if 0 <= runner.find("no such test module") < runner.find("AMAZE_HOUDINI") else [
+        "start_test.sh no longer refuses a wrong module name before it looks for Houdini"]
+    found += ["start_test.sh no longer %s" % lost for needle, lost in (
+        ('run_suite.py" $run_modules', "runs the modules it resolved"),
+        ('run_modules="$wanted_modules"', "runs the modules it was given"),
+        ('run_modules="$MODULES"', "runs the whole list when given none"),
+        ("SUBSET RUN", "says a subset is not the full run"),
+        ("check_log_leak.py", "runs the leak check")) if needle not in lines]
+    if "hython -m unittest" in lines:
+        found.append("start_test.sh runs bare `hython -m unittest`, which skips the sandbox")
+    if "LOG LEAK" not in _text(TESTS, "check_log_leak.py"):
+        found.append("check_log_leak.py no longer prints LOG LEAK, which pre-push looks for")
+    report = _constant(os.path.join(TESTS, "run_suite.py"), "SKIP_REPORT_VAR")
+    run_tests = _text("tools", "run-tests.sh")
+    return found + ["run-tests.sh --all-versions no longer %s" % lost for needle, lost in (
+        ('%s="$report"' % report, "gives each run its own skip report"),
+        ("check_dead_cover.py", "runs the dead-cover check"),
+        ("full_run", "keeps a subset from passing the dead-cover check")) if needle not in run_tests]
+
+
+def tool_scripts() -> list:
+    """The tools find Houdini through the one resolver, and run on every system."""
+    shells = sorted(name for name in os.listdir(os.path.join(ROOT, "tools")) if name.endswith(".sh"))
+    found = []
+    for name in shells:
+        text = _text("tools", name)
+        if "mktemp -d -t" in text:
+            found.append("tools/%s uses `mktemp -d -t`, which GNU and MSYS mktemp refuse" % name)
+        if "ls -d /Applications" in text:
+            found.append("tools/%s looks for Houdini its own way, which only works on a Mac" % name)
+        if "hython" in text and name != "houdini-env.sh" and "houdini-env.sh" not in text:
+            found.append("tools/%s uses hython without sourcing houdini-env.sh" % name)
+    callers = ["tools/" + name for name in shells] + [
+        "tools/git-hooks/pre-push", "scripts/python/amaze/tests/start_test.sh"]
+    return found + ["%s asks for the newest Houdini; only amaze_houdini picks the build" % path
+                    for path in callers if "amaze_newest_houdini" in _text(path)]
+
+
+def _imports_test_support(node) -> bool:
+    if isinstance(node, ast.Import):
+        names = [alias.name for alias in node.names]
+    elif isinstance(node, ast.ImportFrom):
+        names = ["%s.%s" % (node.module, alias.name) for alias in node.names]
+    else:
+        return False
+    return any(name.split(".")[-1] == "test_support" for name in names)
+
+
+def _is_patch_call(node) -> bool:
+    """`patch(...)`, `patch.object(...)`, `mock.patch.dict(...)` and the like."""
+    if not isinstance(node, ast.Call):
+        return False
+    spelled = ast.unparse(node.func)
+    return spelled == "patch" or spelled.startswith(("patch.", "mock.patch", "unittest.mock.patch"))
+
+
+def _starts_left_running(tree) -> list:
+    """Lines where a patch starts with no stop registered before it or on the very next line."""
+    found = []
+
+    def walk_block(block, patchers, stopall):
+        for index, stmt in enumerate(block):
+            for call in (n for n in ast.walk(stmt) if isinstance(n, ast.Call)):
+                if ast.unparse(call.func).endswith("addCleanup") and any(
+                        ast.unparse(a).endswith("patch.stopall") for a in call.args):
+                    stopall = True
+            if isinstance(stmt, ast.Assign) and _is_patch_call(stmt.value):
+                patchers |= {ast.unparse(target) for target in stmt.targets}
+            for call in (n for n in ast.walk(stmt) if isinstance(n, ast.Call)):
+                receiver = getattr(call.func, "value", None)
+                if getattr(call.func, "attr", "") != "start" or receiver is None:
+                    continue
+                if not (_is_patch_call(receiver) or ast.unparse(receiver) in patchers):
+                    continue
+                after = ast.unparse(block[index + 1]) if index + 1 < len(block) else ""
+                if not stopall and "addCleanup(%s.stop)" % ast.unparse(receiver) not in after:
+                    found.append(stmt.lineno)
+            for field in ("body", "orelse", "finalbody"):
+                inner = getattr(stmt, field, None)
+                if inner and not isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef,
+                                                   ast.ClassDef)):
+                    stopall = walk_block(inner, patchers, stopall)
+        return stopall
+
+    for func in ast.walk(tree):
+        if isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            walk_block(func.body, set(), False)
+    return sorted(set(found))
+
+
+def test_modules() -> list:
+    """Each test module arms the sandbox, builds the app offscreen, stops its patches, ends at main."""
+    found = []
+    for name in sorted(n for n in os.listdir(TESTS) if n.startswith("test_") and n.endswith(".py")):
+        source = _text(TESTS, name)
+        tree = ast.parse(source, name)
+        built = re.search(r"\bQ(?:Gui)?Application\(", source)
+        if built and not 0 <= source.find(OFFSCREEN) < built.start():
+            found.append("tests/%s builds the app before it sets the offscreen platform" % name)
+        main = min((node.lineno for node in ast.walk(tree) if isinstance(node, ast.Call)
+                    and ast.unparse(node.func) == "unittest.main"), default=None)
+        found += ["tests/%s defines %s below unittest.main(), so a direct run skips it" % (
+            name, node.name) for node in tree.body if main is not None
+            and isinstance(node, (ast.ClassDef, ast.FunctionDef)) and node.lineno > main]
+        if name == "test_support.py":
+            continue
+        if not any(map(_imports_test_support, tree.body)):
+            found.append("tests/%s never imports test_support at its top, so alone it can write "
+                         "the user's folders" % name)
+        found += ["tests/%s:%d starts a patch with no cleanup to stop it" % (name, line)
+                  for line in _starts_left_running(tree)]
+    return found
+
+
 RULES = (layers, engine_widgets, preview_api, host_checks, unbound_names, defined_twice,
          event_pumps, unowned_styles, colour_pickers, text_names, placeholders, text_literals)
+CHECKS = (comment_length, doc_pictures, suite_lists, test_runner, tool_scripts, test_modules)
 
 
 def refusals() -> list:
     """`rule: what breaks it` for every break of every rule."""
     code = shipped()
     return ["%s: %s" % (rule.__name__, line) for rule in RULES for line in rule(code)] + [
-        "%s: %s" % (rule.__name__, line) for rule in (comment_length, doc_pictures)
-        for line in rule()]
+        "%s: %s" % (rule.__name__, line) for rule in CHECKS for line in rule()]
 
 
 if __name__ == "__main__":
     lines = refusals()
     for line in lines:
         print("code: REFUSED - " + line, file=sys.stderr)
-    print("code: %d rules read, %d breaks" % (len(RULES) + 2, len(lines)))
+    print("code: %d rules read, %d breaks" % (len(RULES) + len(CHECKS), len(lines)))
     sys.exit(1 if lines else 0)

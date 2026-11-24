@@ -1,6 +1,5 @@
-"""`check_dead_cover.py`: tests skipped on every Houdini, its exit 2 on bad input, its wiring."""
+"""`check_dead_cover.py`: tests skipped on every Houdini, and its exit 2 on bad input."""
 
-import ast
 import io
 import json
 import os
@@ -21,7 +20,6 @@ from amaze.tests import test_support                      # noqa: F401
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))))))
-RUN_TESTS_SH = os.path.join(REPO, "tools", "run-tests.sh")
 
 H22_0 = ("/Applications/Houdini/Houdini22.0/Frameworks/Houdini.framework"
          "/Versions/Current/Resources")
@@ -72,7 +70,7 @@ class _ReportsMixin(unittest.TestCase):
 
 class TheIntersectionTest(_ReportsMixin):
 
-    def test_a_test_skipped_on_only_one_host_is_not_named(self):
+    def test_gt63_a_test_skipped_on_only_one_host_is_not_named(self):
         a = self.write_report("a.json", [
             ["test_x.A.test_needs_redshift", "Redshift not installed"]],
             houdini=H22_0)
@@ -86,7 +84,7 @@ class TheIntersectionTest(_ReportsMixin):
         self.assertNotIn("test_x.A.test_needs_redshift", output)
         self.assertNotIn("test_z.C.test_h22_only", output)
 
-    def test_the_reason_from_every_host_is_shown(self):
+    def test_gt64_the_reason_from_every_host_is_shown(self):
         a = self.write_report("a.json", [
             ["test_y.B.test_dead", "Redshift not installed"]], houdini=H22_0)
         b = self.write_report("b.json", [
@@ -105,7 +103,7 @@ class TheIntersectionTest(_ReportsMixin):
 
 class TheExitCodeTwoTest(_ReportsMixin):
 
-    def test_every_unusable_report_exits_with_2(self):
+    def test_gt65_every_unusable_report_exits_with_2(self):
         """Exit 2, never 0: a Houdini crash exits 0, so testsRun is the only signal."""
         a = self.write_report("a.json", [["test_y.B.test_dead", "why"]])
         bad = os.path.join(self.dir, "bad.json")
@@ -127,7 +125,7 @@ class TheExitCodeTwoTest(_ReportsMixin):
 
 class TheHostNameTest(unittest.TestCase):
 
-    def test_the_version_directory_is_what_gets_reported(self):
+    def test_gt66_the_version_directory_is_what_gets_reported(self):
         self.assertEqual(
             check_dead_cover.host_of({"houdini": H22_5}), "Houdini22.5")
         self.assertEqual(
@@ -136,7 +134,7 @@ class TheHostNameTest(unittest.TestCase):
 
 class TheReportWriterTest(_ReportsMixin):
 
-    def test_the_report_holds_ids_reasons_and_the_count(self):
+    def test_gt67_the_report_holds_ids_reasons_and_the_count(self):
         result = _FakeResult([("test_b.B.test_two", "second"),
                               ("test_a.A.test_one", "first")], tests_run=42)
         path = os.path.join(self.dir, "report.json")
@@ -151,7 +149,7 @@ class TheReportWriterTest(_ReportsMixin):
         self.assertEqual(dict(report["skipped"])["test_a.A.test_one"],
                          "first")
 
-    def test_the_written_report_is_what_the_checker_reads(self):
+    def test_gt68_the_written_report_is_what_the_checker_reads(self):
         dead = ("test_y.B.test_dead", "dead everywhere")
         for name, houdini in (("a.json", H22_0), ("b.json", H22_5)):
             run_suite.write_skip_report(
@@ -165,96 +163,6 @@ class TheReportWriterTest(_ReportsMixin):
                                   "a hand-built fixture:\n%s" % output)
         self.assertIn("test_y.B.test_dead", output)
         self.assertIn("Houdini22.5", output)
-
-
-class WhatUnittestItselfGuaranteesTest(unittest.TestCase):
-
-    def test_a_result_holds_skipped_ids_not_just_a_count(self):
-        class Sample(unittest.TestCase):
-            @unittest.skip("decorator")
-            def test_decorator(self):
-                raise AssertionError("must not run")
-
-            @unittest.skipIf(True, "conditional")
-            def test_conditional(self):
-                raise AssertionError("must not run")
-
-            def test_runtime(self):
-                self.skipTest("runtime")
-
-        suite = unittest.TestLoader().loadTestsFromTestCase(Sample)
-        result = unittest.TextTestRunner(
-            stream=io.StringIO(), verbosity=0).run(suite)
-        ids = {test.id().rsplit(".", 1)[-1] for test, _ in result.skipped}
-        self.assertEqual(ids, {"test_decorator", "test_conditional",
-                               "test_runtime"},
-                         "unittest no longer reports every skip KIND with "
-                         "an id, and check_dead_cover cannot work without "
-                         "it")
-        self.assertTrue(all(reason for _, reason in result.skipped),
-                        "a skip reason came back empty, so the check would "
-                        "name a dead test with nothing to act on")
-
-
-class TheRunTestsScriptTest(unittest.TestCase):
-
-    def test_all_versions_reports_each_run_and_checks_them_together(self):
-        """run-tests.sh sets the variable run_suite reads, runs the checker, detects a subset run."""
-        with open(RUN_TESTS_SH, encoding="utf-8") as handle:
-            source = handle.read()
-        for needle, lost in (
-                ('%s="$report"' % run_suite.SKIP_REPORT_VAR,
-                 "gives no run its own skip report"),
-                ("check_dead_cover.py", "does not run the dead-cover check"),
-                ("full_run", "has no subset guard, so a subset reads as an "
-                             "all-clear")):
-            with self.subTest(needle):
-                self.assertIn(needle, source, "--all-versions %s" % lost)
-
-
-class EverythingLoadsOnADirectRunTest(unittest.TestCase):
-    """`unittest.main()` collects only what is defined above it, so a class below it never runs."""
-
-    @staticmethod
-    def _defined_below_main(source):
-        """Module-level definitions below the `unittest.main()` call, by AST so a comment cannot count."""
-        tree = ast.parse(source)
-        main_lines = [node.lineno for node in ast.walk(tree)
-                      if isinstance(node, ast.Call)
-                      and isinstance(node.func, ast.Attribute)
-                      and node.func.attr == "main"
-                      and isinstance(node.func.value, ast.Name)
-                      and node.func.value.id == "unittest"]
-        if not main_lines:
-            return []
-        first = min(main_lines)
-        return [node.name for node in tree.body
-                if isinstance(node, (ast.ClassDef, ast.FunctionDef))
-                and node.lineno > first]
-
-    def test_nothing_is_defined_below_unittest_main(self):
-        planted = ("import unittest\n"
-                   "if __name__ == '__main__':\n"
-                   "    unittest.main()\n"
-                   "class TailTest(unittest.TestCase):\n"
-                   "    def test_x(self):\n"
-                   "        pass\n")
-        self.assertEqual(["TailTest"], self._defined_below_main(planted),
-                         "the scan cannot see a class below the call")
-        here = os.path.dirname(os.path.abspath(__file__))
-        offenders = {}
-        for name in sorted(os.listdir(here)):
-            if not (name.startswith("test_") and name.endswith(".py")):
-                continue
-            with open(os.path.join(here, name), encoding="utf-8") as f:
-                below = self._defined_below_main(f.read())
-            if below:
-                offenders[name] = below
-        self.assertEqual(
-            {}, offenders,
-            "these modules define tests below unittest.main(), so a "
-            "direct run collects only part of the file and reports a "
-            "pass without the rest: %s" % offenders)
 
 
 if __name__ == "__main__":
