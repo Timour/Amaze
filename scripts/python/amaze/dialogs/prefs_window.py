@@ -509,7 +509,8 @@ class AmazePrefsState(mainprefs.PrefsState):
         self._prefs.save()    # before the switch: unsaved edits belong to the library they were made in
         if switching and self._pane is not None and not self._pane.library.takes_library(folder):
             return False    # checked before anything is written to it
-        if uid.startswith(NEW_USER):    # made first: no library opens without its user
+        unopenable = switching and library_actions.index_unopenable(folder)    # the open says why
+        if uid.startswith(NEW_USER) and not unopenable:    # made first: no library opens without its user
             name = uid[len(NEW_USER):]
             uid = users.create(self._prefs, name, library=folder if switching else "")
             if not uid:

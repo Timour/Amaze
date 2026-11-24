@@ -268,8 +268,8 @@ def keep_base(preferences, mat_id: str, base_paths: dict = None, name: str = "")
     if ledger.get("unreadable"):
         return False
     base = base_paths or _base_paths(preferences, mat_id)
-    if _base_is_archived(preferences, mat_id, ledger, base):
-        return True
+    if not os.path.isfile(base.get(".mat") or "") or _base_is_archived(preferences, mat_id, ledger, base):
+        return True    # no network on disk is nothing to lose; an archived one is kept already
     return bool(create_version(preferences, mat_id, name, base))
 
 

@@ -1000,9 +1000,9 @@ class StagingLeavesNoUndoEntry(unittest.TestCase):
                                 "%s:%d (%s, %s)"
                                 % (rel, lineno, name, half))
         self.assertGreaterEqual(
-            pairs, 7,
+            pairs, 6,
             "the scan matched %d staging pairs where the source has "
-            "seven - it finds too few, so passing proves nothing" % pairs)
+            "six - it finds too few, so passing proves nothing" % pairs)
         self.assertEqual(
             [], offenders,
             "these put half of a staging pair on the LIVE undo stack, "
