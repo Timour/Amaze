@@ -29,7 +29,7 @@ PROBLEMS = (    # (kind, headline); each entry's line names its kind
 
 
 def audit(library: str) -> dict:
-    """{kind: [relative path]} for everything in `library`, `matX/` included; folders end in `/`."""
+    """{kind: [relative path]} for everything in `library`, `import/` included; folders end in `/`."""
     found = {}
     for relative, kind, detail, _info in naming.walk(library, packages=True):
         if kind == naming.FOLDER:

@@ -32,7 +32,6 @@ VERSIONS = "versions"    # a material folder's sub-folder of archives: only mate
 TEXTURES = "textures"    # an asset folder's textures, every one its own copy
 FOLDER_SEPARATOR = "__"    # an asset folder is `<name>__<id>`, found by the id after the last one
 FILES_FOLDER = "files"    # the Files section's: `files/<sha1 of the file's key>.png`, a file's capture
-PACKAGE_FOLDER = "matX"    # a permanent store: the check does not enter it, the audit looks for scratch only
 COMMENT_FOLDER = "comments"    # pictures pasted into comments: `<asset folder>/comments/`, `files/comments/`
 DATABASE_FOLDERS = dict(SECTION_FOLDERS, **{FILES: FILES_FOLDER})    # every database, and its folder
 IMPORT_FOLDER = "import"    # where Package Import writes plain files: a File location, its contents the user's
@@ -207,8 +206,8 @@ def _folder(parts: list) -> bool:
     top = parts[0]
     if depth == 1:
         return top in tuple(DATABASE_FOLDERS.values()) + (
-            PACKAGE_FOLDER, IMPORT_FOLDER, BACKUP_FOLDER, TRASH_FOLDER)
-    if top in (PACKAGE_FOLDER, TRASH_FOLDER):
+            IMPORT_FOLDER, BACKUP_FOLDER, TRASH_FOLDER)
+    if top == TRASH_FOLDER:
         return True
     if depth == 2 and parts[1] == COMMENT_FOLDER and top == FILES_FOLDER:
         return True
@@ -240,7 +239,7 @@ def split(relative: str) -> list:
 
 def library_of_file(path: str) -> str:
     """The library holding a file: the folder above the nearest library folder it is in."""
-    tops = set(DATABASE_FOLDERS.values()) | {PACKAGE_FOLDER, IMPORT_FOLDER}
+    tops = set(DATABASE_FOLDERS.values()) | {IMPORT_FOLDER}
     start = os.path.dirname(os.path.abspath(str(path)))
     folder = start
     while os.path.basename(folder) not in tops:
@@ -282,7 +281,7 @@ def classify(relative: str, is_dir: bool = False) -> tuple:
         return (FOLDER if is_dir else PACKAGE), ""
     if is_scratch(name):
         return SCRATCH, ""
-    if parts[0] in (PACKAGE_FOLDER, IMPORT_FOLDER, TRASH_FOLDER) and len(parts) > 1:
+    if parts[0] == TRASH_FOLDER and len(parts) > 1:
         return (FOLDER if is_dir else PACKAGE), ""
     if is_dir:
         return (FOLDER, "") if _folder(parts) else (UNKNOWN, "folder")
@@ -298,7 +297,7 @@ def classify(relative: str, is_dir: bool = False) -> tuple:
 
 
 def walk(library_dir: str, packages: bool = False):
-    """Yield (relative, kind, detail, stat) per entry; inside matX/ and import/ only with `packages`."""
+    """Yield (relative, kind, detail, stat) per entry; inside import/ only with `packages`."""
     pending = [[]]
     while pending:
         parts = pending.pop(0)
@@ -318,7 +317,7 @@ def walk(library_dir: str, packages: bool = False):
             if is_dir and kind == FOLDER:
                 if here[0] == TRASH_FOLDER:
                     pass    # `trash/` is counted by guard.py; `walk` never lists its contents
-                elif (here[0] not in (PACKAGE_FOLDER, IMPORT_FOLDER)
+                elif (here[0] != IMPORT_FOLDER
                       and TEXTURES not in here[2:3]) or packages:    # textures are listed only on request
                     pending.append(here)
                 yield join(here), kind, detail, None

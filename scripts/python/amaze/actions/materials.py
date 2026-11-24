@@ -6,7 +6,7 @@ import hou
 from PySide6 import QtCore
 
 from amaze import messages
-from amaze.core import asset_record, debug, guard, library, library_db, material, versions
+from amaze.core import asset_record, debug, guard, library, library_db, material, texstore, versions
 from amaze.render import husk_job, nodes
 
 
@@ -19,8 +19,8 @@ def connect(model) -> None:
 
 def add_asset(model, node: hou.Node, cats: str, tags: str, fav: bool,
               name: str | None = None, picture: str = "", render: bool = True,
-              about: str | None = None, license: str | None = None) -> str:
-    """Save `node` into `model` as a new material: its renderer (`ListNotSaved` if unlisted), or ""."""
+              about: str | None = None, license: str | None = None, sources=()) -> str:
+    """Save `node` and `sources` as a new material: its renderer (`ListNotSaved` if unlisted), or ""."""
     handler = nodes.NodeHandler(model.preferences)
     handler.supplied_thumbnail = picture    # a hosted picture, which replaces the render
     handler.render_after_save = render    # False: the caller renders its rows in one batch
@@ -29,11 +29,13 @@ def add_asset(model, node: hou.Node, cats: str, tags: str, fav: bool,
     tags = model.sanitize_tags(tags)
     new_mat.set_data(name or node.name(), cats, tags, fav, renderer, about=about, license=license)
     new_mat.node_color = nodes.custom_node_color(node)
-    material.claim_asset_dir(model.preferences, model.DB_FILENAME, new_mat.mat_id, new_mat.name)
+    own = material.claim_asset_dir(model.preferences, model.DB_FILENAME, new_mat.mat_id, new_mat.name)
 
     handler.staging = []    # the files are committed together with the row, as one change
     try:
         saved = handler.save_node(node, new_mat.mat_id, False)
+        for path in sources if saved else ():    # a download's own files, at the folder's top level
+            texstore.copy_file_into_library(path, model.preferences, own, handler.staging, "")
     except BaseException:    # a failure or a cancel leaves no file and no folder
         asset_record.discard(handler.staging)
         material.release_asset_dir(model.preferences, model.DB_FILENAME, new_mat.mat_id)

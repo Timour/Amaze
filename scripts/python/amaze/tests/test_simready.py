@@ -471,7 +471,7 @@ class SimReadyImportTest(unittest.TestCase):
                       if r.uid == "Stone/Volga_Blue")
         destination = hou.node("/mat") or hou.node("/").createNode("mat")
         builder, why = matx_import.build_in_scene(record, source, "original",
-                                                  destination, prefs)
+                                                  destination)
         self.assertIsNotNone(builder, why)
         self.addCleanup(builder.destroy)
         files = [node.parm("file").eval() for node in builder.children()

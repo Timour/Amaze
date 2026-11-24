@@ -156,7 +156,7 @@ class OnlineImport:
 
                     try:
                         builder, reason = matx_import.build_in_scene(
-                            rec, source, resolution, destination, self.pane.prefs,
+                            rec, source, resolution, destination,
                             progress=on_progress, renderer=renderer,
                         )
                     except hou.OperationInterrupted:

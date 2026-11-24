@@ -115,15 +115,16 @@ def references(node) -> list:
     return refs
 
 
-def copy_file_into_library(source: str, prefs, own_dir: str, staged=None) -> str:
-    """One file into `own_dir/textures/`, in `staged`'s save or its own; its own path, or ""."""
+def copy_file_into_library(source: str, prefs, own_dir: str, staged=None,
+                           folder: str = library_files.TEXTURES) -> str:
+    """One file into `own_dir/<folder>/`, in `staged`'s save or its own; its own path, or ""."""
     rest = _inside(source, own_dir)
     if rest:
         return OWN_PREFIX + rest
     if not os.path.isfile(source):
         return ""
     waiting = {target: written for _kind, target, written in (staged or ())}
-    target = _target_path(os.path.join(own_dir, library_files.TEXTURES), source, waiting)
+    target = _target_path(os.path.join(own_dir, folder) if folder else own_dir, source, waiting)
     if not os.path.exists(target) and target not in waiting:
         entry = asset_record.staged_write(target, lambda scratch: shutil.copyfile(source, scratch))
         if staged is None:
