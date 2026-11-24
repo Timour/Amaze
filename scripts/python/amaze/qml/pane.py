@@ -134,6 +134,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
     searchCleared = QtCore.Signal()    # the empty state's Clear Search: the QML empties its field
     keyStepped = QtCore.Signal(str, bool)    # a move by Houdini's hotkey: its name, and if Shift extends
     sidebarOpened = QtCore.Signal(QtCore.QModelIndex)    # the tree opens this folder and those above it
+    menuOffered = QtCore.Signal("QVariantList")    # the engine's own menu, at the cursor: the drop's choice
 
     pane = None    # the engine, built by `start`
     drag = None    # the view's `drag_session`, which a press on a tile or row past the drag distance begins
@@ -416,7 +417,8 @@ class PaneState(qmlviews.SharedState, asks.Asks):
             return
         if self.gridSelection is not None and not self.gridSelection.isSelected(index):
             self._choose(row, modifiers, by_key=False)    # as Qt's views select an unselected row at its press
-        self.drag.begin(self.pane, key, index, index.data(QtCore.Qt.ItemDataRole.DisplayRole) or "")
+        self.drag.begin(self.pane, key, index, index.data(QtCore.Qt.ItemDataRole.DisplayRole) or "",
+                        sidebar=SidebarDrop(self.drag.source))
 
     @QtCore.Slot(int, result="QVariantList")
     def tileMenu(self, row: int) -> list:
@@ -468,6 +470,19 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         menu, self._menu = self._menu, None
         if menu is not None:
             menu.run(key)
+
+    def ask_drop_choice(self, labels: list, then) -> None:
+        """A menu at the cursor, waited on as the widget panel's: `then` gets the place picked, or None."""
+        choice = menus.Choice(labels)
+        menu = choice.menu(host=self)
+        rows = menu.rows[0].get("rows", [])
+        if rows:
+            closed = QtCore.QEventLoop()    # QMenu.exec's own wait: the drop needs its answer before it returns
+            self._menu, self._after_menu = menu, closed.quit
+            self.menuOffered.emit(rows)
+            if self._menu is menu:    # the QML opened it; else it already closed
+                closed.exec()
+        then(choice.place)
 
     def ask_colour(self, start: str, title: str, then) -> None:
         """Houdini's colour picker, the one the widget panel opens: `then` gets "#rrggbb", None for Cancel."""
@@ -716,17 +731,49 @@ class PaneView(qmlviews.BaseQmlWidget):
             self.drag.cancel(miss=True)
             event.accept()
             return
-        try:
-            self.drag.release()
-        finally:    # the QML's press ends whatever the drop did
-            if not event.buttons() & QtCore.Qt.MouseButton.LeftButton:
-                self._drag_held = False
-            super().mouseReleaseEvent(event)
+        if not event.buttons() & QtCore.Qt.MouseButton.LeftButton:
+            self._drag_held = False
+        super().mouseReleaseEvent(event)    # the QML's press ends first: the drop may open a menu
+        self.drag.release()
 
     def hideEvent(self, event) -> None:
         self.drag.cancel()    # a pane hidden mid-drag gets no release
         self._drag_held = False
         super().hideEvent(event)
+
+
+class SidebarDrop:
+    """The QML sidebar's row under the cursor, as a drag asks for it; the row a drop takes is lit."""
+
+    def __init__(self, view) -> None:
+        self.view = view
+        self._lit = QtCore.QPersistentModelIndex()
+
+    def _under(self):
+        """The sidebar row under the cursor, an invalid index off the sidebar."""
+        at = self.view.mapFromGlobal(QtGui.QCursor.pos())
+        return QtCore.QMetaObject.invokeMethod(
+            self.view.rootObject(), "sidebarIndexAt", QtCore.Qt.ConnectionType.DirectConnection,
+            QtCore.Q_RETURN_ARG("QVariant"), QtCore.Q_ARG("QVariant", at.x()), QtCore.Q_ARG("QVariant", at.y()))
+
+    def target(self) -> tuple:
+        return self.view.sharedState().pane.sidebar.drop_target(self._under())
+
+    def hover(self) -> None:
+        under = self._under()
+        self._light(under if self.view.sharedState().pane.sidebar.drop_target(under) != (None, None)
+                    else QtCore.QModelIndex())
+
+    def clear(self) -> None:
+        self._light(QtCore.QModelIndex())
+
+    def _light(self, index) -> None:
+        """The tree draws `index`'s row as its selected rows, none for an invalid index."""
+        if QtCore.QPersistentModelIndex(index) != self._lit:
+            self._lit = QtCore.QPersistentModelIndex(index)
+            QtCore.QMetaObject.invokeMethod(self.view.rootObject(), "showSidebarDrop",
+                                            QtCore.Qt.ConnectionType.DirectConnection,
+                                            QtCore.Q_ARG("QVariant", index))
 
 
 def _takes_hotkeys_first(item) -> bool:
