@@ -84,7 +84,7 @@ class _Install(unittest.TestCase):
         return found.pop().decode() if len(found) == 1 and add_on and None not in found else None
 
     def found(self, payload, size=None, digest=None, body=None) -> updater.Update:
-        test_support.serve(self, lambda url: payload if body is None else body)
+        test_support.serve(self, lambda url, headers: payload if body is None else body)
         return updater.Update(updater.NEWER, version="9.9", url=URL, sentence="newer",
                               size=len(payload) if size is None else size,
                               digest=digest or "sha256:" + hashlib.sha256(payload).hexdigest())
@@ -197,7 +197,7 @@ class UpdateTest(_Install):
         self.assertTrue(updater.LIBRARY_POLICY_URL.endswith(
             "/scripts/python/amaze/core/library_policy.py"))
         with open(here, "rb") as handle:
-            test_support.serve(self, lambda url, text=handle.read(): text)
+            test_support.serve(self, lambda url, headers, text=handle.read(): text)
         self.assertEqual((library_policy.LIBRARY_VERSION, library_policy.LIBRARY_VERSION_SINCE,
                           (library_policy.DATABASE_FORMAT, library_policy.RECORD_FORMAT)),
                          updater.release_library("9.9"))
@@ -232,7 +232,7 @@ class UpdateTest(_Install):
 
     def test_up20_a_check_asks_the_release_list_once_and_installs_nothing(self):
         before = self.state()
-        asked = test_support.serve(self, lambda url: {"tag_name": "0.1.0"})
+        asked = test_support.serve(self, lambda url, headers: {"tag_name": "0.1.0"})
         self.assertEqual(updater.UP_TO_DATE, updater.check("1.0.0").verdict)
         self.assertEqual([updater.RELEASES_URL], asked)
         self.assertEqual(before, self.state())
@@ -243,7 +243,7 @@ class UpdateTest(_Install):
         import urllib.error
         for error, verdict in ((urllib.error.HTTPError(URL, 404, "", {}, None),
                                 updater.NO_RELEASE), (OSError("offline"), updater.UNREACHABLE)):
-            test_support.serve(self, lambda url, error=error: error)
+            test_support.serve(self, lambda url, headers, error=error: error)
             self.assertEqual(verdict, updater.check("1.0.0").verdict)
 
     def test_up22_the_offer_names_the_format_the_library_will_have(self):

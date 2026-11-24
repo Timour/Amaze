@@ -45,6 +45,7 @@ RELOCATE_TARGET_NOT_A_FOLDER = "That location isn't a folder."
 LOCATION_ALREADY_ADDED = "That location is already added."
 NO_LIBRARY_CONFIGURED = "Set up a library first."
 PACKAGE_IMPORT_SUMMARY = "Imported %d asset(s) and %d file(s) into the Import category."
+PACKAGE_COMMENTS_NOT_WRITTEN = "The comments of %s could not be saved."
 PACKAGE_EXPORTED = "Exported %d items to %s."
 PACKAGE_EXPORTED_ONE = "Exported 1 item to %s."
 PACKAGE_EXPORT_EMPTY = "Nothing to export. This category is empty."
@@ -60,6 +61,8 @@ GALLERY_IMPORT_FINISHED_IMPORTED_SKIPPED = "Gallery import complete.\nImported: 
 GALLERY_IMPORT_FINISHED_RENDERING = 'Gallery import complete.\n\nImported: %d\nSkipped: %d\nFailed: %d\n\nTheir thumbnails are rendering now.'
 
 GALLERY_IMPORT_INTERRUPTED = 'Gallery import stopped.\n\nImported: %d\nSkipped: %d\nFailed: %d\n\nTo render them, select the new materials and use Render Image.'
+GALLERY_IMPORT_INTERRUPTED_RENDERING = 'Gallery import stopped.\n\nImported: %d\nSkipped: %d\nFailed: %d\n\nTheir thumbnails are rendering now.'
+GALLERY_NOT_PUT_BACK = "Amaze read the gallery %s, but could not put it back in Houdini's gallery list."
 
 NO_LIBRARY_OPEN = "Open a library first."
 AMAZE_COULD_NOT = "%d of %d items could not be imported."

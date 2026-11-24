@@ -328,14 +328,14 @@ class Reply(io.BytesIO):
 
 
 def serve(testcase, answer) -> list:
-    """Every request through `matx_sources._request` answered by `answer(url)`; the URLs asked."""
+    """Every request through `matx_sources._request` answered by `answer(url, headers)`; the URLs."""
     from unittest import mock
     from amaze.core import matx_sources
     asked = []
 
     def request(url, headers=None):
         asked.append(url)
-        reply = answer(url)
+        reply = answer(url, headers or {})
         if isinstance(reply, BaseException):
             raise reply
         return reply if isinstance(reply, Reply) else Reply(reply, {
@@ -345,6 +345,21 @@ def serve(testcase, answer) -> list:
     patcher.start()
     testcase.addCleanup(patcher.stop)
     return asked
+
+
+def ranges_of(blob: bytes):
+    """An `answer` for `serve` giving `blob` as a host does, a `Range` header honoured."""
+    def answer(url, headers):
+        spec = str(headers.get("Range") or "").replace("bytes=", "")
+        if spec.startswith("-"):
+            start = max(0, len(blob) - int(spec[1:]))
+            return Reply(blob[start:], {"Content-Range": "bytes %d-%d/%d" % (
+                start, len(blob) - 1, len(blob))})
+        if spec:
+            low, _, high = spec.partition("-")
+            return Reply(blob[int(low):min(int(high), len(blob) - 1) + 1])
+        return blob
+    return answer
 
 
 @contextlib.contextmanager

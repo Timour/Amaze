@@ -277,7 +277,14 @@ class Saving:
         if not picked:
             return
         picked = hou.text.expandString(picked)
-        entries = gallery_import.entries_from_file(picked)
+        with gallery_import.opened(picked) as entries:
+            self._import_gallery(picked, entries)
+
+    def _import_gallery(self, picked: str, entries) -> None:
+        """The materials of one opened gallery, asked first, saved, then rendered in one batch."""
+        from amaze.core import gallery_import
+        pane = self.pane
+        ui = getattr(hou, "ui", None)
         if not entries:
             if ui is not None:
                 ui.displayMessage(
@@ -328,7 +335,8 @@ class Saving:
         pane.sidebar.refresh()
         imported, skipped, failed = (summary.get(key, 0) for key in ("imported", "skipped", "failed"))
         if interrupted:
-            text = messages.GALLERY_IMPORT_INTERRUPTED % (imported, skipped, failed)
+            text = (messages.GALLERY_IMPORT_INTERRUPTED_RENDERING if renders
+                    else messages.GALLERY_IMPORT_INTERRUPTED) % (imported, skipped, failed)
         elif renders:
             text = messages.GALLERY_IMPORT_FINISHED_RENDERING % (imported, skipped, failed)
         else:
