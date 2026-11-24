@@ -230,6 +230,13 @@ def _entry_problems(entry) -> list:
     return found
 
 
+def unmarked(entries) -> list:
+    """The name of every asset entry without its `curated` mark, which Amaze's own packages need."""
+    return [str((entry.get("record") or {}).get("name") or entry.get("id") or "?")
+            for entry in entries if entry.get("type") == "asset"
+            and not str((entry.get("record") or {}).get("curated") or "")]
+
+
 def unpacked_bytes(bundle, members) -> int:
     """What `members` of an open bundle unpack to, by the sizes the zip declares. ▸r/zip-declared-size"""
     sizes = {info.filename: info.file_size for info in bundle.infolist()}
@@ -364,10 +371,11 @@ def _commit_assets(prefs, staged, summary, restore: bool = False) -> None:
                         name=model.DB_FILENAME)
             summary["problems"].extend("%s: %s" % (item[1].name or "?", exc)
                                        for item in items)
-            stored = False
+            stored = None    # raised mid-save: a journal may name its files, so they stay the guard's
         if not stored:
             for _model, asset, _entry, _row, written in reversed(items):
-                asset_record.discard(written)
+                if stored is not None:
+                    asset_record.discard(written)
                 model._remove_unsaved_record(asset)
                 material.release_asset_dir(prefs, model.DB_FILENAME, asset.mat_id)
             summary["refused"] += len(items)
@@ -385,10 +393,14 @@ def _commit_assets(prefs, staged, summary, restore: bool = False) -> None:
     if not pages:
         return
     try:    # the assets are already saved - a failed note write must not recount them as refused
-        notes.set_notes(prefs, pages)
+        written = notes.set_notes(prefs, pages)
     except Exception as exc:                          # noqa: BLE001
-        debug.event("packages", "note not written", error=str(exc),
-                    names=sorted(pages))
+        debug.event("packages", "note not written", error=str(exc), names=sorted(pages))
+        written = False
+    if not written:
+        summary["problems"].append(messages.PACKAGE_COMMENTS_NOT_WRITTEN % ", ".join(
+            str(item[1].name or "?") for items in by_model.values() for item in items
+            if notes.note_key(str(item[2].get("section") or ""), item[1].mat_id) in pages))
 
 
 def _import_asset(models, prefs, bundle, entry, restore, summary, taken):

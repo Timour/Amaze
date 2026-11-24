@@ -1,2067 +1,307 @@
-"""`.amazepkg`: export collects an asset's files, import adds them, newer formats are rejected."""
+"""Packages: one test per requirement in docs/requirements/packages.md."""
 
-import io
 import json
 import os
+import runpy
+import shutil
 import sys
 import tempfile
-import time
 import unittest
 import zipfile
+from unittest import mock
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PySide6 import QtCore, QtWidgets
+from amaze import messages
+from amaze.core import gradient_library, guard, library, library_db, matx_sources, notes
+from amaze.core import packages
+from amaze.tests import faults, test_support
 
-_app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
-
-import hou  # noqa: E402
-
-sys.path.insert(
-    0, os.path.dirname(os.path.dirname(
-        os.path.dirname(os.path.abspath(__file__)))))
-
-from amaze.core import asset_record, material  # noqa: E402
-from amaze.tests import test_support  # noqa: E402
+PICTURE = "$AMAZEASSET/comments/" + "a" * 32 + ".png"
+TEXTURE = "$AMAZEASSET/textures/brick.png"
+TOOL = os.path.join(os.path.dirname(__file__), *[os.pardir] * 4, "tools",
+                    "build-default-packages.py")
 
 
-def _bytes(path: str) -> bytes:
+def read(path) -> bytes:
     with open(path, "rb") as handle:
         return handle.read()
 
 
-def _out_path(testcase, name="export.amazepkg"):
-    """A destination in the sandboxed tempdir; the guarded writer fails on other paths in tests."""
-    folder = tempfile.mkdtemp(prefix="amaze_pkg_")
-    testcase.addCleanup(
-        __import__("shutil").rmtree, folder, ignore_errors=True)
-    return os.path.join(folder, name)
+def brick(n=1, **record) -> tuple:
+    """A material entry as a 3.0 export writes it, with a texture and a pasted picture."""
+    mid, at = "%032x" % n, "assets/material/%032x/" % n
+    entry = {"type": "asset", "section": "material", "id": mid,
+             "record": dict({"id": mid, "name": "Brick %d" % n, "categories": ["Walls"],
+                             "textures": [TEXTURE], "made_by_a_newer_amaze": "kept"}, **record),
+             "note": {"items": [{"t": "text", "text": "rough"}, {"t": "image", "src": PICTURE}]},
+             "files": {"mat": at + mid + ".mat"}, "textures": {TEXTURE: at + "textures/0_b.png"},
+             "comment_pictures": {PICTURE: at + "comments/p.png"}}
+    return entry, {at + mid + ".mat": b"nodes %d" % n, at + "textures/0_b.png": b"brick texture",
+                   at + "comments/p.png": b"pasted picture"}
 
 
-class PackageExportTest(unittest.TestCase):
-    """Collect and write from the fixture library, whose six materials have real files on disk."""
-
-    @classmethod
-    def setUpClass(cls):
-        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
-
-    def _material_with_files(self):
-        """The first fixture material with files on disk; row 0 is a deliberate empty-id row."""
-        model = self.panel.pane.material_model
-        for asset in model.assets:
-            if any(os.path.exists(p)
-                   for p in model.asset_files(asset.mat_id).values()):
-                return asset
-        self.fail("no fixture material has payload files")
-
-    def test_a_material_entry_includes_its_family_and_note(self):
-        from amaze.core import notes, packages
-        model = self.panel.pane.material_model
-        asset = self._material_with_files()
-        key = notes.note_key("material", asset.mat_id)
-        self.assertTrue(
-            notes.set_note(self.panel.pane.prefs, key,
-                           [{"t": "text", "text": "travels"}]),
-            "premise: the note page could not be written")
-        self.addCleanup(notes.set_note, self.panel.pane.prefs, key, [])
-        item = packages.collect_asset(model, asset.mat_id)
-        out = _out_path(self)
-        wrote = packages.write_package(out, [item])
-        self.assertEqual(1, wrote)
-        with zipfile.ZipFile(out) as bundle:
-            manifest = json.loads(bundle.read(packages.MANIFEST))
-            self.assertEqual(packages.ASSETS_FORMAT, manifest["format"])
-            entry = manifest["entries"][0]
-            self.assertEqual("asset", entry["type"])
-            self.assertEqual("material", entry["section"])
-            self.assertEqual(asset.get_as_dict(), entry["record"],
-                             "the record in the manifest differs from the "
-                             "asset's record")
-            self.assertEqual("travels", entry["note"]["items"][0]["text"])
-            self.assertTrue(entry["files"], "a built material has "
-                                            "payload files - none were packed")
-            for kind, arcname in entry["files"].items():
-                if kind == packages.RECORD_KIND:    # the builder alone, composed from `<id>.json`
-                    self.assertEqual(asset_record.encode(
-                        {"format": asset_record.FORMAT,
-                         asset_record.BUILDER: asset_record.saved_builder(
-                             model.preferences, asset.mat_id, model.DB_FILENAME)}),
-                        bundle.read(arcname))
-                    continue
-                source = model.asset_files(asset.mat_id)[kind]
-                self.assertEqual(
-                    _bytes(source), bundle.read(arcname),
-                    "member %r does not byte-match the library's %s"
-                    % (arcname, kind))
-
-    def test_only_existing_family_files_are_packed(self):
-        from amaze.core import packages
-        model = self.panel.pane.material_model
-        asset = self._material_with_files()
-        item = packages.collect_asset(model, asset.mat_id)
-        for kind, path in model.asset_files(asset.mat_id).items():
-            if kind in packages.DERIVED:
-                self.assertNotIn(kind, item["sources"],
-                                 "a derived %s was packed" % kind)
-            elif os.path.exists(path):
-                self.assertIn(kind, item["sources"])
-            else:
-                self.assertNotIn(kind, item["sources"])
-
-    def test_a_gradient_entry_is_record_only_and_still_valid(self):
-        from amaze.core import packages
-        model = self.panel.pane.gradient_model
-        self.assertTrue(model.assets, "the fixture library has no gradients")
-        asset = model.assets[0]
-        item = packages.collect_asset(model, asset.mat_id)
-        out = _out_path(self)
-        self.assertEqual(1, packages.write_package(out, [item]))
-        with zipfile.ZipFile(out) as bundle:
-            entry = json.loads(bundle.read(packages.MANIFEST))["entries"][0]
-        self.assertEqual(asset.get_as_dict(), entry["record"])
-        self.assertEqual("gradient", entry["section"])
-        debris = [name for name in os.listdir(os.path.dirname(out))
-                  if name != os.path.basename(out)]
-        self.assertEqual([], debris,
-                         "the writer left temporary files beside the package")
-
-    def test_a_plain_file_is_packed_with_its_kind_and_bytes(self):
-        from amaze.core import packages
-        folder = tempfile.mkdtemp(prefix="amaze_pkg_src_")
-        self.addCleanup(
-            __import__("shutil").rmtree, folder, ignore_errors=True)
-        source = os.path.join(folder, "rock.bgeo")
-        with open(source, "wb") as handle:
-            handle.write(b"geometry bytes")
-        item = packages.collect_file(source, "geometry")
-        out = _out_path(self)
-        self.assertEqual(1, packages.write_package(out, [item]))
-        with zipfile.ZipFile(out) as bundle:
-            manifest = json.loads(bundle.read(packages.MANIFEST))
-            entry = manifest["entries"][0]
-            self.assertEqual("file", entry["type"])
-            self.assertEqual("geometry", entry["kind"])
-            self.assertEqual("rock.bgeo", entry["name"])
-            self.assertEqual(b"geometry bytes", bundle.read(entry["arc"]))
-
-    def test_two_files_sharing_a_basename_do_not_collide(self):
-        from amaze.core import packages
-        items = []
-        for n in (b"one", b"two"):
-            folder = tempfile.mkdtemp(prefix="amaze_pkg_dup_")
-            self.addCleanup(
-                __import__("shutil").rmtree, folder, ignore_errors=True)
-            path = os.path.join(folder, "same.png")
-            with open(path, "wb") as handle:
-                handle.write(n)
-            items.append(packages.collect_file(path, "image"))
-        out = _out_path(self)
-        self.assertEqual(2, packages.write_package(out, items))
-        with zipfile.ZipFile(out) as bundle:
-            arcs = [e["arc"] for e in
-                    json.loads(bundle.read(packages.MANIFEST))["entries"]]
-            self.assertEqual(2, len(set(arcs)),
-                             "two entries share one archive member")
-            self.assertEqual({b"one", b"two"},
-                             {bundle.read(a) for a in arcs})
+def palette(n, curated="") -> tuple:
+    """A Colors entry, its record inline; `curated` is its preset mark."""
+    record = {"id": "%032x" % n, "name": "Palette %d" % n, "categories": ["Mine"],
+              "colors": [{"hex": "#101010"}]}
+    return {"type": "asset", "section": "gradient", "id": "%032x" % n,
+            "record": dict(record, **({"curated": curated} if curated else {}))}, {}
 
 
-class PackageReaderTest(unittest.TestCase):
-    """Reading: the manifest is returned verbatim, and a newer format raises an error naming it."""
+class _Library(unittest.TestCase):
+    """A copy of the fixture library with its user, and its Materials and Colors models."""
 
-    def _package(self, manifest) -> str:
-        folder = tempfile.mkdtemp(prefix="amaze_pkg_read_")
-        self.addCleanup(
-            __import__("shutil").rmtree, folder, ignore_errors=True)
-        path = os.path.join(folder, "p.amazepkg")
+    def setUp(self):
+        self.out = tempfile.mkdtemp(prefix="amaze_packages_")
+        self.addCleanup(shutil.rmtree, self.out, True)
+        self.fresh()
+
+    def fresh(self) -> None:
+        """A new copy of the library, and models over it."""
+        self.prefs = test_support.fixture_prefs(self)
+        test_support.with_fixture_user(self.prefs.dir)
+        self.lib = self.prefs.dir.rstrip("/")
+        self.addCleanup(library_db.release, self.prefs)
+        self.models = {"material": library.MaterialLibrary(self.prefs),
+                       "gradient": gradient_library.GradientLibrary(self.prefs)}
+
+    def package(self, *made, manifest=None, name="p.amazepkg") -> str:
+        """A package of `(entry, members)` pairs; `manifest`: its own, raw bytes, or False for none."""
+        path = os.path.join(self.out, name)
+        manifest = manifest if manifest is not None else {
+            "format": packages.ASSETS_FORMAT, "entries": [entry for entry, _m in made]}
         with zipfile.ZipFile(path, "w") as bundle:
-            from amaze.core import packages
-            bundle.writestr(packages.MANIFEST, json.dumps(manifest))
+            if manifest is not False:
+                bundle.writestr(packages.MANIFEST, manifest if isinstance(manifest, bytes)
+                                else json.dumps(manifest))
+            for _entry, members in made:
+                for arc, data in members.items():
+                    bundle.writestr(arc, data)
         return path
 
-    def test_a_package_this_build_cannot_read_raises_package_error(self):
-        from amaze.core import packages
-        path = self._package({"format": packages.FORMAT + 1, "entries": []})
-        with self.assertRaises(packages.PackageError) as caught:
-            packages.read_manifest(path)
-        self.assertIn(str(packages.FORMAT + 1), str(caught.exception))
-        self.assertIn(str(packages.FORMAT), str(caught.exception))
-        bare = os.path.join(os.path.dirname(path), "bad.amazepkg")    # no manifest at all
-        with zipfile.ZipFile(bare, "w") as bundle:
-            bundle.writestr("stray.txt", "x")
-        with self.assertRaises(packages.PackageError):
-            packages.read_manifest(bare)
+    def bring(self, path, restore=False) -> dict:
+        return packages.import_package(self.models, self.prefs, path, restore)
 
-    def test_verify_names_a_missing_member(self):
-        from amaze.core import packages
-        path = self._package({
-            "format": packages.FORMAT,
-            "entries": [{"type": "file", "kind": "image",
-                         "name": "a.png", "arc": "files/0_a.png"}]})
-        problems = packages.verify_package(path)
-        self.assertEqual(1, len(problems))
-        self.assertIn("files/0_a.png", problems[0])
+    def state(self) -> dict:
+        return test_support.library_state(self.lib)
 
-    def test_a_manifest_of_the_wrong_shape_raises_package_not_readable(self):
-        from amaze import messages
-        from amaze.core import packages
-        asset = {"type": "asset", "section": "material"}
-        for manifest in ([], "x", None, {"entries": []},
-                         {"format": "2", "entries": []},
-                         {"format": True, "entries": []},
-                         {"format": 1, "entries": {"a": 1}},
-                         {"format": 2, "entries": [1]},
-                         {"format": 2, "entries": [dict(asset, files=["a"])]},
-                         {"format": 2, "entries": [dict(asset, textures=["a"])]},
-                         {"format": 2, "entries": [dict(asset, files={"mat": ["a"]})]},
-                         {"format": 2, "entries": [dict(asset, record=[1])]},
-                         {"format": 2, "entries": [dict(asset, note=[1])]},
-                         {"format": 2, "entries": [dict(asset, record={"categories": 5})]},
-                         {"format": 2, "entries": [dict(asset, record={"categories": [["a"]]})]},
-                         {"format": 2, "entries": [dict(asset, record={"colors": 5})]},
-                         {"format": 2, "entries": [dict(asset, note={"items": 5})]},
-                         {"format": 2, "entries": [{"type": "file", "arc": ["a"]}]}):
-            path = self._package(manifest)
-            for read in (packages.read_manifest, packages.verify_package):
-                with self.subTest(manifest=manifest, read=read.__name__):
-                    with self.assertRaises(packages.PackageError) as caught:
-                        read(path)
-                    self.assertEqual(messages.PACKAGE_NOT_READABLE % "p.amazepkg",
-                                     str(caught.exception))
-        kept = {"format": 2, "entries": [dict(asset, record={"categories": "Fabrics"},
-                                              note=None, textures=None)]}
-        self.assertEqual(kept, packages.read_manifest(self._package(kept)),
-                         "a text category or an absent field is a shape every writer has made")
+    def rows(self, name) -> list:
+        """The ids of the rows named `name` in the Materials database on disk."""
+        found = guard.Guard(self.lib).read("materials.json").document or {}
+        return [key for key, row in found.get("assets", {}).items() if row.get("name") == name]
 
-    def test_byte_size_shows_one_decimal_at_most(self):
-        from amaze.helpers import wording
-        self.assertEqual(
-            ["16 GB", "1.5 GB", "512 MB", "1.5 MB", "4 KB", "900 bytes"],
-            [wording.byte_size(n) for n in (16 * 1024 ** 3, 1536 * 1024 ** 2,
-                                            512 * 1024 ** 2, 1536 * 1024, 4096, 900)])
+    def folders(self, name, files=True) -> list:
+        """The files under every folder of `name` in `materials/`, scratch files left out."""
+        base = os.path.join(self.lib, "materials")
+        found = [folder for folder in os.listdir(base) if folder.startswith(name + "__")]
+        return found if not files else sorted(
+            os.path.relpath(os.path.join(here, file), base).replace(os.sep, "/")
+            for folder in found for here, _dirs, names in os.walk(os.path.join(base, folder))
+            for file in names if not file.endswith(guard.SCRATCH))
 
 
-class ExportMenuTest(unittest.TestCase):
-    """Export Asset and Export Category on the View menu, and the section methods without UI."""
+class PackageTest(_Library):
 
-    @classmethod
-    def setUpClass(cls):
-        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
+    def test_pk01_an_import_never_writes_over_a_file_in_the_library(self):
+        test_support.put(self.lib, "import/notes.txt", "the user's own")
+        plain = {"type": "file", "kind": "text", "name": "notes.txt", "arc": "files/0_notes.txt"}
+        path = self.package(brick(), (plain, {"files/0_notes.txt": b"from the package"}))
+        before = self.state()
+        self.bring(path)
+        self.bring(path)
+        after = self.state()
+        self.assertEqual({}, {name: data for name, data in before.items() if after[name] != data
+                              and not name.endswith(".json") and "backup/" not in name})
+        self.assertEqual(2, len({name.split("/")[1] for name in after
+                                 if name.startswith("materials/Brick 1__")}))
+        self.assertEqual(2, sum(data == b"from the package" for name, data in after.items()
+                                if name.startswith("import/")))
 
-    def test_every_menu_offers_its_package_actions(self):
-        from amaze import sections
-        from amaze.sections import online as online_section, base as section_base
-        for cls_ in sections.SECTION_CLASSES:
-            with self.subTest(section=cls_.key):
-                self.assertNotIn("Export Package",
-                                 [entry.label for entry in cls_.GRID_MENU],
-                                 "%s still exports from its right-click menu" % cls_.key)
-                self.assertTrue(cls_.exports_selection,
-                                "%s cannot export its selection" % cls_.key)
-                self.assertNotIn("Export Category",
-                                 [entry.label for entry in cls_.SIDEBAR_MENU],
-                                 "%s still exports from its sidebar menu" % cls_.key)
-                self.assertEqual(issubclass(cls_, section_base.AssetSection), cls_.exports_categories,
-                                 "%s is wrong about having categories to export" % cls_.key)
-        restore = [e for e in online_section.OnlineContext.GRID_MENU
-                   if e.label == "Restore"]
-        self.assertTrue(restore, "the online grid offers no Restore")
-        self.assertEqual("selection_is_amaze_packages", restore[0].shown,
-                         "Restore must hide for material sources")
+    def test_pk02_an_import_writes_only_into_its_new_folders_and_import(self):
+        escaping, members = brick(2, textures=["$AMAZEASSET/../../x.png"])
+        escaping["textures"] = {"$AMAZEASSET/../../x.png": list(members)[1]}
+        before = self.state()
+        summary = self.bring(self.package(brick(), (escaping, members)))
+        self.assertEqual((1, 1), (summary["imported"], summary["refused"]))
+        changed = [name for name, data in self.state().items() if before.get(name) != data
+                   and not name.endswith(".json") and not name.startswith("backup/")]
+        new = {name.split("/")[1] for name in changed if name.startswith("materials/Brick 1__")}
+        self.assertEqual(1, len(new))
+        own = "materials/%s/" % new.pop()
+        self.assertEqual([], [name for name in changed if not name.startswith((own, "import/"))])
+        self.assertEqual([], self.folders("Brick 2"))
 
-    def test_the_View_menu_exports_the_active_grid_selection(self):
-        """Enabled only while the shown grid has an exportable selection; the click exports it."""
-        from unittest import mock
-        panel = self.panel
-        action = panel.action_package_export
-        section = panel.pane.active_section()
-        selection = section.grid_selection_model()
-        index = selection.model().index(0, 0)
-        self.assertTrue(index.isValid(), "the fixture grid is empty")
-        self.addCleanup(selection.clearSelection)
-        selection.clearSelection()
-        panel.sync_package_export()
-        self.assertFalse(action.isEnabled(), "Export Package is enabled with nothing selected")
-        selection.select(index, QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect
-                         | QtCore.QItemSelectionModel.SelectionFlag.Rows)
-        panel.sync_package_export()
-        self.assertTrue(action.isEnabled(), "Export Package is disabled with a tile selected")
-        with mock.patch.object(type(section), "export_selection") as export:
-            action.trigger()
-        self.assertEqual([index], list(export.call_args[0][0]),
-                         "the click did not export the selected row")
-        with mock.patch.object(panel.pane, "active_section", lambda: panel.pane.online_context):
-            panel.sync_package_export()
-            self.assertFalse(action.isEnabled(), "Export Asset is enabled on the online grid")
+    def attempt(self, package, disk) -> tuple:
+        """Import into a new library over `disk`, then open it again: its rows, files and folders."""
+        self.fresh()
+        with mock.patch.object(library_db.guard_of(self.prefs), "disk", disk or guard.Disk()):
+            try:
+                self.bring(package)
+            except faults.Cut:
+                pass
+        guard.Guard(self.lib).recover()    # what the next open does
+        return self.rows("Brick 1"), self.folders("Brick 1"), self.folders("Brick 1", False)
 
-    def test_the_View_menu_exports_the_category_selected_in_the_sidebar(self):
-        """Enabled where the section has categories; All, or no row, exports the whole section."""
-        from unittest import mock
-        panel = self.panel
-        action = panel.action_category_export
-        section = panel.pane.active_section()
-        self.assertTrue(section.exports_categories, "premise: the fixture opens on a category section")
-        panel.sync_package_export()
-        self.assertTrue(action.isEnabled(), "Export Category is off in a section with categories")
-        for expected in (None, "Metal"):    # None is All: the whole section
-            with self.subTest(standing=expected or "All"), \
-                    mock.patch.object(type(section), "selected_category", lambda _s, e=expected: e), \
-                    mock.patch.object(type(section), "export_category") as export:
-                action.trigger()
-                self.assertEqual((expected,), export.call_args[0])
-        for key in ("file",):
-            with mock.patch.object(panel.pane, "active_section", lambda k=key: panel.pane.sections[k]):
-                panel.sync_package_export()
-                self.assertFalse(action.isEnabled(), "Export Category is enabled in %s" % key)
-        with mock.patch.object(panel.pane, "active_section", lambda: panel.pane.online_context):
-            panel.sync_package_export()
-            self.assertFalse(action.isEnabled(), "Export Category is enabled on the online grid")
+    def test_pk03_each_asset_arrives_whole_or_not_at_all(self):
+        def whole(rid):
+            return sorted("Brick 1__%s/%s" % (rid, part) for part in (
+                rid + ".mat", rid + ".json", "textures/brick.png", "comments/" + PICTURE[21:]))
 
-    def test_export_package_to_writes_the_selection(self):
-        from amaze.core import packages
-        section = self.panel.pane.sections["gradient"]
-        proxy = self.panel.pane.gradient_sorted_model
-        index = proxy.index(0, 0)
-        self.assertTrue(index.isValid(), "the fixture grid is empty")
-        out = _out_path(self)
-        wrote = section.export_package_to([index], out)
-        self.assertEqual(1, wrote)
-        self.assertEqual(
-            1, len(packages.read_manifest(out)["entries"]))
+        path = self.package(brick())
+        damaged = test_support.put(self.out, "damaged.amazepkg", read(path).replace(
+            b"brick texture", b"brick textur!"))
+        counting = faults.FaultDisk()
+        rows, files, _folders = self.attempt(path, counting)
+        self.assertEqual(whole(rows[0]), files)
+        for where, disk, package in (("full disk", faults.FaultDisk(full_from=1), path),
+                                     ("a member that does not read back whole", None, damaged)):
+            with self.subTest(where):
+                self.assertEqual(([], [], []), self.attempt(package, disk))
+        for step in range(1, counting.steps + 1):
+            with self.subTest(crash_at=step):
+                rows, files, _folders = self.attempt(path, faults.FaultDisk(cut_at=step))
+                self.assertEqual(whole(rows[0]) if rows else [], files, "it arrived in part")
 
-    def test_an_index_the_proxy_cannot_map_exports_nothing(self):
-        """It maps to row -1, which a Python list reads as the LAST asset."""
-        foreign = QtCore.QStringListModel(["not a tile"])
-        for key, proxy in (("material", self.panel.pane.material_sorted_model),
-                           ("gradient", self.panel.pane.gradient_sorted_model)):
-            with self.subTest(section=key):
-                index = foreign.index(0, 0)
-                self.assertTrue(index.isValid(), "premise: the index itself is valid")
-                self.assertFalse(proxy.mapToSource(index).isValid(), "premise: the proxy maps it")
-                out = _out_path(self)
-                self.assertEqual(0, self.panel.pane.sections[key].export_package_to([index], out))
-                self.assertFalse(os.path.exists(out), "a package was written for no tile")
+    def test_pk04_a_package_that_cannot_be_read_whole_changes_nothing(self):
+        entry, members = brick()
+        manifest = {"format": packages.ASSETS_FORMAT, "entries": [entry]}
+        cases = {
+            "damaged zip": test_support.put(self.out, "junk.amazepkg", b"PK\x03\x04 junk"),
+            "no manifest": self.package((entry, members), manifest=False, name="none.amazepkg"),
+            "unreadable manifest": self.package(name="bad.amazepkg", manifest=b"{not json"),
+            "misshapen entry": self.package(brick(), (dict(entry, record="text"), {}),
+                                            name="shape.amazepkg"),
+            "missing member": self.package((entry, {}), name="missing.amazepkg"),
+            "newer format": self.package(manifest=dict(manifest, format=99), name="new.amazepkg"),
+            "an add-on": self.package(manifest=dict(manifest, kind="houdini-package"),
+                                      name="addon.amazepkg"),
+        }
+        before = self.state()
+        for name, path in cases.items():
+            with self.subTest(name), self.assertRaises(packages.PackageError) as caught:
+                self.bring(path)
+            self.assertTrue(str(caught.exception))
+        with self.subTest("over 16 GB"), mock.patch.object(packages, "MAX_UNPACKED_BYTES", 10), \
+                self.assertRaises(packages.PackageError):
+            self.bring(self.package(brick(), name="big.amazepkg"))
+        self.assertEqual(before, self.state(), "a refused package changed the library")
 
-    def test_an_export_reports_what_it_wrote_wrote_nothing_or_could_not_write(self):
-        from unittest import mock
-        from amaze import messages
-        section = self.panel.pane.sections["gradient"]
-        index = self.panel.pane.gradient_sorted_model.index(0, 0)
-        out = _out_path(self)
-        ui = mock.Mock()
-
-        def shown_message():
-            call = ui.displayMessage.call_args
-            ui.displayMessage.reset_mock()
-            return call[0][0], call[1].get("severity")
-
-        with mock.patch.object(hou, "ui", ui, create=True), \
-                mock.patch.object(self.panel.pane.package_import, "ask_destination", lambda: out):
-            section.export_selection([index])
-            self.assertEqual((messages.PACKAGE_EXPORTED_ONE % os.path.basename(out),
-                              hou.severityType.Message), shown_message(), "a finished export showed nothing")
-            section.export_category(None)
-            self.assertEqual(messages.PACKAGE_EXPORTED % (self.panel.pane.gradient_model.rowCount(),
-                                                          os.path.basename(out)), shown_message()[0])
-            section.export_selection([])
-            self.assertEqual((messages.PACKAGE_EXPORT_EMPTY, hou.severityType.Warning), shown_message(),
-                             "an empty export showed no message")
-            with mock.patch("amaze.core.packages.write_package", side_effect=OSError("no room")):
-                section.export_selection([index])
-            self.assertEqual((messages.PACKAGE_NOT_SAVED % "no room", hou.severityType.Warning),
-                             shown_message(), "an export that could not be written showed no message")
-
-    def test_export_category_to_writes_every_member(self):
-        from amaze.core import packages
-        section = self.panel.pane.sections["gradient"]
-        model = self.panel.pane.gradient_model
-        want = model.rowCount()
-        self.assertGreater(want, 0, "the fixture library has no gradients")
-        out = _out_path(self)
-        wrote = section.export_category_to(None, out)
-        self.assertEqual(want, wrote,
-                         "the All category export missed rows")
-        self.assertEqual(
-            want, len(packages.read_manifest(out)["entries"]))
-
-    def test_the_file_grid_export_packs_the_file(self):
-        from amaze.core import packages
-        import types
-        from amaze.core import file_library
-        folder = tempfile.mkdtemp(prefix="amaze_pkg_file_")
-        self.addCleanup(
-            __import__("shutil").rmtree, folder, ignore_errors=True)
-        source = os.path.join(folder, "shot.exr")
-        with open(source, "wb") as handle:
-            handle.write(b"img")
-        roles = {file_library.FileFiles.PathRole: source,
-                 file_library.FileFiles.KindRole: "image"}
-        index = types.SimpleNamespace(
-            data=lambda role: roles.get(role), isValid=lambda: True)
-        out = _out_path(self)
-        wrote = self.panel.pane.sections["file"].export_package_to([index], out)
-        self.assertEqual(1, wrote)
-        entry = packages.read_manifest(out)["entries"][0]
-        self.assertEqual("file", entry["type"])
-        self.assertEqual("image", entry["kind"])
-
-
-class PackageImportTest(unittest.TestCase):
-    """Import: fresh makes new ids in `Import`; a gap fails all."""
-
-    @classmethod
-    def setUpClass(cls):
-        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
-
-    def _gradient_package(self, out, fresh_note="rides along"):
-        from amaze.core import notes, packages
-        model = self.panel.pane.gradient_model
-        asset = model.assets[0]
-        key = notes.note_key("gradient", asset.mat_id)
-        self.assertTrue(notes.set_note(
-            self.panel.pane.prefs, key, [{"t": "text", "text": fresh_note}]))
-        self.addCleanup(notes.set_note, self.panel.pane.prefs, key, [])
+    def test_pk05_an_export_changes_nothing_and_is_written_whole_or_not_at_all(self):
+        model = self.models["material"]
+        asset = next(a for a in model.assets if os.path.isfile(model.asset_files(a.mat_id)["mat"]))
+        before = self.state()
+        out = os.path.join(self.out, "export.amazepkg")
         item = packages.collect_asset(model, asset.mat_id)
-        packages.write_package(out, [item])
-        return asset
+        self.assertEqual(1, packages.write_package(out, [dict(item)]))
+        self.assertEqual(before, self.state(), "an export changed the library")
+        written = read(out)
+        gone = dict(item, sources=dict(item["sources"], mat=os.path.join(self.out, "gone.mat")))
+        with self.assertRaises(OSError):
+            packages.write_package(out, [gone])
+        self.assertEqual(written, read(out), "a failed export changed the old one")
+        self.assertEqual(["export.amazepkg"], os.listdir(self.out), "a scratch file was left")
 
-    def test_a_fresh_import_mints_a_new_id_and_is_placed_in_Import(self):
-        from amaze.core import notes, packages
-        model = self.panel.pane.gradient_model
-        out = _out_path(self)
-        original = self._gradient_package(out)
-        before = model.rowCount()
-        held = test_support.asset_ids(model)
-        summary = self.panel.pane.package_import.import_file(out)
+    def test_pk10_an_import_is_never_saved_over_another_asset(self):
+        model = self.models["material"]
+        taken = next(a for a in model.assets if a.mat_id and a.mat_id != "-1")
+        before = test_support.asset_ids(model)
+        path = self.package(brick(1, id=str(taken.mat_id)))
+        self.bring(path)
+        self.bring(path)
+        arrived = test_support.arrived(model, before)
+        self.assertEqual(2, len(arrived), "a package imported twice gave no second copy")
+        self.assertNotIn(str(taken.mat_id), [str(a.mat_id) for a in arrived])
+        self.assertEqual(taken.name, model.assets[model.find_asset_row_by_id(taken.mat_id)].name)
+
+    def test_pk11_an_import_never_freezes_houdini(self):
+        entry, members = brick()
+        members[entry["files"]["mat"]] = os.urandom(300 * 1024)    # more than the first block read
+        path = self.package((entry, members))
+        url = "https://example.invalid/packages/store/p.amazepkg"
+        test_support.serve(self, test_support.ranges_of(read(path)))
+        source = matx_sources.AmazeSource()
+        shared = source._open_package(url)
+        steps, reads, real_read = [], [], zipfile.ZipFile.read
+        bundle = source.import_reader(url, notify=lambda done, total: steps.append(done / total))
+        self.assertIsNot(shared.fp, bundle.fp, "the import shares the previews' reader")
+        with mock.patch.object(zipfile.ZipFile, "read", lambda zf, name, pwd=None: reads.append(
+                getattr(name, "filename", name)) or real_read(zf, name, pwd)):
+            summary = packages.import_entries(self.models, self.prefs, bundle, [entry])
         self.assertEqual(1, summary["imported"])
-        self.assertEqual(before + 1, model.rowCount())
-        new_asset, = test_support.arrived(model, held)
-        self.assertNotEqual(str(original.mat_id), str(new_asset.mat_id),
-                            "a fresh import kept the package's id")
-        cats = new_asset.categories
-        self.assertEqual(["Import"],
-                         [cats] if isinstance(cats, str) else list(cats))
-        page = notes.note_for(
-            self.panel.pane.prefs,
-            notes.note_key("gradient", new_asset.mat_id))
-        self.assertEqual("rides along", page["items"][0]["text"],
-                         "the note page was not moved to the new id")
-        self.assertIn(
-            "Import", self.panel.pane.gradient_categories_model._categories,
-            "the Import category is not in the sidebar model")
-        self.panel.pane.package_import.import_file(out)
-        self.assertEqual(before + 2, model.rowCount(),
-                         "a fresh import deduplicated - only restore "
-                         "mode does that, not a fresh import")
-
-    def test_a_file_entry_is_written_to_the_import_location(self):
-        from amaze.core import packages
-        from amaze.helpers import hostos as hostos_mod
-        folder = tempfile.mkdtemp(prefix="amaze_pkg_filesrc_")
-        self.addCleanup(
-            __import__("shutil").rmtree, folder, ignore_errors=True)
-        source = os.path.join(folder, "walk.bvh")
-        with open(source, "wb") as handle:
-            handle.write(b"mocap")
-        out = _out_path(self)
-        packages.write_package(out, [packages.collect_file(source,
-                                                           "other")])
-        summary = self.panel.pane.package_import.import_file(out)
-        self.assertEqual(1, summary["files"])
-        written = os.path.join(self.panel.pane.prefs.dir, "import", "walk.bvh")
-        self.assertEqual(b"mocap", _bytes(written))
-        registered = [hostos_mod.canonical_path_key(p)
-                      for p in self.panel.pane.prefs.file_folders]
-        self.assertIn(
-            hostos_mod.canonical_path_key(os.path.dirname(written)),
-            registered,
-            "the import folder is not a registered location, so the "
-            "imported file is not shown in the File section")
-
-    def test_a_renamed_import_location_keeps_its_name(self):
-        """Only the import that registers the location names it, so a rename made since stays."""
-        from amaze.core import packages
-        from amaze.helpers import hostos as hostos_mod
-        prefs = self.panel.pane.prefs
-        folder = hostos_mod.canonical_path_key(os.path.join(prefs.dir, "import"))
-        sources = tempfile.mkdtemp(prefix="amaze_pkg_named_")
-        self.addCleanup(
-            __import__("shutil").rmtree, sources, ignore_errors=True)
-
-        def import_one(name):
-            path = os.path.join(sources, name)
-            with open(path, "wb") as handle:
-                handle.write(b"mocap")
-            out = _out_path(self, name + ".amazepkg")
-            packages.write_package(out, [packages.collect_file(path, "other")])
-            self.assertEqual(1, self.panel.pane.package_import.import_file(out)["files"])
-
-        def name_shown():
-            return {hostos_mod.canonical_path_key(path): name for path, name
-                    in prefs.file_folder_names.items()}.get(folder)
-
-        import_one("walk_named_a.bvh")
-        self.assertEqual("Import", name_shown(),
-                         "premise: the import location is named Import")
-        prefs.set_file_folder_name(folder, "Mocap")
-        self.addCleanup(prefs.set_file_folder_name, folder, "Import")
-        import_one("walk_named_b.bvh")
-        self.assertEqual("Mocap", name_shown(),
-                         "the next import put the location's old name back")
-
-    def test_the_import_location_arrives_as_a_sidebar_row(self):
-        """Registered through the sidebar model, which emits rowsInserted and updates its counts."""
-        from amaze.core import category, packages
-        from amaze.helpers import hostos as hostos_mod
-        folders = self.panel.pane.file_folders_model
-        folder = hostos_mod.canonical_path_key(
-            os.path.join(self.panel.pane.prefs.dir, "import"))
-        listed = [hostos_mod.canonical_path_key(p)
-                  for p in self.panel.pane.prefs.file_folders]
-        if folder in listed:
-            self.assertTrue(folders.remove_folder(listed.index(folder) + folders._offset()),
-                            "premise: the import location stayed listed")
-        sources = tempfile.mkdtemp(prefix="amaze_pkg_rows_")
-        self.addCleanup(
-            __import__("shutil").rmtree, sources, ignore_errors=True)
-
-        def package_of(name):
-            path = os.path.join(sources, name)
-            with open(path, "wb") as handle:
-                handle.write(b"mocap")
-            out = _out_path(self, name + ".amazepkg")
-            packages.write_package(out, [packages.collect_file(path,
-                                                               "other")])
-            return out
-
-        inserted = []
-
-        def record_inserted(_parent, first, last):
-            inserted.append((first, last))
-
-        folders.rowsInserted.connect(record_inserted)
-        self.addCleanup(folders.rowsInserted.disconnect, record_inserted)
-        before = folders.rowCount()
-        self.panel.pane.package_import.import_file(package_of("walk_a.bvh"))
-        self.assertEqual(
-            [(before, before)], inserted,
-            "the import location was registered without the sidebar "
-            "model, so no view received rowsInserted")
-        row = folders.row_of(folder)
-
-        def settled_count():
-            """The row's count once no walk is queued or running; reading it only requests one."""
-            deadline = time.monotonic() + 10
-            while True:
-                count = folders.data(folders.index(row),
-                                     category.SIDEBAR_COUNT_ROLE)
-                if (count is not None and not folders._walking) \
-                        or time.monotonic() > deadline:
-                    return count
-                _app.processEvents()
-                time.sleep(0.002)
-
-        count = settled_count()
-        self.panel.pane.package_import.import_file(package_of("walk_b.bvh"))
-        self.assertEqual(
-            count + 1, settled_count(),
-            "a second import added a file to the import location and "
-            "its sidebar count did not change")
-
-    def test_a_package_missing_a_member_raises_and_changes_nothing(self):
-        from amaze.core import packages
-        model = self.panel.pane.gradient_model
-        out = _out_path(self)
-        self._gradient_package(out)
-        import zipfile as _zip
-        broken = _out_path(self, "broken.amazepkg")
-        with _zip.ZipFile(out) as src, _zip.ZipFile(broken, "w") as dst:
-            manifest = json.loads(src.read(packages.MANIFEST))
-            manifest["entries"][0]["files"]["thumbnail"] = "assets/x/y/z.png"
-            dst.writestr(packages.MANIFEST, json.dumps(manifest))
-        before = model.rowCount()
-        with self.assertRaises(packages.PackageError):
-            self.panel.pane.package_import.import_file(broken)
-        self.assertEqual(before, model.rowCount(),
-                         "a refused package still changed the library")
-
-    def _material_package(self, entries_after=()):
-        """A package of a fixture material that has payload files, raw entries appended after it."""
-        from amaze.core import packages
-        model = self.panel.pane.material_model
-        asset = next(a for a in model.assets
-                     if any(os.path.exists(p)
-                            for p in model.asset_files(a.mat_id).values()))
-        out = _out_path(self)
-        packages.write_package(
-            out, [packages.collect_asset(model, asset.mat_id)])
-        if not entries_after:
-            return out
-        edited = _out_path(self, "edited.amazepkg")
-        with zipfile.ZipFile(out) as src, zipfile.ZipFile(edited, "w") as dst:
-            for name in src.namelist():
-                data = src.read(name)
-                if name == packages.MANIFEST:
-                    manifest = json.loads(data)
-                    manifest["entries"] += list(entries_after)
-                    data = json.dumps(manifest)
-                dst.writestr(name, data)
-        return edited
-
-    def test_a_misshapen_entry_after_a_whole_one_changes_nothing(self):
-        from amaze.core import packages
-        model = self.panel.pane.material_model
-        out = self._material_package(
-            [{"type": "asset", "section": "material", "record": [1]}])
-        before, files = model.rowCount(), _files_under(self.panel.pane.prefs.dir)
-        with self.assertRaises(packages.PackageError):
-            self.panel.pane.package_import.import_file(out)
-        self.assertEqual(before, model.rowCount(),
-                         "the valid entry before the malformed one was still imported")
-        self.assertEqual(files, _files_under(self.panel.pane.prefs.dir),
-                         "a refused package still wrote into the library")
-
-    def test_import_package_shows_why_a_misshapen_package_cannot_be_read(self):
-        from unittest import mock
-
-        from amaze import messages
-        from amaze.core import packages
-        path = _out_path(self, "misshapen.amazepkg")
-        with zipfile.ZipFile(path, "w") as bundle:
-            bundle.writestr(packages.MANIFEST,
-                            json.dumps({"format": 1, "entries": {"a": 1}}))
-        ui = mock.Mock()
-        ui.selectFile.return_value = path
-        with mock.patch.object(hou, "ui", ui, create=True):
-            self.panel.pane.package_import.import_package()
-        ui.displayMessage.assert_called_once()
-        self.assertEqual((messages.PACKAGE_NOT_READABLE % "misshapen.amazepkg",),
-                         ui.displayMessage.call_args.args)
-
-    def test_import_package_refuses_while_no_library_is_open(self):
-        from unittest import mock
-
-        from amaze import messages
-        from amaze.core import packages
-        ui = mock.Mock()
-        ui.selectFile.return_value = _out_path(self)
-        with mock.patch.object(hou, "ui", ui, create=True), \
-                mock.patch.object(self.panel.pane, "material_model", None), \
-                mock.patch.object(packages, "import_package",
-                                  return_value={"imported": 0, "files": 0}) as imported:
-            self.panel.pane.package_import.import_package()
-        self.assertFalse(imported.called, "a package was imported with no library open")
-        ui.displayMessage.assert_called_once()
-        self.assertEqual((messages.NO_LIBRARY_CONFIGURED,), ui.displayMessage.call_args.args)
-
-    def test_import_package_warns_with_the_reasons_when_entries_were_refused(self):
-        from unittest import mock
-
-        from amaze import messages
-        summary = {"imported": 0, "files": 0, "refused": 2, "skipped": 0,
-                   "categories": {}, "problems": ["one: unreadable", "two: unreadable"]}
-        ui = mock.Mock()
-        ui.selectFile.return_value = _out_path(self)
-        with mock.patch.object(hou, "ui", ui, create=True), \
-                mock.patch.object(self.panel.pane.package_import, "import_file",
-                                  return_value=summary):
-            self.panel.pane.package_import.import_package()
-        ui.displayMessage.assert_called_once()
-        self.assertEqual((messages.PACKAGE_IMPORT_SUMMARY % (0, 0),),
-                         ui.displayMessage.call_args.args)
-        self.assertEqual(hou.severityType.Warning, ui.displayMessage.call_args.kwargs.get("severity"),
-                         "a package whose entries were all refused reported at Message severity")
-        self.assertEqual("one: unreadable\ntwo: unreadable",
-                         ui.displayMessage.call_args.kwargs.get("details"),
-                         "the refused entries' reasons were not shown")
-
-    def test_a_package_unpacking_past_the_cap_raises_before_a_write(self):
-        from unittest import mock
-
-        from amaze import messages
-        from amaze.core import packages
-        from amaze.helpers import wording
-        model = self.panel.pane.material_model
-        out = self._material_package()
-        with zipfile.ZipFile(out) as bundle:
-            payload = sum(info.file_size for info in bundle.infolist()
-                          if info.filename != packages.MANIFEST)
-        before, files = model.rowCount(), _files_under(self.panel.pane.prefs.dir)
-        with mock.patch.object(packages, "MAX_UNPACKED_BYTES", payload - 1), \
-                self.assertRaises(packages.PackageError) as caught:
-            self.panel.pane.package_import.import_file(out)
-        self.assertEqual(
-            messages.PACKAGE_TOO_LARGE % (wording.byte_size(payload),
-                                          wording.byte_size(payload - 1)),
-            str(caught.exception))
-        self.assertEqual(before, model.rowCount())
-        self.assertEqual(files, _files_under(self.panel.pane.prefs.dir),
-                         "the cap was checked after a write")
-
-    def test_an_imported_materials_family_is_stored_under_the_new_id(self):
-        from amaze.core import packages
-        model = self.panel.pane.material_model
-        asset = next(a for a in model.assets
-                     if any(os.path.exists(p)
-                            for p in model.asset_files(a.mat_id).values()))
-        out = _out_path(self)
-        packages.write_package(
-            out, [packages.collect_asset(model, asset.mat_id)])
-        before = model.rowCount()
-        held = test_support.asset_ids(model)
-        self.panel.pane.package_import.import_file(out)
-        self.assertEqual(before + 1, model.rowCount())
-        new_asset, = test_support.arrived(model, held)
-        sources = {k: p for k, p in
-                   model.asset_files(asset.mat_id).items()
-                   if k not in packages.DERIVED and os.path.exists(p)}
-        for kind, source in sources.items():
-            target = model.asset_files(new_asset.mat_id)[kind]
-            self.assertTrue(os.path.exists(target),
-                            "the %s payload was not written" % kind)
-            self.assertEqual(_bytes(source), _bytes(target),
-                             "the %s payload does not byte-match" % kind)
-        row = model.find_asset_row_by_id(new_asset.mat_id)    # added the way a saved row is
-        self.assertEqual(
-            model.rowCount(), len(model._mat_paths),
-            "the imported row has no thumbnail path, so every paint of its "
-            "tile raises IndexError and it never shows a picture")
-        model.data(model.index(row, 0),
-                   QtCore.Qt.ItemDataRole.DecorationRole)    # must not raise
-        self.assertIsNotNone(
-            model._content_state.get(str(new_asset.mat_id)),
-            "no content baseline was recorded, so a later Update Existing "
-            "cannot detect another machine's rewrite of these files")
-
-
-class AFailedImportIsUndoneWhole(unittest.TestCase):
-    """A failed save removes the imported row again: the right row, with the thumbnail lists in sync."""
-
-    def setUp(self):
-        self.panel = test_support.fixture_panel(self)
-        self.model = self.panel.pane.material_model
-
-    def _package_of_a_material(self):
-        from amaze.core import packages
-        asset = next(a for a in self.model.assets
-                     if any(os.path.exists(p) for p in
-                            self.model.asset_files(a.mat_id).values()))
-        out = _out_path(self)
-        packages.write_package(
-            out, [packages.collect_asset(self.model, asset.mat_id)])
-        return out
-
-    def _import_on_a_full_disk(self, out):
-        path = os.path.join(self.panel.pane.prefs.dir, self.model.DB_FILENAME)
-        with test_support.full_disk_for(path):
-            return self.panel.pane.package_import.import_file(out)
-
-    def _ids(self):
-        return [str(a.mat_id) for a in self.model.assets]
-
-    def _files(self):
-        return sorted(os.listdir(material.section_folder(
-            self.panel.pane.prefs.dir, self.model.DB_FILENAME)))
-
-    def test_a_failed_import_is_not_written_by_the_next_save(self):
-        from amaze.core import library_db
-        out = self._package_of_a_material()
-        before, files = self._ids(), self._files()
-        self.assertEqual(1, self._import_on_a_full_disk(out)["refused"])
-        self.assertEqual(before, self._ids(),
-                         "a refused import stayed in the grid")
-        self.assertEqual(self.model.rowCount(), len(self.model._mat_paths),
-                         "removing the row left the thumbnail lists out of sync")
-        self.assertEqual(files, self._files(),
-                         "a refused import left its files, or their scratch copies, in the library")
-
-        self.assertTrue(self.model.save(), "premise: the next save failed")
-        library_db.flush()
-
-        path = os.path.join(self.panel.pane.prefs.dir, self.model.DB_FILENAME)
-        with open(path, encoding="utf-8-sig") as handle:
-            on_disk = list(json.load(handle)["assets"])
-        self.assertEqual(sorted(before), sorted(on_disk),
-                         "the refused import reached disk with the next save")
-
-    def test_the_right_row_is_removed_after_the_save_dropped_another(self):
-        """The save first merges another machine's deletion, so the new row's index changes."""
-        from amaze.core import library_db
-        path = os.path.join(self.panel.pane.prefs.dir, self.model.DB_FILENAME)
-        self.assertTrue(self.model.save(), "premise: the first save failed")
-        library_db.flush()
-        out = self._package_of_a_material()
-        with open(path, encoding="utf-8-sig") as handle:
-            document = json.load(handle)
-        victim = sorted(key for key in document["assets"] if key != "-1")[1]
-        del document["assets"][victim]
-        with open(path, "w", encoding="utf-8", newline="\n") as handle:
-            json.dump(document, handle, indent=4)
-        expected =[mat_id for mat_id in self._ids() if mat_id != victim]
-
-        self.assertEqual(1, self._import_on_a_full_disk(out)["refused"])
-
-        self.assertEqual(
-            expected, self._ids(),
-            "the removal targeted the row the import was appended at, "
-            "but the save had already removed a row above it")
-
-
-class AFiveAssetImportSavesOnce(unittest.TestCase):
-    """Five materials from one package are written in ONE save; a failed save removes all five."""
-
-    def setUp(self):
-        from amaze.core import packages
-        self.panel = test_support.fixture_panel(self)
-        self.model = self.panel.pane.material_model
-        owners = [a for a in self.model.assets
-                  if any(os.path.exists(p) for p in
-                         self.model.asset_files(a.mat_id).values())]
-        self.assertGreaterEqual(len(owners), 5, "premise: five materials")
-        self.out = _out_path(self)
-        packages.write_package(self.out, [
-            packages.collect_asset(self.model, a.mat_id) for a in owners[:5]])
-
-    def _import(self, fail_save=False, out=None):
-        from unittest import mock
-        from amaze.core import library_db, packages
-        save = library_db.save
-        with mock.patch.object(library_db, "save",
-                               side_effect=(lambda *_a, **_k: False) if fail_save
-                               else save) as saves:
-            summary = packages.import_package(
-                self.panel.pane.package_import.models(), self.panel.pane.prefs, out or self.out)
-        return summary, saves.call_count
-
-    def _folder(self):
-        return sorted(os.listdir(material.section_folder(
-            self.panel.pane.prefs.dir, self.model.DB_FILENAME)))
-
-    def test_a_failed_save_removes_all_five(self):
-        before, files = [str(a.mat_id) for a in self.model.assets], self._folder()
-        summary, _saves = self._import(fail_save=True)
-        self.assertEqual((0, 5), (summary["imported"], summary["refused"]),
-                         summary)
-        self.assertEqual(before, [str(a.mat_id) for a in self.model.assets],
-                         "a refused import left rows in the grid")
-        self.assertEqual(self.model.rowCount(), len(self.model._mat_paths))
-        self.assertEqual(files, self._folder(),
-                         "a refused import left its files, or their scratch copies, behind")
-
-    def test_five_note_pages_are_written_in_one_write(self):
-        from amaze.core import notes, packages
-        owners = [a for a in self.model.assets
-                  if any(os.path.exists(p) for p in
-                         self.model.asset_files(a.mat_id).values())][:5]
-        items = []
-        for n, asset in enumerate(owners):
-            item = packages.collect_asset(self.model, asset.mat_id)
-            item["note"] = {"items": [{"t": "text", "text": "page %d" % n}]}
-            items.append(item)
-        noted = _out_path(self, "noted.amazepkg")
-        packages.write_package(noted, items)
-        held = test_support.asset_ids(self.model)
-        summary, saves = self._import(out=noted)
-        self.assertEqual(5, summary["imported"], summary)
-        self.assertEqual(2, saves, "five note pages were not one save after the rows' "
-                                   "one: %d saves" % saves)
-        pages = [notes.note_for(self.panel.pane.prefs,
-                                notes.note_key("material", a.mat_id))
-                 for a in test_support.arrived(self.model, held)]
-        self.assertEqual(["page %d" % n for n in range(5)],
-                         sorted(page["items"][0]["text"] for page in pages))
-
-
-class _Cats:
-    _categories = []    # the rename helper reads the sidebar list; empty means nothing to rename
-
-    def check_add_category(self, name):
-        pass
-
-
-class CuratedKeysTest(unittest.TestCase):
-    """Every seeded row has a `curated` tag."""
-
-    def _fresh_prefs(self, marker):
-        p = test_support.fixture_prefs(self)
-        try:
-            os.remove(os.path.join(p.dir, marker))
-        except OSError:
-            pass
-        return p
-
-    def test_the_gradient_seeder_writes_curated_keys(self):
-        from amaze.core import gradient_library
-        p = self._fresh_prefs(".amaze_gradient_seed_v1")
-        model = gradient_library.GradientLibrary(p)
-        before = model.rowCount()
-        held = test_support.asset_ids(model)
-        model.seed_curated_palettes(_Cats())
-        self.assertGreater(model.rowCount(), before,
-                           "premise: the seed never ran")
-        fresh = test_support.arrived(model, held)
-        untagged = [a.name for a in fresh if not a._extra.get("curated")]
-        self.assertEqual([], untagged[:5],
-                         "seeded palettes carry no curated tag")
-        sets_seen = {str(a._extra.get("curated", "")).split("/")[0]
-                     for a in fresh}
-        self.assertLessEqual({"wada", "klee", "albers", "itten"},
-                             sets_seen)
-
-    def test_the_code_seeder_writes_curated_keys(self):
-        from amaze.core import code_library
-        p = self._fresh_prefs(".amaze_code_starter_v1")
-        model = code_library.CodeLibrary(p)
-        before = model.rowCount()
-        held = test_support.asset_ids(model)
-        model.seed_starter_snippets(_Cats())
-        self.assertGreater(model.rowCount(), before,
-                           "premise: the seed never ran")
-        fresh = test_support.arrived(model, held)
-        untagged = [a.name for a in fresh
-                    if not str(a._extra.get("curated", ""))
-                    .startswith("starter/")]
-        self.assertEqual([], untagged[:5],
-                         "seeded snippets carry no starter/ tag")
-
-
-def _canned_amaze_source(tree, bundles):
-    """An AmazeSource with canned `tree` rows and {url: local zip}, counting calls on the class."""
-    from amaze.core import matx_sources
-
-    class Source(matx_sources.AmazeSource):
-        tree_calls = 0
-        open_calls = []
-
-        def _tree(self):
-            type(self).tree_calls += 1
-            return list(tree)
-
-        def _open_package(self, url):
-            type(self).open_calls.append(url)
-            return zipfile.ZipFile(bundles[url])
-
-    return Source()
-
-
-def _bytes_or_none(path):
-    """A file's bytes, or None where there is no file."""
-    try:
-        with open(path, "rb") as handle:
-            return handle.read()
-    except OSError:
-        return None
-
-
-def _files_under(folder):
-    """Every file under `folder`, relative to it, once the stamp checks have stopped writing there."""
-    test_support.settle_stamps()
-    return {os.path.relpath(os.path.join(at, name), folder)
-            for at, _dirs, names in os.walk(folder) for name in names}
-
-
-def _manifest_zip(testcase, entries, members=None,
-                  name="pkg.amazepkg", fmt=None) -> str:
-    """A local package from raw manifest entries and {arcname: bytes}; `fmt` overrides the format."""
-    from amaze.core import packages
-    folder = tempfile.mkdtemp(prefix="amaze_store_pkg_")
-    testcase.addCleanup(
-        __import__("shutil").rmtree, folder, ignore_errors=True)
-    path = os.path.join(folder, name)
-    with zipfile.ZipFile(path, "w") as bundle:
-        bundle.writestr(packages.MANIFEST, json.dumps(
-            {"format": packages.FORMAT if fmt is None else fmt,
-             "entries": entries}))
-        for arc, data in (members or {}).items():
-            bundle.writestr(arc, data)
-    return path
-
-
-class _Served:
-    """One canned HTTP answer: the bytes and their headers."""
-
-    def __init__(self, data, headers):
-        self._body, self.headers = io.BytesIO(data), headers
-
-    def read(self, size=-1):
-        return self._body.read(size)
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *_exc):
-        return False
-
-
-def _ranged_server(blob, before=None):
-    """A stand-in for `matx_sources._request` serving `blob` by ranges; `before(spec)` runs first."""
-
-    def serve(url, headers=None):
-        spec = str((headers or {}).get("Range") or "")
-        if before is not None:
-            before(spec)
-        if spec.startswith("bytes=-"):
-            start = max(0, len(blob) - int(spec.split("-", 1)[1]))
-            return _Served(blob[start:], {
-                "Content-Range": "bytes %d-%d/%d"
-                % (start, len(blob) - 1, len(blob))})
-        if spec:
-            lo, _, hi = spec.replace("bytes=", "").partition("-")
-            return _Served(blob[int(lo):min(int(hi), len(blob) - 1) + 1], {})
-        return _Served(blob, {})
-
-    return serve
-
-
-def _palette_entry(n, tag=None):
-    return {"type": "asset", "section": "gradient",
-            "id": "%032x" % n,
-            "record": {"id": "%032x" % n, "name": "Palette %d" % n,
-                       "categories": ["Wada 2 Colors"],
-                       "colors": [{"hex": "#101010"}, {"hex": "#f0f0f0"}],
-                       "curated": tag or "wada/t%d" % n},
-            "note": {}, "files": {}}
-
-
-class AmazeSourceTest(unittest.TestCase):
-    """The store source: one record per entry, newer formats rejected, Refresh clears caches."""
-
-    URL = "https://raw.githubusercontent.com/Timour/AmazePackages/main/"
-
-    def _two_package_folder(self):
-        a = _manifest_zip(self, [_palette_entry(1), _palette_entry(2),
-                                 _palette_entry(3)], name="a.amazepkg")
-        b = _manifest_zip(self, [_palette_entry(4), _palette_entry(5),
-                                 _palette_entry(6)], name="b.amazepkg")
-        tree = [("defaults", "a.amazepkg", self.URL + "defaults/a.amazepkg"),
-                ("defaults", "b.amazepkg", self.URL + "defaults/b.amazepkg")]
-        bundles = {tree[0][2]: a, tree[1][2]: b}
-        return _canned_amaze_source(tree, bundles)
-
-    def test_every_asset_in_every_package_is_a_tile(self):
-        source = self._two_package_folder()
-        records = source.list_materials(limit=100)
-        self.assertEqual(6, len(records),
-                         "two packages of three assets must show six "
-                         "tiles, with no tile for the package itself")
-        self.assertEqual({"Defaults"}, {r.category for r in records})
-        self.assertEqual({"amazepkg"}, {r.kind for r in records})
-        self.assertEqual(6, len({r.uid for r in records}),
-                         "tile uids collide across packages")
-        self.assertEqual(["#101010", "#f0f0f0"],
-                         records[0].payload.get("colors"),
-                         "the swatch cannot be drawn client-side")
-        self.assertTrue(records[0].payload.get("entry"),
-                        "the manifest entry is not in the record, "
-                        "so importing needs a second manifest read")
-
-    def test_material_records_name_their_thumbnail_member(self):
-        for name, entry, wanted in (
-                ("m", {"type": "asset", "section": "material", "id": "f" * 32,
-                       "record": {"id": "f" * 32, "name": "Brick",
-                                  "categories": ["Import"]},
-                       "note": {},
-                       "files": {"mat": "assets/material/x/x.mat",
-                                 "thumbnail": "assets/material/x/x.png"}},
-                 "assets/material/x/x.png"),
-                ("c", {"type": "asset", "section": "gradient", "id": "a" * 32,    # a chosen icon is preferred
-                       "record": {"id": "a" * 32, "name": "Customized",
-                                  "categories": ["X"],
-                                  "colors": [{"hex": "#101010"}]},
-                       "note": {},
-                       "files": {"thumbnail": "assets/gradient/a/a.png",
-                                 "tile_icon": "assets/gradient/a/a_icon.png"}},
-                 "assets/gradient/a/a_icon.png")):
-            with self.subTest(section=entry["section"]):
-                pkg = _manifest_zip(self, [entry], members={
-                    arc: b"x" for arc in entry["files"].values()})
-                url = self.URL + "defaults/%s.amazepkg" % name
-                source = _canned_amaze_source(
-                    [("defaults", "%s.amazepkg" % name, url)], {url: pkg})
-                record = source.list_materials(limit=10)[0]
-                self.assertEqual(wanted, record.payload.get("thumb_member"),
-                                 "the tile's image is not the member every "
-                                 "local section would choose first")
-
-    def test_search_filters_by_title(self):
-        source = self._two_package_folder()
-        hits = source.list_materials(search="palette 4", limit=100)
-        self.assertEqual(["Palette 4"], [r.title for r in hits])
-
-    def test_refresh_drops_the_tree_and_manifest_caches(self):
-        source = self._two_package_folder()
-        source.list_materials(limit=100)
-        source.list_materials(limit=100)
-        self.assertEqual(1, type(source).tree_calls,
-                         "browsing twice fetched the tree twice")
-        self.assertEqual(2, len(type(source).open_calls),
-                         "manifests were re-read on the second browse")
-        source.refresh()
-        source.list_materials(limit=100)
-        self.assertEqual(2, type(source).tree_calls)
-        self.assertEqual(4, len(type(source).open_calls),
-                         "refresh did not clear the manifest cache - "
-                         "browsing again did not re-open the packages")
-
-    def test_amaze_is_a_registered_source(self):
-        from amaze.core import matx_sources
-        names = [cls.name for cls in matx_sources.SOURCES]
-        self.assertIn("Amaze", names)
-
-    def test_a_newer_format_package_lists_no_tiles(self):
-        new = _manifest_zip(self, [_palette_entry(7)],
-                            name="future.amazepkg", fmt=99)
-        old = _manifest_zip(self, [_palette_entry(1), _palette_entry(2),
-                                   _palette_entry(3)], name="a.amazepkg")
-        tree = [("defaults", "future.amazepkg",
-                 self.URL + "defaults/future.amazepkg"),
-                ("defaults", "a.amazepkg", self.URL + "defaults/a.amazepkg")]
-        source = _canned_amaze_source(tree, {tree[0][2]: new,
-                                             tree[1][2]: old})
-        records = source.list_materials(limit=100)
-        self.assertEqual(
-            3, len(records),
-            "a package of a NEWER format than this build reads must "
-            "list no tiles - importing it would silently misread it - "
-            "while the readable package beside it still shows")
-
-    def test_a_misshapen_package_lists_no_tiles(self):
-        bad = _manifest_zip(self, [_palette_entry(7),
-                                   {"type": "asset", "section": "gradient", "record": [1]}],
-                            name="bad.amazepkg")
-        good = _manifest_zip(self, [_palette_entry(1), _palette_entry(2),
-                                    _palette_entry(3)], name="a.amazepkg")
-        tree = [("defaults", "bad.amazepkg", self.URL + "defaults/bad.amazepkg"),
-                ("defaults", "a.amazepkg", self.URL + "defaults/a.amazepkg")]
-        source = _canned_amaze_source(tree, {tree[0][2]: bad, tree[1][2]: good})
-        self.assertEqual(3, len(source.list_materials(limit=100)),
-                         "a malformed package must list nothing and block no other")
-
-    def test_a_store_package_raises_package_error_in_the_local_reader(self):
-        """A store package with no manifest raises the same `PackageError` as a local one."""
-        from amaze.core import packages
-        folder = tempfile.mkdtemp(prefix="amaze_store_pkg_")
-        self.addCleanup(__import__("shutil").rmtree, folder, True)
-        bare = os.path.join(folder, "bare.amazepkg")
-        with zipfile.ZipFile(bare, "w") as bundle:
-            bundle.writestr("readme.txt", "no manifest here")
-        url = self.URL + "defaults/bare.amazepkg"
-        source = _canned_amaze_source([("defaults", "bare.amazepkg", url)],
-                                      {url: bare})
-        with self.assertRaises(packages.PackageError) as caught:
-            source._manifest(url)
-        self.assertIn("not an Amaze package", str(caught.exception))
-
-
-class RangedFileTest(unittest.TestCase):
-    """zipfile over ranged reads: RangedFile reads a multi-block zip whole, with suffix-range seeding."""
-
-    PAYLOAD = bytes(range(256)) * 800    # 204,800 bytes, four blocks, so boundary crossings and the block cache are exercised
-
-    def test_a_zip_reads_whole_and_cheap_through_ranges(self):
-        from amaze.core import matx_sources
-        pkg = _manifest_zip(self, [_palette_entry(n) for n in range(40)],
-                            members={"files/0_big.bin": self.PAYLOAD})
-        blob = _bytes(pkg)
-        self.assertGreater(len(blob), 3 * matx_sources.RANGED_BLOCK,
-                           "premise: the fixture must span blocks")
-        requests = []
-
-        def get_range(start, end):
-            requests.append((start, end))
-            return blob[start:end + 1]
-
-        remote = matx_sources.RangedFile(len(blob), get_range)
-        with zipfile.ZipFile(remote) as bundle:
-            from amaze.core import packages
-            manifest = json.loads(bundle.read(packages.MANIFEST))
-            self.assertEqual(self.PAYLOAD, bundle.read("files/0_big.bin"),
-                             "a member spanning block boundaries did "
-                             "not read back byte-identical")
-        self.assertEqual(40, len(manifest["entries"]))
-        self.assertLessEqual(
-            len(requests), 8,
-            "the block cache is not working - %d range requests for a "
-            "%d-byte zip" % (len(requests), len(blob)))
-
-    def test_a_known_small_package_is_fetched_whole_in_one_request(self):
-        from unittest import mock
-
-        from amaze.core import matx_sources, packages
-        pkg = _manifest_zip(self, [_palette_entry(n) for n in range(3)])
-        blob = _bytes(pkg)
-        url = ("https://raw.githubusercontent.com/Timour/AmazePackages/"
-               "main/packages/defaults/tiny.amazepkg")
-        tree_json = {"tree": [{"type": "blob",
-                               "path": "packages/defaults/tiny.amazepkg",
-                               "size": len(blob)}]}
-        calls = []
-
-        class _Resp:
-            def __init__(self, data):
-                self._data, self.headers = data, {}
-
-            def read(self):
-                return self._data
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *_exc):
-                return False
-
-        def counting(url_, headers=None):
-            calls.append((url_, headers or {}))
-            return _Resp(blob)
-
-        source = matx_sources.AmazeSource()
-        with mock.patch.object(matx_sources, "get_json",
-                               return_value=tree_json):
-            with mock.patch.object(matx_sources, "_request", counting):
-                records = source.list_materials(limit=10)
-        self.assertEqual(3, len(records))
-        self.assertEqual(
-            1, len(calls),
-            "the tree already GIVES the size - a package under one "
-            "block must be fetched whole in ONE request, not probe-"
-            "416-refetch (%s)" % calls)
-        self.assertEqual(url, calls[0][0], "the one fetch requested another file")
-        self.assertNotIn("Range", calls[0][1],
-                         "the single fetch must be plain, not ranged")
-
-    def test_a_package_smaller_than_a_block_is_read_after_a_416(self):
-        from unittest import mock
-        from urllib import error as uerror
-
-        from amaze.core import matx_sources, packages
-        pkg = _manifest_zip(self, [_palette_entry(n) for n in range(3)])
-        blob = _bytes(pkg)
-        self.assertLess(len(blob), matx_sources.RANGED_BLOCK,
-                        "premise: the package must be under one block")
-
-        class _Resp:
-            def __init__(self, data):
-                self._data, self.headers = data, {}
-
-            def read(self):
-                return self._data
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *_exc):
-                return False
-
-        def strict_cdn(url, headers=None):
-            spec = str((headers or {}).get("Range") or "")
-            if spec.startswith("bytes=-"):
-                if int(spec.split("-", 1)[1]) >= len(blob):    # raw.githubusercontent returns 416, not the RFC's whole file ▸r/github-ranged-store
-                    raise uerror.HTTPError(url, 416,
-                                           "Range Not Satisfiable",
-                                           {}, None)
-                start = len(blob) - int(spec.split("-", 1)[1])
-                return _Resp(blob[start:])
-            if spec:
-                lo, _, hi = spec.replace("bytes=", "").partition("-")
-                return _Resp(blob[int(lo):min(int(hi), len(blob) - 1)
-                                  + 1])
-            return _Resp(blob)
-
-        url = ("https://raw.githubusercontent.com/Timour/AmazePackages/"
-               "main/packages/defaults/tiny.amazepkg")
-        source = matx_sources.AmazeSource()
-        with mock.patch.object(matx_sources, "_request", strict_cdn):
-            bundle = source._open_package(url)
-            manifest = json.loads(bundle.read(packages.MANIFEST))
-        self.assertEqual(3, len(manifest["entries"]),
-                         "a sub-block package must still open after the CDN's "
-                         "416 on the oversized suffix probe - all five "
-                         "store defaults are this size")
-
-    def test_ranged_reads_report_block_progress(self):
-        from amaze.core import matx_sources
-        pkg = _manifest_zip(self, [_palette_entry(n) for n in range(3)],
-                            members={"files/0_big.bin": self.PAYLOAD})
-        blob = _bytes(pkg)
-        seen = []
-
-        def get_range(start, end):
-            return blob[start:end + 1]
-
-        remote = matx_sources.RangedFile(
-            len(blob), get_range,
-            notify=lambda done, total: seen.append((done, total)))
-        with zipfile.ZipFile(remote) as bundle:
-            bundle.read("files/0_big.bin")
-        self.assertGreater(
-            len(seen), 1,
-            "a multi-block read reported no per-block progress - the "
-            "UI freezes for the whole transfer with no events processed")
-        dones = [d for d, _t in seen]
-        self.assertEqual(sorted(set(dones)), dones,
-                         "block progress must be non-decreasing")
-        self.assertTrue(all(t == seen[0][1] for _d, t in seen),
-                        "the block total changed mid-read")
-
-    def test_a_progress_callback_runs_only_on_the_thread_that_installed_it(self):
-        """A reader's progress callback updates a bar; another thread must not call it."""
-        import threading
-
-        from amaze.core import matx_sources
-        remote = matx_sources.RangedFile(
-            len(self.PAYLOAD),
-            lambda start, end: self.PAYLOAD[start:end + 1])
-        called_on = []
-        remote.notify = (
-            lambda done, total: called_on.append(threading.get_ident()))
-
-        def read_block(index):
-            remote.seek(index * matx_sources.RANGED_BLOCK)
-            remote.read(16)
-
-        worker = threading.Thread(target=read_block, args=(0,))
-        worker.start()
-        worker.join()
-        self.assertEqual(
-            [], called_on,
-            "a preview worker's read ran the import's progress callback - "
-            "widget updates and event processing off the GUI thread")
-        read_block(1)
-        self.assertEqual(
-            [threading.get_ident()], called_on,
-            "the import's own read no longer reports its progress")
-
-    def test_open_package_seeds_from_a_suffix_range_and_caches(self):
-        from unittest import mock
-
-        from amaze.core import matx_sources, packages
-        pkg = _manifest_zip(self, [_palette_entry(n) for n in range(3)],
-                            members={"files/0_big.bin": self.PAYLOAD})
-        blob = _bytes(pkg)
-        calls = []
-
-        class _Resp:
-            def __init__(self, data, headers):
-                self._data, self.headers = data, headers
-
-            def read(self):
-                return self._data
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *_exc):
-                return False
-
-        def fake_request(url, headers=None):
-            spec = str((headers or {}).get("Range") or "")
-            calls.append(spec)
-            lo, _, hi = spec.replace("bytes=", "").partition("-")
-            if not lo:    # suffix range, the tail probe: bytes=-N
-                start = max(0, len(blob) - int(hi))
-                end = len(blob) - 1
-            else:
-                start, end = int(lo), min(int(hi), len(blob) - 1)
-            return _Resp(blob[start:end + 1],
-                         {"Content-Range": "bytes %d-%d/%d"
-                          % (start, end, len(blob))})
-
-        url = ("https://raw.githubusercontent.com/Timour/AmazePackages/"
-               "main/packages/defaults/big.amazepkg")
-        source = matx_sources.AmazeSource()
-        with mock.patch.object(matx_sources, "_request", fake_request):
-            bundle = source._open_package(url)
-            manifest = json.loads(bundle.read(packages.MANIFEST))
-            self.assertEqual(self.PAYLOAD, bundle.read("files/0_big.bin"))
-            opened_in = len(calls)
-            self.assertIs(bundle, source._open_package(url),
-                          "the bundle was not cached")
-        self.assertEqual(3, len(manifest["entries"]))
-        self.assertTrue(calls[0].startswith("bytes=-"),
-                        "the first request must be the suffix probe "
-                        "that caches the last block")
-        self.assertLessEqual(opened_in, 8, calls)
-        source.refresh()
-        self.assertEqual({}, source._bundles,
-                         "Refresh left a stale remote zip open")
-
-    def test_two_threads_opening_one_package_share_one_reader(self):
-        """A preview worker and the import may open one package at the same moment."""
-        import threading
-        from unittest import mock
-
-        from amaze.core import matx_sources
-        pkg = _manifest_zip(self, [_palette_entry(n) for n in range(3)],
-                            members={"files/0_big.bin": self.PAYLOAD})
-        url = ("https://raw.githubusercontent.com/Timour/AmazePackages/"
-               "main/packages/defaults/race.amazepkg")
-        inside, release = threading.Event(), threading.Event()
-        self.addCleanup(release.set)
-
-        def stall_the_first(_spec):
-            if threading.current_thread().name == "first-opener":
-                inside.set()
-                release.wait(10)
-
-        source = matx_sources.AmazeSource()
-        opened = {}
-
-        def open_as(name):
-            opened[name] = source._open_package(url)
-
-        with mock.patch.object(matx_sources, "_request",
-                               _ranged_server(_bytes(pkg), stall_the_first)):
-            first = threading.Thread(target=open_as, args=("first",),
-                                     name="first-opener")
-            first.start()
-            self.assertTrue(inside.wait(5),
-                            "premise: the first opener never fetched")
-            second = threading.Thread(target=open_as, args=("second",),
-                                      name="second-opener")
-            second.start()
-            second.join(10)
-            release.set()
-            first.join(10)
-        self.assertIs(opened["first"], opened["second"],
-                      "two threads opening one package got two readers")
-        self.assertEqual([url], list(source._bundles))
-
-
-class OnlinePackageImportTest(unittest.TestCase):
-    """Selected tiles import only their members; a corrupt member counts as refused, the rest go on."""
-
-    @classmethod
-    def setUpClass(cls):
-        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
-
-    URL = "https://raw.githubusercontent.com/Timour/AmazePackages/main/"
-
-    def _source_over(self, *fixture_ids):
-        from amaze.core import packages
-        model = self.panel.pane.gradient_model
-        items = [packages.collect_asset(model, mat_id)
-                 for mat_id in fixture_ids]
-        out = _out_path(self, "tiles.amazepkg")
-        packages.write_package(out, items)
-        url = self.URL + "defaults/tiles.amazepkg"
-        return _canned_amaze_source(
-            [("defaults", "tiles.amazepkg", url)], {url: out})
-
-    def test_importing_one_selected_tile_imports_only_it(self):
-        from unittest import mock
-        model = self.panel.pane.gradient_model
-        ids = [str(a.mat_id) for a in model.assets[:3]]
-        source = self._source_over(*ids)
-        records = source.list_materials(limit=10)
-        self.assertEqual(3, len(records), "premise: three tiles listed")
-        chosen = records[1]
-        before = model.rowCount()
-        held = test_support.asset_ids(model)
-        with mock.patch.object(self.panel.pane.matx_online_model, "_sources",
-                               [source]):    # the real `online_import.source_for` runs, so it is tested too
-            ok, reason = self.panel.pane.online_import.import_material(chosen)
-        self.assertTrue(ok, reason)
-        self.assertEqual(before + 1, model.rowCount(),
-                         "one selected tile did not import as one asset")
-        new_asset, = test_support.arrived(model, held)
-        self.assertEqual(chosen.title, new_asset.name)
-        cats = new_asset.categories
-        self.assertEqual(
-            ["Import"], [cats] if isinstance(cats, str) else list(cats))
-
-    def test_a_failed_note_write_still_counts_the_imported_asset(self):
-        from unittest import mock
-
-        from amaze.core import notes, packages
-        model = self.panel.pane.gradient_model
-        items = [packages.collect_asset(model,
-                                        str(model.assets[0].mat_id))]
-        items[0]["note"] = {"items": [{"type": "text", "text": "kept"}]}
-        out = _out_path(self, "noted.amazepkg")
-        packages.write_package(out, items)
-        url = self.URL + "defaults/noted.amazepkg"
-        source = _canned_amaze_source(
-            [("defaults", "noted.amazepkg", url)], {url: out})
-        record = source.list_materials(limit=10)[0]
-        before = model.rowCount()
-        with mock.patch.object(self.panel.pane.matx_online_model, "_sources",
-                               [source]):
-            with mock.patch.object(notes, "set_notes",
-                                   side_effect=OSError("notes full")) as wrote:
-                ok, reason = self.panel.pane.online_import.import_material(record)
-        self.assertTrue(wrote.called, "premise: the note write was called")
-        self.assertTrue(
-            ok, "the asset was imported and SAVED before its note page "
-                "failed - reporting the tile as failed while it is in "
-                "the library is wrong (reason: %s)" % reason)
-        self.assertEqual(before + 1, model.rowCount())
-
-    def test_a_store_tile_import_updates_the_download_bar(self):
-        from unittest import mock
-
-        from amaze.core import matx_sources
-        payload = RangedFileTest.PAYLOAD
-        entry = {"type": "asset", "section": "material", "id": "9" * 32,
-                 "record": {"id": "9" * 32, "name": "Big",
-                            "categories": ["X"]},
-                 "note": {},
-                 "files": {"mat": "assets/material/9/9.mat"}}
-        pkg = _manifest_zip(self, [entry],
-                            members={"assets/material/9/9.mat": payload})
-        blob = _bytes(pkg)
-
-        class _Resp:
-            def __init__(self, data, headers):
-                self._data, self.headers = data, headers
-
-            def read(self):
-                return self._data
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *_exc):
-                return False
-
-        def serve(url, headers=None):
-            spec = str((headers or {}).get("Range") or "")
-            if spec.startswith("bytes=-"):
-                n = int(spec.split("-", 1)[1])
-                start = max(0, len(blob) - n)
-                return _Resp(blob[start:], {
-                    "Content-Range": "bytes %d-%d/%d"
-                    % (start, len(blob) - 1, len(blob))})
-            if spec:
-                lo, _, hi = spec.replace("bytes=", "").partition("-")
-                return _Resp(blob[int(lo):min(int(hi), len(blob) - 1) + 1],
-                             {})
-            return _Resp(blob, {})
-
-        tree_json = {"tree": [{"type": "blob",
-                               "path": "packages/defaults/big.amazepkg",
-                               "size": len(blob)}]}
-        source = matx_sources.AmazeSource()
-        fractions = []
-        with mock.patch.object(matx_sources, "get_json",
-                               return_value=tree_json):
-            with mock.patch.object(matx_sources, "_request", serve):
-                record = source.list_materials(limit=10)[0]
-                with mock.patch.object(
-                        self.panel.pane.matx_online_model, "_sources",
-                        [source]):
-                    ok, reason = self.panel.pane.online_import.import_material(
-                        record, on_progress=fractions.append)
-        self.assertTrue(ok, reason)
-        self.assertGreater(
-            len(fractions), 1,
-            "the import reported only its end - the bar stayed at zero "
-            "and no events ran during the download, which is the "
-            "frozen Houdini that has to be force-quit")
-        self.assertEqual(1.0, fractions[-1])
-        self.assertEqual(sorted(fractions), fractions,
-                         "fractions must be non-decreasing")
-
-    def test_the_import_never_waits_behind_a_preview_download(self):
-        """A worker downloading via the shared reader holds its lock; the import uses its own."""
-        import threading
-        import time
-        from unittest import mock
-
-        from amaze.core import matx_sources
-        entry = {"type": "asset", "section": "material", "id": "8" * 32,
-                 "record": {"id": "8" * 32, "name": "Behind",
-                            "categories": ["X"]},
-                 "note": {}, "files": {"mat": "assets/material/8/8.mat"}}
-        pkg = _manifest_zip(self, [entry], members={
-            "assets/material/8/8.mat": RangedFileTest.PAYLOAD,
-            "thumbs/8.png": RangedFileTest.PAYLOAD[::-1]})
-        blob = _bytes(pkg)
-        inside, release = threading.Event(), threading.Event()
-        self.addCleanup(release.set)
-
-        def stall_the_worker(spec):
-            if threading.current_thread().name == "preview-worker" \
-                    and spec and not spec.startswith("bytes=-"):
-                inside.set()
-                release.wait(10)
-
-        tree_json = {"tree": [{"type": "blob",
-                               "path": "packages/defaults/behind.amazepkg",
-                               "size": len(blob)}]}
-        source = matx_sources.AmazeSource()
-        watchdog = threading.Timer(4.0, release.set)
-        self.addCleanup(watchdog.cancel)
-        with mock.patch.object(matx_sources, "get_json",
-                               return_value=tree_json), \
-                mock.patch.object(matx_sources, "_request",
-                                  _ranged_server(blob, stall_the_worker)):
-            record = source.list_materials(limit=10)[0]
-            url = record.payload["package"]
-            worker = threading.Thread(
-                target=lambda: source._open_package(url).read("thumbs/8.png"),
-                name="preview-worker")
-            worker.start()
-            self.assertTrue(inside.wait(5),
-                            "premise: the worker never made a request")
-            watchdog.start()
-            started = time.monotonic()
-            with mock.patch.object(self.panel.pane.matx_online_model, "_sources",
-                                   [source]):
-                ok, reason = self.panel.pane.online_import.import_material(record)
-            waited = time.monotonic() - started
-            release.set()
-            worker.join(10)
-        self.assertTrue(ok, reason)
-        self.assertLess(
-            waited, 2.0,
-            "the import waited %.1fs behind a preview worker's block "
-            "download, and Houdini is frozen for all of it" % waited)
-
-    def test_a_corrupt_member_counts_refused_not_fatal(self):
-        from unittest import mock
-        entry = {"type": "asset", "section": "material", "id": "e" * 32,
-                 "record": {"id": "e" * 32, "name": "Broken",
-                            "categories": ["X"]},
-                 "note": {},
-                 "files": {"mat": "assets/material/e/e.mat"}}
-        pkg = _manifest_zip(self, [entry],
-                            members={"assets/material/e/e.mat": b"gooddata"})
-        with open(pkg, "r+b") as handle:    # flip one payload byte so the member's CRC check fails the read
-            data = handle.read()
-            at = data.index(b"gooddata")
-            handle.seek(at)
-            handle.write(b"baddata!")
-        url = self.URL + "defaults/broken.amazepkg"
-        source = _canned_amaze_source(
-            [("defaults", "broken.amazepkg", url)], {url: pkg})
-        record = source.list_materials(limit=10)[0]
-        material_model = self.panel.pane.material_model
-        before = material_model.rowCount()
-        with mock.patch.object(self.panel.pane.matx_online_model, "_sources",
-                               [source]):
-            ok, reason = self.panel.pane.online_import.import_material(record)
-        self.assertFalse(ok, "a corrupt payload imported as good")
-        self.assertIn("did not read back whole", reason,    # the counted refusal, not a crash caught as any Exception
-                      reason)
-        self.assertEqual(before, material_model.rowCount(),
-                         "the refused tile still changed the library")
-
-    def test_a_tile_unpacking_past_the_cap_returns_false_before_a_write(self):
-        from unittest import mock
-
-        from amaze import messages
-        from amaze.core import packages
-        from amaze.helpers import wording
-        member = "assets/material/f/f.mat"
-        entry = {"type": "asset", "section": "material", "id": "f" * 32,
-                 "record": {"id": "f" * 32, "name": "Heavy", "categories": ["X"]},
-                 "note": {}, "files": {"mat": member}}
-        pkg = _manifest_zip(self, [entry], members={member: b"x" * 4000})
-        url = self.URL + "defaults/heavy.amazepkg"
-        source = _canned_amaze_source([("defaults", "heavy.amazepkg", url)], {url: pkg})
-        record = source.list_materials(limit=10)[0]
-        model = self.panel.pane.material_model
-        before, files = model.rowCount(), _files_under(self.panel.pane.prefs.dir)
-        with mock.patch.object(self.panel.pane.matx_online_model, "_sources", [source]), \
-                mock.patch.object(packages, "MAX_UNPACKED_BYTES", 1000):
-            ok, reason = self.panel.pane.online_import.import_material(record)
-        self.assertFalse(ok, "a tile over the cap was imported")
-        self.assertEqual(messages.PACKAGE_TOO_LARGE % (wording.byte_size(4000),
-                                                       wording.byte_size(1000)), reason)
-        self.assertEqual(before, model.rowCount())
-        self.assertEqual(files, _files_under(self.panel.pane.prefs.dir),
-                         "the store import checked the cap after a write")
-
-
-class TexturePackingTest(unittest.TestCase):
-    """A packed texture whose token escapes the library is refused and writes nothing."""
-
-    @classmethod
-    def setUpClass(cls):
-        test_support.pin_env(test_support.class_scope(cls), "OCIO", "/dev/null")    # save_node requires $OCIO
-        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
-
-    def test_a_token_escaping_the_library_counts_as_refused_and_writes_nothing(self):
-        from amaze.core import packages
-        model = self.panel.pane.material_model
-        root = str(model.preferences.dir)
-        for ident, token, listed, target in (
-                ("d", "$AMAZELIB/../outside.png", True,
-                 os.path.normpath(os.path.join(root, os.pardir, "outside.png"))),
-                ("c", "$AMAZELIB/policy.json", False,    # in the library is not enough: only under matX/
-                 os.path.join(root, "policy.json"))):
-            with self.subTest(token=token):
-                member = "assets/material/%s/textures/0_%s" % (
-                    ident, os.path.basename(token))
-                record = {"id": ident * 32, "name": "Escape",
-                          "categories": ["X"]}
-                if listed:
-                    record["textures"] = [token]
-                entry = {"type": "asset", "section": "material",
-                         "id": ident * 32, "record": record, "note": {},
-                         "files": {}, "textures": {token: member}}
-                pkg = _manifest_zip(self, [entry], members={member: b"evil"})
-                before = model.rowCount()
-                was = _bytes_or_none(target)    # policy.json exists: the panel keeps the library version in it
-                summary = packages.import_package(
-                    self.panel.pane.package_import.models(), self.panel.pane.prefs, pkg)
-                self.assertEqual(1, summary["refused"], summary)
-                self.assertEqual(before, model.rowCount(),
-                                 "the escaping entry still added a row")
-                self.assertEqual(was, _bytes_or_none(target),
-                                 "a package token wrote %s" % target)
-
-
-class OnlineKindFilterTest(unittest.TestCase):
-    """Online, the Filter button narrows the grid by kind; other sources count as Materials."""
-
-    @classmethod
-    def setUpClass(cls):
-        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
-
-    def _mixed_records(self):
-        from amaze.core import matx_sources
-
-        def store(section, n):
-            return matx_sources.MatxRecord(
-                source="Amaze", uid="d/p.amazepkg#%d" % n, title="T%d" % n,
-                category="Defaults", kind="amazepkg",
-                payload={"package": "https://x", "section": section,
-                         "entry": {}})
-        return [store("gradient", 1), store("code", 2), store("cop", 3),
-                store("material", 4),
-                matx_sources.MatxRecord(source="GPUOpen", uid="g1",
-                                        title="Brick", category="Stone",
-                                        kind="package", payload={})]
-
-    def test_the_kind_filter_narrows_by_what_a_tile_is(self):
-        from amaze.core import matx_library
-        model = matx_library.MatxOnlineLibrary(
-            preferences=type("P", (), {"rendersize": 64})())
-        model._all = self._mixed_records()
-        model._loaded = True
-        model.set_kind_filter("gradient")
-        self.assertEqual(["T1"], [r.title for r in model._records])
-        model.set_kind_filter("material")
-        self.assertEqual(["Brick", "T4"],    # in the grid's order, name A to Z
-                         [r.title for r in model._records],
-                         "a non-Amaze source tile IS a material and "
-                         "must pass the Materials filter")
-        model.set_kind_filter(None)
-        self.assertEqual(5, len(model._records))
-
-    def test_build_filter_menu_leaves_the_online_eye_alone(self):
-        panel = self.panel
-        panel.pane.enter_online()
-        try:
-            panel.build_filter_menu()
-            self.assertIn(
-                "Show one kind of tile", panel.btn_filter.toolTip(),
-                "build_filter_menu overwrote the kind filter's tooltip "
-                "- two functions set one control")
-            self.assertEqual(
-                ["All", "Materials", "Colors", "Nodes", "Code"],
-                [a.text() for a in panel.btn_filter.menu().actions()])
-        finally:
-            panel.pane.leave_online()
-
-    def test_the_tile_labels_are_the_sections_own(self):
-        from amaze.core import matx_library
-        from amaze import sections
-        from amaze.sections import online as online_section, base as section_base
-        labels = matx_library.SECTION_TILE_LABELS
-        self.assertEqual({"gradient", "cop", "code", "file"},
-                         set(labels))
-        for cls in sections.SECTION_CLASSES:
-            if cls.key in labels:
-                self.assertEqual(
-                    cls.label, labels[cls.key],
-                    "the online subtitle for %r differs from the "
-                    "section's own label" % cls.key)
-
-    def test_the_online_eye_offers_the_five_kinds(self):
-        panel = self.panel
-        panel.pane.enter_online()
-        try:
-            self.assertTrue(
-                panel.btn_filter.isEnabled(),
-                "the Filter button (icon_view.svg is its "
-                "icon) stayed disabled online, which is the whole request")
-            menu = panel.btn_filter.menu()
-            self.assertEqual(["All", "Materials", "Colors", "Nodes",
-                              "Code"],
-                             [a.text() for a in menu.actions()])
-            checked = [a.text() for a in menu.actions() if a.isChecked()]
-            self.assertEqual(["All"], checked)
-            colors = next(a for a in menu.actions()
-                          if a.text() == "Colors")
-            colors.trigger()
-            self.assertEqual("gradient",
-                             panel.pane.matx_online_model._kind_filter)
-        finally:
-            panel.pane.leave_online()
-        self.assertNotIn(
-            "Colors",
-            [a.text() for a in panel.btn_filter.menu().actions()],
-            "leaving online mode must give the Filter button its section filter "
-            "menu back")
-
-
-class OnlineTilePaintingTest(unittest.TestCase):
-    """Tile images without downloads: swatches drawn from colours, thumbnails fetched per member."""
-
-    def test_a_swatch_is_the_color_sections_own_face(self):
-        from amaze.core import gradient_library
-        image = gradient_library.paint_swatch(
-            [{"hex": "#ff0000"}, {"hex": "#0000ff"}], {})
-        size = gradient_library.THUMB_SIZE
-        self.assertEqual((size, size), (image.width(), image.height()))
-        top = image.pixelColor(size // 2, size // 4)
-        bottom = image.pixelColor(size // 2, 3 * size // 4)
-        self.assertGreater(top.red(), 200,
-                           "the top band is not the first colour - the "
-                           "Color section stacks HORIZONTAL bands")
-        self.assertGreater(bottom.blue(), 200)
-
-    def test_an_online_palette_paints_the_local_face(self):
-        from amaze.core import (gradient_library, matx_library,
-                                matx_sources, thumbnails)
-        record = matx_sources.MatxRecord(
-            source="Amaze", uid="d/p.amazepkg#s", title="Two",
-            category="Defaults", kind="amazepkg",
-            payload={"package": "https://x", "section": "gradient",
-                     "entry": {"record": {
-                         "colors": [{"hex": "#ff0000"},
-                                    {"hex": "#0000ff"}]}},
-                     "colors": ["#ff0000", "#0000ff"]})
-        model = matx_library.MatxOnlineLibrary(
-            preferences=type("P", (), {"rendersize": 64})())
-        key = model._preview_key(record)
-        thumbnails.engine.discard(key)
-        model._records = [record]
-        image = model.shown_picture(0)[0]
-        self.assertIsNotNone(image)
-        self.assertEqual(
-            gradient_library.paint_swatch(
-                [{"hex": "#ff0000"}, {"hex": "#0000ff"}], {}),
-            image,
-            "the online palette face differs from the Color section's "
-            "for the same colours - a second paint function is in use")
-
-    def test_a_webp_preview_is_fetched_as_png(self):
-        """Houdini's Qt reads no WebP, so a preview named as WebP is requested as PNG."""
-        from unittest import mock
-        from amaze.core import matx_library, matx_sources, thumbnails
-        thumbs = "https://cdn.polyhaven.com/asset_img/thumbs/"
-        record = matx_sources.MatxRecord(
-            source="PolyHaven", uid="bamboo_veneer", title="Bamboo Veneer",
-            preview_url=thumbs + "bamboo_veneer.png?width=256&format=webp&v=1")
-        model = matx_library.MatxOnlineLibrary(
-            preferences=type("P", (), {"rendersize": 64})())
-        thumbnails.engine.discard(model._preview_key(record))
-        jobs = []
-        with mock.patch.object(
-                matx_library, "_PreviewWorker",
-                side_effect=lambda given: jobs.extend(given) or mock.MagicMock()):
-            model._records = [record]
-            model.tile_picture(0)
-            model._flush_pending()
-        self.assertEqual(
-            [thumbs + "bamboo_veneer.png?width=256&format=png&v=1"],
-            [url for _key, url, _path in jobs],
-            "a WebP preview is downloaded as WebP, which Qt cannot decode")
-
-    def test_a_thumbless_tile_shows_its_sections_own_face(self):
-        from amaze.core import cop_library, library, matx_library, \
-            matx_sources, thumbnails, tile_icons
-        model = matx_library.MatxOnlineLibrary(
-            preferences=type("P", (), {"rendersize": 64})())
-
-        def face_of(section, record):
-            rec = matx_sources.MatxRecord(
-                source="Amaze", uid="d/p.amazepkg#" + section,
-                title="T", category="Defaults", kind="amazepkg",
-                payload={"package": "https://x", "section": section,
-                         "entry": {"record": record}})
-            key = model._preview_key(rec)
-            thumbnails.engine.discard(key)
-            model._records = [rec]
-            return model.shown_picture(0)[0]
-
-        node = face_of("cop", {"name": "domelight1", "renderer": "LOP"})
-        self.assertIsNotNone(
-            node, "a node tile with no packed thumbnail stayed BLANK")
-        self.assertEqual(
-            tile_icons.generic_image(cop_library.CopLibrary.TILE_FACE), node,
-            "a node tile online must show the Node section's own generic "
-            "icon, not a hand-picked one")
-        self.assertEqual(
-            tile_icons.generic_image(matx_library.ONLINE_FACE),
-            face_of("material", {"name": "bare"}),
-            "an online material without thumbnail shows the online face")
-        self.assertNotEqual(tile_icons.generic_image(matx_library.ONLINE_FACE),
-                            tile_icons.generic_image(library.MaterialLibrary.TILE_FACE),
-                            "the online face is the Material section's own")
-
-    def test_the_value_only_template_takes_both_swatches(self):
-        """T09's two placeholder colours are replaced by the values, in either case of hex."""
-        from amaze.core import matx_icon
-        svg = matx_icon.icon_svg({"color": [1.0, 0.0, 0.0], "transmission": 0.5}).lower()
-        self.assertNotIn(matx_icon._BASE_PLACEHOLDER, svg, "the base colour swatch kept its placeholder")
-        self.assertNotIn(matx_icon._SWATCH2_PLACEHOLDER, svg, "the second swatch kept its placeholder")
-        self.assertIn('fill="#ff0000"', svg)
-        self.assertIn('fill-opacity="%s"' % matx_icon.TRANSMISSIVE_ALPHA, svg)
-
-    def test_a_thumb_member_takes_precedence_over_the_swatch_and_the_code_paint(self):
-        from amaze.core import matx_library, matx_sources, thumbnails
-        record = matx_sources.MatxRecord(
-            source="Amaze", uid="defaults/c.amazepkg#a",
-            title="Customized", category="Defaults", kind="amazepkg",
-            payload={"package": "https://x", "entry": {}, "section":
-                     "gradient", "colors": ["#101010"],
-                     "thumb_member": "assets/gradient/a/a_icon.png"})
-        model = matx_library.MatxOnlineLibrary(
-            preferences=type("P", (), {"rendersize": 64})())
-        key = model._preview_key(record)
-        thumbnails.engine.discard(key)
-        model._records = [record]
-        self.assertIsNone(
-            model.shown_picture(0)[0],
-            "a swatch was painted for a record that NAMES its icon - "
-            "the chosen icon must take precedence over the drawn preview, as in "
-            "every local section")
-
-    def test_store_tiles_are_labelled_by_what_they_are(self):
-        from amaze.core import matx_library, matx_sources
-        model = matx_library.MatxOnlineLibrary(
-            preferences=type("P", (), {"rendersize": 64})())
-        cases = [("material", {"renderer": "Redshift"}, "Redshift"),
-                 ("material", {"renderer": "Karma"}, "MaterialX"),
-                 ("material", {}, "Material"),
-                 ("gradient", {}, "Color"),
-                 ("cop", {}, "Node"),
-                 ("code", {"renderer": "VEX"}, "Code")]
-        for section, record, wanted in cases:
-            rec = matx_sources.MatxRecord(
-                source="Amaze", uid="d/p.amazepkg#x", title="T",
-                category="Defaults", kind="amazepkg",
-                payload={"package": "https://x", "section": section,
-                         "entry": {"record": record}})
-            model._records = [rec]
-            got = model.data(model.index(0, 0),
-                             model.RendererLabelRole)
-            self.assertEqual(
-                wanted, got,
-                "a %s store tile must be labelled by what it IS, not "
-                "'Amaze (values)'" % section)
-
-    def test_a_snippet_tile_paints_its_code(self):
-        from amaze.core import matx_library, matx_sources, thumbnails
-        from amaze import amazetheme
-        from PySide6 import QtGui
-        entry = {"type": "asset", "section": "code", "id": "b" * 32,
-                 "record": {"id": "b" * 32, "name": "Jitter",
-                            "categories": ["Toolbox"], "renderer": "VEX",
-                            "code": "@P += rand(@ptnum);"},
-                 "note": {}, "files": {}}
-        record = matx_sources.MatxRecord(
-            source="Amaze", uid="defaults/t.amazepkg#b", title="Jitter",
-            category="Defaults", kind="amazepkg",
-            payload={"package": "https://x", "entry": entry,
-                     "section": "code"})
-        model = matx_library.MatxOnlineLibrary(
-            preferences=type("P", (), {"rendersize": 64})())
-        key = model._preview_key(record)
-        thumbnails.engine.discard(key)
-        model._records = [record]
-        image = model.shown_picture(0)[0]
-        self.assertIsNotNone(
-            image, "a code snippet tile stayed BLANK - 15 invisible "
-                   "tiles in a grid of colours is a package that "
-                   "'does not show up'")
-        self.assertEqual(image.pixelColor(2, 2).name(),
-                         QtGui.QColor(amazetheme.TILE_GROUND).name(),
-                         "the snippet preview is not on the background "
-                         "the Code section uses")
-
-    def _cached_preview(self, valid):
-        """A model showing one URL record whose preview is already in the disk cache."""
-        from PySide6 import QtGui
-
-        from amaze.core import matx_library, matx_sources, thumbnails
-        model = matx_library.MatxOnlineLibrary(
-            preferences=type("P", (), {"rendersize": 64})())
-        record = matx_sources.MatxRecord(
-            source="PolyHaven", uid="d7-%s" % valid, title="Cached",
-            category="Metal", preview_url="https://example.invalid/p.png")
-        path = model._cache_path(record)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        self.addCleanup(lambda: os.path.exists(path) and os.remove(path))
-        if valid:
-            canvas = QtGui.QImage(8, 8, QtGui.QImage.Format.Format_RGB32)
-            canvas.fill(QtGui.QColor("#123456"))
-            canvas.save(path, "PNG")
-        else:
-            with open(path, "wb") as handle:
-                handle.write(b"not an image")
-        model._records = [record]
-        model._key_rows = {model._preview_key(record): 0}
-        model._flush_pending = lambda: None
-        key = model._preview_key(record)
-        thumbnails.engine.discard(key)
-        self.addCleanup(thumbnails.engine.discard, key)
-        return model, key
-
-    def _settle(self, until):
-        deadline = time.monotonic() + 10
-        while not until() and time.monotonic() < deadline:
-            QtWidgets.QApplication.processEvents()
-
-    def test_a_cached_preview_is_decoded_off_the_gui_thread(self):
-        from amaze.core import thumbnails
-        model, key = self._cached_preview(True)
-        index = model.index(0, 0)
-        self.assertIsNone(
-            model.data(index, QtCore.Qt.ItemDataRole.DecorationRole),
-            "the cached preview was decoded inside data(), on the GUI "
-            "thread")
-        self._settle(lambda: thumbnails.engine.peek(key) is not None)
-        self.assertIsNotNone(model.data(
-            index, QtCore.Qt.ItemDataRole.DecorationRole),
-            "the off-thread load never finished")
-        self.assertEqual([], model._pending, "a cached preview was "
-                                             "queued for download")
-
-    def test_a_cached_preview_that_will_not_decode_goes_to_the_worker(self):
-        from amaze.core import thumbnails
-        model, key = self._cached_preview(False)
-        index = model.index(0, 0)
-        model.data(index, QtCore.Qt.ItemDataRole.DecorationRole)
-        self._settle(lambda: thumbnails.engine.is_missing(key))
-        model.data(index, QtCore.Qt.ItemDataRole.DecorationRole)
-        self.assertEqual([key], [queued for queued, _fetch, _path in model._pending],
-                         "a broken cached preview never reached the "
-                         "worker that clears it")
-
-    def test_a_preview_job_may_be_a_callable(self):
-        from amaze.core import matx_library
-        folder = tempfile.mkdtemp(prefix="amaze_prevjob_")
-        self.addCleanup(
-            __import__("shutil").rmtree, folder, ignore_errors=True)
-        path = os.path.join(folder, "tile.png")
-
-        def fetch(target):
-            from PySide6 import QtGui
-            canvas = QtGui.QImage(8, 8, QtGui.QImage.Format.Format_RGB32)
-            canvas.fill(QtGui.QColor("#123456"))
-            canvas.save(target, "PNG")
-
-        worker = matx_library._PreviewWorker([("k", fetch, path)])
-        seen = []
-        worker.ready.connect(seen.append)
-        worker.run()
-        self.assertEqual(["k"], seen, "the callable job never produced an image")
-        from PySide6 import QtGui
-        self.assertFalse(QtGui.QImage(path).isNull(), "the file it wrote does not read")
+        self.assertGreater(len(steps), 0, "no progress was shown")
+        self.assertEqual(sorted(steps), steps)
+        self.assertEqual([], reads, "a member was read whole into memory")
+
+    def test_pk12_restore_replaces_only_the_copies_with_the_same_mark(self):
+        model = self.models["gradient"]
+        before = test_support.asset_ids(model)
+        self.bring(self.package(palette(1, "wada/a"), palette(2, "wada/a"), palette(3)))
+        old = {a.name: str(a.mat_id) for a in test_support.arrived(model, before)}
+        summary = self.bring(self.package(palette(4, "wada/a"), name="r.amazepkg"), restore=True)
+        self.assertEqual((1, 2), (summary["imported"], summary["replaced"]))
+        now = {a.name: str(a.mat_id) for a in test_support.arrived(model, before)}
+        self.assertEqual({"Palette 3", "Palette 4"}, set(now))
+        self.assertEqual(old["Palette 3"], now["Palette 3"], "an unmarked asset was touched")
+        self.assertNotIn(now["Palette 4"], ("%032x" % 4, old["Palette 1"], old["Palette 2"]))
+
+    def test_pk22_an_imported_asset_is_new_in_import_with_every_field(self):
+        model = self.models["material"]
+        before = test_support.asset_ids(model)
+        self.bring(self.package(brick()))
+        asset, = test_support.arrived(model, before)
+        record = asset.get_as_dict()
+        self.assertNotEqual("%032x" % 1, str(asset.mat_id))
+        self.assertEqual(["Import"], list(record["categories"]))
+        self.assertEqual("kept", record["made_by_a_newer_amaze"])
+        self.assertEqual(["Brick 1__%s" % asset.mat_id],
+                         sorted({name.split("/")[0] for name in self.folders("Brick 1")}))
+
+    def test_pk23_an_imported_asset_keeps_its_comments_and_their_pictures(self):
+        model = self.models["material"]
+        before = test_support.asset_ids(model)
+        self.bring(self.package(brick()))
+        asset, = test_support.arrived(model, before)
+        key = notes.note_key("material", asset.mat_id)
+        items = notes.note_for(self.prefs, key)["items"]
+        self.assertEqual(["rough", PICTURE], [i.get("text") or i.get("src") for i in items])
+        with open(notes.image_path(self.lib, key, PICTURE), "rb") as handle:
+            self.assertEqual(b"pasted picture", handle.read())
+
+    def test_pk26_an_asset_that_fails_is_refused_alone(self):
+        broken, members = brick(2)
+        broken["files"] = {"mat": "assets/elsewhere.mat"}
+        members["assets/elsewhere.mat"] = b"x"
+        broken["textures"] = {"not a texture of its own": list(members)[1]}
+        summary = self.bring(self.package(brick(), (broken, members)))
+        self.assertEqual((1, 1), (summary["imported"], summary["refused"]))
+        self.assertEqual(1, len(summary["problems"]))
+
+    def test_pk27_the_user_is_told_which_comments_were_not_written(self):
+        with mock.patch.object(notes, "set_notes", return_value=False):
+            summary = self.bring(self.package(brick()))
+        self.assertEqual(1, summary["imported"])
+        self.assertIn(messages.PACKAGE_COMMENTS_NOT_WRITTEN % "Brick 1", summary["problems"])
+
+    def test_pk30_amazes_own_packages_carry_only_marked_assets(self):
+        self.assertEqual(["Palette 2"], packages.unmarked([palette(1, "wada/a")[0],
+                                                           palette(2)[0], brick()[0] | {
+                                                               "record": {"curated": "x/y"}}]))
+        out = os.path.join(self.out, "store")
+        seed = gradient_library.GradientLibrary.seed_curated_palettes
+
+        def one_unmarked(model, categories):
+            seed(model, categories)
+            model.assets[0]._extra.pop("curated", None)
+
+        for sabotage, code, wrote in ((None, 0, True), (one_unmarked, 1, False)):
+            shutil.rmtree(out, True)
+            with self.subTest(unmarked=bool(sabotage)), \
+                    mock.patch.object(sys, "argv", [TOOL, out]), \
+                    mock.patch.object(gradient_library.GradientLibrary, "seed_curated_palettes",
+                                      sabotage or seed), \
+                    self.assertRaises(SystemExit) as ended:
+                runpy.run_path(TOOL, run_name="__main__")
+            self.assertEqual(code, ended.exception.code)
+            self.assertEqual(wrote, bool(os.path.isdir(out) and os.listdir(out)))
 
 
 if __name__ == "__main__":
