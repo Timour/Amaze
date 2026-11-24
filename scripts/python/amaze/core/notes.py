@@ -219,5 +219,4 @@ def image_path(library_dir: str, key: str, src: str) -> str:
     database, ident = _split(key)
     if not database or not material.is_safe_asset_id(ident):
         return ""
-    return os.path.join(material.listed_dir(library_dir, database, ident),
-                        *src[len(texstore.OWN_PREFIX):].split("/"))
+    return texstore.resolve(src, None, material.listed_dir(library_dir, database, ident))
