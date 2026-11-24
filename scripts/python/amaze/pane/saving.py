@@ -8,7 +8,7 @@ import hou
 
 from amaze import branding, messages
 from amaze.actions import materials as material_actions
-from amaze.core import debug, library, renderers
+from amaze.core import debug, renderers
 from amaze.pane import asks
 from amaze import sections
 from amaze.render import nodes as nodes_mod
@@ -169,7 +169,7 @@ class Saving:
                                   title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
             return
         model = self.pane.material_model
-        total, done, unlisted, refused = len(existing), 0, [], []
+        total, done, refused = len(existing), 0, []
         try:
             with hou.InterruptableOperation(    # type: ignore
                 messages.UPDATING_MATERIALS, open_interrupt_dialog=True
@@ -180,8 +180,7 @@ class Saving:
                     row = model.find_asset_row_by_id(mat_id)
                     name = model.assets[row].name if row >= 0 else node.name()    # read first: a save can remove the row
                     try:
-                        if not self._update_existing_asset(mat_id, node):
-                            unlisted.append(name)
+                        self._update_existing_asset(mat_id, node)
                     except hou.OperationInterrupted:
                         raise
                     except material_actions.UpdateRefused as refusal:
@@ -202,20 +201,18 @@ class Saving:
                 ui.displayMessage(messages.MATERIALS_NOT_UPDATED, details="\n".join(
                     messages.MATERIAL_NOT_UPDATED_LINE % (name, reason) for name, reason in refused),
                     title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
-        library.report_unlisted(unlisted)    # the status line, last, so nothing overwrites it
 
-    def _update_existing_asset(self, mat_id: str, node: hou.Node) -> bool:
-        """Overwrite asset `mat_id`'s files from the scene node: False if the list was not saved."""
+    def _update_existing_asset(self, mat_id: str, node: hou.Node) -> None:
+        """Overwrite asset `mat_id`'s files from the scene node."""
         model = self.pane.material_model
         renderer = material_actions.update_asset_content(    # NO layout pair: it saves, which merges rows from disk
             model, model.find_asset_row_by_id(mat_id), node)
         if not renderer:    # the save failed and showed its own message
-            return True
+            return
         model.row_changed(model.find_asset_row_by_id(mat_id))    # renderer and date changed IN PLACE
         self.enable_renderer_on_add(renderer)
         self.pane.prefs.save()
         self.pane.refresh_filter()
-        return not isinstance(renderer, library.ListNotSaved)
 
     def save_new_materials(self, sel: list[hou.Node]) -> None:
         """The new-material save: D09 opened on Material, any section still choosable."""

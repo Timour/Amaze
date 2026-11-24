@@ -36,12 +36,6 @@ def as_stored(record: dict) -> dict:
     return json.loads(json.dumps(record, sort_keys=True))
 
 
-class ListNotSaved(str):
-    """The return value of a save whose files were written but whose list entry was not saved."""
-
-    __slots__ = ()
-
-
 def filled(rows) -> tuple:
     """The (label, value) rows whose value is not empty, as a tuple: the info pane shows no empty row."""
     return tuple((label, value) for label, value in rows if value)
@@ -50,14 +44,6 @@ def filled(rows) -> tuple:
 def file_count(count: int) -> str:
     """`1 file` or `5 files`."""
     return "1 file" if count == 1 else "%d files" % count
-
-
-def report_unlisted(names) -> None:
-    """One status line for the materials an update left unlisted; a later save lists them."""
-    if len(names) == 1:
-        debug.refuse(messages.MATERIAL_UPDATED_LIBRARY_NOT_SAVED % names[0])
-    elif names:
-        debug.refuse(messages.MATERIALS_UPDATED_LIBRARY_NOT_SAVED % len(names))
 
 
 class AssetLibrary(grid_engine.GridEngine,

@@ -7,7 +7,7 @@ import hou
 from PySide6 import QtCore
 
 from amaze import messages
-from amaze.core import debug, guard, library, library_db, material, renderers, texstore, versions
+from amaze.core import debug, guard, library_db, material, renderers, texstore, versions
 from amaze.render import husk_job, nodes
 from amaze.render.material_conversion import engine as conversion_engine
 from amaze.render.material_conversion import report as conversion_report
@@ -62,10 +62,12 @@ class UpdateRefused(Exception):
 
 
 def update_asset_content(model, row: int, node: hou.Node) -> str:
-    """Rewrite `row`'s files from `node`: its renderer, `ListNotSaved` if unlisted; refusals raise."""
+    """Rewrite `row`'s files from `node`: its renderer, or "" when it was not saved; refusals raise."""
     from amaze.core import library_settings
     if row < 0 or row >= len(model._assets):
         raise UpdateRefused(messages.UPDATE_REFUSED_GONE)
+    if not model.takes_edits():    # the write gate, before any file: refused, nothing is written
+        return ""
     mat = model._assets[row]
     if not library_settings.policy_readable(model.preferences):  # every caller is checked here
         debug.event("library", "overwrite refused - the library's "
@@ -124,12 +126,9 @@ def update_asset_content(model, row: int, node: hou.Node) -> str:
                     error=str(exc),
                 )
     model._add_thumb_paths(row)  # the engine discard inside is what makes the repaint fetch the freshly rendered PNG
-    listed = model.save()
-    if not listed:    # `save` showed why; the record stays in memory until a later save succeeds
-        debug.event("library", "update written but the library list was not saved",
-                    mat_id=str(mat.mat_id), name=mat.name)
+    model.save()    # the gate passed above: the row's change waits for the timer with the rest
     nodes.stamp_asset_id(node, mat.mat_id)
-    return renderer if listed else library.ListNotSaved(renderer)
+    return renderer
 
 
 def render_thumbnail(model, row: int) -> None:
