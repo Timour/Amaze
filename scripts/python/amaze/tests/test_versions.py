@@ -51,39 +51,6 @@ class _Case(unittest.TestCase):
             fh.write(payload)
 
 
-class APreEditHoldLeavesNoFolderBehind(_Case):
-    """The hold's temp folder is removed when it holds nothing, and when a copy into it fails."""
-
-    def _holding(self, mat_id, copyfile=shutil.copyfile):
-        """What `_hold_pre_edit_files` returned or raised, and what it left in the temp folder."""
-        import tempfile
-        from unittest import mock
-        from amaze.core import library as library_mod
-
-        model = library_mod.MaterialLibrary(preferences=self.prefs)
-        temp = test_support.scratch_dir("amaze_preedit_parent_")
-        self.addCleanup(shutil.rmtree, temp, True)
-        with mock.patch.object(tempfile, "tempdir", temp), \
-                mock.patch.object(shutil, "copyfile", copyfile):
-            try:
-                answer = model._hold_pre_edit_files(mat_id)
-            except OSError as exc:
-                answer = exc
-        return answer, os.listdir(temp)
-
-    def test_nothing_to_hold_leaves_no_folder(self):
-        self.assertEqual(({}, []), self._holding("NO_SUCH_ASSET"),
-                         "an empty hold left its temp folder behind")
-
-    def test_a_failed_copy_removes_the_hold_folder(self):
-        def failing_copy(source, target):
-            raise OSError("disk full")
-
-        answer, left = self._holding(self.mat_id, failing_copy)
-        self.assertEqual((OSError, []), (type(answer), left),
-                         "a failed copy left its temp folder behind, or did not raise OSError")
-
-
 class SwitchRollsBackWhenTheLedgerWriteFails(_Case):
     """Ledger and base files are written as one change: a failed ledger write changes nothing."""
 
@@ -372,10 +339,6 @@ class TheWholeLoopThroughTheModelTest(unittest.TestCase):
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
         self.model = library_mod.MaterialLibrary(preferences=self.prefs)
-        self.staging = hou.node("/obj").createNode("matnet")
-        self.addCleanup(self.staging.destroy)
-        from amaze.tests.test_roundtrip import _build_material
-        self._build = _build_material
 
     def _karma_row(self):
         return next(r for r in range(self.model.rowCount())
@@ -431,19 +394,6 @@ class TheWholeLoopThroughTheModelTest(unittest.TestCase):
         self.assertEqual(known, current,
                          "switch_version did not reset the baseline - the next "
                          "Update Existing will be refused as a conflict")
-
-    def test_a_structural_update_does_not_version(self):
-        row = self._karma_row()
-        mat = self.model.assets[row]
-        fresh = self._build(self.staging, "structural_probe")
-        renderer = material_actions.update_asset_content(self.model, row, fresh)
-        self.assertTrue(renderer, "premise: the update succeeded")
-        from amaze.core import versions as versions_mod
-        self.assertEqual(0, versions_mod.version_count(
-            self.prefs, mat.mat_id),
-            "a structural update created versions - archiving a "
-            "different structure under the same history is the error the "
-            "signature exists to prevent")
 
 
 class DeletingAUser(unittest.TestCase):

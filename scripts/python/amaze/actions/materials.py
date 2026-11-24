@@ -1,7 +1,6 @@
 """Saving, loading, converting and rendering a Material in Houdini. ▸archive/actions/materials.py"""
 
 import os
-import shutil
 
 import hou
 from PySide6 import QtCore
@@ -90,11 +89,11 @@ def update_asset_content(model, row: int, node: hou.Node) -> str:
     if row < 0 or row >= len(model._assets):
         raise UpdateRefused(messages.UPDATE_REFUSED_GONE)
     mat = model._assets[row]
-    if not library_settings.allow_overwrite(model.preferences):  # every caller is checked here
-        debug.event("library", "overwrite refused - the library "
-                    "does not allow it", mat_id=str(mat.mat_id),
+    if not library_settings.policy_readable(model.preferences):  # every caller is checked here
+        debug.event("library", "overwrite refused - the library's "
+                    "policy cannot be read", mat_id=str(mat.mat_id),
                     name=mat.name)
-        raise UpdateRefused(messages.UPDATE_REFUSED_VERSIONS_OFF)
+        raise UpdateRefused(messages.UPDATE_REFUSED_LIBRARY_UNREADABLE)
     known = model._content_state.get(str(mat.mat_id))    # content files are not merged like the index: the last write would overwrite
     current = model._content_stat(mat.mat_id)
     if known is not None and current is not None and current != known:
@@ -104,51 +103,26 @@ def update_asset_content(model, row: int, node: hou.Node) -> str:
         raise UpdateRefused(messages.UPDATE_REFUSED_CHANGED_ON_DISK)
     handler = nodes.NodeHandler(model.preferences)
     renderer = handler.get_renderer_from_node(node)
-    if not nodes.ocio_set():    # the two checks `save_node` makes, run before any file is copied aside
+    if not nodes.ocio_set():    # the two checks `save_node` makes, run before a version is kept
         raise UpdateRefused(messages.OCIO_NOT_SET)
     if not renderer:
         raise UpdateRefused(messages.UPDATE_REFUSED_NOT_A_BUILDER)
 
-    old_signature = None  # values-only is a new version, else structural ▸p/structure-signature
-    pre_edit = {}
-    try:  # a failed comparison counts as structural: it only skips a version
-        old_signature = nodes.staged_asset(
-            model.preferences, mat, nodes.structure_signature)
-        if versions.version_count(model.preferences, mat.mat_id) == 0:
-            pre_edit = model._hold_pre_edit_files(mat.mat_id)  # a values-only save makes them Version 1
-    except Exception as exc:                          # noqa: BLE001
-        debug.event("versions", "pre-save staging failed - the save "
-                    "will be treated as structural",
-                    mat_id=str(mat.mat_id), error=str(exc))
-
-    try:  # the pre-edit copies are deleted on every exit, early returns included
-        if not handler.save_node(node, mat.mat_id, True):  # its two checks already ran above
-            return ""
-        model._content_state[str(mat.mat_id)] = model._content_stat(  # our own write is the new baseline for this id
-            mat.mat_id)
-        parameter_only = False
-        if old_signature is not None:
-            try:
-                new_signature = nodes.staged_asset(
-                    model.preferences, mat, nodes.structure_signature)
-                parameter_only = (new_signature == old_signature)
-            except Exception as exc:                  # noqa: BLE001
-                debug.event("versions", "post-save staging failed - "
-                            "no version minted",
-                            mat_id=str(mat.mat_id), error=str(exc))
-        if parameter_only:
-            if pre_edit and versions.version_count(
-                    model.preferences, mat.mat_id) == 0:
-                versions.create_version(model.preferences, mat.mat_id,
-                                        source_paths=pre_edit)
-            versions.create_version(model.preferences, mat.mat_id)  # the new state as the active version
-
-            model._version_count_cache.pop(str(mat.mat_id), None)
-            model._active_version_cache.pop(str(mat.mat_id), None)
-    finally:
-        if pre_edit:
-            shutil.rmtree(os.path.dirname(
-                next(iter(pre_edit.values()))), ignore_errors=True)
+    keeps_versions = library_settings.allow_overwrite(model.preferences)  # Preferences > Versions
+    if keeps_versions:
+        kept = versions.keep_base(model.preferences, mat.mat_id)  # the material as it was, unless a version holds it
+        model._versions_changed(mat)
+        if not kept:
+            debug.event("versions", "overwrite refused - the material as it was "
+                        "could not be kept as a version", mat_id=str(mat.mat_id), name=mat.name)
+            raise UpdateRefused(messages.UPDATE_REFUSED_NOT_KEPT)
+    if not handler.save_node(node, mat.mat_id, True):  # its two checks already ran above
+        return ""
+    model._content_state[str(mat.mat_id)] = model._content_stat(  # our own write is the new baseline for this id
+        mat.mat_id)
+    if keeps_versions:
+        versions.create_version(model.preferences, mat.mat_id)  # the new state as the active version
+        model._versions_changed(mat)
     mat.cop_net = handler.cop_info
     mat._extra.pop("textures", None)    # replaced entirely - the new content's references are the inventory now
     inventory = handler.texture_inventory

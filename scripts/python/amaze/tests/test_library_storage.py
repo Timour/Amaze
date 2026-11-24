@@ -598,9 +598,12 @@ class ThroughThePreferencesTest(_Settings):
         self.assertTrue(library_settings.allow_overwrite(self.prefs))
         self.assertTrue(library_settings.set_allow_overwrite(self.prefs, False))
         self.assertFalse(library_settings.allow_overwrite(self.prefs))
+        self.assertTrue(library_settings.policy_readable(self.prefs),
+                        "with Versions off, saving over is refused although the policy reads")
         test_support.reset_database_singletons()
         with open(os.path.join(self.dir, library_files.MASTER), "w", encoding="utf-8") as handle:
             handle.write("{ ruined")
+        self.assertFalse(library_settings.policy_readable(self.prefs))
         self.assertFalse(library_settings.allow_overwrite(self.prefs))
         self.assertFalse(library_settings.set_allow_overwrite(self.prefs, True))
 

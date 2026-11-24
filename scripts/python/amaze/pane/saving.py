@@ -127,15 +127,17 @@ class Saving:
                 message = messages.MATERIAL_ALREADY_IN_LIBRARY % name
             else:
                 message = messages.MATERIALS_ALREADY_IN_LIBRARY % (len(existing), len(sel))
-            may_overwrite = library_settings.allow_overwrite(
-                model.preferences)    # the library decides; the UI calls it Material Versions
-            if may_overwrite:
+            if not library_settings.policy_readable(model.preferences):
+                message += messages.LIBRARY_UNREADABLE_SAVES_NEW
+                buttons = messages.BUTTONS_SAVE_NEW    # no save-over, an option that would always fail
+                cancel_at, overwrite_at = 1, -1
+            elif library_settings.allow_overwrite(model.preferences):    # the UI calls it Versions
                 buttons = messages.BUTTONS_SAVE_VERSION_OR_NEW
                 cancel_at, overwrite_at = 2, 0
             else:
-                message += messages.VERSIONS_OFF_SAVES_NEW
-                buttons = messages.BUTTONS_SAVE_NEW    # Versions off: no save-over, an option that would always fail
-                cancel_at, overwrite_at = 1, -1
+                message += messages.VERSIONS_OFF_KEEPS_NONE
+                buttons = messages.BUTTONS_OVERWRITE_OR_NEW    # Versions off: saved over, no version kept
+                cancel_at, overwrite_at = 2, 0
             choice = ui.displayMessage(
                 message,
                 buttons=buttons,
@@ -158,7 +160,7 @@ class Saving:
         return self.pane.material_model.find_asset_row_by_id(mat_id) if mat_id else -1
 
     def _update_existing_assets(self, existing: list) -> None:
-        """Save Version over each (id, node); failures are shown once, after the batch."""
+        """Save over each (id, node); failures are shown once, after the batch."""
         ui = getattr(hou, "ui", None)
         if not nodes_mod.ocio_set():    # every material would fail the same way, so it is shown once
             if ui is not None:

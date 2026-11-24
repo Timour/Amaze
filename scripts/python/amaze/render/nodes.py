@@ -325,64 +325,6 @@ def apply_builder(node, data: dict) -> None:
                         node=node.path(), parm=name, error=str(exc))
 
 
-def structure_signature(node) -> str:
-    """A digest of a network's SHAPE. ▸p/structure-signature"""
-    while True:      # a lone wrapping container is skipped
-        children = node.children()
-        if len(children) == 1 and children[0].children():
-            node = children[0]
-            continue
-        break
-
-    plumbing = ("subinput", "subnetconnector", "suboutput")
-
-    lines = []
-    root = node.path()
-    items = [node] + list(node.allSubChildren())
-    for child in items:
-        if child.type().name() in plumbing:
-            continue
-        rel = "." if child is node else child.path()[len(root) + 1:]
-        lines.append("N %s|%s" % (rel, child.type().name()))
-        for connection in child.inputConnections():
-            source = connection.inputNode()
-            if source is not None and source.type().name() in plumbing:
-                continue
-            source_rel = ("." if source is node
-                          else source.path()[len(root) + 1:]) \
-                if source is not None else "<none>"
-            lines.append("W %s[%d] <- %s[%d]"
-                         % (rel, connection.inputIndex(), source_rel,
-                            connection.outputIndex()))
-    import hashlib
-    return hashlib.sha256(
-        "\n".join(sorted(lines)).encode("utf-8")).hexdigest()[:16]
-
-
-def staged_asset(preferences, mat, loader) -> "object":
-    """Load a saved asset into staging for loader(); always destroyed."""
-    with hou.undos.disabler():      # else undo brings it back ▸r/undo-groups
-        staging = hou.node("/obj").createNode("matnet")
-        try:
-            saved = asset_record.saved_builder(preferences, mat.mat_id, MATERIALS)
-            saved_type = saved.get("type", "")
-            if saved_type and node_type_available(saved_type):
-                builder = staging.createNode(saved_type)
-                for child in builder.children():
-                    child.destroy()
-                apply_builder(builder, saved)
-            else:
-                builder = make_karma_builder(staging, mat.name or "staged")
-            file_name = material.payload_path(
-                preferences, mat.mat_id, preferences.ext, MATERIALS)
-            problem = load_items_strict(builder, file_name)
-            if problem:
-                raise hou.OperationFailed(problem)
-            return loader(builder)
-        finally:
-            staging.destroy()
-
-
 def op_path_parms(nodes):
     """(parm, unexpanded text) for each parm on `nodes` and everything under them holding `op:`."""
     scan = []

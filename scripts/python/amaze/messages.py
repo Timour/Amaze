@@ -147,7 +147,8 @@ MATERIAL_NOT_UPDATED = "\"%s\" was not updated: %s"
 MATERIALS_NOT_UPDATED = "Some materials were not updated."
 MATERIAL_NOT_UPDATED_LINE = "\"%s\": %s"
 UPDATE_REFUSED_GONE = "it is no longer in the library."
-UPDATE_REFUSED_VERSIONS_OFF = "Material Versions is off for this library."
+UPDATE_REFUSED_LIBRARY_UNREADABLE = "the Library database cannot be read."
+UPDATE_REFUSED_NOT_KEPT = "its current state could not be kept as a version. Save it as a new material instead."
 UPDATE_REFUSED_CHANGED_ON_DISK = "it was changed on disk since this session read it. Save it as a new material, or reopen the Amaze panel to load the other version first."
 UPDATE_REFUSED_NOT_A_BUILDER = "the node is not a Material Builder."
 SCENE_FILE_MISSING = "That scene file no longer exists: %s"
@@ -201,7 +202,9 @@ MATERIAL_ALREADY_IN_LIBRARY = '"%s" already exists in the library.'
 
 MATERIALS_ALREADY_IN_LIBRARY = '%d of %d dropped materials already exist in the library.'
 
-VERSIONS_OFF_SAVES_NEW = '\n\nVersions is off for this library, so the existing material stays as it is. Saving will add a new material.'
+LIBRARY_UNREADABLE_SAVES_NEW = '\n\nThe Library database cannot be read, so the existing material stays as it is. Saving will add a new material.'
+
+VERSIONS_OFF_KEEPS_NONE = '\n\nVersions is off for this library, so Overwrite keeps no version.'
 
 SAVE_DID_NOT_COMPLETE_LINE = '"%s": the save did not complete'
 
@@ -363,10 +366,12 @@ BUTTONS_CONVERT_LIBRARY = ('Convert', 'Cancel')
 
 BUTTONS_SAVE_VERSION_OR_NEW = ('Save Version', 'Save New', 'Cancel')
 
+BUTTONS_OVERWRITE_OR_NEW = ('Overwrite', 'Save New', 'Cancel')
+
 BUTTONS_SAVE_NEW = ('Save New', 'Cancel')
 
 
-HELP_MATERIAL_VERSIONS = "This is shared: everyone working from this library gets the same setting.\n\nWith it on, saving over an existing material keeps the previous version, and the + in the code editor keeps versions of a snippet."
+HELP_MATERIAL_VERSIONS = "This is shared: everyone working from this library gets the same setting.\n\nWith it on, saving over an existing material keeps the previous version."
 HELP_DELETE_USER = 'Their favorites and registered folders are removed from this library everywhere it syncs. A machine signed in as "%s" will ask who is using the library the next time it opens. This cannot be undone.'
 
 HELP_LOG_SAVED = 'It contains your file paths, asset and material names - check before sharing it.'

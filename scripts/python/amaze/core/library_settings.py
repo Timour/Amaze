@@ -8,7 +8,7 @@ from amaze.core import documents, guard, library_db, library_files, library_poli
 
 POLICY, SETTINGS, MARKS = "policy", "settings", "marks"
 VERSION_ENTRY = "library"    # in `policy`: {"version": n}, the library's own version
-OVERWRITE_ENTRY = "allow_overwrite"    # in `policy`: {"value": bool}; off makes the library append-only
+OVERWRITE_ENTRY = "allow_overwrite"    # in `policy`: {"value": bool}; Preferences > Versions, on or off
 DEFAULTS = {OVERWRITE_ENTRY: True}
 
 _SCALARS = (str, int, float)    # what a shared setting may hold; bool passes as int
@@ -64,8 +64,13 @@ def stamp_version(preferences) -> bool:
         bool(library_db.save(preferences, library_files.MASTER))
 
 
+def policy_readable(preferences) -> bool:
+    """Whether the library's policy can be read; nothing is saved over an asset without it."""
+    return _master(preferences).verdict in (guard.FINE, guard.FRESH)
+
+
 def allow_overwrite(library_dir_or_preferences) -> bool:
-    """Whether this library allows saving over an existing asset; False if its policy cannot be read."""
+    """Whether saving over a material keeps a version (Enable Asset Versions); False if unreadable."""
     preferences = library_dir_or_preferences
     if isinstance(preferences, str):
         if not preferences:
@@ -75,10 +80,9 @@ def allow_overwrite(library_dir_or_preferences) -> bool:
             return False
         entry = ((reading.document or {}).get(POLICY) or {}).get(OVERWRITE_ENTRY)
     else:
-        held = _master(preferences)
-        if held.verdict not in (guard.FINE, guard.FRESH):
+        if not policy_readable(preferences):
             return False
-        entry = held.get(POLICY, OVERWRITE_ENTRY)
+        entry = _master(preferences).get(POLICY, OVERWRITE_ENTRY)
     value = entry.get("value") if isinstance(entry, dict) else None
     return value if isinstance(value, bool) else DEFAULTS[OVERWRITE_ENTRY]
 
