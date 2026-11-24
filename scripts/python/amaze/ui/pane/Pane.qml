@@ -144,6 +144,7 @@ PaneRoot {
                         onTileDoubleClicked: row => SharedState.doubleClickTile(row)
                         onTileKeyed: (row, modifiers) => SharedState.keyTile(row, modifiers)
                         onBadgeClicked: (row, name) => SharedState.clickBadge(row, name)
+                        onTileDragged: (row, modifiers) => SharedState.dragTile(row, modifiers)
                     }
                 }
                 Loader {
@@ -164,6 +165,7 @@ PaneRoot {
                         onRowDoubleClicked: row => SharedState.doubleClickTile(row)
                         onRowKeyed: (row, modifiers) => SharedState.keyTile(row, modifiers)
                         onHeadingClicked: column => SharedState.sortList(column)
+                        onRowDragged: (row, modifiers) => SharedState.dragTile(row, modifiers)
                     }
                 }
                 EmptyState {

@@ -8,7 +8,7 @@ import unittest
 from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PySide6 import QtCore, QtWidgets  # noqa: E402
+from PySide6 import QtCore, QtGui, QtQuick, QtWidgets  # noqa: E402
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
@@ -20,6 +20,7 @@ try:    # without Houdini every test here skips
     from amaze.core import debug, dragengine, lop_assign
     from amaze.helpers import helpers
     from amaze.pane import drop_placement, loading
+    from amaze.qml import pane as qml_pane
     from amaze.sections import code as code_section, file as file_section
 except ImportError:
     hou = None
@@ -308,6 +309,65 @@ class WhereADropGoesTest(_Drops):
         made = self.placement.import_geo_in_context(CUBE, self.geo)
         self.assertIsNotNone(made)
         self.assertEqual(before, [node.position() for node in mine])
+
+
+def _send(view, kind, at, button, buttons):
+    """A mouse event at `at` in the pane's view, as the view holding the mouse gets it."""
+    event = QtGui.QMouseEvent(kind, at, QtCore.QPointF(view.mapToGlobal(at.toPoint())), button, buttons,
+                              QtCore.Qt.KeyboardModifier.NoModifier)
+    QtWidgets.QApplication.sendEvent(view, event)
+    QtWidgets.QApplication.processEvents()
+
+
+def _first_tile(view) -> QtCore.QPointF:
+    """The middle of the first tile's picture, in the view's own coordinates."""
+    grid = next(item for item in view.rootObject().findChildren(QtQuick.QQuickItem)
+                if item.property("hotkeysFirst") and item.isVisible())
+    side = grid.property("tileSize") / 2
+    found = QtCore.QMetaObject.invokeMethod(grid, "rowAt", QtCore.Qt.ConnectionType.DirectConnection,
+                                            QtCore.Q_RETURN_ARG("QVariant"), QtCore.Q_ARG("QVariant", side),
+                                            QtCore.Q_ARG("QVariant", side))
+    assert found == 0, "no first tile under the point: %r" % (found,)
+    return grid.mapToScene(QtCore.QPointF(side, side))
+
+
+@unittest.skipUnless(hou, "Houdini is not loaded")
+class ADragEndedEarlyMakesNothingTest(unittest.TestCase):
+
+    def test_dd27_esc_another_button_or_a_hidden_pane_ends_a_drag_and_its_release_makes_nothing(self):
+        test_support.fixture_panel(self)    # the fixture library, which the QML pane opens too
+        panel = qml_pane.QmlPanel()
+        self.addCleanup(test_support.stop_panel_workers, panel)
+        self.addCleanup(panel.deleteLater)
+        panel.setAttribute(QtCore.Qt.WidgetAttribute.WA_DontShowOnScreen)
+        panel.resize(840, 420)
+        panel.show()
+        QtWidgets.QApplication.processEvents()
+        view, kind, left = panel.view, QtCore.QEvent.Type, QtCore.Qt.MouseButton.LeftButton
+        right, none = QtCore.Qt.MouseButton.RightButton, QtCore.Qt.MouseButton.NoButton
+        at = _first_tile(view)
+        ends = {"nothing": lambda: None,
+                "Esc": lambda: QtWidgets.QApplication.sendEvent(view, QtGui.QKeyEvent(
+                    kind.KeyPress, QtCore.Qt.Key.Key_Escape, QtCore.Qt.KeyboardModifier.NoModifier)),
+                "a right click": lambda: (_send(view, kind.MouseButtonPress, at, right, left | right),
+                                          _send(view, kind.MouseButtonRelease, at, right, left)),
+                "the pane hidden": view.hide}
+        seen, released = {}, []
+        with mock.patch.object(panel.pane.drop_placement, "release",
+                               lambda *args, **kwargs: released.append(args) or True):
+            for name, end in ends.items():
+                _send(view, kind.MouseButtonPress, at, left, left)
+                for step in range(1, 7):    # past the drag distance, then out of the pane
+                    _send(view, kind.MouseMove, at + QtCore.QPointF(0, step * 6), none, left)
+                _send(view, kind.MouseMove, QtCore.QPointF(-400, -300), none, left)
+                began = view.drag.running
+                end()
+                _send(view, kind.MouseButtonRelease, QtCore.QPointF(-400, -300), left, none)
+                seen[name] = (began, len(released), view.drag.running)
+                released.clear()
+                view.show()
+        self.assertEqual({name: (True, 1 if name == "nothing" else 0, False) for name in ends}, seen,
+                         "per way out: (the drag began, drops made at the release, still running)")
 
 
 if __name__ == "__main__":

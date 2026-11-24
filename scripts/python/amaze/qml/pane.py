@@ -7,7 +7,7 @@ import amaze
 from amaze import amazetheme, tooltips
 from amaze.core import debug, grid_columns, grid_engine
 from amaze.helpers import ui_helpers
-from amaze.pane import asks, menus, pane as pane_mod, sidebar as pane_sidebar
+from amaze.pane import asks, drag_session, menus, pane as pane_mod, sidebar as pane_sidebar
 from amaze.panel import delegates
 from amaze.qml import hotkeys
 from amaze.utils import rc_calls
@@ -136,6 +136,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
     sidebarOpened = QtCore.Signal(QtCore.QModelIndex)    # the tree opens this folder and those above it
 
     pane = None    # the engine, built by `start`
+    drag = None    # the view's `drag_session`, which a press on a tile or row past the drag distance begins
     os_file_icon = staticmethod(delegates.os_file_icon)    # held by the shared File model
 
     def __init__(self, **kwargs) -> None:
@@ -405,6 +406,18 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         if self.gridModel is not None and row >= 0:
             self.pane.double_click(self.gridModel.index(row, 0))
 
+    @QtCore.Slot(int, int)
+    @debug.guarded("PaneState.dragTile")
+    def dragTile(self, row: int, modifiers: int) -> None:
+        """A press on tile or row `row` moved past the drag distance: the drag out of the pane begins."""
+        key = self.pane.current_section
+        index = self.gridModel.index(row, 0) if self.gridModel is not None and row >= 0 else QtCore.QModelIndex()
+        if self.drag is None or not index.isValid() or not drag_session.drags(self.pane, key):
+            return
+        if self.gridSelection is not None and not self.gridSelection.isSelected(index):
+            self._choose(row, modifiers, by_key=False)    # as Qt's views select an unselected row at its press
+        self.drag.begin(self.pane, key, index, index.data(QtCore.Qt.ItemDataRole.DisplayRole) or "")
+
     @QtCore.Slot(int, result="QVariantList")
     def tileMenu(self, row: int) -> list:
         """The rows of the right-click menu on tile or row `row`; as in Qt's views, it selects it first."""
@@ -618,6 +631,8 @@ class PaneView(qmlviews.BaseQmlWidget):
         # Qt's context menu request, as the widget grid takes it: answered here, never passed up to Houdini
         self.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._context_menu)
+        self.drag = self.sharedState().drag = drag_session.DragSession(self, ui_helpers.DragMarks())
+        self._drag_held = False    # a drag's left button is still down: another button goes nowhere
 
     def _context_menu(self, at) -> None:
         """The pane's menu for whatever is under `at`, as the QML finds it."""
@@ -637,6 +652,10 @@ class PaneView(qmlviews.BaseQmlWidget):
         return super().event(event)
 
     def keyPressEvent(self, event) -> None:
+        if self.drag.running and event.key() == QtCore.Qt.Key.Key_Escape:    # the view holds the keys mid-drag
+            self.drag.cancel()
+            event.accept()
+            return
         self._route(event, lambda: super(PaneView, self).keyPressEvent(event), act=True)
 
     def _route(self, event, to_qt_quick, act: bool) -> bool:
@@ -663,6 +682,51 @@ class PaneView(qmlviews.BaseQmlWidget):
             self.sharedState().run_key(*found)
         event.accept()
         return True
+
+    def _drag_takes(self, event) -> bool:
+        """Whether a press belongs to the drag: any while it runs, another button while its left is down."""
+        return self.drag.running or (self._drag_held and event.button() != QtCore.Qt.MouseButton.LeftButton)
+
+    def mousePressEvent(self, event) -> None:
+        """A press the drag takes goes nowhere: in the QML it would start a second drag."""
+        if self._drag_takes(event):
+            event.accept()
+            return
+        self._drag_held = False    # a left press: no drag's button is down any more
+        super().mousePressEvent(event)
+
+    def mouseDoubleClickEvent(self, event) -> None:
+        if self._drag_takes(event):
+            event.accept()
+            return
+        super().mouseDoubleClickEvent(event)
+
+    @debug.guarded("PaneView.mouseMoveEvent")
+    def mouseMoveEvent(self, event) -> None:
+        """The QML's move, then the drag's: the view keeps the mouse while a button is down."""
+        super().mouseMoveEvent(event)
+        if self.drag.running:
+            self._drag_held = True
+            self.drag.move()
+
+    @debug.guarded("PaneView.mouseReleaseEvent")
+    def mouseReleaseEvent(self, event) -> None:
+        """The left release drops a running drag; another button's ends it and makes nothing."""
+        if self._drag_held and event.button() != QtCore.Qt.MouseButton.LeftButton:
+            self.drag.cancel(miss=True)
+            event.accept()
+            return
+        try:
+            self.drag.release()
+        finally:    # the QML's press ends whatever the drop did
+            if not event.buttons() & QtCore.Qt.MouseButton.LeftButton:
+                self._drag_held = False
+            super().mouseReleaseEvent(event)
+
+    def hideEvent(self, event) -> None:
+        self.drag.cancel()    # a pane hidden mid-drag gets no release
+        self._drag_held = False
+        super().hideEvent(event)
 
 
 def _takes_hotkeys_first(item) -> bool:

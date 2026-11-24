@@ -19,6 +19,7 @@ Item {
     signal rowDoubleClicked(int row)
     signal rowKeyed(int row, int modifiers)    // the user's move by an Amaze hotkey landed on `row`
     signal headingClicked(int column)
+    signal rowDragged(int row, int modifiers)    // a press on row `row` moved past the drag distance
 
     function rowAt(x, y) {    // the row at (x, y) in the list, -1 for the space below the rows
         const at = root.mapToItem(view.contentItem, x, y)
@@ -78,6 +79,7 @@ Item {
             id: view
 
             clip: true
+            interactive: !(tap.pressed || drag.active)    // no flick takes a press, so a drag goes out
             pointerNavigationEnabled: false    // Qt's own click only makes a row current: `rowClicked` selects
             keyNavigationEnabled: false    // keys are Amaze's hotkeys, landing through `step`
             columnWidthProvider: column => root.widthOf(column)
@@ -110,11 +112,16 @@ Item {
                 width: Math.max(view.width, view.contentWidth)
                 height: Math.max(view.height, view.contentHeight)
                 TapHandler {    // a tap handler gives no focus (Qt gives it only to an item taking the press)
+                    id: tap
                     onTapped: {
                         view.forceActiveFocus(Qt.MouseFocusReason)
                         root.rowClicked(view.cellAtPosition(point.position).y, point.modifiers)
                     }
                     onDoubleTapped: root.rowDoubleClicked(view.cellAtPosition(point.position).y)
+                }
+                DragOut {
+                    id: drag
+                    onStarted: (at, modifiers) => root.rowDragged(view.cellAtPosition(at).y, modifiers)
                 }
             }
 

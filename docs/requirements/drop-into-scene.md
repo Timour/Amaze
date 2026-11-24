@@ -1,7 +1,7 @@
 # Drop into the scene: requirements
 
 What releasing a tile over Houdini must do. The engine is `core/dragengine.py`, `pane/drop_placement.py`,
-`core/lop_assign.py`, `render/cop_nodes.py`, the release in `panel/dragdrop_widgets.py` and each
+`core/lop_assign.py`, `render/cop_nodes.py`, the drag and its release in `pane/drag_session.py` and each
 section's drop handlers. What an import builds is SL (SL-12, SL-27); a drop on a sidebar folder is a
 file move (FM). The levels and the rules for tests are in the [README](README.md).
 
