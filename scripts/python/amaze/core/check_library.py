@@ -364,7 +364,7 @@ def confirmable(findings: dict) -> list:
     named = [(("row", section, asset_id), "%s (%s)" % (name, library_files.section_label(section)))
              for section, rows in findings["missing_files"].items() for asset_id, name in rows]
     named += [(("path", one["folder"]), one["folder"]) for one in findings["unlisted"]
-              if not one["record"]]
+              if one["section"] not in ASSET_SECTIONS]    # Recover lists the others, record or none
     named += [(("path", path), path) for path in findings["unknown"] + findings["orphans"]]
     return named
 

@@ -168,9 +168,12 @@ class NothingIsLostTest(_Library):
         self.fix_all(named=True)
         self.assertNotIn("A2", self.rows())
 
-    def test_cl07_unknown_and_unlisted_files_are_trashed_only_once_named(self):
-        unnamed = ("materials/notes.txt", "stuff/thing.bin", "materials/Bare__U2/U2.mat",
+    def test_cl07_unknown_files_and_unlisted_code_or_colors_folders_go_only_once_named(self):
+        unnamed = ("materials/notes.txt", "stuff/thing.bin",
                    "materials/Brick__A1/versions/A1_9.mat", "colors/Old__K9/K9.png")
+        shown = check_library.survey(self.dir)
+        offered = {key[1] for key, _label in check_library.confirmable(shown)}
+        self.assertNotIn("materials/Bare__U2", offered, "a folder Recover lists was offered")
         self.fix_all(named=False)
         for path in unnamed:
             self.assertTrue(os.path.exists(self.at(*path.split("/"))), path + " went unnamed")
@@ -288,11 +291,12 @@ class WhatTheReportSaysTest(_Library):
                             for line in lines), lines)
         self.assertIn(check_library.messages.CHECK_DATABASE_SHRUNK % ("Materials", 3, 10), lines)
 
-    def test_cl22_recover_names_each_folder_from_its_record_or_as_recovered(self):
-        self.assertEqual(2, check_library.recover(self.dir, USER))
+    def test_cl22_fix_all_recovers_each_folder_from_its_record_or_as_recovered(self):
+        self.assertEqual(2, self.fix_all(named=True)["recovered"])
         rows = self.rows()
         self.assertEqual(("Found", ["Wood, Oak"]), (rows["U1"]["name"], rows["U1"]["categories"]))
         self.assertEqual(("Recovered U2", ["Recovered"]), (rows["U2"]["name"], rows["U2"]["categories"]))
+        self.assertTrue(os.path.exists(self.at("materials", "Bare__U2", "U2.mat")), "it was trashed")
 
     def test_cl23_a_sync_copy_is_a_leftover_only_when_it_matches_and_a_scratch_once_old(self):
         put(self.dir, "materials/Loose__A3/A3.png.y2" + guard.SCRATCH, b"a live write")
