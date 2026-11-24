@@ -139,7 +139,7 @@ def changed(preferences, name: str) -> None:
         _deferred(held.save)
 
 
-def _records(key: str, held: documents.Document):
+def _records(key: str, held: documents.Document, moved: list):
     """`also` for a section database: each changed row's `<id>.json`, and its folder's name."""
     if held.name not in library_files.SECTION_FOLDERS:
         return None
@@ -159,6 +159,7 @@ def _records(key: str, held: documents.Document):
             if os.path.basename(own).lower() != named.lower():    # renamed: its folder follows the record; case alone is no move on every disk
                 change.move(held.guard.inside(own), held.guard.inside(
                     os.path.join(os.path.dirname(own), named)))
+                moved.append(asset_id)
     return also
 
 
@@ -179,7 +180,8 @@ def _record(change, held, own: str, asset_id: str, row: dict) -> bool:
 
 def _save_one(key: str, held: documents.Document, also=None) -> documents.Saved:
     """Save one database, its records' metadata and the caller's files, then `report_save`."""
-    records = _records(key, held)
+    moved = []    # the asset folders this save renames
+    records = _records(key, held, moved)
     if records is None or not held.dirty:
         both = also
     elif also is None:
@@ -192,7 +194,7 @@ def _save_one(key: str, held: documents.Document, also=None) -> documents.Saved:
     saved = held.save(also=both)
     report_save(saved, held.name)
     alert_database_problem(key, held)
-    if saved.merged:    # only then does memory hold rows the models have not shown
+    if saved.merged or (saved and moved):    # rows the models lack, or folders their tiles name
         _call_listeners(key, held.name)
     return saved
 

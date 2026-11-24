@@ -224,11 +224,14 @@ class AssetLibrary(grid_engine.GridEngine,
         return material.folders_stamp(self.preferences, self.DB_FILENAME)
 
     def _picture_paths_current(self) -> None:
-        """Every row's picture path again once the asset folders changed: a rename moves a folder."""
+        """Each row whose folder was renamed gets its picture path again; never on a paint."""
         stamp = self._current_folders_stamp()
-        if stamp != getattr(self, "_folders_stamp", None):
-            self._folders_stamp = stamp
-            self._mat_paths = [self._tile_image_path(row) for row in range(len(self._assets))]
+        if stamp == getattr(self, "_folders_stamp", None):
+            return
+        self._folders_stamp = stamp
+        for row in range(len(self._assets)):
+            if row >= len(self._mat_paths) or self._tile_image_path(row) != self._mat_paths[row]:
+                self._add_thumb_paths(row, base_changed=False)
 
     def rows_reordered(self) -> None:
         self._thumb_rows = {key: row for row, key in enumerate(self._row_keys)}
@@ -458,7 +461,6 @@ class AssetLibrary(grid_engine.GridEngine,
             return grid_engine.custom_picture(self.preferences, spec)
         if face == "generic":
             return grid_engine.Picture(art=self.tile_face_art(row))
-        self._picture_paths_current()
         files = ((self._mat_paths[row], self._thumb_key(row, spec), True),)    # a capture fills the tile
         painted = self.painted_preview(row)
         if painted is not None:
@@ -589,6 +591,7 @@ class AssetLibrary(grid_engine.GridEngine,
 
     def apply_refresh(self) -> bool:
         """Load the database's changes that this model lacks; True when the model changed."""
+        self._picture_paths_current()    # a rename here or in another session moved a folder
         rows = {key: dict(stored(row), id=row.get("id", key))
                 for key, row in self._doc().table(ROWS).items() if isinstance(row, dict)}
         have = {str(asset.mat_id): asset for asset in self._assets}
