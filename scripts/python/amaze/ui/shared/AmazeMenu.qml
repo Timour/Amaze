@@ -6,6 +6,8 @@ import houdini.ui
 Menu {
     id: root
 
+    exit: null    // a menu still fading out keeps the release of the click that closed it
+
     property string chosen: ""    // the picked row's key, handed on only once the menu has closed
     signal picked(string key)
 
@@ -54,6 +56,8 @@ Menu {
     }
     Component {
         id: submenu
-        Menu {}
+        Menu {
+            exit: null    // closed by the same press as its menu, so gone before the release too
+        }
     }
 }
