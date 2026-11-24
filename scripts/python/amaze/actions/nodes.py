@@ -12,7 +12,6 @@ def add_asset(model, node: hou.Node, cats: str, tags: str, fav: bool,
     """Save `node`, or `items` in it, into `model` with its row as one unit: its label, or ""."""
     handler = nodes.NodeHandler(model.preferences)
     new_mat = material.Material()
-    tags = model.sanitize_tags(tags)
     context = cop_nodes.context_of(node, items)
     label = (context or "NODE").upper()
     new_mat.set_data(name.strip() or node.name(), cats, tags, fav, label)

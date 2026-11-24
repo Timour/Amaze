@@ -2,7 +2,6 @@
 
 import functools
 import json
-import os
 
 from PySide6 import QtCore, QtGui
 
@@ -10,11 +9,9 @@ import amaze
 from amaze.core import category
 from amaze.core import debug
 from amaze.core import library
-from amaze.core import library_db
 from amaze.core import library_files
 from amaze.core import material
 from amaze.core import multifilterproxy_model
-from amaze.core import thumbnails
 from amaze.core import tile_icons
 from amaze import messages
 
@@ -112,80 +109,36 @@ class GradientLibrary(library.AssetLibrary):
             mat._date = ""  # a stored row without a date keeps an empty one, rather than Material filling in today's
         return mat
 
-    @property
-    def _load_failed(self) -> bool:
-        """Whether the database accepts no change now."""
-        if self.preferences is None:
-            return False
-        return not library_db.accepts(self.preferences, self.DB_FILENAME)
-
     _SEED_MARK = "gradient_seed_v1"  # in the library's marks; bump when the seed contents change
 
-    def seed_curated_palettes(self, category_model) -> None:
-        """Once per library, recorded as a mark: every curated combination becomes a user gradient."""
-        from amaze.core import library_settings, notes
+    def seed_curated_palettes(self, category_model) -> int:
+        """Every curated combination added once per library as a palette; how many were added."""
+        from amaze.core import notes
+        records, pages = [], {}
         try:
-            lib_dir = self.preferences.dir
-            if not lib_dir:
-                return
-            if self._load_failed:
-                return  # a database that accepts no change must not get a PERMANENT mark for a save that never happened
-            if library_settings.marked(self.preferences, self._SEED_MARK):
-                return
-            seeded = 0
-            categories = []
-            pages = {}
             for curated in CURATED_SETS:
-                path = _def_path(curated["file"])
-                if not path or not os.path.exists(path):
-                    continue
-                with open(path, "r", encoding="utf-8-sig") as f:
+                with open(_def_path(curated["file"]), "r", encoding="utf-8-sig") as f:
                     combos = json.load(f).get("combinations", [])
-                for combo in combos:
-                    colors = combo.get("colors") or []
-                    if not colors:
-                        continue
-                    n = len(colors)
-                    cat_name = "%s %s Color%s" % (
-                        curated["label"], n, "" if n == 1 else "s")
-                    if cat_name not in categories:
-                        categories.append(cat_name)
-                    name = (combo.get("name")
-                            or "Combination %s" % combo.get("id"))
+                for combo in (combo for combo in combos if combo.get("colors")):
+                    colors = combo["colors"]
+                    name = combo.get("name") or "Combination %s" % combo.get("id")
                     mat = self._asset_from_row({
                         "name": name,
-                        "categories": [cat_name],
+                        "categories": ["%s %s Color%s" % (curated["label"], len(colors),
+                                                          "" if len(colors) == 1 else "s")],
                         "colors": colors,
                         "ramp": _palette_ramp_data(colors),
-                        "curated": "%s/%s" % (curated["key"],    # the stable id a restore matches on - ids are made per library, this tag is not
-                                              combo.get("id") or name),
-                    })
+                        "curated": "%s/%s" % (curated["key"], combo.get("id") or name),
+                    })    # `curated`: the stable id a restore matches on, the same in every library
                     text = str(combo.get("note", "") or "").strip()
                     if text:
-                        pages[notes.note_key(self.NOTES_SECTION,
-                                             mat.mat_id)] = [
+                        pages[notes.note_key(self.NOTES_SECTION, mat.mat_id)] = [
                             {"t": "text", "text": text}]
-                    self._append_record(mat)
-                    seeded += 1
-            if not seeded:
-                return  # def files unreachable this run: leave the marker off and retry next launch
-            if not self.save():  # the mark is PERMANENT, so it is never made for a failed save
-                debug.event("gradient", "curated seed not marked - save() returned False")
-                return
-            if not all(saved for saved in library_db.flush(self.preferences).values()):
-                debug.event("gradient", "curated seed not marked - the save failed")
-                return
-            if pages:
-                notes.set_notes(self.preferences, pages)  # after the rows: a comment for a palette that was not saved belongs to no row
-            for cat_name in categories:
-                category_model.check_add_category(cat_name)
-        except Exception as exc:                        # noqa: BLE001
-            debug.event("gradient", "curated palette seed failed",
-                        error=str(exc))
-            return
-        if not library_settings.mark(self.preferences, self._SEED_MARK, seeded=seeded):
-            self._seed_marker_failed = True  # a RECORD: the next open seeds again
-            debug.event("gradient", "seed mark not kept", file=lib_dir)
+                    records.append(mat)
+        except (OSError, ValueError, KeyError, TypeError) as exc:    # never blocks the open
+            debug.event("gradient", "curated palettes not read", error=str(exc))
+            return 0
+        return self.add_shipped(self._SEED_MARK, records, pages, category_model)
 
     @staticmethod
     def _colors_of(asset) -> list:
@@ -215,23 +168,6 @@ class GradientLibrary(library.AssetLibrary):
         return [name for name in category.stored_order(self._doc())
                 if isinstance(name, str) and not category.is_all(name)]
 
-    def set_user_category(self, rows: list, category_name: str) -> int:
-        """Move the given rows' palettes to a category; returns how many moved."""
-        category_name = (category_name or "").strip()
-        if not category_name:
-            return 0
-        moved = []
-        for row in rows:
-            if not 0 <= row < len(self._assets):
-                continue
-            asset = self._assets[row]
-            if asset.categories != [category_name]:
-                asset.categories = [category_name]    # one name, its commas included
-                moved.append(asset)
-        if moved:
-            self._saved_rows_changed(moved)
-        return len(moved)
-
     def add_user_gradient(self, name: str, category_name: str,
                           ramp_data: dict, tags: str = "") -> None:
         """Register a saved ramp, its colours derived from the values; `tags` is comma-separated."""
@@ -241,20 +177,11 @@ class GradientLibrary(library.AssetLibrary):
                 max(0, min(255, round(c * 255))) for c in value[:3]
             )
             colors.append({"name": hex_color, "hex": hex_color})
-        category_name = (category_name or "").strip()
         mat = material.Material()
-        mat.set_data((name or "Gradient").strip() or "Gradient",
-                     category_name, self.sanitize_tags(tags or ""),
-                     False, "")
+        mat.set_data((name or "Gradient").strip() or "Gradient", category_name, tags, False, "")
         mat._extra = {"colors": colors, "ramp": ramp_data}
-        self._append_record(mat)
-        if not self.save():  # nothing was saved, so the row is removed from the view too
-            self._remove_unsaved_record(mat)
-            debug.alert(
-                messages.PALETTE_NOT_SAVED % (name or "this palette"),
-                key="colors-not-saved")
-            return
-        self.row_changed(0)
+        if not self.add_saved(mat):    # nothing was saved: no row is shown
+            debug.refuse(messages.ASSET_NOT_SAVED_DATABASE_REFUSED % mat.name)
 
     def _report_refused_delete(self, asset) -> None:
         """A palette's failed delete, reported with the Colors section's message."""

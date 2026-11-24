@@ -315,33 +315,51 @@ class AssetLibrary(grid_engine.GridEngine,
             return ""
         return str(self._assets[row].name or "")
 
-    def set_tile_name(self, row: int, name: str, save: bool = True) -> bool:
-        """Rename one asset, then save; a blank or unchanged name is a no-op."""
-        name = (name or "").strip()
-        if not 0 <= row < len(self._assets) or not name:
+    def takes_edits(self) -> bool:
+        """Whether this library takes a change now; when not, the user is told why."""
+        return library_db.takes_change(self.preferences, self.DB_FILENAME)
+
+    def _changeable(self, row: int):
+        """The record at `row` when its database takes a change now, else None: nothing changes."""
+        if 0 <= row < len(self._assets) and library_db.accepts(self.preferences, self.DB_FILENAME):
+            return self._assets[row]
+        return None
+
+    def edit_tiles(self, keys, name: str = "", tags=None, category: str = "") -> bool:
+        """Customize on the tiles keyed `keys`, in one save; False, the user told, when refused."""
+        if not self.takes_edits():
             return False
-        asset = self._assets[row]
-        if name == asset.name:
+        keys = {str(key) for key in keys}
+        rows = [row for row, asset in enumerate(self._assets) if str(asset.mat_id) in keys]
+        edited = set()
+        if name and len(rows) == 1 and "name" in self.TILE_FIELDS:
+            edited.update(rows if self.set_tile_name(rows[0], name, save=False) else ())
+        if tags is not None and "tags" in self.TILE_FIELDS:
+            tag = self.set_tile_tags if len(rows) == 1 else self.add_tile_tags    # several: added
+            edited.update(row for row in rows if tag(row, tags, save=False))
+        if category and "category" in self.TILE_FIELDS:
+            edited.update(row for row in rows if self.set_tile_category(row, category, save=False))
+        if edited:
+            self.commit_tile_edits({self.tile_key(row) for row in edited})
+        return True
+
+    def set_tile_name(self, row: int, name: str, save: bool = True) -> bool:
+        """Rename one asset, then save; a blank or same name, or a refused change, does nothing."""
+        name = (name or "").strip()
+        asset = self._changeable(row) if name else None
+        if asset is None or name == asset.name:
             return False
         asset.name = name
         self._edited(asset, save)
         return True
 
     def add_tile_tags(self, row: int, line: str, save: bool = True) -> bool:
-        """Add a comma-separated line of tags to this asset's own, dropping duplicates."""
-        if not 0 <= row < len(self._assets):
+        """Add a comma-separated line of tags to this asset's own, dropping repeats."""
+        asset = self._changeable(row)
+        merged = material.tag_list(list(asset.tags) + material.tag_list(line)) if asset else None
+        if asset is None or merged == asset.tags:
             return False
-        asset = self._assets[row]
-        before = [tag for tag in (asset.tags or []) if tag]
-        wanted = [tag.strip() for tag in (line or "").split(",")
-                  if tag.strip()]
-        merged = list(before)
-        for tag in wanted:
-            if tag not in merged:
-                merged.append(tag)
-        if merged == before:
-            return False
-        asset.tags = ", ".join(merged)
+        asset.tags = merged
         self._edited(asset, save)
         return True
 
@@ -353,12 +371,10 @@ class AssetLibrary(grid_engine.GridEngine,
         return str(cats[0]) if cats else ""
 
     def set_tile_category(self, row: int, name: str, save: bool = True) -> bool:
-        """Move one asset to category `name`, then save; a blank is a no-op."""
+        """Move one asset to category `name`, then save; a blank or a refused change is a no-op."""
         name = (name or "").strip()
-        if not 0 <= row < len(self._assets) or not name:
-            return False
-        asset = self._assets[row]
-        if list(asset.categories or []) == [name]:
+        asset = self._changeable(row) if name else None
+        if asset is None or asset.categories == [name]:
             return False
         asset.categories = [name]    # one name, its commas included
         self._edited(asset, save)
@@ -372,13 +388,10 @@ class AssetLibrary(grid_engine.GridEngine,
 
     def set_tile_tags(self, row: int, line: str, save: bool = True) -> bool:
         """Replace one asset's tags from a comma-separated line; an empty line clears them."""
-        if not 0 <= row < len(self._assets):
+        asset = self._changeable(row)
+        if asset is None or material.tag_list(line) == asset.tags:
             return False
-        asset = self._assets[row]
-        before = [tag for tag in (asset.tags or []) if tag]
-        asset.tags = line or ""    # the record's own setter splits and drops the blanks
-        if [tag for tag in (asset.tags or []) if tag] == before:
-            return False
+        asset.tags = line
         self._edited(asset, save)
         return True
 
@@ -670,24 +683,43 @@ class AssetLibrary(grid_engine.GridEngine,
         with library_db.library_for(self.preferences).holding():
             self._doc().drop(ROWS, str(record.mat_id))
 
-    def add_saved(self, record, staged: list) -> bool:
+    def add_saved(self, record, staged=()) -> bool:
         """Save a new record and the files its save staged as ONE change; False: neither was saved."""
+        return self.add_all([record], staged)
+
+    def add_all(self, records: list, staged=()) -> bool:
+        """Save new records, with the files the last one staged, as ONE change; False: none was."""
         if not library_db.accepts(self.preferences, self.DB_FILENAME):
             asset_record.discard(staged)
             return False
-        self._append_record(record)
-        held = self._doc()
-        row = as_stored(record.get_as_dict())
+        for record in records:
+            self._append_record(record)
+        row = as_stored(records[-1].get_as_dict())
         guard = library_db.guard_of(self.preferences)
         with library_db.library_for(self.preferences).holding():
-            self._stage_rows(held)
+            self._stage_rows(self._doc())
         saved = library_db.save(self.preferences, self.DB_FILENAME, also=lambda change: (
             asset_record.add_staged(change, guard, staged, metadata=row)))
         if not saved:
             asset_record.discard(staged)
-            self._remove_unsaved_record(record)
+            for record in records:
+                self._remove_unsaved_record(record)
             return False
         return True
+
+    def add_shipped(self, mark: str, records: list, pages: dict, category_model) -> int:
+        """Records shipped with Amaze, added once per library, only when it takes them; how many."""
+        from amaze.core import library_settings, notes
+        if not records or library_settings.marked(self.preferences, mark) or \
+                not self.add_all(records):
+            return 0
+        if pages:
+            notes.set_notes(self.preferences, pages)    # after the rows: a comment needs its row
+        for name in dict.fromkeys(name for record in records for name in record.categories):
+            category_model.check_add_category(name)
+        if not library_settings.mark(self.preferences, mark, added=len(records)):
+            debug.event("library", "shipped records not marked", store=self.DB_FILENAME)
+        return len(records)
 
     def _insert_added_rows(self, rows: list) -> None:
         """Insert rows another session added, with the row signals; an unparseable row is skipped."""
@@ -739,63 +771,6 @@ class AssetLibrary(grid_engine.GridEngine,
     def assets(self) -> list:
         """This model's records, in row order - the live list, not a copy."""
         return self._assets
-
-    def sanitize_tags(self, tags):
-        ts = []
-        for t in tags.split(","):
-            t = t.strip()
-            if t != "":
-                ts.append(t)
-
-        ts = dict.fromkeys(ts)  # dedupes while PRESERVING order; a set() here reshuffles tag order on every edit
-        new_tags = ",".join(ts)
-        return new_tags
-
-    def set_assetdata(self, index: QtCore.QModelIndex, name, cats, tags, fav,
-                      about=None, license=None, save=True) -> None:
-        """Write one row's editable fields; None leaves a field unchanged, save=False defers the write."""
-
-        asset = self._assets[index.row()]
-
-        name = name if material.MULTIPLE_VALUES not in name else asset.name
-        cats = (cats if material.MULTIPLE_VALUES not in cats
-                else ", ".join(asset.categories))
-
-        if material.MULTIPLE_VALUES not in tags:
-            tags = self.sanitize_tags(tags)
-        else:
-            tags = ", ".join(asset.tags)
-
-        if fav is not None:  # the star goes to this user's stars in the database, never onto the record
-            if bool(fav) != locations.is_favourite(
-                    self.preferences, asset.mat_id, self.DB_FILENAME):
-                locations.set_favourite(
-                    self.preferences, asset.mat_id, bool(fav), self.DB_FILENAME)
-        asset.set_data(name, cats, tags, asset.fav, None, about=about,
-                       license=license)
-        if save:
-            self._saved_rows_changed([asset])
-        else:
-            self.row_changed(index.row())  # full-row repaint: name, categories, tags and star may all change
-
-    def collapse_multicategory(self) -> int:
-        """Drop every asset to its first category; returns how many collapsed. Idempotent."""
-        changed = 0
-        for asset in self._assets:
-            if len(asset.categories) > 1:
-                asset.categories = asset.categories[0]  # setter takes a str
-                changed += 1
-        if changed:
-            self.save()
-        return changed
-
-    def report_failed_index_write(self, asset, updated: bool = False) -> None:
-        """Show on the status line that an inline asset's list write failed; it is kept in memory."""
-        name = asset.name or "The asset"
-        debug.event("save", "inline asset not saved - the index write "
-                    "was refused", name=name, mat_id=asset.mat_id,
-                    model=self.DB_FILENAME)
-        report_unlisted([name], updated=updated)    # the library's own alert said why; a restart loses it
 
     def asset_files(self, mat_id: str) -> dict:
         """`asset_files_for` this library; a new per-asset file is added THERE and nowhere else."""
@@ -1032,11 +1007,12 @@ class AssetLibrary(grid_engine.GridEngine,
 
     def toggle_favs(self, rows) -> None:
         """Flip the star on every row in `rows` in ONE store write; rows outside the model are skipped."""
+        rows = [row for row in rows if 0 <= row < self.rowCount()]
+        if not rows or not self.takes_edits():
+            return
         wanted = {}
         flipped = []
         for row in rows:
-            if not 0 <= row < self.rowCount():
-                continue
             mat_id = self._assets[row].mat_id
             current = wanted[mat_id] if mat_id in wanted else \
                 locations.is_favourite(self.preferences, mat_id, self.DB_FILENAME)

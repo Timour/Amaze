@@ -38,9 +38,6 @@ def terminal_input(named_inputs: dict, role: str):
     return None
 
 
-MULTIPLE_VALUES = "Multiple Values..."
-
-
 def is_safe_asset_id(raw) -> bool:
     """True when this id can be used in a filename: no separators, no `.` or `..`."""
     return library_files.is_safe_id(raw)
@@ -163,6 +160,12 @@ def category_names(value) -> list:
     if not isinstance(value, (list, tuple)):
         value = [value] if isinstance(value, str) else []
     return [name.strip() for name in value if isinstance(name, str) and name.strip()]
+
+
+def tag_list(value) -> list:
+    """Tags from a comma line or a list: trimmed, in order, with no blanks or repeats."""
+    parts = value if isinstance(value, (list, tuple)) else str(value or "").split(",")
+    return list(dict.fromkeys(tag for tag in (str(part).strip() for part in parts) if tag))
 
 
 class Material:
@@ -359,12 +362,7 @@ class Material:
 
     @tags.setter
     def tags(self, tags) -> None:
-        if isinstance(tags, (list, tuple)):
-            found = [str(t).strip() for t in tags if str(t).strip()]
-        else:
-            found = [t.strip() for t in str(tags or "").split(",")
-                     if t.strip()]
-        self._tags = found
+        self._tags = tag_list(tags)
 
     @property
     def usd(self) -> int:

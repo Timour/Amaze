@@ -384,9 +384,9 @@ def set_override(preferences, key: str, spec, database: str) -> bool:
 def set_overrides(preferences, specs: dict, database: str) -> dict:
     """`set_override` for many tiles as one change; {key: whether the database now holds that choice}."""
     from amaze.core import library_db
-    held = _document(preferences, database)
-    if not held.writable or not held.user():
+    if not library_db.accepts(preferences, database):
         return {str(key): False for key in specs}
+    held = _document(preferences, database)
     with library_db.library_for(preferences).holding():
         for key, spec in specs.items():
             chosen = normalise(spec)

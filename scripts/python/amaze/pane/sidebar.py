@@ -1,7 +1,7 @@
 """The sidebar's rows: the model shown, the pane's selection of its rows, and the work on them."""
 
 from amaze import amazetheme
-from amaze.core import category, grid_columns, grid_engine
+from amaze.core import category, grid_columns
 
 KEY_PAUSE_MS = 180    #: the arrow keys' pause before the row they stop on is shown: a File step lists a folder
 
@@ -175,44 +175,13 @@ class Sidebar:
                                 context.colour_title, apply)
 
     def assign_category(self, category_name: str) -> None:
-        """Replace the category of the active section's selected assets; a drop on the sidebar."""
-        category_name = (category_name or "").strip()
-        if not category_name:
-            return
-        pane = self.pane
-        if pane.current_section == "gradient":
-            self._assign_gradient_category(category_name)
-            return
-        section = pane.active_section()
+        """Move the active section's selected assets into a category; a drop on the sidebar."""
+        section = self.pane.active_section()
         stack = section.stack() if section is not None else None
         if stack is None:
             return
         model, proxy, selmodel, catmodel = stack
-        ids = [model.tile_key(proxy.mapToSource(index).row())
-               for index in grid_columns.selected_rows(selmodel)]
-        if not ids:
-            return
-        catmodel.check_add_category(category_name)    # outside the pair (it inserts), and its save can move rows
-        with grid_engine.relayout(model):
-            for row in (model.find_asset_row_by_id(mat_id) for mat_id in ids):
-                if row < 0:
-                    continue    # deleted on another machine meanwhile
-                asset = model.assets[row]
-                model.set_assetdata(
-                    model.index(row, 0), asset.name, category_name,
-                    ", ".join(asset.tags),
-                    None, save=False    # fav=None: never the per-user favourite; save=False: one write below
-                )
-        model.save()    # AFTER the pair: a save merges rows another Houdini wrote, and an insert inside segfaults H21
-        self.refresh()
-
-    def _assign_gradient_category(self, category_name: str) -> None:
-        """Move the selected gradients to a category, the seeded palettes included."""
-        pane = self.pane
-        rows = [
-            pane.gradient_sorted_model.mapToSource(i).row()
-            for i in grid_columns.selected_rows(pane.gradient_selection_model)
-        ]
-        moved = pane.gradient_model.set_user_category(rows, category_name)
-        if moved:
+        keys = {model.tile_key(proxy.mapToSource(index).row())
+                for index in grid_columns.selected_rows(selmodel)}
+        if category.assign(model, catmodel, keys, (category_name or "").strip()):
             self.refresh()

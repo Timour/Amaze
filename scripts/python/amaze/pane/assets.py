@@ -187,29 +187,13 @@ class Assets:
         )
 
         def apply(answer, tile_keys=frozenset(tile_keys)):
-            rows = [row for row in range(model.rowCount())    # resolved on commit; a tile deleted meanwhile is skipped
+            if model.TILE_FIELDS and not model.edit_tiles(
+                    tile_keys, answer.name, answer.tags, answer.category):
+                return    # refused, and the user told: the icon is not written either
+            rows = [row for row in range(model.rowCount())    # by key, after that save: rows move
                     if model.tile_key(row) in tile_keys]
-            if not rows:
-                return
-            self.apply_icon_spec(model, rows, answer.spec)
-            edited = set()    # keys of the records changed below - nothing saves until the one commit
-            if answer.name and len(rows) == 1 and "name" in model.TILE_FIELDS:
-                if model.set_tile_name(rows[0], answer.name, save=False):
-                    edited.add(model.tile_key(rows[0]))
-            if answer.tags is not None and "tags" in model.TILE_FIELDS:
-                if len(rows) == 1:
-                    if model.set_tile_tags(rows[0], answer.tags, save=False):    # "" CLEARS the tags
-                        edited.add(model.tile_key(rows[0]))
-                else:
-                    for row in rows:    # ADDS across a selection: each tile keeps its own tags
-                        if model.add_tile_tags(row, answer.tags, save=False):
-                            edited.add(model.tile_key(row))
-            if answer.category and "category" in model.TILE_FIELDS:
-                for row in rows:    # EVERY selected tile, unlike the name and the tags
-                    if model.set_tile_category(row, answer.category, save=False):
-                        edited.add(model.tile_key(row))
-            if edited:
-                model.commit_tile_edits(edited)
+            if rows:
+                self.apply_icon_spec(model, rows, answer.spec)
 
         self.pane.ui.open_customize(question, apply)
 
