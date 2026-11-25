@@ -9,6 +9,26 @@ from amaze.core import debug, geo_library
 from amaze.helpers import helpers, theme, wording
 
 
+class PendingOutcome:
+    """A drop's outcome that the user's answer decides after the release: `settle` it, `then` hears it."""
+
+    def __init__(self) -> None:
+        self._outcome = None    # True or False once settled
+        self._heard = None
+
+    def settle(self, outcome) -> None:
+        """The outcome, given once: to the listener, or kept for it when a modal host answered first."""
+        self._outcome = bool(outcome)
+        if self._heard is not None:
+            self._heard(self._outcome)
+
+    def then(self, heard) -> None:
+        """`heard(outcome)` once the outcome is settled, at once if it already is."""
+        self._heard = heard
+        if self._outcome is not None:
+            heard(self._outcome)
+
+
 class DropPlacement:
     """Where one pane's drops create nodes; the pane holds it as `drop_placement`."""
 
@@ -28,7 +48,7 @@ class DropPlacement:
         return None
 
     def release(self, section_key: str, key: str, pane_tab=None, pane_kind=None):
-        """Tile `key` released over Houdini: True, False for a miss, or "menu"; one undo step."""
+        """Tile `key` released over Houdini: True, False for a miss, or a PendingOutcome; one undo step."""
         from amaze.core import dragengine
         from amaze.helpers import helpers
         from amaze.sections import base as section_base
@@ -41,13 +61,18 @@ class DropPlacement:
         try:
             with dragengine.holding_drop_group():    # the handler, its placement and the splice
                 outcome = self._apply_drop_rule(rule, section, index, pane_tab, pane_kind)
-                if outcome:
+                if outcome is True:    # a PendingOutcome's nodes come with the answer: none to splice now
                     self._splice_if_on_a_wire(pane_tab)
         except hou.PermissionError as refusal:    # a locked network; any other error is a bug and raises
-            debug.exception("drop failed - permission error", refusal, section=section_key)
-            debug.refuse(str(refusal), section=section_key)    # Houdini's own words ▸p/refuse-vs-alert
-            return False
+            return self._refused(refusal, section_key)
         return outcome
+
+    @staticmethod
+    def _refused(refusal, section_key: str) -> bool:
+        """A locked network refused the drop: logged, and shown in Houdini's own words; False, a miss."""
+        debug.exception("drop failed - permission error", refusal, section=section_key)
+        debug.refuse(str(refusal), section=section_key)    # ▸p/refuse-vs-alert
+        return False
 
     def _apply_drop_rule(self, rule, section, index, pane_tab, pane_kind):
         """One order for every DropRule: on_node (result final), resolve, on_space ▸o/section-api"""
@@ -286,8 +311,8 @@ class DropPlacement:
         except AttributeError:
             return None
 
-    def material_lop_viewport_drop(self, ids, viewer, primpath) -> bool:
-        """LOP-viewport release: the prim menu, then import and assign through Houdini's stock helpers."""
+    def material_lop_viewport_drop(self, ids, viewer, primpath):
+        """LOP-viewport release: the prim menu, False when none opens; its answer settles the outcome."""
         from amaze.core import dragengine, lop_assign
         stock = dragengine.stock_lop()
         if stock is None:
@@ -313,11 +338,22 @@ class DropPlacement:
             labels.append(label)
             previous_kind = kind
         picked = [index for index, label in enumerate(labels) if label]
-        done = []    # a modal host answers before the ask returns
-        self.pane.ui.ask_drop_choice(labels, lambda chosen: done.append(
-            False if chosen is None    # dismissed: nothing happens
-            else self._assign_dropped(stock, lopnet, target_lop, ids, choices[picked.index(chosen)])))
-        return done[0] if done else False
+        outcome = PendingOutcome()
+        self.pane.ui.ask_drop_choice(labels, lambda chosen: self._assign_picked(
+            outcome, stock, lopnet, target_lop, ids,
+            None if chosen is None else choices[picked.index(chosen)]))    # None: the menu was dismissed
+        return outcome
+
+    def _assign_picked(self, outcome, stock, lopnet, target_lop, ids, choice) -> None:
+        """The prim menu's answer continues the drop; a dismissal (None) or a failure settles a miss."""
+        assigned = False
+        try:
+            if choice is not None:
+                assigned = self._assign_dropped(stock, lopnet, target_lop, ids, choice)
+        except hou.PermissionError as refusal:    # as at the release: a locked network
+            self._refused(refusal, "material")
+        finally:
+            outcome.settle(assigned)
 
     def _assign_dropped(self, stock, lopnet, target_lop, ids, choice) -> bool:
         """The picked prim-menu row: import the materials into a library LOP, then assign or swap."""

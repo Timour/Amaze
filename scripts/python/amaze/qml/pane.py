@@ -468,6 +468,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         return self._menu.rows
 
     @QtCore.Slot()
+    @debug.guarded("PaneState.menuClosed")
     def menuClosed(self) -> None:
         """The open menu closed, after its pick if any: what it moved is put back."""
         after, self._after_menu = self._after_menu, None
@@ -489,17 +490,11 @@ class PaneState(qmlviews.SharedState, asks.Asks):
             menu.run(key)
 
     def ask_drop_choice(self, labels: list, then) -> None:
-        """A menu at the cursor, waited on as the widget panel's: `then` gets the place picked, or None."""
+        """A menu at the cursor, not waited on: once it closes, `then` gets the place picked, or None."""
         choice = menus.Choice(labels)
         menu = choice.menu(host=self)
-        rows = menu.rows[0].get("rows", [])
-        if rows:
-            closed = QtCore.QEventLoop()    # QMenu.exec's own wait: the drop needs its answer before it returns
-            self._menu, self._after_menu = menu, closed.quit
-            self.menuOffered.emit(rows)
-            if self._menu is menu:    # the QML opened it; else it already closed
-                closed.exec()
-        then(choice.place)
+        self._menu, self._after_menu = menu, lambda: then(choice.place)
+        self.menuOffered.emit(menu.rows[0].get("rows", []))    # a menu that cannot open closes at once
 
     def ask_name(self, title: str, default: str, then) -> None:
         """The Name window, not modal: `then` gets the name, "" for a cleared field, None for Cancel."""
