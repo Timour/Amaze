@@ -482,17 +482,17 @@ class AssetSection(Section):
         self.pane.ui.ask_name("Add Category", "", add)
 
     def menu_rename_category(self, indexes, current, payload=None) -> None:
-        old = self.sidebar_key(indexes[0]) if indexes else ""    # the field starts with the current name
+        names = [self.sidebar_key(index) for index in indexes]    # STORED, read now: rows move before an OK
+        old = names[0] if names else ""    # the field starts with the current name
         self.pane.ui.ask_name(
             "Rename Category", "" if category.is_all(old) else category.display_name(old),
-            lambda new_name: self._rename_categories(indexes, new_name))
+            lambda new_name: self._rename_categories(names, new_name))
 
-    def _rename_categories(self, indexes, new_name) -> None:
-        """Rename the categories on these rows to `new_name`, assets first, then the sidebar rows."""
+    def _rename_categories(self, names, new_name) -> None:
+        """Rename the categories stored as `names` to `new_name`, assets first, then the sidebar rows."""
         st = self.stack()
         if st is None or not new_name:
             return
-        names = [self.sidebar_key(index) for index in indexes]    # STORED: `_WIP` reads as WIP
         shown = self.shown_sidebar_key()    # the grid's row: a right press moved only the sidebar
         new_name = category.rename(st.model, st.categories, names, new_name)
         if not new_name:
