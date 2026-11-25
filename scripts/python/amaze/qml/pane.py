@@ -910,6 +910,10 @@ class QmlPanel(QtWidgets.QFrame):
     def panelDeactivated(self) -> None:
         self.state.visible = False
 
+    def interfaceDestroyed(self) -> None:
+        """Houdini is about to destroy the pane: it stops asking the view for hotkey contexts."""
+        hotkeys.unwatch(self.view)
+
     def showEvent(self, event) -> None:
         super().showEvent(event)
         if not self._shown:    # after the first paint: a modal blocks a half-built paint
@@ -920,5 +924,4 @@ class QmlPanel(QtWidgets.QFrame):
         """At the close, a tile size the slider set is saved; the children get no event of their own."""
         if event.type() == QtCore.QEvent.Type.DeferredDelete:
             self.state.save_size()
-            hotkeys.unwatch(self.view)
         return super().event(event)

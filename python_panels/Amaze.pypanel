@@ -64,7 +64,12 @@ def onActivateInterface():
 
 
 def onDeactivateInterface():
-    thePanel.panelDeactivated()]]></script>
+    thePanel.panelDeactivated()
+
+
+# Houdini's own step before it destroys the pane, earlier than Qt's deletion.
+def onDestroyInterface():
+    thePanel.interfaceDestroyed()]]></script>
     <includeInPaneTabMenu menu_position="100" create_separator="false" />
     <includeInToolbarMenu menu_position="416" create_separator="false" />
     <help><![CDATA[]]></help>
