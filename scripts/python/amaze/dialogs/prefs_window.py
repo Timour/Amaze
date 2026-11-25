@@ -15,6 +15,7 @@ from amaze.dialogs import library_dialog, user_dialog
 from amaze.helpers import hostos, ui_helpers
 from amaze.pane import files as pane_files
 from amaze.prefs import prefs as prefs_mod
+from amaze.qml import rows_model
 from hutil.qt.common import qmlviews    # Houdini's own QML windows' base ▸r/qml-widget-blackout
 from hutil.qt.prefs import mainprefs    # Houdini's Preferences window: its state is the base here
 
@@ -178,55 +179,15 @@ def _tip_html(text: str) -> str:
     return html.escape(text).replace("\n", "<br>")
 
 
-class LibraryRows(QtCore.QAbstractTableModel):
+class LibraryRows(rows_model.RowsModel):
     """Manage Libraries' rows, a model with a role per field as Houdini's OCIO page has its rules."""
 
     COLUMNS = ("name", "shown")    # the library's name, then its folder as shown
-    FIELDS = ("shown", "folder", "dim", "isOpen")    # a row's roles besides `display`, its name
-    FOLDER_ROLE = QtCore.Qt.ItemDataRole.UserRole + FIELDS.index("folder")
+    FIELDS = ("shown", "folder", "dim", "isOpen")
 
-    def __init__(self, parent=None) -> None:
-        super().__init__(parent)
-        self.rows: list = []    # one dict per library, keyed by `name` and FIELDS
-
-    def fill(self, rows: list) -> None:
-        """New rows, the old removed as rows: a reset clears Qt's selection model with no signal."""
-        if self.rows:
-            self.beginRemoveRows(QtCore.QModelIndex(), 0, len(self.rows) - 1)
-            self.rows = []
-            self.endRemoveRows()
-        if rows:
-            self.beginInsertRows(QtCore.QModelIndex(), 0, len(rows) - 1)
-            self.rows = rows
-            self.endInsertRows()
-
-    def roleNames(self) -> dict:
-        roles = {QtCore.Qt.ItemDataRole.DisplayRole: b"display"}
-        roles.update({QtCore.Qt.ItemDataRole.UserRole + number: field.encode()
-                      for number, field in enumerate(self.FIELDS)})
-        return roles
-
-    def rowCount(self, parent=QtCore.QModelIndex()) -> int:
-        return 0 if parent.isValid() else len(self.rows)
-
-    def columnCount(self, parent=QtCore.QModelIndex()) -> int:
-        return 0 if parent.isValid() else len(self.COLUMNS)
-
-    def flags(self, index):
+    def selectable(self, row: dict) -> bool:
         """Every row can be selected but the open library's, which is only shown."""
-        flags = QtCore.Qt.ItemFlag.ItemIsEnabled | QtCore.Qt.ItemFlag.ItemNeverHasChildren
-        if index.isValid() and not self.rows[index.row()]["isOpen"]:
-            flags |= QtCore.Qt.ItemFlag.ItemIsSelectable
-        return flags
-
-    def data(self, index, role=QtCore.Qt.ItemDataRole.DisplayRole):
-        if not index.isValid():
-            return None
-        row = self.rows[index.row()]
-        if role == QtCore.Qt.ItemDataRole.DisplayRole:
-            return row[self.COLUMNS[index.column()]]
-        number = int(role) - int(QtCore.Qt.ItemDataRole.UserRole)
-        return row[self.FIELDS[number]] if 0 <= number < len(self.FIELDS) else None
+        return not row["isOpen"]
 
 
 class AmazePrefsState(mainprefs.PrefsState):
@@ -601,7 +562,7 @@ class AmazePrefsState(mainprefs.PrefsState):
     @QtCore.Slot(QtCore.QModelIndex, list)
     def removeLibraries(self, current, indexes: list) -> None:
         """Remove from List on the current and selected rows, as Node Search reads its table's."""
-        folders = [str(index.data(LibraryRows.FOLDER_ROLE)) for index in [current, *indexes]
+        folders = [str(index.data(LibraryRows.role("folder"))) for index in [current, *indexes]
                    if index.isValid()]
         if not self._prefs.remove_libraries(folders):
             return
