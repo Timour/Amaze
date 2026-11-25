@@ -450,6 +450,64 @@ class PicturesTest(_Library):
         self.assertEqual([str(gold.mat_id)], [key for job in jobs for key, _path in job.frames])
 
     @needs_houdini
+    def test_tp23_a_save_renders_when_on_a_hosted_picture_wins_and_render_image_always(self):
+        from amaze.actions import materials as material_actions, nodes as node_actions
+        from amaze.core import cop_library, library
+        from amaze.render import nodes, thumbs
+        test_support.pin_env(self, "OCIO", "/dev/null")    # the save checks it
+        prefs = test_support.fixture_prefs(self)
+        materials, networks = library.MaterialLibrary(prefs), cop_library.CopLibrary(preferences=prefs)
+        rendered = []
+        spies = [mock.patch.object(thumbs.ThumbNailRenderer, name, lambda renderer, key, *a, kind=kind: (
+            rendered.append((kind, key)) or True)) for name, kind in (
+                ("create_thumb_sop", "SOP"), ("create_thumb_cop", "COP"))] + [
+            mock.patch.object(thumbs.ThumbNailRenderer, "render_assets", lambda prefs, mats: (
+                rendered.extend(("material", str(mat.mat_id)) for mat in mats))),
+            mock.patch.object(thumbs.ThumbNailRenderer, "create_thumb", lambda renderer, kind, node,
+                              key: rendered.append(("material", key)) or True)]
+        for spy in spies:    # a save renders a material through `create_thumb`, Render Image a batch
+            spy.start()
+            self.addCleanup(spy.stop)
+        with hou.undos.disabler():
+            made = {"material": nodes.build_karma_material(hou.node("/mat"), "tp_brick", lambda b: (
+                        b.createNode("mtlxstandard_surface", "surface"))).builder,
+                    "SOP": hou.node("/obj").createNode("geo", "tp_geo"),
+                    "COP": hou.node("/obj").createNode("copnet", "tp_cops"),
+                    "other": hou.node("/obj").createNode("subnet", "tp_other")}
+            made["SOP"].createNode("box")
+            made["COP"].createNode("constant").setDisplayFlag(True)
+        for node in made.values():
+            self.addCleanup(test_support.drop_node, node)
+
+        def save_each() -> dict:
+            """Each network saved anew: {kind: its id}."""
+            material_actions.add_asset(materials, made["material"], "", "", False)
+            for kind in ("SOP", "COP", "other"):
+                node_actions.add_asset(networks, made[kind], "", "", False)
+            return {kind: node.userData("assetlib_id") for kind, node in made.items()}
+
+        for on in (1, 0):
+            prefs.render_on_import, rendered[:] = on, []
+            saved = save_each()
+            self.assertEqual([(kind, saved[kind]) for kind in ("material", "SOP", "COP")] if on
+                             else [], rendered, "Render Thumbnails on Import is %d" % on)
+        hosted = test_support.put(self.dir, "hosted.png", NEW)
+        prefs.render_on_import, rendered[:] = 1, []
+        before = test_support.asset_ids(materials)
+        material_actions.add_asset(materials, made["material"], "", "", False, picture=hosted)
+        online, = test_support.arrived(materials, before)
+        self.assertEqual([], rendered, "rendered over the hosted picture")
+        self.assertTrue(self.shown(tile_icons.thumbnail_path(prefs, str(online.mat_id),
+                                                             library_files.MATERIALS)).startswith(b"\x89PNG"))
+        prefs.render_on_import = 0
+        material_actions.render_thumbnails(materials, [materials.find_asset_row_by_id(online.mat_id)])
+        with test_support.captured_log():
+            node_actions.render_thumbnails(networks, [networks.find_asset_row_by_id(saved[kind])
+                                                      for kind in ("SOP", "COP", "other")])
+        self.assertEqual([("material", str(online.mat_id)), ("SOP", saved["SOP"]),
+                          ("COP", saved["COP"])], rendered, "Render Image did not render again")
+
+    @needs_houdini
     def test_tp24_a_files_capture_is_one_file_in_the_library_and_stays_through_a_save(self):
         import hashlib
         from amaze.core import captures, file_library, locations
