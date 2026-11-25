@@ -24,6 +24,8 @@ Item {
         property string opens: ""    // the toolbar menu a press opens below it: "view" or "filter"
         property QtObject menu: null    // that menu while it is open; Qt clears it when the menu goes
         property bool on: checked || menu !== null    // B01c's on state: a toggle on, a menu or window open
+        // a menu's window takes its button's release: a menu button stays held ▸r/qml-menu-press
+        readonly property bool held: down && opens === ""
         flat: true
         padding: 0    // the art sits where B01 draws it inside the button, not inside Houdini's padding
         implicitWidth: root.drawn.button
@@ -37,7 +39,7 @@ Item {
         background: Item {
             Rectangle {    // B01c's chip: its grey middle, Houdini's checked border and ring
                 anchors.fill: parent
-                visible: button.on || button.down
+                visible: button.on || button.held
                 radius: 4
                 color: root.drawn.on.fill
                 border.color: root.drawn.on.border
@@ -53,7 +55,7 @@ Item {
             }
             Rectangle {    // Houdini's tool-button hover (pluto parts.drawButtonPanel): white at 10%
                 anchors.fill: parent
-                visible: button.hovered && button.enabled && !button.on && !button.down
+                visible: button.hovered && button.enabled && !button.on && !button.held
                 radius: 4
                 color: Qt.rgba(1, 1, 1, 0.1)
                 border.color: Qt.rgba(1, 1, 1, 0.145)    // its pen over its fill, measured #4c4c4c at 1x
