@@ -718,11 +718,13 @@ class PaneView(qmlviews.BaseQmlWidget):
 
     @debug.guarded("PaneView.mouseMoveEvent")
     def mouseMoveEvent(self, event) -> None:
-        """The QML's move, then the drag's: the view keeps the mouse while a button is down."""
-        super().mouseMoveEvent(event)
-        if self.drag.running:
+        """A running drag takes the move alone: in the QML too, Qt sent it on to the pane under it."""
+        if self.drag.running:    # measured: the network editor repainted between outline draws
             self._drag_held = True
             self.drag.move()
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
 
     @debug.guarded("PaneView.mouseReleaseEvent")
     def mouseReleaseEvent(self, event) -> None:
