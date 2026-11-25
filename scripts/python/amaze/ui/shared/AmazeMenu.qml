@@ -28,10 +28,10 @@ Menu {
         root.popup(item, 0, item.height)
     }
 
-    function rowSymbol(row) {    // the row's Phosphor glyph; a colour is Houdini's square glyph in it
-        if (row.chip)
-            return PhosphorGlyphs.square
-        return row.glyph ? PhosphorGlyphs[row.glyph] : ""
+    function rowSymbol(row) {    // the row's Phosphor glyph; a colour with none is Houdini's square in it
+        if (row.glyph)
+            return PhosphorGlyphs[row.glyph]
+        return row.chip ? PhosphorGlyphs.square : ""
     }
 
     function fill(menu, rows) {    // rows as `pane.menus.Menu` gives them, a submenu's in `rows`

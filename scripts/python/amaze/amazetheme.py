@@ -61,7 +61,7 @@ P01_LIGHT_CLEAN = "#3fc28a"     # the check found nothing
 P01_LIGHT_FOUND = "#ff3600"     # the check found something
 P01_LIGHT_UNCHECKED = "#ffae00"  # a part could not be checked now
 
-MENU_CHIP = (4, 3, 16, 16)     # ▸ the chip submenu (C09c): x, y, w, h of a chip in its row
+MENU_CHIP = (4, 3, 16, 16)     # ▸ the chip submenus (C02b, C09c): x, y, w, h of a chip in its row
 
 LABEL_COLOURS = (              # ▸ the sidebar's Label submenu (C09c): its four chips
     ("Red", "#e0693e"),

@@ -42,7 +42,7 @@ class GradientSection(base.AssetSection):
         base.MenuEntry("Interpolation", handler="menu_set_interpolation", children="ramp_bases",
                        needs="one", glyph="line_segments"),
         base.MenuEntry("Copy Color", handler="menu_copy_swatch", children="palette_swatches",
-                       needs="one", glyph="eyedropper"),
+                       needs="one", glyph="eyedropper", chip_glyph="drop_half"),
         base.SEPARATOR,
     ) + base.GRID_MENU_TAIL
 
@@ -151,12 +151,12 @@ class GradientSection(base.AssetSection):
                      for basis in helpers.RAMP_BASES)
 
     def palette_swatches(self, indexes, current) -> tuple:
-        """One plain row per colour in this palette: its name and hex."""
+        """One row per colour in this palette: its name and hex, its glyph in that colour."""
         entry = self._entry_at(current)
         if entry is None:
             return ()
         return tuple(
-            ("%s   %s" % (colour["name"], colour["hex"].upper()), colour, "", True)
+            ("%s   %s" % (colour["name"], colour["hex"].upper()), colour, colour["hex"], True)
             for colour in entry["colors"]
         )
 

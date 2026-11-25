@@ -113,6 +113,8 @@ class Menu:
             row = {"key": key, "text": label, "enabled": bool(live)}
             if is_chip(icon):
                 row["chip"] = icon
+                if entry.chip_glyph:
+                    row["glyph"] = entry.chip_glyph
             elif icon:
                 row["icon"] = icon
             if checked is None:

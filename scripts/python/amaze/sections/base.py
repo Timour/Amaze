@@ -36,9 +36,9 @@ DropRule = collections.namedtuple(
 
 MenuEntry = collections.namedtuple(    # opens: the asks.Asks window the row opens, greyed where a host lacks it
     "MenuEntry",
-    "label handler needs shown children count_suffix checkable opens glyph",
-    defaults=("", "any", "", "", False, "", "", ""),
-)    # glyph: the row's Phosphor glyph by its name in Houdini's PhosphorGlyphs, "" for none
+    "label handler needs shown children count_suffix checkable opens glyph chip_glyph",
+    defaults=("", "any", "", "", False, "", "", "", ""),
+)    # glyph: the row's Phosphor glyph by name; chip_glyph: its colour rows' glyph, "" a square
 
 
 SEPARATOR = MenuEntry("")  # the empty label is what makes it a divider
