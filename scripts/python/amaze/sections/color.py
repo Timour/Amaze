@@ -151,13 +151,12 @@ class GradientSection(base.AssetSection):
                      for basis in helpers.RAMP_BASES)
 
     def palette_swatches(self, indexes, current) -> tuple:
-        """One row per colour in this palette, each with its hex as the swatch colour."""
+        """One plain row per colour in this palette: its name and hex."""
         entry = self._entry_at(current)
         if entry is None:
             return ()
         return tuple(
-            ("%s   %s" % (colour["name"], colour["hex"].upper()),
-             colour, colour["hex"], True)
+            ("%s   %s" % (colour["name"], colour["hex"].upper()), colour, "", True)
             for colour in entry["colors"]
         )
 
