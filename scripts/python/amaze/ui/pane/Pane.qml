@@ -8,12 +8,14 @@ import "../shared"
 PaneRoot {
     id: root
 
-    function openMenu(rows, under) {    // every menu of the pane: the engine's rows, below `under` or at the cursor
+    function openMenu(rows, under, at) {    // every menu of the pane: below `under`, at screen point `at`, or the cursor
         if (rows.length === 0)
             return null
         const menu = menuMaker.createObject(root)
         if (under)
             menu.showUnder(rows, under)
+        else if (at)
+            menu.showAt(rows, at)
         else
             menu.show(rows)
         return menu
@@ -57,8 +59,8 @@ PaneRoot {
     }
     Connections {    // a menu the engine opens itself, at the cursor; one that cannot open is closed at once
         target: SharedState
-        function onMenuOffered(rows) {
-            if (!root.openMenu(rows))
+        function onMenuOffered(rows, at) {
+            if (!root.openMenu(rows, null, at))
                 SharedState.menuClosed()
         }
     }

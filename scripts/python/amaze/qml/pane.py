@@ -16,7 +16,7 @@ from hutil.qt.common import qmlviews    # Houdini's own QML panels' base ▸r/ho
 
 PANE_QML = amaze.package_file("ui", "pane", "Pane.qml")
 SIZE_SAVE_MS = 500    # the slider's pause before its tile size is saved, as in the widget panel
-WIRED_BADGES = ("favourite", "versions")    # the badges whose click works here; the others come later
+WIRED_BADGES = ("favourite", "versions", "execute")    # the badges whose click works here; comments later
 PINNED_BADGES = ("favourite",)    # shown while on; every other badge shows only under the pointer
 
 
@@ -144,7 +144,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
     searchCleared = QtCore.Signal()    # the empty state's Clear Search: the QML empties its field
     keyStepped = QtCore.Signal(str, bool)    # a move by Houdini's hotkey: its name, and if Shift extends
     sidebarOpened = QtCore.Signal(QtCore.QModelIndex)    # the tree opens this folder and those above it
-    menuOffered = QtCore.Signal("QVariantList")    # the engine's own menu, at the cursor: the drop's choice
+    menuOffered = QtCore.Signal("QVariantList", QtCore.QPoint)    # the engine's menu at a screen point
 
     pane = None    # the engine, built by `start`
     drag = None    # the view's `drag_session`, which a press on a tile or row past the drag distance begins
@@ -489,12 +489,12 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         if menu is not None:
             menu.run(key)
 
-    def ask_drop_choice(self, labels: list, then) -> None:
-        """A menu at the cursor, not waited on: once it closes, `then` gets the place picked, or None."""
+    def ask_drop_choice(self, labels: list, then, at) -> None:
+        """A menu at `at`, not waited on: once it closes, `then` gets the place picked, or None."""
         choice = menus.Choice(labels)
         menu = choice.menu(host=self)
         self._menu, self._after_menu = menu, lambda: then(choice.place)
-        self.menuOffered.emit(menu.rows[0].get("rows", []))    # a menu that cannot open closes at once
+        self.menuOffered.emit(menu.rows[0].get("rows", []), at)    # a menu that cannot open closes at once
 
     def ask_name(self, title: str, default: str, then) -> None:
         """The Name window, not modal: `then` gets the name, "" for a cleared field, None for Cancel."""

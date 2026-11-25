@@ -307,6 +307,8 @@ class DropPlacement:
     def drop_materials_on_prim(self, ids, viewer, hit) -> bool:
         """Imported in one undo step, then Houdini's own rows for the prim offered ▸r/viewport-foreign-drag"""
         from amaze.core import dragengine
+        from PySide6 import QtGui
+        at = QtGui.QCursor.pos()    # the release point: the import before the menu lets the pointer move on
         stock = dragengine.stock_lop()
         if stock is None:
             debug.refuse(messages.STOCK_LOP_HELPERS_UNAVAILABLE)    # ▸p/refuse-vs-alert
@@ -326,7 +328,7 @@ class DropPlacement:
         debug.event("drag", "houdini drop rows", prim=hit.prim, rows=len(tokens))
         if tokens:
             self.pane.ui.ask_drop_choice(list(labels), lambda place: self._accept_drop_choice(
-                stock, drop, None if place is None else tokens[place]))
+                stock, drop, None if place is None else tokens[place]), at)
         return True
 
     def _accept_drop_choice(self, stock, drop, token) -> None:

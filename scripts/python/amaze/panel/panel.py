@@ -425,11 +425,11 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
         chosen = ui_helpers.pick_color(start, self, title)
         then(chosen.name() if chosen is not None else None)
 
-    def ask_drop_choice(self, labels: list, then) -> None:
-        """The engine's menu of `labels` at the cursor, modal: `then` gets the place picked, or None."""
+    def ask_drop_choice(self, labels: list, then, at) -> None:
+        """The engine's menu of `labels` at `at`, modal: `then` gets the place picked, or None."""
         choice = menus.Choice(labels)
         menu = choice.menu(host=self)
-        grid.run_menu(self, menu, menu.rows[0].get("rows", []))
+        grid.run_menu(self, menu, menu.rows[0].get("rows", []), at)
         then(choice.place)
 
     def open_versions(self, name: str, listed: list, active: int, then) -> None:

@@ -18,6 +18,11 @@ Menu {
         root.popup()
     }
 
+    function showAt(rows, at) {    // fills the menu and opens it at screen point `at`
+        root.fill(root, rows)
+        root.popup(root.parent.mapFromGlobal(at.x, at.y))
+    }
+
     function showUnder(rows, item) {    // fills the menu and opens it below `item`, left edges lined up
         root.fill(root, rows)
         root.popup(item, 0, item.height)
@@ -40,6 +45,8 @@ Menu {
                 const opener = menu.itemAt(menu.count - 1)    // the row Houdini's Menu made for it
                 opener.enabled = row.enabled
                 opener.symbol = root.rowSymbol(row)
+                if (!row.enabled)    // Houdini's row dims its text but not its glyph
+                    opener.symbolColor = Theme.dimFg
             } else {
                 // `checked` alone draws the mark: Houdini's MenuItem cannot set checkable in a window menu
                 // owned by the menu, not in it yet: our pick is wired before the menu's own close
@@ -65,7 +72,9 @@ Menu {
 
     Component {
         id: entry
-        MenuItem {}
+        MenuItem {
+            symbolColor: enabled ? textColor : Theme.dimFg    // Houdini's row dims its text but not its glyph
+        }
     }
     Component {
         id: divider

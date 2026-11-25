@@ -115,8 +115,8 @@ class _MenuHost:
     def __init__(self, label, at_once=True):
         self.label, self.at_once, self.offered, self.pick = label, at_once, [], None
 
-    def ask_drop_choice(self, labels, then):
-        self.offered = list(labels)
+    def ask_drop_choice(self, labels, then, at):
+        self.offered, self.at = list(labels), at
         self.pick = lambda: then(labels.index(self.label) if self.label in labels else None)
         if self.at_once:
             self.pick()

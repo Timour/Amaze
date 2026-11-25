@@ -121,12 +121,12 @@ def _open(panel, context, entries, indexes, view) -> None:
     run_menu(panel, engine, engine.rows)
 
 
-def run_menu(panel, engine, rows) -> None:
-    """`rows` of the engine's menu at the cursor, modal; the picked one runs. ▸r/menu-lifetime"""
+def run_menu(panel, engine, rows, at=None) -> None:
+    """`rows` of the engine's menu at screen point `at`, else the cursor, modal; the pick runs."""
     menu = QtWidgets.QMenu(panel)
     keys = {}
     _draw(menu, panel, rows, keys)
-    chosen = menu.exec_(QtGui.QCursor.pos())
+    chosen = menu.exec_(at if at is not None else QtGui.QCursor.pos())    # ▸r/menu-lifetime
     key = keys.get(chosen)    # a dismissed menu and a never-built entry are both None
     menu.deleteLater()    # after the lookup, which is keyed by its QActions ▸r/menu-lifetime
     if key is not None:
