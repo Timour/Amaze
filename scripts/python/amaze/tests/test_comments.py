@@ -4,9 +4,14 @@ import os
 import shutil
 import unittest
 
-from amaze.core import documents, guard, library, library_db, library_files, notes, texstore
-from amaze.core import users
-from amaze.tests import faults, test_support
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+from PySide6 import QtCore, QtWidgets  # noqa: E402
+
+_app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
+from amaze.core import (documents, guard, library, library_db, library_files,  # noqa: E402
+                        notes, texstore, users)
+from amaze.tests import faults, test_support  # noqa: E402
 
 MATERIALS = library_files.MATERIALS
 GOLD, GLASS = "139888336889814930", "139888337058723210"    # two fixture materials
@@ -164,6 +169,72 @@ class CommentsTest(unittest.TestCase):
                                          os.path.isfile(self.file_of(self.key, kept))))
         self.assertTrue(self.trashed(path))
 
+
+class TypingTest(unittest.TestCase):
+    """The Comments page of a fixture panel, its comments pane open on the Materials grid."""
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+        self.panel.setAttribute(QtCore.Qt.WidgetAttribute.WA_DontShowOnScreen)
+        self.panel.show()    # a page never shown gets no hide event
+        self.panel.pane.choose_tab("material")
+        self.panel.btn_notes.setChecked(True)
+        self.page = self.panel.notes_panel
+
+    def select(self, asset_id: str) -> None:
+        """Select the tile of `asset_id`, as a click does."""
+        pane = self.panel.pane
+        model, flags = pane.material_model, QtCore.QItemSelectionModel.SelectionFlag
+        index = pane.material_sorted_model.mapFromSource(
+            model.index(model.find_asset_row_by_id(asset_id), 0))
+        pane.material_selection_model.setCurrentIndex(index, flags.ClearAndSelect | flags.Rows)
+
+    def type(self, words: str) -> None:
+        self.page.text_edit.moveCursor(self.page.text_edit.textCursor().MoveOperation.End)
+        self.page.text_edit.insertPlainText(" " + words)
+
+    @staticmethod
+    def saved(library: str, asset_id: str) -> str:
+        """The text of the comment of `asset_id`, as it is on disk in `library`."""
+        pages = guard.Guard(library).read(MATERIALS).document.get(notes.SECTION) or {}
+        items = (pages.get(asset_id) or {}).get("items", [])
+        return " ".join(" ".join(item.get("text", "") for item in items).split())
+
+    def test_cm10_what_is_typed_is_saved_at_once_to_where_it_was_typed(self):
+        first, pane, notes_open = self.panel.pane.prefs.dir, self.panel.pane, self.panel.btn_notes
+        library_db.set_scheduler(pane.library._save_timer.start)    # saves wait, as in Houdini
+        self.select(GOLD)
+        self.type("one")
+        self.assertTrue(test_support.pump_until(lambda: "one" in self.saved(first, GOLD), 1.0),
+                        "what was typed was not saved within a second")
+        self.type("two")
+        self.select(GLASS)
+        self.assertEqual("one two", self.saved(first, GOLD), "lost when the selection changed")
+        self.type("three")
+        pane.material_model.set_tile_name(
+            pane.material_model.find_asset_row_by_id(GLASS), "Glass renamed")
+        self.type("four")
+        notes_open.setChecked(False)
+        self.assertEqual("three four", self.saved(first, GLASS), "lost by a rename or a hide")
+        notes_open.setChecked(True)
+        self.type("five")
+        self.page.close()
+        self.assertEqual("three four five", self.saved(first, GLASS), "lost when closed")
+        self.assertTrue(_app.aboutToQuit.disconnect(self.page.flush), "nothing saves at quit")
+        self.page.show()
+        self.type("six")
+        self.page.flush()    # what quitting calls; no timer fires after it
+        self.assertEqual("three four five six", self.saved(first, GLASS), "lost when Houdini quit")
+        self.type("seven")
+        other = test_support.seeded_library(self)
+        self.assertTrue(test_support.apply_library(self, self.panel, other, user="Second"))
+        self.assertEqual(("three four five six seven", ""), (
+            self.saved(first, GLASS), self.saved(other, GLASS)), "lost when the library changed")
+        self.select(GOLD)
+        self.type("eight")
+        self.panel.deleteLater()
+        QtWidgets.QApplication.sendPostedEvents(None, QtCore.QEvent.Type.DeferredDelete)
+        self.assertEqual("eight", self.saved(other, GOLD), "lost when the panel was deleted")
 
 if __name__ == "__main__":
     unittest.main()
