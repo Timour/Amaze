@@ -7,12 +7,17 @@ import types
 import unittest
 from unittest import mock
 
-import hou
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+from PySide6 import QtWidgets  # noqa: E402
 
-from amaze import messages
-from amaze.core import debug, gallery_import
-from amaze.render import thumbs
-from amaze.tests import test_support  # noqa: F401 - keeps the test off the real log
+_app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
+import hou  # noqa: E402
+
+from amaze import messages  # noqa: E402
+from amaze.core import debug, gallery_import  # noqa: E402
+from amaze.render import nodes, thumbs  # noqa: E402
+from amaze.tests import test_support  # noqa: E402
 
 
 def _entries(count):
@@ -41,12 +46,12 @@ def _library(count, render_on_import=1):
 
 class GalleryImportTest(unittest.TestCase):
 
-    def gallery(self, name) -> str:
-        """A real .gal holding one material entry, not installed; its path."""
+    def gallery(self, name, make=lambda name: hou.node("/mat").createNode("subnet", name)) -> str:
+        """A real .gal holding one entry of the node `make(name)` makes, not installed; its path."""
         folder = tempfile.mkdtemp(prefix="amaze_gallery_")
         self.addCleanup(shutil.rmtree, folder, True)
         path = os.path.join(folder, name + ".gal")
-        node = hou.node("/mat").createNode("subnet", name)
+        node = make(name)
         try:
             self.assertIsNotNone(hou.galleries.createGalleryEntry(path, name, node))
         finally:
@@ -125,6 +130,79 @@ class GalleryImportTest(unittest.TestCase):
             self.assertEqual(expected, batches)
             self.assertEqual(2, summary["imported"], "Esc lost what was saved")
 
+
+class _Esc:
+    """`hou.InterruptableOperation` whose Esc is pressed as the second entry starts."""
+
+    def __init__(self, *args, **how) -> None:
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc) -> bool:
+        return False
+
+    @staticmethod
+    def updateLongProgress(fraction, text) -> None:
+        if fraction > 0:
+            raise hou.OperationInterrupted()
+
+
+class InThePaneTest(unittest.TestCase):
+    """Import Gallery as a pane on a fixture library runs it, renders off; each message kept."""
+
+    def gallery(self, name) -> str:
+        """A real .gal holding one Karma material, which a save takes; its path."""
+        def karma(name):
+            return nodes.build_karma_material(hou.node("/mat"), name, lambda builder: (
+                builder.createNode("mtlxstandard_surface", "surface"))).builder
+        return GalleryImportTest.gallery(self, name, karma)
+
+    def setUp(self):
+        test_support.pin_env(self, "OCIO", "/dev/null")    # the save checks it; nothing renders
+        self.pane = test_support.fixture_pane(self)
+        self.pane.prefs.render_on_import = 0
+        self.model, self.said = self.pane.material_model, []
+
+    def run_import(self, path, *more, answer=0, repeat=1):
+        """Import `path`'s entries `repeat` times, then the entries `more`, answering `answer`."""
+        def message(text, buttons=("OK",), **how):
+            self.said.append((text, len(self.model.assets)))
+            return answer if buttons == messages.BUTTONS_IMPORT else 0
+
+        with mock.patch.object(hou, "ui", types.SimpleNamespace(displayMessage=message),
+                               create=True), gallery_import.opened(path) as entries:
+            self.pane.saving._import_gallery(path, entries * repeat + list(more))
+            return entries[0][1]
+
+    def test_gi20_nothing_is_imported_before_the_list_is_confirmed_and_cancel_imports_nothing(self):
+        path, rows = self.gallery("amaze_gi20"), len(self.model.assets)
+        kind = self.run_import(path, answer=1)
+        asked = messages.IMPORT_MATERIAL_PRESETS_FROM % (1, os.path.basename(path), "  1 x " + kind)
+        self.assertEqual([(asked, rows)], self.said, "Cancel imported, or no list was asked")
+        self.said.clear()
+        self.run_import(path)
+        self.assertEqual((asked, rows), self.said[0], "imported before the list was confirmed")
+        self.assertEqual(rows + 1, len(self.model.assets))
+
+    def test_gi23_esc_stops_the_import_and_what_was_saved_stays_in_the_sidebar(self):
+        path, before = self.gallery("amaze_gi23"), test_support.asset_ids(self.model)
+        with mock.patch.object(hou, "InterruptableOperation", _Esc):
+            self.run_import(path, repeat=2)
+        saved, = test_support.arrived(self.model, before)
+        self.assertTrue(self.pane.sidebar.model.index_of(saved.categories[0]).isValid(),
+                        "its category is not in the sidebar")
+        self.assertEqual(messages.GALLERY_IMPORT_INTERRUPTED % (1, 0, 0), self.said[-1][0])
+
+    def test_gi25_the_closing_message_counts_the_imported_skipped_and_failed(self):
+        skipped, failed = mock.Mock(), mock.Mock()
+        skipped.canCreateChildNode.return_value = False
+        failed.createChildNode.side_effect = hou.OperationFailed("refused")
+        self.run_import(self.gallery("amaze_gi25"), (skipped, "subnet", "Gallery"),
+                        (skipped, "subnet", "Gallery"), (failed, "subnet", "Gallery"))
+        self.assertEqual(messages.GALLERY_IMPORT_FINISHED_IMPORTED_SKIPPED % (1, 2, 1),
+                         self.said[-1][0])
 
 if __name__ == "__main__":
     unittest.main()
