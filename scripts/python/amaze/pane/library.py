@@ -43,6 +43,7 @@ class Library:
         self.models_dir = None    # the library the models use, for closing Preferences and for a Cancel
         self.models_user = ""    # the user they show the stars and locations of
         self._conversion_for = ("", "")    # the folder and user the waiting conversion offer is for
+        self._update_for = ""    # the folder the waiting Update Amaze offer is for
         self._save_timer = None
 
     def start(self) -> bool:
@@ -287,6 +288,7 @@ class Library:
             return False
         debug.event("session", "library is newer than this Amaze - not opened",
                     found=found, known=library_policy.LIBRARY_VERSION)
+        self._update_for = str(self.pane.prefs.dir)    # `_stay_closed` resets prefs
         timer = getattr(self, "_update_offer_timer", None)
         if timer is None:    # owned, so it is deleted with the pane ▸r/model-parent
             timer = self._update_offer_timer = QtCore.QTimer(self.pane)
@@ -344,7 +346,7 @@ class Library:
         ui = getattr(hou, "ui", None)
         if ui is None:
             return
-        library_dir = str(self.pane.prefs.dir or "")
+        library_dir = self._update_for
         if ui.displayMessage(
                 messages.LIBRARY_NEEDS_NEWER_AMAZE % library_settings.version_label(
                     library_settings.library_formats(library_dir)),
