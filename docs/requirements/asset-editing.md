@@ -24,3 +24,4 @@ tests are in the [README](README.md).
 - ED-28 Wrong output: Customize writes one save for the whole selection; OK after Apply writes only what changed since Apply.
 - ED-29 Wrong output: An edit the library refuses is not shown as done: the tile keeps its old value and the user is told.
 - ED-30 Wrong output: The shipped snippets and palettes are added once per library, and only when the library takes them.
+- ED-31 Wrong output: Add and Rename for categories, New Folder and Save Scene ask for a name in a small window. OK or Return uses the name typed, and an empty name is allowed. Cancel, Esc or closing the window does nothing.

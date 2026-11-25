@@ -6,12 +6,20 @@ import unittest
 from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")    # the first app picks the platform ▸p/first-app-picks-the-platform
-from PySide6 import QtCore, QtWidgets  # noqa: E402
+from PySide6 import QtCore, QtGui, QtTest, QtWidgets  # noqa: E402
 
 from amaze import messages
 from amaze.core import category, code_library, debug, gradient_library, library, library_db
 from amaze.core import library_files, locations, material, sidebar_model
 from amaze.tests import test_support
+
+try:    # without Houdini the Name window's test skips
+    import hou
+    from amaze.dialogs import name_window
+    from amaze.pane import asks
+    from amaze.qml import pane as qml_pane
+except ImportError:
+    hou = None
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 MATERIALS = library_files.MATERIALS
@@ -212,6 +220,67 @@ class AssetEditingTest(_Edits):
             self.assertEqual((0, added), (getattr(model, seed)(sidebar), model.rowCount()), seed)
             self.assertEqual(added, len(library_db.guard_of(self.prefs).read(
                 model.DB_FILENAME).document["assets"]), seed)
+
+
+def _key(window, key, text="") -> None:
+    """One press and release of `key` in `window`, typing `text`."""
+    for kind in (QtCore.QEvent.Type.KeyPress, QtCore.QEvent.Type.KeyRelease):
+        QtCore.QCoreApplication.sendEvent(
+            window, QtGui.QKeyEvent(kind, key, QtCore.Qt.KeyboardModifier.NoModifier, text))
+
+
+def _click(window, label: str) -> None:
+    """A left click on the window's button that reads `label`."""
+    items = [window.contentItem()]
+    while items:
+        item = items.pop()
+        if item.metaObject().className().startswith("Button") and item.property("text") == label:
+            centre = item.mapToScene(QtCore.QPointF(item.width() / 2, item.height() / 2)).toPoint()
+            QtTest.QTest.mouseClick(window, QtCore.Qt.MouseButton.LeftButton,
+                                    QtCore.Qt.KeyboardModifier.NoModifier, centre)
+            return
+        items.extend(item.childItems())
+    raise AssertionError("the window has no %s button" % label)
+
+
+@unittest.skipUnless(hou, "Houdini is not loaded")
+class NameWindowTest(unittest.TestCase):
+    """The QML pane's Name window, which its menus' Add, Rename, New Folder and Save Scene open."""
+
+    def answer(self, host, end) -> list:
+        """What the window, opened on `Warm` as the menus open it, hands on when `end(window)` ends it."""
+        answers = []
+        host.ask_name("Add Category", "Warm", answers.append)
+        window = next(shown for shown in QtGui.QGuiApplication.topLevelWindows()
+                      if isinstance(shown, name_window.NameWindow) and shown.isVisible())
+        self.assertTrue(test_support.pump_until(lambda: window.activeFocusItem() is not None))
+        end(window)
+        test_support.pump_until(lambda: answers, 3.0)
+        QtCore.QCoreApplication.sendPostedEvents(None, QtCore.QEvent.Type.DeferredDelete)
+        return answers
+
+    def test_ed31_ok_or_return_uses_the_name_typed_and_cancel_esc_or_a_close_does_nothing(self):
+        host = qml_pane.PaneState()
+        self.addCleanup(host.deleteLater)
+        self.assertTrue(asks.answers(host, "ask_name"), "the QML pane's menus cannot ask for a name")
+        key = QtCore.Qt.Key
+
+        def typed(window):
+            _key(window, key.Key_End)
+            for letter in "er":
+                _key(window, key(ord(letter.upper())), letter)
+            _key(window, key.Key_Return)
+
+        def cleared(window):
+            for _ in "Warm":
+                _key(window, key.Key_Backspace)
+            _key(window, key.Key_Return)
+
+        ends = (typed, lambda window: _click(window, "OK"), cleared,
+                lambda window: _click(window, "Cancel"), lambda window: _key(window, key.Key_Escape),
+                lambda window: window.close())
+        self.assertEqual([["Warmer"], ["Warm"], [""], [None], [None], [None]],
+                         [self.answer(host, end) for end in ends])
 
 
 if __name__ == "__main__":
