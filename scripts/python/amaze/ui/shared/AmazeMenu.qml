@@ -6,6 +6,7 @@ import houdini.ui
 Menu {
     id: root
 
+    enter: null    // whole on its first frame: the grow-and-fade shows nothing for 250 ms
     exit: null    // a menu still fading out keeps the release of the click that closed it
 
     property string chosen: ""    // the picked row's key, handed on only once the menu has closed
@@ -64,6 +65,7 @@ Menu {
     Component {
         id: submenu
         Menu {
+            enter: null    // whole on its first frame, as its menu
             exit: null    // closed by the same press as its menu, so gone before the release too
         }
     }
