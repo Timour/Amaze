@@ -760,10 +760,19 @@ copied per dialog.
 | **Manage Libraries** | — (app-wide) | `dialogs/library_dialog.py` ✓ AssetDialog — D15: the Library list, the most recently opened first; Remove from List takes libraries off it and leaves their folders alone |
 | **Versions** | Materials | `dialogs/versions_dialog.py` ✓ AssetDialog — D01: a material's versions, newest first; Select makes the picked one active |
 | **About** | — | a page of Preferences (`ui/prefs/AboutPage.qml`), with its Developer group — there is no separate About dialog |
+| **Name window** | the Amaze (QML) pane | `dialogs/name_window.py` on **DialogWindow** — the one name field (`ui/shared/NameForm.qml`), OK and Cancel; asked by Add, Rename, New Folder and Save Scene. Not modal: Houdini stays usable while it is open |
 
 *Adoption is complete* (R51, 2026-08-21) — every dialog is built on AssetDialog;
 a new QDialog subclass in `dialogs/` either subclasses the base or records its
 reason in a `HOUSE_STRAY` attribute.
+
+The QML pane's dialogs are separate windows on one engine, **DialogWindow**
+(`qml/dialog_window.py`), made as Houdini makes its own (`qmlviews.BaseQmlView`,
+as its Create Asset window): not modal, one open per kind (asked again, the open
+one is cancelled and replaced), as tall as its content, closed with the pane that
+asked. OK hands the answer to the asker once the window is gone; Cancel, Esc, the
+window's own close and the pane's close all hand on None. Each kind's QML is a
+`ui/shared/DialogRoot.qml`: its rows, then OK and Cancel in Houdini's order.
 
 ---
 
@@ -1059,6 +1068,8 @@ pane/empty_state.py       EMPTY STATE ENGINE - which empty state the shown
 qml/pane.py               The Amaze (QML) pane, the engine's second host:
                           its pane-tab widget, its QML view (ui/pane/*.qml)
                           and PaneState, what the QML shows and asks
+qml/dialog_window.py      DIALOG WINDOW: the QML pane's dialog windows, not
+                          modal, one per kind, each answering its asker once
 qml/hotkeys.py            The pane's keys as Houdini hotkeys (context
                           `h.pane.amaze`, editable in Edit > Hotkeys): installs
                           them, makes the context active for the pane, and
@@ -1277,6 +1288,8 @@ dialogs/library_dialog.py the Library list's Manage window: it removes
                           libraries from the list, never a folder
 dialogs/versions_dialog.py a material's versions as a list; Select
                           makes the picked one active
+dialogs/name_window.py    the Name window: one name, on DialogWindow, the
+                          name handed on stripped
 dialogs/prefs_window.py   Preferences as Houdini's own QML window: its
                           prefs state reads and writes Amaze's Prefs;
                           the pages are ui/prefs/*.qml
