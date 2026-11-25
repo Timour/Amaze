@@ -760,6 +760,7 @@ copied per dialog.
 | **Manage Libraries** | — (app-wide) | `dialogs/library_dialog.py` ✓ AssetDialog — D15: the Library list, the most recently opened first; Remove from List takes libraries off it and leaves their folders alone |
 | **Versions** | Materials | `dialogs/versions_dialog.py` ✓ AssetDialog — D01: a material's versions, newest first; Select makes the picked one active |
 | **About** | — | a page of Preferences (`ui/prefs/AboutPage.qml`), with its Developer group — there is no separate About dialog |
+| **Versions window** | the Amaze (QML) pane | `dialogs/versions_window.py` on **DialogWindow** — a material's versions newest first in the shared `RowsTable` (name, then the day it was saved), the active one picked; Select makes the picked one active. Opened by the tile's versions badge |
 | **Name window** | the Amaze (QML) pane | `dialogs/name_window.py` on **DialogWindow** — the one name field (`ui/shared/NameForm.qml`), OK and Cancel; asked by Add, Rename, New Folder and Save Scene. Not modal: Houdini stays usable while it is open |
 
 *Adoption is complete* (R51, 2026-08-21) — every dialog is built on AssetDialog;
@@ -1070,6 +1071,8 @@ qml/pane.py               The Amaze (QML) pane, the engine's second host:
                           and PaneState, what the QML shows and asks
 qml/dialog_window.py      DIALOG WINDOW: the QML pane's dialog windows, not
                           modal, one per kind, each answering its asker once
+qml/rows_model.py         ROWS MODEL: a QML table's rows, one dict each - the
+                          Versions list and Manage Libraries
 qml/hotkeys.py            The pane's keys as Houdini hotkeys (context
                           `h.pane.amaze`, editable in Edit > Hotkeys): installs
                           them, makes the context active for the pane, and
@@ -1290,6 +1293,8 @@ dialogs/versions_dialog.py a material's versions as a list; Select
                           makes the picked one active
 dialogs/name_window.py    the Name window: one name, on DialogWindow, the
                           name handed on stripped
+dialogs/versions_window.py the Versions window on DialogWindow: Select hands
+                          on the version picked
 dialogs/prefs_window.py   Preferences as Houdini's own QML window: its
                           prefs state reads and writes Amaze's Prefs;
                           the pages are ui/prefs/*.qml
