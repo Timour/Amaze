@@ -450,6 +450,66 @@ class PicturesTest(_Library):
         self.assertEqual([str(gold.mat_id)], [key for job in jobs for key, _path in job.frames])
 
     @needs_houdini
+    def test_tp22_each_picture_is_a_png_of_its_own_shape_and_size(self):
+        from amaze import preview
+        from amaze.actions import nodes as node_actions
+        from amaze.core import cop_library, library
+        from amaze.preview import thumbnail_scene
+        from amaze.render import thumbs
+        test_support.pin_env(self, "OCIO", "/dev/null")    # the save checks it
+        prefs = test_support.fixture_prefs(self)
+        prefs.rendersize, prefs.render_on_import = 96, 1
+        networks = cop_library.CopLibrary(preferences=prefs)
+        with hou.undos.disabler():
+            made = {"SOP": hou.node("/obj").createNode("geo", "tp_geo"),
+                    "COP": hou.node("/obj").createNode("copnet", "tp_cops")}
+            made["SOP"].createNode("box")
+            orange = made["COP"].createNode("constant")
+            orange.parm("signature").set("f4")
+            orange.parmTuple("f4").set((1.0, 0.5, 0.0, 1.0))
+            orange.setDisplayFlag(True)
+        for node in made.values():
+            self.addCleanup(test_support.drop_node, node)
+            node_actions.add_asset(networks, node, "", "", False)    # each renders its picture
+        geometry = os.path.join(prefs.path, "cube.png")
+        self.assertTrue(thumbs.ThumbNailRenderer(prefs).create_thumb_geo_file(os.path.join(
+            test_support.FILES_FIXTURE_DIR, "cube.bgeo"), geometry, prefs.rendersize))
+        pictures = {kind: tile_icons.thumbnail_path(prefs, node.userData("assetlib_id"),
+                                                    library_files.NODES)
+                    for kind, node in made.items()}
+        pictures["geometry"] = geometry
+        shapes = {kind: (self.shown(path)[:4], QtGui.QImage(path).size().toTuple())
+                  for kind, path in pictures.items()}
+        cop = QtGui.QImage(pictures["COP"])
+        self.assertEqual({"SOP": (b"\x89PNG", (96, 96)), "geometry": (b"\x89PNG", (96, 96))},
+                         {kind: shape for kind, shape in shapes.items() if kind != "COP"})
+        self.assertEqual(b"\x89PNG", shapes["COP"][0])
+        self.assertNotEqual((96, 96), shapes["COP"][1], "the network's image was made square")
+        centre = cop.pixelColor(cop.width() // 2, cop.height() // 2)
+        self.assertEqual((255, True, 0), (centre.red(), 64 < centre.green() < 224, centre.blue()),
+                         "not the network's own orange")
+        model, sizes, batch_of = library.MaterialLibrary(prefs), [], preview.write_batch
+        viewer = {"display": "sRGB", "view": "Raw", "space": "ACEScg"}
+
+        def written(scaffold, items, out_dir):    # the stage as husk will render it
+            sizes.append(tuple(scaffold["render_props"].parm(name).eval()
+                               for name in ("resolutionx", "resolutiony")))
+            return batch_of(scaffold, items, out_dir)
+
+        jobs = []
+        with mock.patch.object(thumbnail_scene, "ocio_from_viewer", lambda: viewer), \
+                mock.patch.object(preview, "ocio_from_viewer", lambda: viewer), \
+                mock.patch.object(preview, "write_batch", written), \
+                mock.patch.object(husk_job.jobs, "submit", lambda job, **how: jobs.append(job)):
+            thumbs.ThumbNailRenderer.render_assets(prefs, model.assets[1:2])
+        self.assertEqual(([(96, 96)], [".png"]), (sizes, [os.path.splitext(path)[1]
+                                                          for job in jobs for _key, path in job.frames]))
+        patcher, calls = capturing(write(NEW))
+        with patcher:
+            scene_captures.capture_viewport(self.picture, Viewer(size=(2048, 1024)), ANNA)
+        self.assertEqual(([(1024, 512)], b"\x89PNG"), (calls, self.shown()[:4]))
+
+    @needs_houdini
     def test_tp23_a_save_renders_when_on_a_hosted_picture_wins_and_render_image_always(self):
         from amaze.actions import materials as material_actions, nodes as node_actions
         from amaze.core import cop_library, library
