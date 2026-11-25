@@ -2,6 +2,7 @@
 
 import json
 import os
+import types
 import unittest
 from unittest import mock
 
@@ -13,11 +14,12 @@ from amaze.core import category, code_library, debug, gradient_library, library,
 from amaze.core import grid_columns, library_files, locations, material, sidebar_model
 from amaze.tests import test_support
 
-try:    # without Houdini the Name window's test skips
+try:    # without Houdini the Name window's and the palette menu's tests skip
     import hou
     from amaze.dialogs import name_window
-    from amaze.pane import asks
+    from amaze.pane import asks, menus
     from amaze.qml import pane as qml_pane
+    from amaze.sections import color as color_section
 except ImportError:
     hou = None
 
@@ -250,6 +252,42 @@ class AssetEditingTest(_Edits):
             self.assertEqual((0, added), (getattr(model, seed)(sidebar), model.rowCount()), seed)
             self.assertEqual(added, len(library_db.guard_of(self.prefs).read(
                 model.DB_FILENAME).document["assets"]), seed)
+
+
+@unittest.skipUnless(hou, "Houdini is not loaded")
+class PaletteInterpolationTest(_Edits):
+    """A palette of mixed curves and the Interpolation rows of its tile menu."""
+
+    def test_ed34_interpolation_puts_every_key_on_the_curve_picked_in_one_save(self):
+        palettes = gradient_library.GradientLibrary(self.prefs)
+        ramp = {"keys": [0.0, 0.3, 1.0], "values": [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+                "bases": ["Linear", "Constant", "Linear"]}
+        palettes.add_user_gradient("Dusk", "", ramp)
+        key = next(str(asset.mat_id) for asset in palettes.assets if asset.name == "Dusk")
+        colors = palettes.entry(palettes.find_asset_row_by_id(key))["colors"]
+        proxy = QtCore.QSortFilterProxyModel()
+        proxy.setSourceModel(palettes)
+        section = color_section.GradientSection(types.SimpleNamespace(gradient_model=palettes,
+                                                                      gradient_sorted_model=proxy))
+        entry, = [entry for entry in section.GRID_MENU if entry.label == "Interpolation"]
+
+        def menu() -> tuple:
+            """The palette's Interpolation rows: (the menu, {curve: row key}, the curves checked)."""
+            index = proxy.mapFromSource(palettes.index(palettes.find_asset_row_by_id(key), 0))
+            opened = menus.Menu(section, (entry,), [index], index)
+            rows = opened.rows[0]["rows"]
+            curve = {row["key"]: opened.runs[row["key"]][1][0] for row in rows}
+            return opened, {curve[row["key"]]: row["key"] for row in rows}, [
+                curve[row["key"]] for row in rows if row.get("checked")]
+        opened, keys, checked = menu()
+        self.assertEqual([], checked, "a curve is checked on a palette of mixed curves")
+        with mock.patch.object(palettes, "save", wraps=palettes.save) as saves:
+            opened.run(keys["CatmullRom"])
+        library_db.flush(self.prefs)
+        stored = library_db.guard_of(self.prefs).read(palettes.DB_FILENAME).document["assets"][key]
+        self.assertEqual((1, dict(ramp, bases=["CatmullRom"] * 3), colors),
+                         (saves.call_count, stored["ramp"], stored["colors"]))
+        self.assertEqual(["CatmullRom"], menu()[2])
 
 
 def _key(window, key, text="") -> None:
