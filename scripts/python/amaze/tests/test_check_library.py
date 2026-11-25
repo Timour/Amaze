@@ -4,6 +4,7 @@ import json
 import os
 import pathlib
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -11,21 +12,28 @@ import types
 import unittest
 from unittest import mock
 
-from amaze.core import asset_record, check_library, guard, library_db, library_files
-from amaze.core import library_policy, locations
-from amaze.tests import test_support
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+from PySide6 import QtWidgets  # noqa: E402
+
+from amaze import messages  # noqa: E402
+from amaze.core import asset_record, check_library, guard, library_db, library_files  # noqa: E402
+from amaze.core import library_policy, locations, users  # noqa: E402
+from amaze.tests import test_support  # noqa: E402
 
 try:
-    import hou    # noqa: F401
+    import hou
+    HOUDINI = True
 except ImportError:    # without Houdini: the dialog imports it, and every test here gives it a fake ui
-    sys.modules["hou"] = types.SimpleNamespace()
-from amaze.dialogs import check_dialog    # noqa: E402
+    sys.modules["hou"] = hou = types.SimpleNamespace()
+    HOUDINI = False
+from amaze.dialogs import check_dialog  # noqa: E402
 
 put, state = test_support.put, test_support.library_state
 MATERIALS, NODES, CODE = library_files.MATERIALS, library_files.NODES, library_files.CODE
 USER = test_support.FIXTURE_USER
 WALLS, RIGS, EXAMPLES = ("c-walls", "Walls"), ("c-rigs", "Rigs"), ("c-examples", "Examples")
 WOOD, METAL = ("c-wood-oak", "Wood, Oak"), ("c-metal", "Metal")    # categories by (id, name)
+AUDIT = os.path.join(os.path.dirname(__file__), *[os.pardir] * 4, "tools", "library-audit.py")
 
 
 def record(name: str, *categories) -> bytes:
@@ -310,6 +318,29 @@ class WhatTheReportSaysTest(_Library):
                             for line in lines), lines)
         self.assertIn(check_library.messages.CHECK_DATABASE_SHRUNK % ("Materials", 3, 10), lines)
 
+    def test_cl21_the_report_names_each_kind_of_finding_and_what_the_trash_holds(self):
+        prefs, said = self.prefs(), check_library.messages
+        gone, kept = self.at("import", "shots"), self.at("import")
+        os.makedirs(gone)
+        for path in (gone, kept):
+            self.assertTrue(locations.register(prefs, path))
+        self.assertTrue(locations.set_favourite(prefs, os.path.join(kept, "lost.png"), True))
+        shutil.rmtree(gone)
+        put(self.dir, "%s/2026-11-20/materials/old.png" % guard.TRASH_DIR, b"trashed")
+        found = check_library.survey(self.dir, prefs)
+        lines = check_library.report_lines(found)
+        missing = [path for path in locations.registered_paths(prefs) if not os.path.isdir(path)]
+        for line in (said.CHECK_ROWS_WITHOUT_FILES % ("Gone", "Materials", "has"),
+                     said.CHECK_NO_CATEGORY % "1 material",
+                     said.CHECK_UNLISTED_FOLDERS % ("3 asset folders", 1),
+                     said.CHECK_LEFTOVERS_FOUND % "2 files", said.CHECK_CONFLICTS_KEPT % "1 copy",
+                     said.CHECK_LOCATIONS_GONE % missing[0],
+                     said.CHECK_FAVORITES_GONE % "1 favorite"):
+            self.assertIn(line, lines)
+        self.assertIn(said.CHECK_UNKNOWN_FOUND % "stuff and materials/notes.txt", lines)
+        self.assertEqual(said.CHECK_TRASH_HOLDS % ("1 file", "7 bytes", "2026-12-21"),
+                         check_library.trash_line(found))
+
     def test_cl22_fix_all_recovers_each_folder_from_its_record_or_as_recovered(self):
         self.assertEqual(2, self.fix_all(named=True)["recovered"])
         rows, named = self.rows(), self.named()
@@ -369,6 +400,23 @@ class WhatTheReportSaysTest(_Library):
             self.named()["A1"], self.named()["A3"], asset_record.read(self.at(
                 "materials", "Brick__A1", "A1.json"))[asset_record.NAMES]))
 
+    def test_cl28_the_audit_tool_lists_what_does_not_belong_by_kind_and_changes_nothing(self):
+        def whole():    # scratch files and backups too
+            return {path: path.read_bytes() for path in pathlib.Path(self.dir).rglob("*")
+                    if path.is_file()}
+
+        before = whole()
+        done = subprocess.run([test_support.plain_python(), "-I", AUDIT, self.dir],
+                              capture_output=True, text=True, timeout=60)    # -I: no Amaze, no hou
+        self.assertEqual(0, done.returncode, done.stderr)
+        listed = {tuple(line.split(None, 1)) for line in done.stdout.splitlines()
+                  if line.startswith("    ")}
+        self.assertLessEqual({("unknown", "materials/notes.txt"), ("unknown", "stuff/"),
+                              ("duplicate", "materials/Brick__A1/A1 2.png"),
+                              ("scratch", "materials/Brick__A1/A1.mat.x1" + guard.SCRATCH)},
+                             listed, done.stdout)
+        self.assertEqual(before, whole())
+
     def test_cl29_a_folder_holding_only_scratch_or_nothing_is_a_leftover(self):
         spent = {"materials/Half__S1": ("S1.mat.x1", "textures/brick.png.x2"),
                  "nodes/Half__S2": ("S2.json.x3",), "materials/Bare__S3": ()}
@@ -415,6 +463,59 @@ class WhatTheReportSaysTest(_Library):
         shown = check_library.summary(check_library.survey(self.dir, self.prefs()))
         self.assertEqual((check_library.FOUND, check_library.REPAIR), (shown["state"], shown["button"]))
 
+
+@unittest.skipUnless(HOUDINI, "Houdini is not loaded")
+class InThePaneTest(unittest.TestCase):
+    """Repair as a pane on a fixture library offers it, and what the pane shows after a fix."""
+
+    def setUp(self):
+        self.app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+        self.pane = test_support.fixture_pane(self)
+
+    def answering(self, *answers):
+        """`hou.ui` answering each message with the next of `answers`; the buttons asked, kept."""
+        self.asked, left = [], list(answers)
+
+        def message(text, buttons=("OK",), **_how):
+            self.asked.append(tuple(buttons))
+            return left.pop(0) if left else len(buttons) - 1
+        return mock.patch.object(hou, "ui", types.SimpleNamespace(displayMessage=message),
+                                 create=True)
+
+    def test_cl26_a_corrupt_materials_or_nodes_database_is_offered_repair_at_open_or_switch(self):
+        other = test_support.seeded_library(self)
+        users.create(types.SimpleNamespace(dir=other, library_user=""), "Sage", library=other)
+        library_db.release(types.SimpleNamespace(dir=other))
+        kept = guard.Guard(other).read(MATERIALS).document
+        put(other, "%s/%s.2026-11-01_090000.bak" % (guard.BACKUP_DIR, MATERIALS), kept)
+        put(other, MATERIALS, b"{ not a database")
+        with self.answering(0, 0):    # Repair, then Restore Backup
+            self.assertTrue(test_support.apply_library(self, types.SimpleNamespace(
+                pane=self.pane), other, user="Sage"), "the switch did not open it")
+        self.assertEqual([messages.BUTTONS_REPAIR_OR_CANCEL, messages.BUTTONS_RESTORE_OR_REBUILD],
+                         self.asked)
+        self.assertEqual(set(kept["assets"]), test_support.asset_ids(self.pane.material_model))
+        put(other, NODES, b"{ not a database")
+        opening = type(self.pane)(type(self.pane.ui)())    # a second pane, opening at start
+        self.addCleanup(test_support.dispose_panel, opening)
+        self.addCleanup(test_support.stop_panel_workers, types.SimpleNamespace(pane=opening))
+        with self.answering(0, 0):    # Repair, then Rebuild: no backup
+            opening.library.start()
+            test_support.pump_until(lambda: opening.library.serves(other), 5)
+        self.assertEqual([messages.BUTTONS_REPAIR_OR_OPEN_WITHOUT, messages.BUTTONS_REBUILD_ONLY],
+                         self.asked)
+        self.assertNotEqual(guard.CORRUPT, guard.Guard(other).read(NODES).verdict)
+
+    def test_cl27_after_a_fix_the_pane_shows_the_library_as_it_is_now(self):
+        from amaze.dialogs import prefs_window
+        model, shown = self.pane.material_model, prefs_window.AmazePrefsState(
+            self.pane.prefs, pane=self.pane)
+        self.assertNotEqual(-1, model.find_asset_row_by_id("-1"), "premise: a row with no files")
+        shown.checkOrRepair()    # Check
+        with self.answering(0, 0):    # Repair runs Fix All, which removes the row it names
+            shown.checkOrRepair()
+        self.assertEqual(-1, model.find_asset_row_by_id("-1"), "the pane shows a removed row")
+        self.assertEqual([], [asset.name for asset in model.assets if not asset.categories])
 
 if __name__ == "__main__":
     unittest.main()

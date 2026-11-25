@@ -26,10 +26,10 @@ MATERIAL_VERSIONS_TURN_ON_CONFIRM = "Turn on Material Versions for this library?
 LIBRARY_SETTING_NOT_WRITTEN = "The setting could not be written to the library folder, so it was not changed."
 PICTURE_NOT_COPIED_TO_LIBRARY = "That picture could not be copied into the library, so it was not added."
 PICTURE_COPIED_BUT_UNREADABLE = "That file was copied but couldn't be read as a picture, so it was not added."
-LIBRARY_INDEX_UNREADABLE = "The library's Materials database is corrupt/unreadable."
-DATABASE_STILL_UNREADABLE = "The Materials database cannot be read. Create a new Library or use Check Library on the Amaze shelf to restore a backup or rebuild it."
-LIBRARY_INDEX_UNREADABLE_SWITCHING = "The library's Materials database is corrupt/unreadable."
-DATABASE_STILL_UNREADABLE_SWITCHING = "The Materials database cannot be read."
+LIBRARY_INDEX_UNREADABLE = "The library's %s database is corrupt/unreadable."
+DATABASE_STILL_UNREADABLE = "The %s database cannot be read. Create a new Library or use Check Library on the Amaze shelf to restore a backup or rebuild it."
+LIBRARY_INDEX_UNREADABLE_SWITCHING = "The library's %s database is corrupt/unreadable."
+DATABASE_STILL_UNREADABLE_SWITCHING = "The %s database cannot be read."
 LIBRARY_INDEX_READ_NOT_PERMITTED = 'this account is not allowed to read it:\n%s\n\nThe permissions on the file, or on a folder above it, have to let this account read it.'
 
 LIBRARY_NOT_OPENED = 'The library could not be opened because %s\n\nAmaze will open without a library.'

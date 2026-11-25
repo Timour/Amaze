@@ -101,9 +101,10 @@ class Library:
         ui = getattr(hou, "ui", None)
         if ui is None:
             return False
+        broken = library_actions.index_unreadable(folder)
         choice = ui.displayMessage(
-            messages.LIBRARY_INDEX_UNREADABLE_SWITCHING if switching
-            else messages.LIBRARY_INDEX_UNREADABLE,
+            messages.LIBRARY_INDEX_UNREADABLE_SWITCHING % broken if switching
+            else messages.LIBRARY_INDEX_UNREADABLE % broken,
             buttons=messages.BUTTONS_REPAIR_OR_CANCEL if switching
             else messages.BUTTONS_REPAIR_OR_OPEN_WITHOUT,
             severity=hou.severityType.Warning,
@@ -113,10 +114,11 @@ class Library:
             debug.event("session", "index repair declined")
             return False
         check_dialog.repair_failed(folder, self.pane.prefs)    # the user picks the fix there
-        if library_actions.index_unreadable(folder):
+        still = library_actions.index_unreadable(folder)
+        if still:
             debug.event("session", "index still unreadable after Check Library", dir=folder)
-            ui.displayMessage(messages.DATABASE_STILL_UNREADABLE_SWITCHING if switching
-                              else messages.DATABASE_STILL_UNREADABLE,
+            ui.displayMessage(messages.DATABASE_STILL_UNREADABLE_SWITCHING % still if switching
+                              else messages.DATABASE_STILL_UNREADABLE % still,
                               severity=hou.severityType.Warning, title=messages.TITLE_AMAZE)
             return False
         debug.event("session", "index repaired", dir=folder)
