@@ -772,6 +772,7 @@ copied per dialog.
 | **Manage Libraries** | — (app-wide) | `dialogs/library_dialog.py` ✓ AssetDialog — D15: the Library list, the most recently opened first; Remove from List takes libraries off it and leaves their folders alone |
 | **Versions** | Materials | `dialogs/versions_dialog.py` ✓ AssetDialog — D01: a material's versions, newest first; Select makes the picked one active |
 | **About** | — | a page of Preferences (`ui/prefs/AboutPage.qml`), with its Developer group — there is no separate About dialog |
+| **Save window** | the Amaze (QML) pane | `dialogs/save_window.py` on **DialogWindow** — D09's rows in Houdini's controls: Section, Name, Category (the picked section's (key, name) list), Language (for a section that stores one), Tags; OK hands on a SaveAnswer. Its drop-down lists are `ui/shared/MenuBox.qml`, Houdini's ComboBox with its menu sized by its rows |
 | **Versions window** | the Amaze (QML) pane | `dialogs/versions_window.py` on **DialogWindow** — a material's versions newest first in the shared `RowsTable` (name, then the day it was saved), the active one picked; Select makes the picked one active. Opened by the tile's versions badge |
 | **Name window** | the Amaze (QML) pane | `dialogs/name_window.py` on **DialogWindow** — the one name field (`ui/shared/NameForm.qml`), OK and Cancel; asked by Add, Rename, New Folder and Save Scene. Not modal: Houdini stays usable while it is open |
 
@@ -1310,6 +1311,8 @@ dialogs/versions_dialog.py a material's versions as a list; Select
                           makes the picked one active
 dialogs/name_window.py    the Name window: one name, on DialogWindow, the
                           name handed on stripped
+dialogs/save_window.py    the Save window on DialogWindow: OK hands on a
+                          SaveAnswer, the categories follow the section
 dialogs/versions_window.py the Versions window on DialogWindow: Select hands
                           on the version picked
 dialogs/prefs_window.py   Preferences as Houdini's own QML window: its

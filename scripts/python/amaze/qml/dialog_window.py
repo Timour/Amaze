@@ -2,7 +2,7 @@
 
 import math
 
-from PySide6 import QtCore
+from PySide6 import QtCore, QtQml
 
 from amaze.core import debug
 from hutil.qt.common import qmlviews    # Houdini's own QML windows' base ▸r/qml-widget-blackout
@@ -19,8 +19,8 @@ class DialogState(qmlviews.SharedState):
 
     @QtCore.Slot("QVariant")
     def accept(self, answer) -> None:
-        """OK: the window closes, then its asker gets `answer`."""
-        self.answered.emit(answer)
+        """OK: the window closes, then its asker gets `answer`, a JavaScript object as a dict."""
+        self.answered.emit(answer.toVariant() if isinstance(answer, QtQml.QJSValue) else answer)
 
     @QtCore.Slot()
     def reject(self) -> None:

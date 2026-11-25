@@ -6,7 +6,7 @@ import shiboken6
 import amaze
 from amaze import amazetheme, tooltips
 from amaze.core import debug, grid_columns, grid_engine
-from amaze.dialogs import name_window, versions_window
+from amaze.dialogs import name_window, save_window, versions_window
 from amaze.helpers import ui_helpers
 from amaze.pane import asks, drag_session, menus, pane as pane_mod, sidebar as pane_sidebar
 from amaze.panel import delegates
@@ -503,6 +503,10 @@ class PaneState(qmlviews.SharedState, asks.Asks):
     def open_versions(self, name: str, listed: list, active: int, then) -> None:
         """The Versions window, not modal: `then` gets the version picked on Select, None for Cancel."""
         versions_window.ask(self, name, listed, active, then)
+
+    def open_save(self, question, then) -> None:
+        """The Save window, not modal: `then` gets a SaveAnswer on OK, None for Cancel."""
+        save_window.ask(self, question, then)
 
     def ask_colour(self, start: str, title: str, then) -> None:
         """Houdini's colour picker, the one the widget panel opens: `then` gets "#rrggbb", None for Cancel."""
