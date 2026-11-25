@@ -6,14 +6,16 @@ import time
 
 from amaze import messages
 from amaze.core import asset_record, debug, documents, guard, library_db, library_files
-from amaze.core import layout_conversion, library_policy, locations, material, renderers, tile_icons
+from amaze.core import layout_conversion, library_policy, locations, material
 from amaze.helpers import hostos, wording
 
 SCRATCH_MIN_AGE = 60 * 60    # a younger scratch may be another session's live write
 UNCATEGORIZED, RECOVERED = "Uncategorized", "Recovered"
 LISTS, ASSET_SECTIONS = library_files.LISTS, library_files.ASSET_SECTIONS
 TROUBLE = ("unreadable", "missing", "newer", "held")
-FOUND, UNCHECKED, CLEAN = "found", "unchecked", "clean"    # a light's state, the weightiest first
+MENDS = ("unreadable", "missing")    # the database states Fix All mends; a newer or held one waits
+FOUND, UNCHECKED, CLEAN = "found", "unchecked", "clean"    # the light: red, yellow, green
+REPAIR, FIX, CHECK = "repair", "fix", "check"    # the button: Fix All, the light fixes, a check
 _STATES = {guard.FINE: "ok", guard.FRESH: "absent", guard.CORRUPT: "unreadable",
            guard.MISSING: "missing", guard.NEWER: "newer", guard.HELD: "held"}
 
@@ -34,18 +36,16 @@ def survey(library_dir: str, preferences=None) -> dict:
     held = guard.Guard(library_dir)
     databases = [_database(held, reading) for reading in held.health()]
     rows = {entry["name"]: entry["rows"] for entry in databases if entry["name"] in LISTS}
-    faces = {entry["name"]: entry["icons"] for entry in databases if entry["name"] in LISTS}
     ids = set().union(*(set(found) for found in rows.values()))
     listing, out_of_place, unreadable = _walk(library_dir)
     spent = _spent_folders(library_dir, listing, ids)
     accounted = ids | {library_files.folder_id(library_files.split(one)[-1]) for one in spent}
     findings = {"directory": library_dir, "databases": databases, "unreadable_folders": unreadable,
-                "missing_files": {}, "no_picture": {}, "no_category": {}, "unlisted": [],
+                "missing_files": {}, "no_category": {}, "unlisted": [],
                 "orphans": _orphan_versions(library_dir, listing), "trash": held.trash_held()}
     for section in LISTS:
         if section in ASSET_SECTIONS:
-            _assets(findings, section, rows.get(section, {}), faces.get(section, {}), listing,
-                    accounted)
+            _assets(findings, section, rows.get(section, {}), listing, accounted)
         else:
             _inline_folders(findings, section, listing, accounted)
     findings.update(_out_of_place(library_dir, out_of_place, spent))
@@ -62,11 +62,9 @@ def _database(held, reading) -> dict:
     state = _STATES.get(reading.verdict, "unreadable")
     if state == "ok" and reading.name in LISTS and not count:
         state = "empty"
-    listed = (document or {}) if reading.name in LISTS else {}
     return {"name": reading.name, "state": state, "count": count, "why": reading.why,
             "backups": held.backups(reading.name), "shrunk": reading.shrunk,
-            "rows": dict(listed.get("assets") or {}),
-            "icons": dict(listed.get(tile_icons.SECTION) or {})}
+            "rows": dict((document or {}).get("assets") or {}) if reading.name in LISTS else {}}
 
 
 def _walk(library_dir: str) -> tuple:
@@ -122,11 +120,11 @@ def _asset_folders(listing: dict, section: str) -> dict:
             if kind == library_files.FOLDER and library_files.folder_id(name)}
 
 
-def _assets(findings: dict, section: str, rows: dict, faces: dict, listing: dict, ids: set) -> None:
-    """A section's rows without files, picture or category, and its folders no database lists."""
+def _assets(findings: dict, section: str, rows: dict, listing: dict, ids: set) -> None:
+    """A section's rows without files or category, and its folders no database lists."""
     top = library_files.SECTION_FOLDERS[section]
     folders = _asset_folders(listing, section)
-    missing, unpictured, loose = [], [], []
+    missing, loose = [], []
     for asset_id, row in sorted(rows.items()):
         row = row if isinstance(row, dict) else {}
         named = (asset_id, str(row.get("name") or asset_id))
@@ -137,11 +135,7 @@ def _assets(findings: dict, section: str, rows: dict, faces: dict, listing: dict
         here = listing.get(top + "/" + folders[asset_id], {}) if asset_id in folders else {}
         if asset_id + ".mat" not in here or asset_id + library_files.RECORD_SUFFIX not in here:
             missing.append(named)
-        elif (asset_id + library_files.PICTURE_SUFFIX not in here
-              and _shows_picture(section, row, faces.get(asset_id))):
-            unpictured.append(named)
     findings["missing_files"][section] = missing
-    findings["no_picture"][section] = unpictured
     findings["no_category"][section] = loose
     for asset_id, name in sorted(folders.items()):
         if asset_id not in ids:
@@ -150,13 +144,6 @@ def _assets(findings: dict, section: str, rows: dict, faces: dict, listing: dict
             findings["unlisted"].append({"section": section, "id": asset_id,
                                          "folder": top + "/" + name,
                                          "record": record[asset_record.METADATA] or None})
-
-
-def _shows_picture(section: str, row: dict, stored) -> bool:
-    """Whether the row's tile shows its picture: its face as its section's model reads it."""
-    can = section == library_files.MATERIALS or renderers.can_hold_a_render(row.get("renderer"))
-    face = tile_icons.face_of(tile_icons.stored_choice(stored), "image" if can else "generic", can)
-    return face == "image"
 
 
 def _inline_folders(findings: dict, section: str, listing: dict, ids: set) -> None:
@@ -317,10 +304,6 @@ def report_lines(findings: dict) -> list:
             len(findings["conflicts"]), "copy", "copies"))
     if findings["unknown"]:
         lines.append(messages.CHECK_UNKNOWN_FOUND % wording.and_list(findings["unknown"]))
-    for section, rows in findings["no_picture"].items():
-        if rows:
-            lines.append(messages.CHECK_NO_PICTURE % wording.count(
-                len(rows), library_files.section_noun(section, 1)))
     for section, rows in findings["no_category"].items():
         if rows:
             lines.append(messages.CHECK_NO_CATEGORY % wording.count(
@@ -352,22 +335,30 @@ def trash_line(findings: dict) -> str:
 
 
 def summary(findings: dict) -> dict:
-    """For Preferences: the three lights, each (state, number), the line shown, and every line."""
-    lists_ok = not any(entry["state"] in ("held",) for entry in findings["databases"])
-    errors = sum(1 for entry in findings["databases"] if entry["state"] in TROUBLE)
-    files = (sum(len(rows) for rows in findings["missing_files"].values()) + len(findings["unlisted"])
-             + len(findings["orphans"]) + len(findings["leftovers"]) + len(findings["unknown"])
-             + len(findings["leftover_folders"]) + len(findings["conflicts"]))
+    """For Preferences: the light's state, the button's job, the line shown, every line."""
+    lists_ok = not any(entry["state"] == "held" for entry in findings["databases"])
     refs = len(findings["locations_gone"]) + len(findings["favorites_gone"])
-
-    def light(number, checked=True):
-        return (FOUND if number else CLEAN) if checked else UNCHECKED, number
+    parts = (    # (what Repair can fix, whether that part could be checked)
+        (sum(1 for entry in findings["databases"] if entry["state"] in MENDS), True),
+        (sum(len(rows) for rows in findings["missing_files"].values()) + len(findings["unlisted"])
+         + len(findings["orphans"]) + len(findings["leftovers"]) + len(findings["leftover_folders"])
+         + len(findings["unknown"]), lists_ok and not findings["unreadable_folders"]),
+        (refs, lists_ok and findings["files_checked"]
+         and not (findings["locations_unreachable"] and not refs)))
     lines = report_lines(findings)
-    return {"lights": {"errors": light(errors),
-                       "files": light(files, lists_ok and not findings["unreadable_folders"]),
-                       "refs": light(refs, lists_ok and findings["files_checked"]
-                                     and not (findings["locations_unreachable"] and not refs))},
+    if any(work and checked for work, checked in parts):
+        state, button = FOUND, REPAIR
+    elif _light_work(findings):
+        state, button = UNCHECKED, FIX
+    else:    # nothing found, or only what no fix puts right: a part unchecked, a copy kept
+        state, button = (UNCHECKED if lines or not all(ok for _work, ok in parts) else CLEAN), CHECK
+    return {"state": state, "button": button,
             "info": lines[0] if lines else messages.CHECK_NOTHING_TO_REPAIR, "lines": lines}
+
+
+def _light_work(findings: dict) -> int:
+    """How many findings the light fixes put right: rows with no category."""
+    return sum(len(rows) for rows in findings["no_category"].values())
 
 
 def confirmable(findings: dict) -> list:
@@ -595,9 +586,15 @@ def drop_favorites(preferences, shown: dict) -> int:
     return len(going)
 
 
+def fix_light(library_dir: str, user: str = "") -> dict:
+    """The light fixes alone, Preferences' Fix: each row with no category put in Uncategorized."""
+    return {"uncategorized": uncategorized(library_dir, user)}
+
+
 def fix_safe(library_dir: str, preferences, shown: dict, user: str = "") -> dict:
-    """What loses nothing: recover, put in Uncategorized, set aside, favorites of gone files."""
-    done = {"recovered": recover(library_dir, user), "uncategorized": uncategorized(library_dir, user)}
+    """What loses nothing: recover, the light fixes, set aside, favorites of gone files."""
+    done = {"recovered": recover(library_dir, user)}
+    done.update(fix_light(library_dir, user))
     if preferences is not None and hostos.canonical_path_key(str(getattr(preferences, "dir", ""))) \
             == hostos.canonical_path_key(library_dir):    # the Files section is the open library's
         done["folders"] = set_aside(preferences, shown)
@@ -610,7 +607,7 @@ def _mend(library_dir: str, user: str) -> dict:
     held, done = _guard(library_dir), {}
     for entry in survey(library_dir)["databases"]:
         name = entry["name"]
-        if entry["state"] not in ("unreadable", "missing"):
+        if entry["state"] not in MENDS:
             continue
         backup = next((file for file, _when in held.backups(name) if _reads(held, name, file)), "")
         if backup:

@@ -336,12 +336,8 @@ def _document(preferences, database: str):
 
 def override_for(preferences, key: str, database: str) -> dict:
     """The face chosen for one tile of `database`, {} for none."""
-    return stored_choice(_document(preferences, database).get(SECTION, str(key)))
-
-
-def stored_choice(found) -> dict:
-    """The choice one entry of a database's `icons` holds, {} for none."""
     from amaze.core import documents
+    found = _document(preferences, database).get(SECTION, str(key))
     if not isinstance(found, dict):
         return {}
     return normalise({field: value for field, value in found.items()

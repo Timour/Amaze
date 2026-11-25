@@ -158,6 +158,7 @@ LABEL_LIBRARY_TOO_NEW = "You need to update Amaze to use this library"
 LABEL_LIBRARY_UNREACHABLE = "Amaze cannot reach this library"
 BTN_CHECK = "Check"                 # the row's button, until a check finds what can be fixed
 BTN_REPAIR = "Repair"
+BTN_FIX = "Fix"                     # when the light fixes alone put right what the check found
 
 TITLE_TILE_ICON = "Tile Icon"    # what D02 shows when the selection has no ONE name to show
 TITLE_MANAGE_LIBRARIES = "Manage Libraries"

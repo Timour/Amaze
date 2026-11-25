@@ -20,7 +20,7 @@ class CopLibrary(library.AssetLibrary):
 
     ROW_NOUN = "node setup"    # the manual's name for a row of this section
 
-    RENDERABLE = renderers.RENDERABLE_CONTEXTS    # defined in renderers.py; Check Library reads it too
+    RENDERABLE = renderers.RENDERABLE_CONTEXTS    # defined in renderers.py
 
     def _info_facts(self, row: int, asset) -> tuple:
         """Context, the Type column."""

@@ -291,14 +291,6 @@ class WhatTheReportSaysTest(_Library):
                             for line in lines), lines)
         self.assertIn(check_library.messages.CHECK_DATABASE_SHRUNK % ("Materials", 3, 10), lines)
 
-    def test_cl21_a_row_has_no_picture_only_when_its_tile_is_set_to_show_one(self):
-        os.remove(self.at("materials", "Brick__A1", "A1.png"))
-        os.remove(self.at("materials", "Loose__A3", "A3.png"))
-        document = guard.Guard(self.dir).read(MATERIALS).document
-        put(self.dir, MATERIALS, dict(document, icons={"A1": {"face": "generic"}}))
-        found = check_library.survey(self.dir)["no_picture"][MATERIALS]
-        self.assertEqual([("A3", "Loose")], found, "a row set to Generic was reported")
-
     def test_cl22_fix_all_recovers_each_folder_from_its_record_or_as_recovered(self):
         self.assertEqual(2, self.fix_all(named=True)["recovered"])
         rows = self.rows()
@@ -352,6 +344,28 @@ class WhatTheReportSaysTest(_Library):
         put(self.dir, MATERIALS, b"{ not a database")
         check_library.rebuild(self.dir, MATERIALS, USER)
         self.assertNotIn("S4", self.rows(), "a rebuild made a row of a folder holding no asset")
+
+
+    def test_cl30_the_check_row_offers_fix_for_light_findings_and_repair_for_the_rest(self):
+        light = tempfile.mkdtemp(prefix="amaze_check_light_")
+        self.addCleanup(shutil.rmtree, light, True)
+        put(light, guard.MASTER, {"policy": {"library": {"version": library_policy.LIBRARY_VERSION}},
+                                  "users": {USER: {"name": test_support.FIXTURE_USER_NAME}},
+                                  guard.MANIFEST: {MATERIALS: {"created": "x", "by": ""}}})
+        put(light, MATERIALS, {"assets": {"A1": {"name": "Brick"}}})    # no category, its one finding
+        put(light, "materials/Brick__A1/A1.mat", b"nodes")
+        put(light, "materials/Brick__A1/A1.json", record("Brick"))
+        prefs = Prefs(dir=light, library_user=USER)
+        shown = check_library.summary(check_library.survey(light, prefs))
+        self.assertTrue(shown["lines"], "premise: the check found the row with no category")
+        self.assertEqual((check_library.UNCHECKED, check_library.FIX),
+                         (shown["state"], shown["button"]), "a light finding was not offered Fix")
+        check_library.fix_light(light, USER)
+        shown = check_library.summary(check_library.survey(light, prefs))
+        self.assertEqual((check_library.CLEAN, check_library.CHECK, []),
+                         (shown["state"], shown["button"], shown["lines"]), "Fix left a finding")
+        shown = check_library.summary(check_library.survey(self.dir, self.prefs()))
+        self.assertEqual((check_library.FOUND, check_library.REPAIR), (shown["state"], shown["button"]))
 
 
 if __name__ == "__main__":
