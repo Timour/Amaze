@@ -296,8 +296,7 @@ def import_entries(models, categories, prefs, bundle, entries,
                    or entry.get("name") or "?")
         try:
             if entry.get("type") == "asset":
-                appended = _import_asset(models, categories, prefs, bundle, entry,
-                                         restore, summary)
+                appended = _import_asset(models, categories, prefs, bundle, entry, summary)
                 if appended is not None:
                     staged.append(appended)
             elif entry.get("type") == "file":
@@ -400,7 +399,7 @@ def _commit_assets(prefs, staged, summary, restore: bool = False) -> None:
             if notes.note_key(str(item[2].get("section") or ""), item[1].mat_id) in pages))
 
 
-def _import_asset(models, categories, prefs, bundle, entry, restore, summary):
+def _import_asset(models, categories, prefs, bundle, entry, summary):
     """One asset entry's row into its model and its files into scratches, unsaved; None when skipped."""
     section = str(entry.get("section") or "")
     model, listed = models.get(section), categories.get(section)
@@ -410,9 +409,8 @@ def _import_asset(models, categories, prefs, bundle, entry, restore, summary):
     row = dict(entry.get("record") or {})
     row.pop("id", None)
     row.pop("uid", None)    # the old id key, which readers copy into `id`
-    named = material.category_names(row.get("categories")) \
-        if restore and row.get("curated") else ["Import"]    # a restored preset keeps its own
-    row["categories"] = [listed.check_add_category(name) for name in named[:1]]    # before its row
+    row["categories"] = [listed.check_add_category(name)    # the category it names, made if new
+                         for name in material.category_names(row.get("categories"))[:1]]
     asset = model._asset_from_row(row)
     pictures = entry.get("comment_pictures") or {}
     own = (material.claim_asset_dir(prefs, model.DB_FILENAME, asset.mat_id, asset.name)

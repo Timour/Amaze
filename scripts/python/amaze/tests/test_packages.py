@@ -253,7 +253,6 @@ class PackageTest(_Library):
         asset, = test_support.arrived(model, before)
         record = asset.get_as_dict()
         self.assertNotEqual("%032x" % 1, str(asset.mat_id))
-        self.assertEqual(["Import"], model.named_categories(asset))
         self.assertEqual("kept", record["made_by_a_newer_amaze"])
         self.assertEqual(["Brick 1__%s" % asset.mat_id],
                          sorted({name.split("/")[0] for name in self.folders("Brick 1")}))
@@ -286,15 +285,19 @@ class PackageTest(_Library):
 
     def test_pk31_an_export_names_categories_and_an_import_finds_them_by_name(self):
         model, materials = self.models["material"], self.categories["material"]
-        before, kept = test_support.asset_ids(model), materials.check_add_category("import")
+        before, walls = test_support.asset_ids(model), materials.check_add_category("walls")
         count = len(materials.top_keys())
-        self.bring(self.package(brick(1)))
+        self.bring(self.package(brick(1)))    # its package names Walls
         self.bring(self.package(brick(2), name="q.amazepkg"))
         one, two = test_support.arrived(model, before)
-        self.assertEqual(([kept], [kept], count), (one.categories, two.categories,
-                                                   len(materials.top_keys())))
-        self.assertEqual(["import"], packages.collect_asset(model, one.mat_id)["record"][
+        self.assertEqual(([walls], [walls], count), (one.categories, two.categories,
+                                                     len(materials.top_keys())))
+        self.assertEqual(["walls"], packages.collect_asset(model, one.mat_id)["record"][
             "categories"], "an export names the category")
+        self.bring(self.package(brick(3, categories=["Floors"]), name="f.amazepkg"))
+        three, = test_support.arrived(model, before | {one.mat_id, two.mat_id})
+        self.assertEqual((["Floors"], count + 1), (model.named_categories(three),
+                                                   len(materials.top_keys())))
         palettes = self.models["gradient"]
         mine = self.categories["gradient"].check_add_category("mine")
         before = test_support.asset_ids(palettes)
