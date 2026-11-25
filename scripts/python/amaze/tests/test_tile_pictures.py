@@ -375,6 +375,50 @@ class PicturesTest(_Library):
         self.assertIn(stuck, workers._unstoppable, "a thread that would not stop was let go")
 
     @needs_houdini
+    def test_tp20_each_material_its_own_picture_in_its_renderer_with_its_samples_one_job_each(self):
+        from amaze import preview
+        from amaze.actions import materials as material_actions
+        from amaze.core import library
+        from amaze.preview import thumbnail_scene
+        from amaze.render import thumbs
+        test_support.pin_env(self, "OCIO", "/dev/null")    # a conversion's save checks it
+        prefs = test_support.fixture_prefs(self)
+        prefs.karma_rendersamples, prefs.rendersamples, prefs.octane_rendersamples = 7, 9, 11
+        model = library.MaterialLibrary(prefs)
+        mats = [model.assets[model.find_asset_row_by_id(key)]
+                for key in ("139888336889814930", "139888337058723210")]
+        target = next((key for key in ("Redshift", "Octane") if test_support.renderer_loaded(key)), "")
+        if target:    # a second renderer, where one is loaded
+            held = test_support.asset_ids(model)
+            ok, report = material_actions.convert(model, model.index(model.find_asset_row_by_id(
+                mats[1].mat_id), 0), target, render=False)
+            self.assertTrue(ok, report)
+            mats += test_support.arrived(model, held)
+        jobs, samples, write = [], {}, preview.write_batch
+        names = ("samplesperpixel", "redshiftglobalUnifiedMaxSamples",
+                 "xn__octaneglobalmaxsamples4_jebg")
+
+        def written(scaffold, items, out_dir):    # the stage as it is written, its samples read
+            samples[scaffold["renderer"]] = [node.parm(name).eval() for node in scaffold[
+                "net"].allSubChildren() for name in names if node.parm(name) is not None]
+            return write(scaffold, items, out_dir)
+
+        viewer = {"display": "sRGB", "view": "Raw", "space": "ACEScg"}
+        with mock.patch.object(thumbnail_scene, "ocio_from_viewer", lambda: viewer), \
+                mock.patch.object(preview, "ocio_from_viewer", lambda: viewer), \
+                mock.patch.object(preview, "write_batch", written), \
+                mock.patch.object(husk_job.jobs, "submit", lambda job, **how: jobs.append(job)):
+            thumbs.ThumbNailRenderer.render_assets(prefs, mats)
+        wanted = {thumbs.usd_renderer(mat): [] for mat in mats}
+        for mat in mats:
+            wanted[thumbs.usd_renderer(mat)].append((str(mat.mat_id), tile_icons.thumbnail_path(
+                prefs, str(mat.mat_id), library_files.MATERIALS)))
+        self.assertEqual(wanted, {job.renderer: sorted(job.frames) for job in jobs})
+        self.assertEqual(len(wanted), len(jobs), "not one background render per renderer")
+        self.assertEqual({renderer: [{"Karma": 7, "Redshift": 9, "Octane": 11}[renderer]]
+                          for renderer in wanted}, samples)
+
+    @needs_houdini
     def test_tp21_no_viewer_renders_nothing_and_a_renderer_not_loaded_is_named_once(self):
         from amaze import preview
         from amaze.core import library
