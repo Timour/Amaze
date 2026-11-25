@@ -76,6 +76,15 @@ def list_columns(section) -> list:
             for key in grid_columns.KEYS]
 
 
+def network_background() -> str:
+    """The network editor's background as Houdini's theme sets it; headless, the measured one."""
+    import hou
+    ui = getattr(hou, "ui", None)    # hython has no interface, so no theme colours
+    if ui is None:
+        return amazetheme.GRID_BACK
+    return QtGui.QColor.fromRgbF(*ui.colorFromName("GraphBackground").rgb()).name()
+
+
 def drawn_tile() -> dict:
     """For `Tile`: the spacing of T01, the strip of T20, the badge sizes and each renderer icon box."""
     marks = {}
@@ -83,7 +92,7 @@ def drawn_tile() -> dict:
         box = ui_helpers.svg_size(art + ".svg")    # its own width
         marks[art] = dict(drawn, width=round(drawn["height"] * box.width() / max(box.height(), 1)))
     return dict(amazetheme.drawn_tile(), strip=amazetheme.drawn_category_strip(),
-                card=amazetheme.TILE_GROUND, back=amazetheme.GRID_BACK,
+                card=amazetheme.TILE_GROUND, back=network_background(),
                 least=amazetheme.BADGE_LEAST, part=amazetheme.BADGE_PART, renderers=marks)
 
 
