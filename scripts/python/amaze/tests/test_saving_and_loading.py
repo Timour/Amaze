@@ -7,15 +7,15 @@ import unittest
 from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")    # the first app picks the platform ▸p/first-app-picks-the-platform
-from PySide6 import QtWidgets  # noqa: E402
+from PySide6 import QtCore, QtWidgets  # noqa: E402
 
 import hou
 
 from amaze import messages
 from amaze.actions import materials as material_actions, nodes as node_actions
 from amaze.core import asset_record, guard, library, library_db, library_files, library_settings
-from amaze.core import cop_library, material
-from amaze.pane import asks, pane as pane_mod
+from amaze.core import cop_library, debug, material
+from amaze.pane import asks, menus, pane as pane_mod
 from amaze.prefs import prefs as prefs_mod
 from amaze.render import nodes, thumbs
 from amaze.tests import faults, test_support
@@ -372,6 +372,75 @@ class SavingTest(unittest.TestCase):
         asset_id, _row, own = self.saved()
         self.assertIn(asset_id, self.rows())
         self.assertTrue(os.path.isfile(own["mat"]))
+
+
+class ImportIsTheDoubleClickTest(unittest.TestCase):
+    """The pane engine on the fixture library, a tile in every section, two networks shown."""
+
+    CASES = (    # (section, tile, the one node selected that takes the tile: (network, type))
+        ("material", "gold", None), ("cop", "plate", None),
+        ("gradient", "dusk", None), ("gradient", "dusk", ("matnet", "hmtlxrampc")),
+        ("code", "tint", None), ("code", "tint", ("geo", "attribwrangle")),
+        ("file", "ramp.png", None), ("file", "ramp.png", ("matnet", "mtlximage")),
+        ("file", "cube.bgeo", None), ("file", "cube.bgeo", ("geo", "file")))
+
+    def test_sl28_import_in_a_tiles_menu_does_what_a_double_click_on_that_tile_does(self):
+        pane = test_support.fixture_pane(self)
+        pane.code_model.add_snippet("@Cd = {1, 0, 0};", "tint", "VEX", "", "")
+        pane.gradient_model.add_user_gradient("dusk", "", {"keys": [0.0, 1.0], "values": [[1, 0, 0], [0, 0, 1]],
+                                                            "bases": ["Linear", "Linear"]})
+        plate = material.Material()
+        plate.set_data("plate", "", "", False, "Cop")
+        pane.cop_model.add_saved(plate)
+        pane.file_files_model.set_folder(pane.prefs.file_folders[0])    # the fixture's files
+        shown, imports, told = {}, [], []
+        self.addCleanup(lambda: [test_support.drop_node(network) for network in shown.values()])
+
+        def imported(model, index, *args, **kwargs):    # the library's own import is proved by SL-20
+            imports.append((model.assets[index.row()].name, args, kwargs))
+            return True, "", []
+
+        def effect(key, tile, taker, gesture) -> tuple:
+            """(the nodes and set parameters, the imports, the refusals) of `gesture` on `tile`."""
+            shown.update((kind, hou.node("/obj").createNode(kind, "sl28_" + kind)) for kind in ("geo", "matnet"))
+            hou.clearAllSelected()
+            if taker:
+                shown[taker[0]].createNode(taker[1], "taker").setSelected(True)
+            section, pane.current_section = pane.sections[key], key
+            proxy, flag = getattr(pane, section.proxy_attr), QtCore.QItemSelectionModel.SelectionFlag
+            names = [proxy.index(row, 0).data() for row in range(proxy.rowCount())]
+            self.assertIn(tile, names, "premise: the tile is not shown")
+            index = proxy.index(names.index(tile), 0)
+            section.grid_selection_model().select(index, flag.ClearAndSelect | flag.Rows)    # as a click does
+            del imports[:], told[:]
+            gesture(section, index)
+            done = [(node.path(), node.type().name(), [(parm.name(), str(parm.rawValue())) for parm in node.parms()
+                                                       if not parm.isAtDefault()])
+                    for network in shown.values() for node in network.allSubChildren()]
+            for network in shown.values():
+                test_support.drop_node(network)
+            return done, list(imports), list(told)
+
+        def import_row(section, index) -> None:
+            """The tile menu's Import row picked, as the pane's menu runs it."""
+            entry, = [entry for entry in section.GRID_MENU if entry.label == "Import"]
+            menu = menus.Menu(section, (entry,), [index], index)
+            self.assertTrue(menu.rows[0]["enabled"], "Import is greyed")
+            menu.run(menu.rows[0]["key"])
+        editors = staticmethod(lambda: [types.SimpleNamespace(pwd=lambda net=net: net) for net in shown.values()])
+        with mock.patch.object(nodes.NodeHandler, "network_editors", editors), \
+                mock.patch.object(material_actions, "import_asset_to_scene", imported), \
+                mock.patch.object(node_actions, "import_asset_to_scene", imported), \
+                mock.patch.object(debug, "refuse", lambda reason, **kwargs: told.append(str(reason))):
+            for key, tile, taker in self.CASES:
+                with self.subTest(section=key, tile=tile, selected=taker):
+                    clicked = effect(key, tile, taker, lambda section, index: pane.double_click(index))
+                    self.assertNotEqual(effect(key, tile, taker, lambda *_: None), clicked,
+                                        "premise: the double-click did nothing")
+                    self.assertEqual(clicked, effect(key, tile, taker, import_row))
+        self.assertEqual({key for key, section in pane.sections.items()
+                          if any(entry.label == "Import" for entry in section.GRID_MENU)},
+                         {key for key, _tile, _taker in self.CASES}, "a section with Import has no case")
 
 
 if __name__ == "__main__":
