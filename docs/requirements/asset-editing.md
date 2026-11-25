@@ -27,3 +27,4 @@ tests are in the [README](README.md).
 - ED-31 Wrong output: Add and Rename for categories, New Folder and Save Scene ask for a name in a small window. OK or Return uses the name typed, and an empty name is allowed. Cancel, Esc or closing the window does nothing.
 - ED-32 Wrong output: Amaze never makes two categories with the same name in a section; names that differ only in capitals count as the same. Adding, saving and importing use the existing category of that name.
 - ED-33 Wrong output: When a sync brings in two categories with the same name, or one category renamed two ways, Amaze asks once: change to one name, or keep both. Keep Both renames the second one, for example to Wood 2. Esc changes nothing, and Amaze asks again next time.
+- ED-34 Wrong output: Interpolation sets every key of a palette's stored ramp to the curve picked, in one save; its colours and key positions stay. The menu checks the palette's own curve, none when the curves are mixed.

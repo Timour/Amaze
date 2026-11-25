@@ -25,7 +25,7 @@ the [README](README.md).
 
 - PK-20 Wrong output: An export carries each asset's row, comments, network, COP network, builder, picture and every texture its record lists; the packed record lists exactly the textures packed.
 - PK-21 Wrong output: An export that cannot find a texture its record lists names it to the user.
-- PK-22 Wrong output: An imported asset has a new id, the category Import, no favorite, and every other field of its row, ones this Amaze does not know included; its folder is `<name>__<new id>`, and its network finds every texture in it.
+- PK-22 Wrong output: An imported asset gets a new id, no favorite, and every other field of its row, even ones this Amaze does not know. Its folder is `<name>__<new id>`, and its network finds every texture in it.
 - PK-23 Wrong output: An imported asset keeps its comments under its new id, with the pictures pasted into them.
 - PK-24 Wrong output: A package from an older Amaze imports the same way: a 2.0 texture path is placed where LS-38 reads it, an old builder becomes the record's builder, and the picture its tile showed becomes its picture.
 - PK-25 Wrong output: A plain file goes into `<library>/import/`, numbered when the name is taken, and the Import location shows in the File sidebar, keeping a name the user gave it.

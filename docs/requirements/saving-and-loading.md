@@ -29,3 +29,4 @@ and `core/asset_record.py`, with `core/texstore.py` at save and load, `pane/savi
 - SL-24 Wrong output: An import that cannot work says why before it makes anything: an id that leads outside the library, a missing or empty network file, or a node type whose plugin is not loaded.
 - SL-26 Wrong output: A picture that fails to render costs only the picture: the asset is still saved and listed.
 - SL-27 Wrong output: An import goes into the network open in the editor: a Material Library in Solaris, else a material network, one reused for every import.
+- SL-28 Wrong output: Import in a tile's right-click menu does what a double-click on that tile does, in every section.
