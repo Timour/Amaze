@@ -12,10 +12,16 @@ import urllib.error
 import zipfile
 from unittest import mock
 
-import hou
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+from PySide6 import QtWidgets  # noqa: E402
 
-from amaze.core import debug, matx_import, matx_sources, matx_translate, notes, packages
-from amaze.tests import test_support
+_app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
+import hou  # noqa: E402
+
+from amaze.core import (debug, matx_import, matx_library, matx_sources,  # noqa: E402
+                        matx_translate, notes, packages)
+from amaze.tests import test_support  # noqa: E402
 
 SIMREADY = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "simready")
 URL = "https://example.invalid/v9/Stone.zip"
@@ -63,6 +69,18 @@ class _Fetch:
 
     def page_url(self, record) -> str:
         return "https://example.invalid/" + record.uid
+
+
+class _Listing(matx_sources.MatxSource):
+    """A source listing one material named after it, or one that cannot be reached."""
+
+    def __init__(self, name: str, reached: bool = True) -> None:
+        self.name, self.reached = name, reached
+
+    def list_materials(self, search="", offset=0, limit=60):
+        if not self.reached:
+            raise urllib.error.URLError("no route to host")
+        return [matx_sources.MatxRecord(source=self.name, uid="m", title="From " + self.name)]
 
 
 class OnlineSourceTest(unittest.TestCase):
@@ -179,6 +197,20 @@ class OnlineSourceTest(unittest.TestCase):
 
         with self.assertRaises(hou.OperationInterrupted):
             source.fetch(record, None, os.path.join(self.dir, "stopped"), progress=esc)
+
+    def test_on20_each_source_lists_and_one_not_reached_is_named_while_the_others_list(self):
+        sources = [_Listing("Brick Works"), _Listing("Gone Site", reached=False),
+                   _Listing("Stone Yard")]
+        with mock.patch.object(matx_sources, "all_sources", lambda: sources), \
+                test_support.captured_log() as log:
+            model = matx_library.MatxOnlineLibrary()
+            self.addCleanup(model.shutdown)
+            model.reload(force=True)
+            test_support.pump_until(lambda: not model._loading)
+        self.assertEqual(["From Brick Works", "From Stone Yard"], sorted(
+            model.index(row, 0).data() for row in range(model.rowCount())))
+        self.assertEqual(1, sum("Gone Site" in line for line in log.messages("refuse")),
+                         log.messages(None))
 
     def test_on21_the_resolution_asked_for_or_the_nearest_is_fetched(self):
         offered = ["1k", "2k", "8k"]

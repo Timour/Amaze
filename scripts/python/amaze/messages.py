@@ -247,6 +247,9 @@ ONLINE_SOURCE_UNKNOWN = 'Unknown source'
 
 ONLINE_SOURCE_UNKNOWN_NAMED = 'Unknown source %s'
 
+ONLINE_SOURCES_NOT_REACHED = ("Could not reach %s. What loaded is shown, and reopening Online "
+                              "Materials tries again.")
+
 ONLINE_IMPORT_FAILED = 'Import failed.'
 
 NO_DOWNLOADABLE_PACKAGE = '"%s" has no downloadable package.'

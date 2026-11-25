@@ -6,7 +6,8 @@ import functools
 import math
 import os
 
-from amaze.helpers import hostos
+from amaze import messages
+from amaze.helpers import hostos, wording
 import json
 import hashlib
 
@@ -63,7 +64,7 @@ CATALOGUE_CAP = 4000    # records requested from each source; none has more toda
 class _CatalogueWorker(QtCore.QThread):
     """Every source's whole catalogue off the UI thread, ~3600 records (SimReady 1705), no paging."""
 
-    done = QtCore.Signal(object, object, int)   # (records, errors, generation)
+    done = QtCore.Signal(object, object, int)   # (records, [(source, why)], generation)
     progressed = QtCore.Signal(int, int, int)    # (sources listed, sources, generation): for the progress bar
 
     def __init__(self, sources, generation, previous=()):
@@ -91,10 +92,10 @@ class _CatalogueWorker(QtCore.QThread):
                                 source=src.name, cap=CATALOGUE_CAP)
                 records.extend(found)
                 if getattr(src, "preview_error", ""):    # tiles listed, pictures not: never cached
-                    errors.append("%s: %s" % (src.name, src.preview_error))
+                    errors.append((src.name, src.preview_error))
             except Exception as exc:                    # noqa: BLE001
-                errors.append("%s: %s: %s"    # the MESSAGE, not just the type - the reason is what makes a missing source diagnosable
-                              % (src.name, type(exc).__name__, exc))
+                errors.append((src.name, "%s: %s"    # the MESSAGE, not just the type - the reason is what makes a missing source diagnosable
+                                         % (type(exc).__name__, exc)))
             self.progressed.emit(listed, len(self._sources), self._generation)
         try:
             self.done.emit(records, errors, self._generation)
@@ -328,6 +329,10 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
         if generation != self._generation:
             return
         partial = bool(errors)    # a partial fetch must not overwrite a fuller disk cache - keep whichever has more
+        if errors:    # each source named; what loaded is shown, never cached
+            debug.refuse(messages.ONLINE_SOURCES_NOT_REACHED % wording.and_list(
+                sorted({name for name, _why in errors})))
+        errors = ["%s: %s" % error for error in errors]
         if not records or (
             partial and self._all and len(records) < len(self._all)
         ):
@@ -341,13 +346,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
         changed = _sig(records) != _sig(self._all)
         self._all = records
         self._loaded = True
-        if partial:
-            debug.note(    # shown this session, never cached; one note explains a short list
-                "could not reach %d of the online material sites, so "
-                "this list is missing whatever they hold. What loaded "
-                "is shown but not kept, so reopening Online Materials "
-                "tries them again." % len(errors), errors=errors)
-        else:
+        if not partial:
             self._save_cache(records)
             self._prune_previews(records)
         by_source = {}
