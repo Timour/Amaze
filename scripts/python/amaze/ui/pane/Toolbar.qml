@@ -150,30 +150,27 @@ Item {
                 id: hover
             }
         }
-        Slider {    // Houdini's, a tick at every tile size
+        Slider {    // Houdini's, with no tick marks on the toolbar
             readonly property var sizes: SharedState.tileSizes
-            readonly property int least: sizes[0]
             Layout.leftMargin: root.drawn.slider_gap
             Layout.alignment: Qt.AlignTop
             Layout.topMargin: root.drawn.slider_top
             Layout.fillWidth: true
             Layout.maximumWidth: root.drawn.slider_w
             Layout.preferredHeight: root.drawn.slider_h
-            from: 0    // pluto counts its ticks from 0, so the values run from the least size up
-            to: sizes[sizes.length - 1] - least
-            tickStep: sizes[1] - sizes[0]
-            ticksVisible: true
+            from: sizes[0]
+            to: sizes[sizes.length - 1]
             trackThickness: root.drawn.track
             handleSize: root.drawn.handle
-            stepSize: SharedState.tileStepped ? tickStep : 0
+            stepSize: SharedState.tileStepped ? sizes[1] - sizes[0] : 0
             snapMode: SharedState.tileStepped ? Slider.SnapAlways : Slider.NoSnap
-            value: SharedState.tileSize - least
+            value: SharedState.tileSize
             enabled: SharedState.viewMode !== "list"    // a list row is one text line
             layer.enabled: !enabled    // Houdini dims it by opacity; flat, the groove no longer shows through
             ToolTip.text: enabled ? SharedState.tips.tileSize : SharedState.tips.tileSizeList
             ToolTip.visible: hovered
             ToolTip.delay: Config.toolTipDelay
-            onMoved: SharedState.setTileSize(Math.round(value) + least)
+            onMoved: SharedState.setTileSize(Math.round(value))
         }
         Label {
             Layout.leftMargin: root.drawn.search_gap
