@@ -7,6 +7,7 @@ from PySide6 import QtCore, QtGui
 
 import amaze
 from amaze.core import category
+from amaze.core import category_list
 from amaze.core import debug
 from amaze.core import library
 from amaze.core import library_files
@@ -164,7 +165,7 @@ class GradientLibrary(library.AssetLibrary):
     def user_categories(self) -> list:
         """(key, name as shown) of each category, in the sidebar's order: what the save lists."""
         held = self._doc()
-        return [(key, category.display_name(held.get(category.SECTION, key).get("name") or ""))
+        return [(key, category_list.display_name(held.get(category.SECTION, key).get("name") or ""))
                 for key in category.stored_order(held)[1:]]
 
     def add_user_gradient(self, name: str, category_name: str,

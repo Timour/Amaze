@@ -1,7 +1,7 @@
 """The sidebar's rows: the model shown, the pane's selection of its rows, and the work on them."""
 
 from amaze import amazetheme
-from amaze.core import category, grid_columns
+from amaze.core import category, category_list, grid_columns
 
 KEY_PAUSE_MS = 180    #: the arrow keys' pause before the row they stop on is shown: a File step lists a folder
 
@@ -100,7 +100,7 @@ class Sidebar:
         if context.takes_file_drops:    # a folder row: the tiles' files move there, on disk
             return None, (context.drop_folder(index) if context.accepts_file_drop(index) else None)
         name = self.raw_category_name(index)
-        if (not context.takes_category_drops or not name or category.is_all(name)
+        if (not context.takes_category_drops or not name or category_list.is_all(name)
                 or not context.accepts_category_drop(index, name)):
             return None, None
         return name, None
@@ -110,7 +110,7 @@ class Sidebar:
         indexes = self.rows()
         index = indexes[0] if indexes else self.current()    # current but not selected after a restore
         name = self.raw_category_name(index)
-        return "" if category.is_all(name) else name
+        return "" if category_list.is_all(name) else name
 
     def proxies(self) -> tuple:
         """Every asset section's sidebar proxy that exists right now."""
@@ -158,7 +158,7 @@ class Sidebar:
         names = [context.colour_key(index)    # stored name, or a location's path in File
                  for index in self.rows()]
         names = [name for name in names    # All is skipped
-                 if name and not category.is_all(name)]
+                 if name and not category_list.is_all(name)]
         if not names:
             return
 

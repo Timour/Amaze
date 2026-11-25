@@ -1,12 +1,11 @@
 """The Category Model behind the panel's sidebar."""
 
-import uuid
 from typing import Any
 from PySide6 import QtCore
 
 from amaze.prefs import prefs
-from amaze.core import (documents, grid_engine, library_db, library_files, material,
-                        multifilterproxy_model, renderers, sidebar_model)
+from amaze.core import (category_list, documents, grid_engine, library_db, library_files,
+                        material, multifilterproxy_model, renderers, sidebar_model)
 
 SIDEBAR_COUNT_ROLE = int(QtCore.Qt.ItemDataRole.UserRole) + 40  # the ONLY declaration - every sidebar model and SidebarItemDelegate import it from here
 SIDEBAR_COLOR_ROLE = int(QtCore.Qt.ItemDataRole.UserRole) + 41  # a category's colour, for the sidebar's left-edge bar
@@ -22,25 +21,9 @@ ALL = "_All"    # the first row: a view of every asset, never stored
 SECTION = "categories"    # {id: {"name": n, "order": n, "color": c}} in the section's database
 
 
-def display_name(stored) -> str:
-    """How a STORED category name reads to the user: a leading underscore is not shown."""
-    text = str(stored)
-    return text[1:] if text.startswith("_") else text
-
-
-def is_all(key) -> bool:
-    """Whether `key` is the All row, `_All`, or a name that means it, `All`: never a category."""
-    return key in ("All", "_All")
-
-
-def same_name(one, other) -> bool:
-    """Whether two names are one category's: as shown, capitals aside (`_WIP`, WIP and wip)."""
-    return display_name(str(one).strip()).casefold() == display_name(str(other).strip()).casefold()
-
-
 def change_categories(model, keys, on_assets, on_sidebar) -> bool:
     """`on_assets(key)` in one layout change, saved after it, then `on_sidebar(key)`, per key."""
-    keys = [key for key in keys if key and not is_all(key)]
+    keys = [key for key in keys if key and not category_list.is_all(key)]
     if not keys or not model.takes_edits():
         return False
     with grid_engine.relayout(model):    # the asset rows change in place
@@ -55,8 +38,8 @@ def change_categories(model, keys, on_assets, on_sidebar) -> bool:
 def rename(model, sidebar, keys, typed) -> str:
     """Categories `keys` named `typed`, joined to a category already of that name; its key or ""."""
     typed = str(typed or "").strip()
-    keys = [key for key in keys if key and not is_all(key)]
-    if not typed or is_all(typed) or not keys:
+    keys = [key for key in keys if key and not category_list.is_all(key)]
+    if not typed or category_list.is_all(typed) or not keys:
         return ""
     target = sidebar.key_of(typed) or keys[0]    # the category that stays
 
@@ -82,12 +65,8 @@ def remove(model, sidebar, keys) -> bool:
 
 def assign(model, sidebar, keys, key: str) -> bool:
     """A drop of the tiles keyed `keys` on the category keyed `key`: each one moves into it."""
-    return bool(key and not is_all(key) and keys and model.edit_tiles(keys, category=key))
-
-
-def new_key() -> str:
-    """The id of a new category, made as an asset's is."""
-    return uuid.uuid4().hex
+    return bool(key and not category_list.is_all(key) and keys
+                and model.edit_tiles(keys, category=key))
 
 
 def stored_order(held) -> list:
@@ -135,7 +114,7 @@ class Categories(sidebar_model.SidebarModel):
             return key
 
         if role == QtCore.Qt.ItemDataRole.DisplayRole:
-            return display_name(self._names.get(key, "") if key else ALL)
+            return category_list.display_name(self._names.get(key, "") if key else ALL)
 
         if role == SIDEBAR_COUNT_ROLE:
             return self._category_count(key or ALL)    # All counts every asset as `_All`
@@ -309,7 +288,7 @@ class Categories(sidebar_model.SidebarModel):
         """Sort below `_All` by name and save; it resets the model, so restore a selection."""
         head = [c for c in self._categories if c == "_All"]
         rest = sorted((c for c in self._categories if c != "_All"),
-                      key=lambda c: display_name(self._names.get(c, "")).lower())    # `_WIP` as WIP
+                      key=lambda c: category_list.display_name(self._names.get(c, "")).lower())
         ordered = head + rest
         if ordered == self._categories or not self._takes():
             return
@@ -334,24 +313,22 @@ class Categories(sidebar_model.SidebarModel):
 
     def key_of(self, name: str) -> str:
         """The key of the category named `name`, capitals aside, `_WIP` as WIP; "" for none."""
-        name = str(name or "").strip()
-        tops = self.top_keys() if name else []
-        exact = [key for key in tops if self._names.get(key, "").strip() == name]
-        alike = [key for key in tops if same_name(self._names.get(key, ""), name)]
-        return (exact + alike + [""])[0]
+        return category_list.key_named({key: self._names.get(key, "") for key in self.top_keys()},
+                                       name)
 
     def choices(self) -> list:
         """(key, name as shown) of every category, by name: what a dialog's Category list offers."""
-        return sorted(((key, display_name(self._names.get(key, ""))) for key in self.top_keys()),
+        shown = category_list.display_name
+        return sorted(((key, shown(self._names.get(key, ""))) for key in self.top_keys()),
                       key=lambda pair: pair[1].lower())
 
     def check_add_category(self, name: str) -> str:
         """The key of the category named `name`, its commas included, made when there is none."""
         name = str(name or "").strip()
         found = self.key_of(name)
-        if not name or found or is_all(name) or not self._takes():
+        if not name or found or category_list.is_all(name) or not self._takes():
             return found
-        key, row = new_key(), len(self._categories)
+        key, row = category_list.new_key(), len(self._categories)
         self.beginInsertRows(QtCore.QModelIndex(), row, row)
         try:
             self._categories.append(key)
@@ -400,7 +377,7 @@ class Categories(sidebar_model.SidebarModel):
         with library_db.library_for(self.preferences).holding():
             order = 0
             for key in self._categories:
-                if is_all(key) or not isinstance(key, str):
+                if category_list.is_all(key) or not isinstance(key, str):
                     continue
                 entry = dict(held.get(SECTION, key) or {}, order=order)
                 if key in self._named or not entry.get("name"):

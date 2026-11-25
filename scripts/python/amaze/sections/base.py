@@ -11,7 +11,8 @@ import hou
 from PySide6 import QtCore
 
 from amaze import amazetheme, messages
-from amaze.core import category, debug, file_info, grid_columns, multifilterproxy_model, notes
+from amaze.core import category, category_list, debug, file_info, grid_columns
+from amaze.core import multifilterproxy_model, notes
 
 AssetStack = collections.namedtuple(
     "AssetStack", "model proxy selection categories")
@@ -453,7 +454,7 @@ class AssetSection(Section):
         if model is not None and proxy is not None:
             proxy.setFilter(
                 model.CategoryRole,
-                "" if selected_name is None or category.is_all(selected_name)
+                "" if selected_name is None or category_list.is_all(selected_name)
                 else selected_name,
             )
 
@@ -485,7 +486,7 @@ class AssetSection(Section):
         st = self.stack()
         old = st.categories.name_of(keys[0]) if st is not None and keys else ""
         self.pane.ui.ask_name(
-            "Rename Category", category.display_name(old),    # the field starts with the name
+            "Rename Category", category_list.display_name(old),    # the field starts with the name
             lambda new_name: self._rename_categories(keys, new_name))
 
     def _rename_categories(self, keys, new_name) -> None:
@@ -525,7 +526,7 @@ class AssetSection(Section):
         """The one category selected in the sidebar, or None for All, no row, or several."""
         rows = self.sidebar_selection()
         name = self.sidebar_key(rows[0]) if len(rows) == 1 else None
-        return None if not name or category.is_all(name) else name
+        return None if not name or category_list.is_all(name) else name
 
     def export_category(self, name) -> None:
         """Export `name`'s category (None: the whole section) to a path the user picks."""
@@ -537,7 +538,7 @@ class AssetSection(Section):
         st = self.stack()
         if st is None:
             return
-        names = [name for name in map(self.sidebar_key, indexes) if not category.is_all(name)]
+        names = [name for name in map(self.sidebar_key, indexes) if not category_list.is_all(name)]
         if not any(names):
             return
         if st.selection is not None:
@@ -657,7 +658,7 @@ class AssetSection(Section):
             return
         stored = self.sidebar_key(index)    # never index.data(), its name
         st.proxy.setFilter(st.model.CategoryRole,
-                        "" if category.is_all(stored) else stored)    # `""` makes All match everything, not a literal category no asset has
+                        "" if category_list.is_all(stored) else stored)    # `""` makes All match everything, not a literal category no asset has
 
     def shown_sidebar_key(self) -> str:
         st = self.stack()

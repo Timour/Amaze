@@ -6,7 +6,7 @@ import hou
 from PySide6 import QtCore, QtGui
 
 from amaze import messages
-from amaze.core import category, debug, section_list
+from amaze.core import category_list, debug, section_list
 from amaze.helpers import wording
 from amaze.sections import base
 
@@ -141,7 +141,7 @@ class GradientSection(base.AssetSection):
         if current is None:
             return False
         name = self.sidebar_key(current)
-        return bool(name) and not category.is_all(name)
+        return bool(name) and not category_list.is_all(name)
 
     def _entry_at(self, index):
         if index is None or not index.isValid():

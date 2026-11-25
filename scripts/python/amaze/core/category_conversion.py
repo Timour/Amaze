@@ -3,12 +3,11 @@
 import os
 import uuid
 
-from amaze.core import library_files, material
+from amaze.core import category_list, library_files, material
 
 DATABASE_IDS = 6    # a section database of this format or newer holds its categories by id
 RECORD_IDS = 2    # an `<id>.json` of this format or newer names its categories by id
 NAMESPACE = uuid.UUID("def650ab-1698-4075-ace9-21aacbfa95f3")    # never changed: ids follow it
-ALL_ROW = ("All", "_All")    # the All row, never a category
 
 
 def id_for(name: str) -> str:
@@ -25,7 +24,7 @@ def _format(document: dict) -> int:
 
 def _names(value) -> list:
     """The category names a row holds, All left out."""
-    return [name for name in material.category_names(value) if name not in ALL_ROW]
+    return [name for name in material.category_names(value) if not category_list.is_all(name)]
 
 
 def _order(entry: dict) -> int:
@@ -41,7 +40,7 @@ def database(document):
     listed = {}
     for name, entry in (table.items() if isinstance(table, dict) else ()):
         named = str(name).strip()
-        if named and named not in ALL_ROW and id_for(named) not in listed:
+        if named and not category_list.is_all(named) and id_for(named) not in listed:
             listed[id_for(named)] = dict(entry if isinstance(entry, dict) else {}, name=named)
     after = max([_order(entry) for entry in listed.values()] + [-1]) + 1
     found = dict(document, format=DATABASE_IDS, categories=listed)
