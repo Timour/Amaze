@@ -2,6 +2,7 @@
 
 from PySide6 import QtCore
 
+import amaze
 from amaze.pane import asks
 from amaze.sections import base
 
@@ -117,6 +118,7 @@ class Menu:
                     row["glyph"] = entry.chip_glyph
             elif icon:
                 row["icon"] = icon
+                row["iconFile"] = amaze.package_file("ui", icon + ".svg")    # Houdini's row draws our SVG
             if checked is None:
                 self.runs[key] = (entry.handler, payload)
             else:

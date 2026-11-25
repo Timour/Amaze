@@ -55,7 +55,8 @@ Menu {
                                                         symbol: root.rowSymbol(row) })
                 if (row.chip)
                     item.symbolColor = row.chip
-                // a ui/ icon is not drawn: Houdini's row takes only its own icon names
+                if (row.iconFile)    // Houdini's own icon system draws our SVG ▸r/pluto-menu-runtime
+                    item.icon.source = row.iconFile
                 const key = row.key
                 item.triggered.connect(() => root.chosen = key)    // before the menu closes it
                 menu.addItem(item)
