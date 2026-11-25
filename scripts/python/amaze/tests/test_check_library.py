@@ -297,6 +297,11 @@ class WhatTheReportSaysTest(_Library):
         self.assertEqual(("Found", ["Wood, Oak"]), (rows["U1"]["name"], rows["U1"]["categories"]))
         self.assertEqual(("Recovered U2", ["Recovered"]), (rows["U2"]["name"], rows["U2"]["categories"]))
         self.assertTrue(os.path.exists(self.at("materials", "Bare__U2", "U2.mat")), "it was trashed")
+        put(self.dir, "nodes/Lost__N7/N7.mat", b"nodes")    # the one folder Recover can list, with no record
+        houdini = Houdini()
+        with mock.patch.object(check_dialog, "hou", houdini):
+            check_dialog.show(self.dir)
+        self.assertIn(check_library.messages.BUTTON_FIX_SAFE, houdini.asked[0][1], "no Fix Safe")
 
     def test_cl23_a_sync_copy_is_a_leftover_only_when_it_matches_and_a_scratch_once_old(self):
         put(self.dir, "materials/Loose__A3/A3.png.y2" + guard.SCRATCH, b"a live write")

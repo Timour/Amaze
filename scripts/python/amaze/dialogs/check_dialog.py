@@ -33,7 +33,7 @@ def show(library_dir: str, preferences=None, changed=None, report_only: bool = F
                        + ([messages.CHECK_LIBRARY_ONLY_A_REPORT] if report_only and lines else [])),
              details=trash)
         return False
-    safe = bool([one for one in findings["unlisted"] if one["record"]] or
+    safe = bool(check_library.recoverable(findings) or
                 findings["locations_gone"] or findings["favorites_gone"])
     buttons = ((messages.BUTTON_FIX_ALL,) + ((messages.BUTTON_FIX_SAFE,) if safe else ())
                + (messages.BUTTON_FIX_CANCEL,))

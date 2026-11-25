@@ -363,11 +363,16 @@ def confirmable(findings: dict) -> list:
     """(key, label) of each thing Fix All removes only once named: rows, unknown, unlisted files."""
     named = [(("row", section, asset_id), "%s (%s)" % (name, library_files.section_label(section)))
              for section, rows in findings["missing_files"].items() for asset_id, name in rows]
+    kept = recoverable(findings)
     named += [(("path", one["folder"]), one["folder"]) for one in findings["unlisted"]
-              if one["section"] not in ASSET_SECTIONS]    # Recover lists the others, record or none
+              if one not in kept]
     named += [(("path", path), path) for path in findings["unknown"] + findings["orphans"]]
     return named
 
+
+def recoverable(findings: dict) -> list:
+    """The unlisted folders Recover lists: each Materials and Nodes one, its record read or not."""
+    return [one for one in findings["unlisted"] if one["section"] in ASSET_SECTIONS]
 
 
 def _guard(library_dir: str):
@@ -419,7 +424,7 @@ def recover(library_dir: str, user: str = "") -> int:
     """Each unlisted asset folder listed in its section's database from its record; how many."""
     held, added = _guard(library_dir), 0
     for section in ASSET_SECTIONS:
-        found = [one for one in survey(library_dir)["unlisted"] if one["section"] == section]
+        found = [one for one in recoverable(survey(library_dir)) if one["section"] == section]
         if not found:
             continue
         reading = _section_reading(held, section)
