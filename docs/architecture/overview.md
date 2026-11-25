@@ -772,6 +772,7 @@ copied per dialog.
 | **Manage Libraries** | — (app-wide) | `dialogs/library_dialog.py` ✓ AssetDialog — D15: the Library list, the most recently opened first; Remove from List takes libraries off it and leaves their folders alone |
 | **Versions** | Materials | `dialogs/versions_dialog.py` ✓ AssetDialog — D01: a material's versions, newest first; Select makes the picked one active |
 | **About** | — | a page of Preferences (`ui/prefs/AboutPage.qml`), with its Developer group — there is no separate About dialog |
+| **Code window** | the Amaze (QML) pane | `dialogs/code_window.py` on **DialogWindow** — New File and Edit: Name, Category, Language, Tags over Houdini's own code field (`ui/shared/CodeField.qml`: its monospace text and its VEX and Python colours, line numbers drawn as Houdini's), then Apply and Cancel. Each Apply saves and keeps the window open; a snippet with no code is refused in Houdini's message box. The window grows with its code field |
 | **Save window** | the Amaze (QML) pane | `dialogs/save_window.py` on **DialogWindow** — D09's rows in Houdini's controls: Section, Name, Category (the picked section's (key, name) list), Language (for a section that stores one), Tags; OK hands on a SaveAnswer. Its drop-down lists are `ui/shared/MenuBox.qml`, Houdini's ComboBox with its menu sized by its rows |
 | **Versions window** | the Amaze (QML) pane | `dialogs/versions_window.py` on **DialogWindow** — a material's versions newest first in the shared `RowsTable` (name, then the day it was saved), the active one picked; Select makes the picked one active. Opened by the tile's versions badge |
 | **Name window** | the Amaze (QML) pane | `dialogs/name_window.py` on **DialogWindow** — the one name field (`ui/shared/NameForm.qml`), OK and Cancel; asked by Add, Rename, New Folder and Save Scene. Not modal: Houdini stays usable while it is open |
@@ -836,6 +837,9 @@ Sections' release handlers call the import code. What a release does is one engi
 `DropPlacement.release(section_key, key, pane_tab, pane_kind)` in `pane/drop_placement.py`: the
 tile's drop rule, its handler and the wire splice as one undo step; the drag session calls it
 for both panes. The one native drag left is the texture file drag.
+A node dragged the other way, from a network editor onto either pane, is read by `pane/node_drop.py`
+(the node paths a drag carries) and saved as Houdini's right-click Save to Amaze saves it, after the
+drop has returned; the widget panel's central widget and the QML pane's view both call it.
 Rules: an item is placed where it is dropped; nothing is created before release;
 SOP and LOP contexts never reference each other; empty viewport space is a
 miss (red X); a drop that opens a menu shows the red X only when the menu is dismissed or the
@@ -1076,6 +1080,7 @@ pane/package_import.py    The package import: .amazepkg files and store
                           tiles into the library (`pane.package_import`)
 pane/drop_placement.py    Where a drop or a click creates nodes: the network,
                           the position, the holder node (`pane.drop_placement`)
+pane/node_drop.py         A node dragged onto either pane: its paths, then its save
 pane/drag_session.py      One view's drag of tiles into Houdini, for both panes:
                           begin, each move's feedback, the release or the end
 pane/tile_capture.py      Capture: the Scene View onto one tile, or the
@@ -1289,7 +1294,8 @@ utils/rc_calls.py         the entry points Houdini itself calls: the
                           OPmenu's Amaze submenu (Convert to Redshift,
                           Convert to Karma, Save), and the shelf's
                           Capture, Updates and Reload, one call each -
-                          finds the open panel by its pane-tab label;
+                          finds the open pane by its pane-tab label,
+                          the Amaze (QML) pane before the widget panel;
                           `start()` gives the log its `HoudiniUI`
 branding.py               the app's DISPLAY name, once
 amazetheme.py             THE DESIGN, in one document: every colour,
