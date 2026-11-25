@@ -7,7 +7,7 @@ file move (FM). The levels and the rules for tests are in the [README](README.md
 
 ## Severe
 
-- DD-01 Severe: One undo takes back a whole drop: every node made, wire spliced, parameter set, material bound, and any Material Library made for it.
+- DD-01 Severe: One undo takes back a whole drop: every node it made, wire it spliced, parameter it set, and any material library made for it. A material dragged into a viewport is one undo step, and Houdini's own assign is another.
 - DD-02 Severe: A drop that fails at any step, a locked network included, leaves no node it made, never stops Houdini, and says why.
 - DD-03 Severe: A material Swap never deletes a material the scene still uses: a binding on any branch, layer or node keeps it.
 
@@ -17,8 +17,7 @@ file move (FM). The levels and the rules for tests are in the [README](README.md
 - DD-21 Wrong output: Released on a wire, the new nodes are inserted into it; near a free connector, they are wired to it; a new node is never wired to itself.
 - DD-22 Wrong output: A file dropped on a node sets its first file parameter, written as Write Paths As says; a snippet sets its code parameter, a gradient its colour ramp; a node without one is a miss with the reason.
 - DD-23 Wrong output: Geometry goes into a SOP network as a loader, into Solaris as a new SOP Create chained to the display node, elsewhere as a new geo named after the file; the new node is displayed, current and selected.
-- DD-24 Wrong output: A material dropped on a prim in a Solaris viewport offers Swap for each material bound under it, then Set as Material on the prim and each parent; the pick imports into Houdini's own Material Library for that network and binds or swaps.
-- DD-25 Wrong output: A material dropped on an object in an object viewport is imported into /mat and set as that object's material; an object with no material parameter gets nothing.
+- DD-24 Wrong output: A material dragged into a Solaris viewport is imported into the material library Houdini picks. Then Houdini's own highlight, menu and assign take over.
+- DD-25 Wrong output: A material dragged into an object viewport is imported into `/mat`. Then Houdini's own highlight, menu and assign take over. In a viewport showing any other network, the drop does nothing.
 - DD-26 Wrong output: Placing dropped nodes never moves the user's own nodes.
 - DD-27 Wrong output: Esc, a right or middle click, or the panel hidden ends a drag, and its release makes nothing.
-- DD-28 Wrong output: A viewport drop lands on the prim or object under the cursor at every display scale.
