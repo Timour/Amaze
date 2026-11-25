@@ -501,21 +501,24 @@ class FileSection(FolderSection):
     ) + base.GRID_MENU_TAIL
 
     _PATH_ONLY = base.DropRule(on_node="drop_file_path_on_node",    # per row kind: every kind sets its path on a node; a drop off any node differs
-                          click_resolve="click_copy_path")
+                          click_resolve="click_copy_path", native_drag="file_path_drag")
     DROP_BY_KIND = {
         locations.KIND_IMAGE: base.DropRule(
             on_node="drop_file_path_on_node",
             on_space="create_image_node_in",
             click_on_node="drop_file_path_on_node",
-            holder_node_type="mtlximage"),  # the drag preview shows THIS node type
+            holder_node_type="mtlximage",  # the drag preview shows THIS node type
+            native_drag="file_path_drag"),
         locations.KIND_GEO: base.DropRule(
             on_node="drop_file_path_on_node",
             resolve="drop_geo_at_release",
             click_on_node="drop_file_path_on_node",
-            click_resolve="click_import_geo"),
+            click_resolve="click_import_geo",
+            native_drag="file_path_drag"),
         locations.KIND_HIP: base.DropRule(
             on_node="drop_file_path_on_node",
-            click_resolve="click_open_hip"),
+            click_resolve="click_open_hip",
+            native_drag="file_path_drag"),
         locations.KIND_OTHER: _PATH_ONLY,
         "": _PATH_ONLY,
     }
@@ -601,6 +604,15 @@ class FileSection(FolderSection):
         with dragengine.drop_group("Amaze Set File Path"):
             parm.set(pane.drop_placement.scene_path(path))
         return True
+
+    def file_path_drag(self, index, _pane_tab, pane_kind):
+        """Over a Parameters pane: the path per Write Paths As as text, no URL. ▸r/drag-file-url"""
+        path = index.data(self.pane.file_files_model.PathRole) if pane_kind == hou.paneTabType.Parm else ""
+        if not path:
+            return None
+        mime_data = QtCore.QMimeData()
+        mime_data.setText(self.pane.drop_placement.scene_path(path))
+        return mime_data, QtCore.Qt.DropAction.CopyAction
 
     def create_image_node_in(self, index, dest, position=None) -> bool:
         """Create a mtlximage node set to the file's path, where the network can contain one."""

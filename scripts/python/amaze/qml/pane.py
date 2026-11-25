@@ -144,7 +144,6 @@ class PaneState(qmlviews.SharedState, asks.Asks):
     searchCleared = QtCore.Signal()    # the empty state's Clear Search: the QML empties its field
     keyStepped = QtCore.Signal(str, bool)    # a move by Houdini's hotkey: its name, and if Shift extends
     sidebarOpened = QtCore.Signal(QtCore.QModelIndex)    # the tree opens this folder and those above it
-    menuOffered = QtCore.Signal("QVariantList")    # the engine's own menu, at the cursor: the drop's choice
 
     pane = None    # the engine, built by `start`
     drag = None    # the view's `drag_session`, which a press on a tile or row past the drag distance begins
@@ -488,13 +487,6 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         menu, self._menu = self._menu, None
         if menu is not None:
             menu.run(key)
-
-    def ask_drop_choice(self, labels: list, then) -> None:
-        """A menu at the cursor, not waited on: once it closes, `then` gets the place picked, or None."""
-        choice = menus.Choice(labels)
-        menu = choice.menu(host=self)
-        self._menu, self._after_menu = menu, lambda: then(choice.place)
-        self.menuOffered.emit(menu.rows[0].get("rows", []))    # a menu that cannot open closes at once
 
     def ask_name(self, title: str, default: str, then) -> None:
         """The Name window, not modal: `then` gets the name, "" for a cleared field, None for Cancel."""

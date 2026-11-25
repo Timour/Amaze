@@ -425,19 +425,6 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
         chosen = ui_helpers.pick_color(start, self, title)
         then(chosen.name() if chosen is not None else None)
 
-    def ask_drop_choice(self, labels: list, then) -> None:
-        """A menu at the cursor, modal: `then` gets the picked row's place in `labels`, None if dismissed."""
-        menu = QtWidgets.QMenu(self)
-        places = {}
-        for place, label in enumerate(labels):
-            if label:
-                places[menu.addAction(label)] = place
-            else:
-                menu.addSeparator()
-        chosen = menu.exec(QtGui.QCursor.pos())    # screen coordinates
-        menu.deleteLater()    # parented to the panel, so deleted; `places` keeps its keys until then
-        then(places.get(chosen))
-
     def open_versions(self, name: str, listed: list, active: int, then) -> None:
         """The Versions dialog, modal: `then` gets the picked version on Select, None on Cancel."""
         from amaze.dialogs import versions_dialog

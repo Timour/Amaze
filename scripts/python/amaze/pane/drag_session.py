@@ -5,8 +5,6 @@ import hou
 
 from amaze import sections
 from amaze.core import debug, dragengine
-from amaze.helpers import helpers
-from amaze.pane import drop_placement
 from amaze.render import cop_nodes
 from amaze.sections import base as section_base
 
@@ -16,13 +14,6 @@ DRAG_SECTIONS = ("material", "gradient", "cop", "code", "file")    #: rows that 
 def drags(pane, section_key: str) -> bool:
     """Whether a press on a row of `section_key` may start a drag; an online row has no node or file."""
     return section_key in DRAG_SECTIONS and not pane.is_online()
-
-
-def file_drag_mime(pane, path: str) -> QtCore.QMimeData:
-    """File-path drag mime: the path per Write Paths As as text, no URL. ▸r/drag-file-url"""
-    mime_data = QtCore.QMimeData()
-    mime_data.setText(helpers.houdini_path(path, getattr(pane.prefs, "path_style", "home")))
-    return mime_data
 
 
 class DragSession:
@@ -71,14 +62,8 @@ class DragSession:
             debug.exception("drop failed - permission error", refusal, section=self.section)
             debug.refuse(str(refusal), section=self.section)    # Houdini's own message ▸p/refuse-vs-alert
         finally:
-            self._show_outcome(outcome)
-
-    def _show_outcome(self, outcome) -> None:
-        """A miss shows the red X; a PendingOutcome shows it once the user's answer settles it."""
-        if isinstance(outcome, drop_placement.PendingOutcome):
-            outcome.then(self._show_outcome)
-        elif not outcome:
-            self.marks.show_miss()
+            if not outcome:
+                self.marks.show_miss()
 
     def cancel(self, miss: bool = False) -> None:
         """End with no drop: Esc and a hidden view quietly, another button or an error with the red X."""
@@ -86,14 +71,13 @@ class DragSession:
             self._end(miss)
 
     def _follow(self) -> None:
-        """The tag, the drop targets and the highlight, from one pane lookup. ▸p/drag-move-cost"""
-        if self._switch_to_qdrag_over_parm_pane():
+        """The tag, the drop targets and the outline, from one pane lookup. ▸p/drag-move-cost"""
+        pane_tab, pane_kind, _fresh = dragengine.pane_under_cursor_tracked()
+        if self._switch_to_native_drag(pane_tab, pane_kind):
             return
         self.marks.move_tag()
-        pane_tab, pane_kind, _fresh = dragengine.pane_under_cursor_tracked()
         if self._sidebar is not None:
             self._sidebar.hover()
-        dragengine.hover_update(self.pane, self.section, pane_tab, pane_kind)
         self._update_drop_outline(pane_tab, pane_kind)    # the outline; the end clears it
 
     def _drop(self, row):
@@ -130,35 +114,27 @@ class DragSession:
         """The tag is hidden while another application is in front."""
         self.marks.tag_shown(state == QtCore.Qt.ApplicationState.ApplicationActive)
 
-    def _switch_to_qdrag_over_parm_pane(self) -> bool:
-        """A File row over a Parameters pane becomes a real QDrag; Qt then runs the drag."""
-        if self.section != "file":
+    def _switch_to_native_drag(self, pane_tab, pane_kind) -> bool:
+        """Over a pane whose own drop takes this row, Qt's drag runs on from here. ▸r/material-palette-drag"""
+        row = self._pressed_row()    # the PRESSED row: the current one can name another
+        rule = self._drop_rule(row) if row is not None and pane_tab is not None else None
+        if rule is None or not rule.native_drag:
             return False
-        ui = getattr(hou, "ui", None)
-        if ui is None:
-            return False
-        try:
-            pane = ui.paneTabUnderCursor()
-        except AttributeError:
-            return False
-        if pane is None or pane.type() != hou.paneTabType.Parm:
-            return False
-        self._end()    # a switch to QDrag, not a failed drop: no red X
-        self._run_file_path_drag()
+        section = self.pane.sections.get(self.section)
+        native = section_base.drop_handler(section, rule.native_drag)(row, pane_tab, pane_kind)
+        if native is None:    # the handler's answer: None, False, or (mime data, drop action)
+            return False    # Amaze's own drag goes on over this pane
+        self._end(miss=native is False)    # False: the work before the drag failed, its reason shown
+        if native is not False:
+            self._run_native_drag(row, *native)
         return True
 
-    def _run_file_path_drag(self) -> None:
-        """The only real `QDrag`: `file_drag_mime`, the name tag as its picture."""
-        row = self._pressed_row()    # the PRESSED row: the current one can name another
-        if row is None:
-            return
-        path = row.data(self.pane.file_files_model.PathRole)
-        if not path:
-            return
+    def _run_native_drag(self, row, mime_data, action) -> None:
+        """The one real `QDrag`: the section's data, the name tag as its picture; Qt runs it to the drop."""
         drag = QtGui.QDrag(self.source)
-        drag.setMimeData(file_drag_mime(self.pane, path))
+        drag.setMimeData(mime_data)
         drag.setPixmap(self.marks.tag_picture(row.data(QtCore.Qt.ItemDataRole.DisplayRole) or ""))
-        drag.exec(QtCore.Qt.DropAction.CopyAction)
+        drag.exec(action)
 
     def _preview_node_type(self, rule, dest, row) -> str:
         """The node type an on_space drop would create in `dest`; `""` is none: a plain box."""

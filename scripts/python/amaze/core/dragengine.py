@@ -1,4 +1,4 @@
-"""The drag and drop engine: one self-managed gesture, never a native Qt drag. ▸r/native-drag-paint"""
+"""The drag and drop engine: Amaze's gesture until Houdini's own drop takes it ▸r/native-drag-paint"""
 
 import functools
 import importlib.util
@@ -8,22 +8,9 @@ import time
 
 import hou
 
-from amaze.helpers import hostver
-
-serial = 0
-
 PICK_INTERVAL = 0.03
-_NO_PANE_KIND = object()    # no tracked pane kind passed, distinct from a tracked miss (None)
-CLEAR_DELAY = 0.25
 
-_hover = {
-    "serial": -1,
-    "last_pick": 0.0,
-    "last_hit": 0.0,
-    "viewer": None,    # the LOP viewer whose prim highlight is set
-    "cur": None,
-    "dirty": False,
-}
+_logged_once: set = set()    # the `_dbg_once` keys this gesture has recorded
 
 
 def _dbg(msg, **data):
@@ -34,54 +21,24 @@ def _dbg(msg, **data):
         pass
 
 
-PICK_LOG_PER_GESTURE = 8
-
-PICK_LOG_HITS_PER_GESTURE = 4
-
-
-def _pick_log_budget(hit=None) -> bool:
-    """True while this gesture may still record a pick diagnostic; hits have their own limit."""
-    key = "logged_hit" if hit else "logged"
-    cap = PICK_LOG_HITS_PER_GESTURE if hit else PICK_LOG_PER_GESTURE
-    if _hover.get(key, 0) >= cap:
-        return False
-    _hover[key] = _hover.get(key, 0) + 1
-    return True
-
-
 def _dbg_once(key: str, msg: str, **data) -> None:
     """Record `msg` once per gesture: the callers run on every move."""
-    if not _hover.get(key):
-        _hover[key] = True
+    if key not in _logged_once:
+        _logged_once.add(key)
         _dbg(msg, **data)
 
 
-def _dbg_on() -> bool:
-    """Whether debug logging is on, for records whose DATA is costly to gather."""
-    try:
-        from amaze.core import debug
-        return debug.is_on()
-    except Exception:                                    # noqa: BLE001
-        return False
-
-
 def begin(section_key: str, ids=()) -> None:
-    """Start a gesture: fresh serial, fresh diagnostic and probe budgets."""
-    global serial
-    serial += 1
-    _hover["logged"] = 0
-    _hover["logged_hit"] = 0
-    for key in ("snap_failure_logged", "scale_failure_logged", "window_failure_logged", "world_failure_logged"):
-        _hover[key] = False
+    """Start a gesture: fresh one-time diagnostics, no outline state left from the last."""
+    _logged_once.clear()
     _reset_move()
     _move["snap_pos"] = None
     _move["release_snap_pos"] = None    # the previous release has already read it
 
 
 def end() -> None:
-    """End a gesture, however it ended: take the highlight off, keep the snap point for the drop."""
+    """End a gesture, however it ended: take the outline off, keep the snap point for the drop."""
     release_snap_pos = _move.get("snap_pos")    # the release reads it after this clears the outline
-    _end_highlight()
     ghost_clear()
     _reset_move()
     _move["release_snap_pos"] = release_snap_pos
@@ -570,84 +527,8 @@ def pane_tab_under_cursor():
     return None
 
 
-
-def _scene_viewer_under_cursor():
-    """(viewer, x, y, height, scale) under the cursor, or (None, 0, 0, 0, 1.0). ▸r/pick-boundary"""
-    tab = pane_tab_under_cursor()
-    if tab is None:
-        return None, 0, 0, 0, 1.0
-    try:
-        if tab.type() != hou.paneTabType.SceneViewer:
-            return None, 0, 0, 0, 1.0
-    except AttributeError:
-        return None, 0, 0, 0, 1.0
-    return _scene_viewer_geometry(tab)
-
-
-def _scene_viewer_geometry(tab):
-    """(viewer, x, y, height, scale) for a known viewer, GL coordinates. ▸r/pick-boundary"""
-    from PySide6 import QtGui
-
-    try:
-        geo = tab.qtScreenGeometry()
-    except AttributeError:
-        return None, 0, 0, 0, 1.0
-    if geo is None:
-        return None, 0, 0, 0, 1.0
-    cursor = QtGui.QCursor.pos()
-    x, y, wh, scale = None, None, 0, 1.0
-    try:
-        window = tab.qtWindow()
-        local = window.mapFromGlobal(cursor)
-        wh = window.height()
-        if wh:
-            x = local.x()
-            y = wh - local.y()
-        try:
-            res = tab.curViewport().resolutionInPixels()
-            if res and window.width():
-                scale = float(res[0]) / float(window.width())
-        except hou.Error as exc:
-            _dbg_once("scale_failure_logged", "viewport resolution not read", error=repr(exc))
-            scale = 1.0
-    except (hou.Error, AttributeError, RuntimeError) as exc:    # no Qt window: the pane's rect is used
-        _dbg_once("window_failure_logged", "viewer window not read", error=repr(exc))
-        x, y = None, None
-    if x is None or y is None:
-        x = cursor.x() - geo.left()
-        y = geo.height() - (cursor.y() - geo.top())
-        wh, scale = geo.height(), 1.0
-    if _dbg_on() and _pick_log_budget():
-        try:
-            vp = tab.curViewport()
-            vp_size = tuple(vp.size())
-        except Exception:                                # noqa: BLE001
-            vp, vp_size = None, None
-        try:
-            res = tuple(vp.resolutionInPixels())
-        except Exception:                                # noqa: BLE001
-            res = None
-        win = None
-        try:
-            win = tab.qtWindow()
-            dpr = win.devicePixelRatioF()
-            win_size = (win.width(), win.height())
-            local = win.mapFromGlobal(cursor)
-            win_local = (local.x(), local.y())
-        except Exception:                                # noqa: BLE001
-            dpr, win_size, win_local = None, None, None
-        _dbg("viewport pick coords",
-             houdini=hou.applicationVersionString(),
-             geo=(geo.left(), geo.top(), geo.width(), geo.height()),
-             cursor=(cursor.x(), cursor.y()),
-             derived=(int(x), int(y)),
-             viewport_size=vp_size, resolution=res,
-             qtwindow_size=win_size, qtwindow_local=win_local, dpr=dpr)
-    return tab, int(x), int(y), int(wh), scale
-
-
-def _viewer_world(viewer):
-    """"lop" / "obj" / None for a scene viewer, by what it displays."""
+def viewer_world(viewer):
+    """"lop" / "obj" / None for a scene viewer, by the network it shows."""
     try:
         pwd = viewer.pwd()
         cat = pwd.childTypeCategory().name().lower()
@@ -658,245 +539,6 @@ def _viewer_world(viewer):
         return "lop"
     if "obj" in cat or "object" in cat:
         return "obj"
-    return None
-
-
-def _clean_prim_path(path: str) -> str:
-    """Strip a raw `locateSceneGraphPrim` hit to the prim path. ▸r/pick-boundary"""
-    i = path.find("[")
-    return path[:i] if i >= 0 else path
-
-
-def _viewport_at(viewer, x, y, scale=1.0, widget_h=0):
-    """(viewport, x, y, height) containing a viewer-space point, in logical pixels. ▸r/pick-boundary"""
-    try:
-        vps = viewer.viewports()
-    except AttributeError:
-        vps = ()
-    for vp in vps:
-        try:
-            rect = vp.geometry()
-        except AttributeError:
-            try:
-                rect = vp.size()
-            except AttributeError:
-                continue
-        try:
-            gx, gy, gw, gh = (float(v) / (scale or 1.0) for v in rect)
-        except (TypeError, ValueError, ZeroDivisionError):
-            continue
-        if gx <= x < gx + gw and gy <= y < gy + gh:
-            return vp, int(x - gx), int(y - gy), int(round(gh))
-    try:
-        vp = viewer.curViewport()
-    except AttributeError:
-        return None, 0, 0, 0
-    return vp, x, y, int(widget_h)
-
-
-
-
-def _pick_trace(world, x, y, result, viewer=None):
-    """One record per pick: the coordinates PASSED and the result, the cursor read only here."""
-    if not (_dbg_on() and _pick_log_budget(hit=bool(result))):
-        return
-    data = _cursor_state(viewer) if viewer is not None else {}
-    data.update(world=str(world), passed=(int(x), int(y)),
-                hit=str(result or ""),
-                houdini=hou.applicationVersionString())
-    _dbg("pick", **data)
-
-
-def _cursor_state(viewer):
-    """The cursor in the GL widget's logical coordinates, sampled after the pick."""
-    try:
-        from PySide6 import QtGui
-        window = viewer.qtWindow()
-        local = window.mapFromGlobal(QtGui.QCursor.pos())
-        return {"true_local": (local.x(), local.y()),
-                "widget": (window.width(), window.height()),
-                "resolution": tuple(viewer.curViewport().resolutionInPixels())}
-    except Exception:                                    # noqa: BLE001
-        return {}
-
-
-def _pick(viewer, world, x, y, scale=1.0, widget_h=0):
-    """Target under the pixel: a prim path (LOP) or node path (OBJ), "" for a miss. ▸r/pick-boundary"""
-    if world == "lop":
-        try:
-            depth, path = viewer.locateSceneGraphPrim(x, y)
-        except Exception as exc:                         # noqa: BLE001
-            _dbg("lop pick raised", error="%s: %s" % (type(exc).__name__, exc),
-                 x=x, y=y, houdini=hou.applicationVersionString())
-            return ""
-        if depth is None or depth < 0:
-            _pick_trace("lop", x, y, "", viewer)
-            return ""
-        found = _clean_prim_path(str(path))
-        _pick_trace("lop", x, y, found, viewer)
-        return found
-    if world == "obj":
-        try:
-            vp, lx, ly, vh = _viewport_at(viewer, x, y, scale, widget_h)
-            if vp is None:
-                _dbg("obj pick: no viewport resolved", x=x, y=y)
-                return ""
-            if hostver.obj_pick_wants_device_pixels(scale):
-                lx, ly = int(round(lx * scale)), int(round(ly * scale))
-            node = vp.queryNodeAtPixel(lx, ly)
-        except Exception as exc:                         # noqa: BLE001
-            _dbg("obj pick raised", error="%s: %s" % (type(exc).__name__, exc),
-                 x=x, y=y, houdini=hou.applicationVersionString())
-            return ""
-        found = node.path() if node is not None else ""
-        _pick_trace("obj", lx, ly, found, viewer)
-        return found
-    return ""
-
-
-
-GLOW_WIDGET = "RE_OpenGLDrawable"    # the host's viewport widget ▸r/viewport-drop-glow
-GLOW_FILE = "$HFS/houdini/pic/Mandril.pic"    # the file the viewport is told about
-
-
-class ViewportGlow:
-    """The host's own drop glow at object level, asked for with drag events. ▸r/viewport-drop-glow"""
-
-    def __init__(self) -> None:
-        self._widget = None    # the viewport told a drag is over it; its window is fetched per send
-        self._data = None
-
-    @staticmethod
-    def _window(widget):
-        import shiboken6
-        if widget is None or not shiboken6.isValid(widget):
-            return None
-        return widget.windowHandle()
-
-    def follow(self) -> None:
-        """Tell the viewport under the pointer that a file is dragged over it; clear off one."""
-        from PySide6 import QtCore, QtGui
-        app = QtCore.QCoreApplication.instance()    # the host's QApplication: it finds the widget at a point
-        pos = QtGui.QCursor.pos()
-        widget = app.widgetAt(pos) if app is not None else None
-        window = self._window(widget) if widget is not None and widget.objectName() == GLOW_WIDGET else None
-        if window is None:
-            self.clear()
-            return
-        if self._data is None:
-            self._data = QtCore.QMimeData()
-            self._data.setUrls([QtCore.QUrl.fromLocalFile(hou.text.expandString(GLOW_FILE))])
-        actions = (QtCore.Qt.DropAction.CopyAction | QtCore.Qt.DropAction.MoveAction
-                   | QtCore.Qt.DropAction.LinkAction)
-        held = (QtCore.Qt.MouseButton.LeftButton, QtCore.Qt.KeyboardModifier.NoModifier)
-        local = window.mapFromGlobal(pos)
-        if widget is not self._widget:
-            self.clear()
-            app.sendEvent(window, QtGui.QDragEnterEvent(local, actions, self._data, *held))
-            self._widget = widget
-        app.sendEvent(window, QtGui.QDragMoveEvent(local, actions, self._data, *held))
-
-    def clear(self) -> None:
-        """Tell the viewport the drag left; the host unlights the object on the next mouse move."""
-        from PySide6 import QtCore, QtGui
-        widget, self._widget = self._widget, None
-        window = self._window(widget)
-        if window is not None:
-            QtCore.QCoreApplication.sendEvent(window, QtGui.QDragLeaveEvent())
-
-
-glow = ViewportGlow()
-
-
-def hover_update(panel, section_key, pane_tab=None,
-                 pane_kind=_NO_PANE_KIND) -> None:
-    """Per-move hover, throttled: glow at object level, prim highlight in LOPs. ▸p/drag-move-cost"""
-    if section_key != "material":
-        return
-    now = time.time()
-    if now - _hover["last_pick"] < PICK_INTERVAL:
-        return
-    _hover["last_pick"] = now
-    if pane_kind is _NO_PANE_KIND and pane_tab is None:
-        viewer, x, y, wh, scale = _scene_viewer_under_cursor()
-    elif pane_kind != hou.paneTabType.SceneViewer:
-        viewer, x, y, wh, scale = None, 0, 0, 0, 1.0
-    else:
-        viewer, x, y, wh, scale = _scene_viewer_geometry(pane_tab)
-    world = _viewer_world(viewer) if viewer is not None else None
-    if world == "obj":
-        _set_prim_highlight(None, "", now, force_clear=True)
-        glow.follow()
-        return
-    glow.clear()
-    if world != "lop":
-        _set_prim_highlight(None, "", now, force_clear=True)
-        return
-    _set_prim_highlight(viewer, _pick(viewer, world, x, y, scale, wh), now)
-
-
-def _set_prim_highlight(viewer, target, now, force_clear=False):
-    """The LOP viewer's own prim highlight for one pick; it touches no selection. ▸r/pick-boundary"""
-    if _hover["serial"] != serial or (
-        viewer is not None
-        and _hover["viewer"] is not None
-        and viewer != _hover["viewer"]
-    ):
-        _clear_prim_highlight()
-        _hover["serial"] = serial
-    if not target:
-        if not force_clear and _hover["cur"] and \
-                now - _hover["last_hit"] < CLEAR_DELAY:
-            return
-    else:
-        _hover["last_hit"] = now
-    if viewer is not None and _hover["viewer"] is None:
-        _hover["viewer"] = viewer
-    shown = _hover["viewer"]
-    if shown is None:
-        return
-    if target == (_hover["cur"] or "") and not target:
-        return
-    if target != (_hover["cur"] or ""):
-        _dbg("hover", world="lop", target=str(target))
-    _hover["cur"] = target or None
-    _hover["dirty"] = True
-    try:
-        shown.setSceneGraphHighlight([target] if target else [])    # set again: the viewer drops it
-    except hou.Error as exc:
-        _dbg("prim highlight refused", error="%s: %s" % (type(exc).__name__, exc))
-
-
-def _clear_prim_highlight() -> None:
-    viewer, dirty = _hover["viewer"], _hover["dirty"]
-    _hover["viewer"] = None
-    _hover["cur"] = None
-    _hover["dirty"] = False
-    if viewer is None or not dirty:
-        return
-    try:
-        viewer.setSceneGraphHighlight([])
-    except hou.Error as exc:
-        _dbg("prim highlight not cleared", error="%s: %s" % (type(exc).__name__, exc))
-
-
-def _end_highlight() -> None:
-    """Every highlight a gesture set is taken off: the glow and the prim highlight."""
-    glow.clear()
-    _clear_prim_highlight()
-
-
-def viewport_release_target(panel):
-    """One more pick at release: ("lop"|"obj", viewer, target), or None off a scene viewer."""
-    viewer, x, y, wh, scale = _scene_viewer_under_cursor()
-    if viewer is None:
-        return None
-    world = _viewer_world(viewer)
-    if world == "lop":
-        return ("lop", viewer, _pick(viewer, world, x, y, scale, wh))
-    if world == "obj":
-        path = _pick(viewer, world, x, y, scale, wh)
-        return ("obj", viewer, hou.node(path) if path else None)
     return None
 
 
