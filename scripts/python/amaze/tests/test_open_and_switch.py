@@ -167,6 +167,51 @@ class SwitchTest(_Pane):
         self.assertEqual("u-anna", self.pane.prefs.library_user)
 
 
+class ShownAfterASwitchTest(_Pane):
+    """A panel on a fixture library, its sidebar a view the user picks rows in."""
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+        self.pane, self.first = self.panel.pane, self.panel.pane.prefs.dir
+
+    def test_sw23_after_a_switch_each_section_shows_the_new_library_as_it_is_on_disk(self):
+        from amaze.core import category
+        from amaze.pane import sidebar
+        other, made = self.library("Sage")
+        for name in (MATERIALS, library_files.CODE):    # the two libraries differ on disk
+            held = documents.Library(other, made["Sage"]).document(name)
+            held.edit("assets", sorted(held.table("assets"))[-1], name="only in " + name)
+            self.assertTrue(held.save())
+        self.pane.choose_tab("material")
+        walls = next(iter(self.pane.material_model.assets[1].categories))
+        self.pane.sidebar.select_key(walls)
+        self.assertEqual(walls, self.pane.sidebar.selected_category_name(), "premise: a row shown")
+        self.assertTrue(self.apply(other, "Sage"))
+        databases = {"material": MATERIALS, "cop": NODES, "code": library_files.CODE,
+                     "gradient": library_files.COLORS}
+        for key, name in databases.items():
+            section, disk = self.pane.sections[key], guard.Guard(other).read(name).document or {}
+            listed = disk.get("assets") or {}
+            model, grid = getattr(self.pane, section.model_attr), getattr(self.pane, section.proxy_attr)
+            shown = getattr(self.pane, sidebar.Sidebar.SIDEBAR_PROXY_ATTRS[key])
+            used = {one for row in listed.values() for one in row.get("categories") or ()}
+            rows = {shown.index(row, 0).data(category.SIDEBAR_KEY_ROLE)
+                    for row in range(shown.rowCount())} - {""}
+            if key != self.pane.current_section:    # the section shown at the switch as it was left
+                self.pane.choose_tab(key)
+            picked = self.pane.sidebar.selected_category_name()
+            self.assertEqual(({row_id: row.get("name") for row_id, row in listed.items()},
+                              True, True), ({str(asset.mat_id): asset.name for asset in model.assets},
+                                            used <= rows, rows <= set(disk.get("categories") or {})),
+                             "the %s section does not show the library on disk" % key)
+            self.assertEqual(sorted(str(asset.mat_id) for asset in model.assets
+                                    if not picked or picked in asset.categories),
+                             sorted(str(grid.mapToSource(grid.index(row, 0)).data(model.IdRole))
+                                    for row in range(grid.rowCount())),
+                             "the %s grid is not filtered on its sidebar's row" % key)
+        self.assertEqual([], self.pane.prefs.file_folders, "the File sidebar shows another's")
+
+
 class OpenTest(_Pane):
     """Requirements on which library opens, and with whom."""
 
