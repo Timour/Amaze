@@ -19,10 +19,12 @@ from amaze.tests import test_support  # noqa: E402
 
 try:    # without Houdini every test here skips
     import hou
-    from amaze.core import debug, dragengine, lop_assign
+    from pxr import UsdShade
+    from amaze.core import debug, dragengine, lop_assign, scene_captures
     from amaze.helpers import helpers
-    from amaze.pane import drag_session, drop_placement, loading
+    from amaze.pane import drag_session, drop_placement, loading, menus
     from amaze.qml import pane as qml_pane
+    from amaze.render import nodes
     from amaze.sections import code as code_section, file as file_section, material as material_section
 except ImportError:
     hou = None
@@ -82,8 +84,8 @@ class _Viewer:
     LOCAL, HEIGHT = QtCore.QPoint(40, 100), 300    # the cursor in the viewer's window, top-left origin
     POINT = (40, 200)    # the same point from the bottom left, as Houdini's picks take it
 
-    def __init__(self, network, under=None):
-        self.network, self.under, self.lit = network, under, []
+    def __init__(self, network, under=None, chosen=()):
+        self.network, self.under, self.lit, self.chosen = network, under, [], list(chosen)
         window = types.SimpleNamespace(mapFromGlobal=lambda _cursor: self.LOCAL, height=lambda: self.HEIGHT)
         self.qtWindow = lambda: window
         self.viewport = types.SimpleNamespace(geometry=lambda: (0, 0, 400, self.HEIGHT),
@@ -107,6 +109,9 @@ class _Viewer:
 
     def setSceneGraphHighlight(self, prims):
         self.lit.append(list(prims))
+
+    def currentSceneGraphSelection(self):
+        return list(self.chosen)    # the prims selected in the viewer
 
 
 class _MenuHost:
@@ -161,7 +166,7 @@ class _Drops(unittest.TestCase):
         self.ids = ["dd_mat", "dd_other"]    # the selection a material drag carries, the pressed one first
         self.pane.loading = types.SimpleNamespace(import_material_into_container=self.material_into,
                                                   selected_material_ids=lambda index: list(self.ids))
-        self.pane.material_model = _Snippets([types.SimpleNamespace(mat_id="dd_mat", name="dd_mat")])
+        self.pane.material_model = _Snippets([types.SimpleNamespace(mat_id=aid, name=aid) for aid in self.ids])
         self.pane.material_sorted_model = QtCore.QIdentityProxyModel()
         self.pane.material_sorted_model.setSourceModel(self.pane.material_model)
         self.pane.category_model = self.pane.material_selection_model = object()
@@ -339,6 +344,129 @@ class ASwapKeepsAUsedMaterialTest(_Drops):
                 self.assertEqual(["mat_a", "mat_b"], self.names(scene.library))
         self.geo.parm("shop_materialpath").set("")
         self.assertTrue(_Library(self).removed(), "a material nothing uses was kept")
+
+
+def _digest(*roots) -> list:
+    """Every node under `roots` and each root: its path, inputs and the raw value of each parm."""
+    return [(node.path(), [str(wire) for wire in node.inputs()],
+             [(parm.name(), str(parm.rawValue())) for parm in node.parms()])
+            for root in roots for node in [root] + list(root.allSubChildren())]
+
+
+class SwapMaterialTest(_Drops):
+    """Swap Material in the tile menu, the one tile's library import making its material in place."""
+
+    def setUp(self):
+        super().setUp()
+        loads = self.pane.loading = loading.Loading(self.pane)
+        loads._import_material_builder = lambda aid, target, context_node=None: self.material_into(
+            aid, context_node or hou.node("/mat"))
+        kept = set(self.names(hou.node("/mat")))    # by name: an undo brings a node back as a new one
+        self.addCleanup(lambda: [test_support.drop_node(node) for node in hou.node("/mat").children()
+                                 if node.name() not in kept])
+        self.addCleanup(hou.clearAllSelected)
+
+    def swap(self, viewer, tiles=1, pick=True) -> bool:
+        """Swap Material on the menu of `tiles` tiles, `viewer` the scene viewer: whether it is offered."""
+        section, grid = self.pane.sections["material"], self.pane.material_sorted_model
+        chosen = [grid.index(row, 0) for row in range(tiles)]
+        entry, = [entry for entry in section.GRID_MENU if entry.handler == "menu_swap_material"]
+        with self.houdini_drop(), mock.patch.object(scene_captures, "scene_viewer", return_value=viewer):
+            menu = menus.Menu(section, (entry,), chosen, chosen[0])
+            if pick and menu.rows[0]["enabled"]:    # a greyed row cannot be picked
+                menu.run(menu.rows[0]["key"])
+        return menu.rows[0]["enabled"]
+
+    def bound(self):
+        """(network, library): /world bound to old_a, /world/ball/cap to old_b, /world/other to old_c."""
+        lopnet = hou.node("/stage").createNode("lopnet")
+        self.addCleanup(test_support.drop_node, lopnet)
+        last = None
+        for path in ("/world/ball/body", "/world/ball/cap", "/world/other"):
+            sphere = lopnet.createNode("sphere")
+            sphere.parm("primpath").set(path)
+            sphere.setFirstInput(last)
+            last = sphere
+        library = lopnet.createNode("materiallibrary")
+        library.setFirstInput(last)
+        assign = lopnet.createNode("assignmaterial")
+        assign.setFirstInput(library)
+        bindings = (("/world", "old_a"), ("/world/ball/cap", "old_b"), ("/world/other", "old_c"))
+        assign.parm("nummaterials").set(len(bindings))
+        for at, (prims, name) in enumerate(bindings, 1):
+            nodes.make_karma_builder(library, name)    # lists itself as a dependent ▸r/material-self-dependent
+            assign.parm("primpattern%d" % at).set(prims)
+            assign.parm("matspecpath%d" % at).set("/materials/" + name)
+        assign.setDisplayFlag(True)
+        return lopnet, library
+
+    def test_dd04_one_undo_takes_back_a_whole_swap_material(self):
+        def an_object():    # the import into /mat, the Material parameter, the old material removed
+            nodes.make_karma_builder(hou.node("/mat"), "dd04_old")
+            self.geo.parm("shop_materialpath").set("/mat/dd04_old")
+            self.geo.setSelected(True, clear_all_selected=True)
+            return _Viewer(hou.node("/obj")), (hou.node("/mat"), self.geo), lambda: (
+                self.geo.parm("shop_materialpath").eval(), hou.node("/mat/dd04_old")) == ("/mat/dd_mat", None)
+
+        def a_prim_bound_from_a_library():    # the import into it, the binding, its old material removed
+            scene = _Library(self)
+            return _Viewer(scene.lopnet, chosen=["/sphere_a"]), (scene.lopnet,), lambda: (
+                self.names(scene.library) == ["dd_mat", "mat_a"])
+
+        def a_prim_bound_from_a_layer():    # a material library made for the import, the binding
+            folder = test_support.scratch_dir("amaze_dd04_")
+            self.addCleanup(shutil.rmtree, folder, True)
+            layer = self.lopnet.createNode("sublayer")
+            layer.setFirstInput(self.sphere)
+            layer.parm("filepath1").set(test_support.put(folder, "look.usda", '#usda 1.0\n'
+                                        'def Scope "looks"\n{\n    def Material "felt"\n    {\n    }\n}\n'
+                                        'over "world"\n{\n    over "ball"\n    {\n'
+                                        '        rel material:binding = </looks/felt>\n    }\n}\n'))
+            layer.setDisplayFlag(True)
+            return _Viewer(self.lopnet, chosen=["/world/ball"]), (self.lopnet,), lambda: sorted(
+                node.type().name() for node in self.lopnet.children()) == [
+                "assignmaterial", "materiallibrary", "sphere", "sublayer"]
+        for scene in (an_object, a_prim_bound_from_a_library, a_prim_bound_from_a_layer):
+            with self.subTest(scene.__name__):
+                viewer, roots, swapped = scene()
+                before = _digest(*roots)
+                hou.undos.clear()
+                self.swap(viewer)
+                self.assertTrue(swapped(), "premise: the swap did not do all of its parts")
+                hou.undos.performUndo()
+                self.assertEqual(before, _digest(*roots), "one undo left part of the swap")
+
+    def test_dd29_swap_material_replaces_the_material_of_the_one_object_or_prim_selected(self):
+        camera = hou.node("/obj").createNode("cam", "dd29_cam")
+        self.addCleanup(test_support.drop_node, camera)
+        objects, prims = _Viewer(hou.node("/obj")), functools.partial(_Viewer, self.lopnet)
+        offered = []
+        for tiles, viewer, selected in ((1, objects, [self.geo]), (2, objects, [self.geo]), (1, objects, []),
+                                        (1, objects, [self.geo, camera]), (1, None, [self.geo]),
+                                        (1, prims(chosen=["/world/ball"]), []), (1, prims(), []),
+                                        (1, prims(chosen=["/world/ball", "/world"]), [])):
+            hou.clearAllSelected()
+            for node in selected:
+                node.setSelected(True)
+            offered.append(self.swap(viewer, tiles, pick=False))
+        self.assertEqual([True, False, False, False, False, True, False, False], offered)
+        nodes.make_karma_builder(hou.node("/mat"), "dd29_old")    # lists itself as a dependent
+        self.geo.parm("shop_materialpath").set("/mat/dd29_old")
+        self.geo.setSelected(True, clear_all_selected=True)
+        self.swap(objects)
+        self.assertEqual(("/mat/dd_mat", None), (self.geo.parm("shop_materialpath").eval(),
+                                                 hou.node("/mat/dd29_old")))
+        lopnet, library = self.bound()
+        self.swap(_Viewer(lopnet, chosen=["/world/ball"]))    # bound through /world, cap bound below it
+        stage, api = lopnet.displayNode().stage(), UsdShade.MaterialBindingAPI
+        self.assertEqual(["/materials/dd_mat", "/materials/dd_mat", "/materials/old_c"], [
+            str(api(stage.GetPrimAtPath(path)).ComputeBoundMaterial()[0].GetPath())
+            for path in ("/world/ball/body", "/world/ball/cap", "/world/other")])
+        self.assertEqual(["dd_mat", "old_c"], self.names(library), "an old material nothing uses was kept")
+        before, imported = self.names(self.lopnet), len(self.imported)
+        self.swap(prims(chosen=["/world/ball"]))    # a prim with no material
+        self.assertEqual((before, imported, [messages.NOTHING_TO_SWAP % "/world/ball"]),
+                         (self.names(self.lopnet), len(self.imported), self.refused[-1:]))
 
 
 class WhereADropGoesTest(_Drops):
