@@ -26,11 +26,12 @@ class MaterialSection(base.AssetSection):
                 "are deleted permanently. Materials already used in a scene are "
                 "not affected." % count)
 
-    GRID_MENU = (    # the section's entries, a divider, then GRID_MENU_TAIL, as in the C01/C01b frames
-        base.MenuEntry("Load Asset to", handler="menu_copy_to", children="copy_to_targets"),
-        base.MenuEntry("Convert", handler="menu_convert_to",
-                  children="convert_targets",
-                  needs="selection_is_convertible"),
+    GRID_MENU = (    # Import is the double-click: into the network the editor shows
+        base.MenuEntry("Import", handler="menu_import", glyph="upload_simple"),
+        base.MenuEntry("Convert", handler="menu_convert_to", children="convert_targets",
+                       needs="selection_is_convertible", glyph="copy_simple"),
+        base.MenuEntry("Swap Material", handler="menu_swap_material", needs="swap_offered",
+                       glyph="swap"),
         base.SEPARATOR,
     ) + base.GRID_MENU_TAIL
 
@@ -41,7 +42,7 @@ class MaterialSection(base.AssetSection):
 
     def click_import_material(self, _index) -> bool:
         """The material import reads the selection and the network under the cursor itself."""
-        self.pane.loading.import_materials("auto")
+        self.pane.loading.import_materials()
         return True
 
     def drop_material_in_viewer(self, index, viewer) -> bool:
@@ -84,13 +85,31 @@ class MaterialSection(base.AssetSection):
         pane.drop_placement.import_materials_into_context(context, ids, position)
         return True
 
-    def copy_to_targets(self, indexes, current) -> tuple:
-        """Where the saved material is loaded, named the way Houdini writes the path: /stage."""
-        return (("/mat", "mat", "", True),
-                ("/stage/materiallibrary", "lop", "", True))    # names the DESTINATION: the copy goes INSIDE a material library under /stage, never stage root
+    @staticmethod
+    def _viewer_selection():
+        """(viewer, object, prim): the ONE object or prim selected in the viewer ▸r/viewer-selection"""
+        from amaze.core import dragengine, scene_captures
+        viewer = scene_captures.scene_viewer()    # the one Capture Image takes
+        world = dragengine.viewer_world(viewer) if viewer is not None else None
+        if world == "obj":    # as Houdini's own object tools read it: the selected object nodes
+            objects = [node for node in hou.selectedNodes()
+                       if node.type().category() == hou.objNodeTypeCategory()]
+            return (viewer, objects[0], "") if len(objects) == 1 else None
+        if world == "lop":
+            prims = viewer.currentSceneGraphSelection()
+            return (viewer, None, prims[0]) if len(prims) == 1 else None
+        return None
 
-    def menu_copy_to(self, indexes, current, payload=None) -> None:
-        self.pane.loading.import_materials("lop" if payload == "lop" else "mat")
+    def swap_offered(self, indexes, current) -> bool:
+        """One tile, and one object or prim selected in the scene viewer."""
+        return len(indexes) == 1 and self._viewer_selection() is not None
+
+    def menu_swap_material(self, indexes, current, payload=None) -> None:
+        chosen = self._viewer_selection()    # read again: the selection may have changed since the menu opened
+        ids = self.pane.loading.selected_material_ids(current) if current is not None else []
+        if chosen is not None and len(ids) == 1:
+            viewer, obj, prim = chosen
+            self.pane.drop_placement.swap_material(viewer, ids, obj, prim)
 
     def _convertible_renderers(self, indexes) -> frozenset:
         """The renderers among these rows that convert: one loop over the rows per menu."""

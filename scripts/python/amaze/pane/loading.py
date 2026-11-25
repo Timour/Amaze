@@ -1,4 +1,4 @@
-"""Library assets put into the scene: a click on a row, Load Asset, a generated material."""
+"""Library assets put into the scene: a click on a row, Import, a generated material."""
 
 import hou
 
@@ -11,12 +11,12 @@ from amaze.render import nodes
 
 
 class Loading:
-    """What a double-click and Load Asset do in the scene; the pane holds it as `loading`."""
+    """What a double-click and Import do in the scene; the pane holds it as `loading`."""
 
     def __init__(self, pane) -> None:
         self.pane = pane
 
-    def click_on_row(self, section, index, payload=None) -> None:
+    def click_on_row(self, section, index) -> None:
         """A double-click or its menu entry on `index`, applied per `section`'s rule."""
         if index is None or not index.isValid():
             return
@@ -25,8 +25,7 @@ class Loading:
             self._cannot_load_here()
             return
         try:
-            applied = self._apply_click_rule(section, rule, index,
-                                             payload)    # the menu entry's extra argument
+            applied = self._apply_click_rule(section, rule, index)
         except hou.Error as refusal:    # Houdini refused, a locked network included; a bug still raises
             debug.exception("click failed - Houdini refused", refusal,
                             section=getattr(section, "key", ""))
@@ -36,24 +35,23 @@ class Loading:
         if not applied:
             self._cannot_load_here()
 
-    def _apply_click_rule(self, section, rule, index, payload=None) -> bool:
-        """One selected node gets the payload first; if it cannot use it, a node is created."""
-        extra = {"basis": payload} if payload else {}    # only when there is one
+    def _apply_click_rule(self, section, rule, index) -> bool:
+        """One selected node gets the tile first; if it cannot use it, a node is created."""
         sel = self._visible_selected_nodes()
         if rule.click_on_node and len(sel) == 1:
             hint = section_base.drop_handler(section, rule.click_on_node)    # the handlers a rule names resolve on the SECTION
-            if bool(hint(index, sel[0], **extra)):
+            if bool(hint(index, sel[0])):
                 return True
             debug.event("interact", "the selected node did not accept the payload - "
                         "trying the network",
                         handler=rule.click_on_node, node=sel[0].path())
         if rule.click_resolve:
             handler = section_base.drop_handler(section, rule.click_resolve)
-            return bool(handler(index, **extra))
+            return bool(handler(index))
         if rule.on_space:
             create = section_base.drop_handler(section, rule.on_space)
             for network in self._view_create_networks():
-                if create(index, network, **extra):
+                if create(index, network):
                     return True
         return False
 
@@ -91,14 +89,13 @@ class Loading:
         except AttributeError:
             return None
 
-    def import_materials(self, target: str = "auto") -> None:
-        """Import the selected materials: `target` "auto" follows the network, "mat"/"lop" force one."""
+    def import_materials(self) -> None:
+        """Import the selected materials into the network the editor shows, the tile's double-click."""
         pane = self.pane
         if not pane.material_model or not pane.category_model:
             return
         self._import_selection(
-            pane.material_sorted_model, pane.material_model,
-            lambda model, index: material_actions.import_asset_to_scene(model, index, target),
+            pane.material_sorted_model, pane.material_model, material_actions.import_asset_to_scene,
             "Amaze Import Materials", messages.NAMELESS_MATERIAL,
             messages.MATERIALS_IMPORT_FAILURES)
 

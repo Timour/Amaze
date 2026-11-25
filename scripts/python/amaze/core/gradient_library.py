@@ -162,6 +162,21 @@ class GradientLibrary(library.AssetLibrary):
             "ramp": self._ramp_of(asset),
         }
 
+    def set_interpolation(self, row: int, basis: str) -> bool:
+        """Put every key of one palette's ramp on `basis` in one save; the user is told of a refusal."""
+        if not self.takes_edits():
+            return False
+        asset = self._changeable(row)
+        if asset is None:
+            return False
+        ramp = self._ramp_of(asset) or _palette_ramp_data(self._colors_of(asset))    # no ramp: its bands
+        bases = [basis] * len(ramp.get("keys") or ())
+        if ramp.get("bases") == bases:
+            return False
+        asset._extra["ramp"] = dict(ramp, bases=bases)    # keys and colours stay where they are
+        self._edited(asset, save=True)
+        return True
+
     def user_categories(self) -> list:
         """(key, name as shown) of each category, in the sidebar's order: what the save lists."""
         held = self._doc()

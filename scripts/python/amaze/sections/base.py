@@ -36,21 +36,23 @@ DropRule = collections.namedtuple(
 
 MenuEntry = collections.namedtuple(    # opens: the asks.Asks window the row opens, greyed where a host lacks it
     "MenuEntry",
-    "label handler needs shown children count_suffix checkable opens",
-    defaults=("", "any", "", "", False, "", ""),
-)
+    "label handler needs shown children count_suffix checkable opens glyph",
+    defaults=("", "any", "", "", False, "", "", ""),
+)    # glyph: the row's Phosphor glyph by its name in Houdini's PhosphorGlyphs, "" for none
 
 
 SEPARATOR = MenuEntry("")  # the empty label is what makes it a divider
 
 
 GRID_MENU_TAIL = (    # the tile's picture rows, Render Image only where one renders, as in C01
-    MenuEntry("Render Image", handler="menu_update_preview", shown="menu_offers_preview"),
-    MenuEntry("Capture Image", handler="menu_capture", needs="menu_capture_enabled"),
-    MenuEntry("Customize", handler="menu_customize", opens="open_customize"),
+    MenuEntry("Render Image", handler="menu_update_preview", shown="menu_offers_preview",
+              glyph="film_slate"),
+    MenuEntry("Capture Image", handler="menu_capture", needs="menu_capture_enabled",
+              glyph="rectangle_dashed"),
+    MenuEntry("Customize", handler="menu_customize", opens="open_customize", glyph="toggle_left"),
     SEPARATOR,
-    MenuEntry("Favorite", handler="menu_favourite"),
-    MenuEntry("Delete", handler="menu_delete", shown="deletes_rows"),
+    MenuEntry("Favorite", handler="menu_favourite", glyph="heart"),
+    MenuEntry("Delete", handler="menu_delete", shown="deletes_rows", glyph="trash"),
 )
 
 
@@ -303,6 +305,9 @@ class Section:
     def double_click(self, index) -> None:
         """Run `click_on_row` with the row's own DropRule; the online section overrides this."""
         self.pane.loading.click_on_row(self, index)
+
+    def menu_import(self, indexes, current, payload=None) -> None:
+        self.pane.loading.click_on_row(self, current)    # `click_on_row`, the same call as a double-click
 
     deletes_rows = False  # False for File: its rows are files it only browses
 

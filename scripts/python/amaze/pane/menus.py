@@ -71,7 +71,7 @@ class Menu:
         self.rows = self._rows(entries, indexes, current, "")
 
     def _rows(self, entries, indexes, current, prefix) -> list:
-        """The table's rows as dicts: key, text, enabled, and separator, checked, rows, icon or chip."""
+        """The table's rows as dicts: key, text, enabled, and separator, checked, rows, glyph or chip."""
         listed = [entry if entry.label else None for entry in entries
                   if not entry.label or resolve(self.context, entry.shown, indexes, current, True)]
         out = []
@@ -85,6 +85,8 @@ class Menu:
                 text += " (%d)" % len(indexes)
             row = {"key": key, "text": text,
                    "enabled": enabled(self.context, entry, indexes, current) and self._answered(entry)}
+            if entry.glyph:
+                row["glyph"] = entry.glyph
             if isinstance(entry.children, tuple):    # a fixed submenu: each row keeps its own shown and needs
                 row["rows"] = self._rows(entry.children, indexes, current, key + "/")
             elif entry.children:

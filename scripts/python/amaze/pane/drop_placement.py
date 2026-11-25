@@ -371,6 +371,30 @@ class DropPlacement:
                     library=liblop.path())
         return anchor, liblop, pressed_vop
 
+    def swap_material(self, viewer, ids, obj, prim: str) -> None:
+        """The pressed material in place of the one on `obj`, else bound to `prim`: one undo step."""
+        from amaze.core import dragengine, lop_assign
+        try:
+            with hou.undos.group("Amaze Swap Material"):
+                if obj is not None:    # its Material parameter, the material imported into /mat
+                    self.pane.loading.assign_material_to_obj(ids[:1], obj)
+                    return
+                stock = dragengine.stock_lop()
+                if stock is None:
+                    debug.refuse(messages.STOCK_LOP_HELPERS_UNAVAILABLE)    # ▸p/refuse-vs-alert
+                    return
+                lopnet = viewer.pwd()
+                children = lopnet.children()
+                shown = lopnet.displayNode() or (children[-1] if children else None)
+                bound = lop_assign.bound_materials_under(    # the nearest binding and every one below
+                    shown.stage() if shown is not None else None, prim)
+                if not bound:    # checked first: nothing is imported for a prim with no material
+                    debug.refuse(messages.NOTHING_TO_SWAP % prim)
+                    return
+                self._assign_dropped(stock, lopnet, shown, ids, ("swap", "", bound))
+        except hou.PermissionError as refusal:    # a locked network, as at a release
+            self._refused(refusal, "material")
+
     def _assign_dropped(self, stock, lopnet, target_lop, ids, choice) -> bool:
         """A `drop_choices` row: import into a library LOP, then assign or swap; for Swap Material."""
         from amaze.core import lop_assign

@@ -23,6 +23,12 @@ Menu {
         root.popup(item, 0, item.height)
     }
 
+    function rowSymbol(row) {    // the row's Phosphor glyph; a colour is Houdini's square glyph in it
+        if (row.chip)
+            return PhosphorGlyphs.square
+        return row.glyph ? PhosphorGlyphs[row.glyph] : ""
+    }
+
     function fill(menu, rows) {    // rows as `pane.menus.Menu` gives them, a submenu's in `rows`
         for (const row of rows) {
             if (row.separator) {
@@ -31,16 +37,18 @@ Menu {
                 const sub = submenu.createObject(menu, { title: row.text })
                 root.fill(sub, row.rows)
                 menu.addMenu(sub)
-                menu.itemAt(menu.count - 1).enabled = row.enabled
+                const opener = menu.itemAt(menu.count - 1)    // the row Houdini's Menu made for it
+                opener.enabled = row.enabled
+                opener.symbol = root.rowSymbol(row)
             } else {
                 // `checked` alone draws the mark: Houdini's MenuItem cannot set checkable in a window menu
                 // owned by the menu, not in it yet: our pick is wired before the menu's own close
                 const item = entry.createObject(menu, { text: row.text, enabled: row.enabled,
-                                                        checked: row.checked === true })
-                if (row.chip) {    // a colour: Houdini's square glyph in it
-                    item.symbol = PhosphorGlyphs.square
+                                                        checked: row.checked === true,
+                                                        symbol: root.rowSymbol(row) })
+                if (row.chip)
                     item.symbolColor = row.chip
-                }    // a ui/ icon is not drawn: Houdini's row takes only its own icon names
+                // a ui/ icon is not drawn: Houdini's row takes only its own icon names
                 const key = row.key
                 item.triggered.connect(() => root.chosen = key)    // before the menu closes it
                 menu.addItem(item)

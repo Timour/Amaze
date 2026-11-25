@@ -206,6 +206,7 @@ can be left undeclared.
 | `children` | a method returning `((label, payload, icon, live[, checked]), ...)`; the icon is a hex colour, painted as a chip at `amazetheme.MENU_CHIP`, a `ui/` icon name, drawn by `ui_helpers.menu_icon` as the Filter menu's are, or empty. A renderer's icon is named once, in `core/renderers.py` |
 | `count_suffix` | appends ` (N)` on a multi-selection |
 | `checkable` | the fact giving the CURRENT state, making it a tick-box whose handler receives the state the user chose |
+| `glyph` | the row's Phosphor glyph by its name in Houdini's `PhosphorGlyphs` (`upload_simple`): the QML menu sets it as the row's `symbol`; the widget menu shows none |
 
 **The Grid Menu** (2026-08-03) is the same idea for right-click. Every
 context declares `GRID_MENU` — a tuple of `MenuEntry` rows, one per
@@ -251,8 +252,7 @@ has no per-type behaviour.
 **THE SELECTION IS A HINT, NOT A VETO.** One visible selected node is
 tried first; a node that cannot accept the drop FALLS THROUGH to
 the creation step. Anything other than exactly one visible selected node
-skips straight to that step. A menu's extra value (Color's ramp basis)
-is passed as a `payload`, and only to handlers that declare they take one.
+skips straight to that step.
 
 **WHICH MODELS A LIBRARY SWITCH REPOINTS is derived, not listed.**
 Each section declares `library_model_attrs` — the panel attributes
@@ -1089,7 +1089,7 @@ pane/library.py           every way onto a library (`pane.library`): open,
 pane/sidebar.py           the sidebar's rows and selection (`pane.sidebar`)
 pane/assets.py            favourite, delete, render, convert, Versions,
                           Customize, export (`pane.assets`)
-pane/loading.py           a click on a row and Load Asset into the scene
+pane/loading.py           a click on a row and Import into the scene
                           (`pane.loading`)
 pane/saving.py            scene nodes saved through D09, versions, snippets,
                           galleries (`pane.saving`)
