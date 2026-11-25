@@ -44,11 +44,13 @@ SEPARATOR = MenuEntry("")  # the empty label is what makes it a divider
 
 
 GRID_MENU_TAIL = (    # the tile's picture rows, Render Image only where one renders, as in C01
-    MenuEntry("Render Image", handler="menu_update_preview", shown="menu_offers_preview"),
-    MenuEntry("Capture Image", handler="menu_capture", needs="menu_capture_enabled"),
+    MenuEntry("Render Image", handler="menu_update_preview", shown="menu_offers_preview",
+              glyph="film_slate"),
+    MenuEntry("Capture Image", handler="menu_capture", needs="menu_capture_enabled",
+              glyph="rectangle_dashed"),
     MenuEntry("Customize", handler="menu_customize", opens="open_customize", glyph="toggle_left"),
     SEPARATOR,
-    MenuEntry("Favorite", handler="menu_favourite"),
+    MenuEntry("Favorite", handler="menu_favourite", glyph="heart"),
     MenuEntry("Delete", handler="menu_delete", shown="deletes_rows", glyph="trash"),
 )
 
