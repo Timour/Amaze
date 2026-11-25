@@ -164,33 +164,24 @@ class Loading:
         return handler.builder_node
 
     def import_material_into_container(self, asset_id, container):
-        """For a drag into a LOP viewport: import into the given materiallibrary."""
+        """For a drop in a LOP viewport: import into the given materiallibrary."""
         return self._import_material_builder(
             asset_id, "lop", context_node=container
         )
 
-    def import_materials_to_mat(self, asset_ids):
-        """Import into /mat, the pressed one first: its builder, or None and the rest not imported."""
-        if not self.pane.material_model or not asset_ids:
-            return None
-        builder = self._import_material_builder(asset_ids[0], "mat")
-        if builder is None:    # the pressed one failed, its reason shown
-            return None
-        for aid in asset_ids[1:]:
-            self._import_material_builder(aid, "mat")
-        return builder
-
     def assign_material_to_obj(self, asset_ids, obj_node) -> bool:
-        """Import to /mat and set the pressed one as `obj_node`'s material; for Swap Material."""
+        """Drop in an OBJ viewport: import to /mat, assigning the pressed material to `obj_node`."""
         if not self.pane.material_model or not asset_ids:
             return False
         parm = obj_node.parm("shop_materialpath")
         if parm is None:    # checked first: an object that takes no material gets no import either
             debug.refuse(messages.OBJECT_HAS_NO_MATERIAL_PARM % obj_node.name())
             return False
-        builder = self.import_materials_to_mat(asset_ids)
-        if builder is None:
+        builder = self._import_material_builder(asset_ids[0], "mat")
+        if builder is None:    # the pressed one failed, its reason shown: the rest are not imported
             return False
+        for aid in asset_ids[1:]:
+            self._import_material_builder(aid, "mat")
         parm.set(builder.path())
         return True
 

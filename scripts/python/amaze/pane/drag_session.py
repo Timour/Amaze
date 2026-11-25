@@ -71,13 +71,14 @@ class DragSession:
             self._end(miss)
 
     def _follow(self) -> None:
-        """The tag, the drop targets and the outline, from one pane lookup. ▸p/drag-move-cost"""
-        pane_tab, pane_kind, _fresh = dragengine.pane_under_cursor_tracked()
+        """The tag, the drop targets, the viewer's highlight and the outline, from one pane lookup."""
+        pane_tab, pane_kind, _fresh = dragengine.pane_under_cursor_tracked()    # ▸p/drag-move-cost
         if self._switch_to_native_drag(pane_tab, pane_kind):
             return
         self.marks.move_tag()
         if self._sidebar is not None:
             self._sidebar.hover()
+        self._update_viewer_hover(pane_tab, pane_kind)    # the glow or the prim highlight; the end clears it
         self._update_drop_outline(pane_tab, pane_kind)    # the outline; the end clears it
 
     def _drop(self, row):
@@ -148,6 +149,13 @@ class DragSession:
             except (AttributeError, hou.OperationFailed):
                 name = ""
         return name or ""
+
+    def _update_viewer_hover(self, pane_tab, pane_type) -> None:
+        """Per move, over a scene viewer, for a row whose rule takes a viewer: what it would drop on."""
+        row = self._pressed_row()
+        rule = self._drop_rule(row) if row is not None else None
+        takes = rule is not None and rule.on_viewer and pane_type == hou.paneTabType.SceneViewer
+        dragengine.viewer_hover(pane_tab if takes else None)
 
     def _update_drop_outline(self, pane_tab, pane_type) -> None:
         """Per move: outline where the node would go; pass the tracked pane. ▸p/drag-move-cost"""

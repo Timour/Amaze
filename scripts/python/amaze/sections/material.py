@@ -3,22 +3,12 @@
 from __future__ import annotations
 
 import hou
-from PySide6 import QtCore
 
 from amaze import messages
 from amaze.actions import materials as material_actions
 from amaze.core import debug, renderers, section_list
 from amaze.render import cop_nodes, nodes as nodes_mod
 from amaze.sections import base
-
-
-def node_drag_mime(node) -> QtCore.QMimeData:
-    """Houdini's own drag of a node: its path as node path, item path, text ▸r/solaris-material-drag"""
-    mime_data = QtCore.QMimeData()
-    for kind in (hou.qt.mimeType.nodePath, hou.qt.mimeType.itemPath):
-        mime_data.setData(kind, node.path().encode("utf-8"))
-    mime_data.setText(node.path())
-    return mime_data
 
 
 class MaterialSection(base.AssetSection):
@@ -47,27 +37,34 @@ class MaterialSection(base.AssetSection):
     DROP = base.DropRule(resolve="drop_material_at_release",    # a material import finds its own destination at the release
                     click_resolve="click_import_material",
                     context="Vop",    # only a network that holds Vop nodes accepts the drop
-                    native_drag="material_drag_into_viewer")
+                    on_viewer="drop_material_in_viewer")    # an object gets it; a prim, Houdini's rows
 
     def click_import_material(self, _index) -> bool:
         """The material import reads the selection and the network under the cursor itself."""
         self.pane.loading.import_materials("auto")
         return True
 
-    def material_drag_into_viewer(self, index, viewer, pane_kind):
-        """Over an object or Solaris viewer: imported, then Houdini's node drag ▸r/solaris-material-drag"""
+    def drop_material_in_viewer(self, index, viewer) -> bool:
+        """Released over a scene viewer: set on the object, or Houdini's rows for the prim; else a miss."""
         from amaze.core import dragengine
-        world = dragengine.viewer_world(viewer) if pane_kind == hou.paneTabType.SceneViewer else None
-        if world is None:    # Amaze's own drag goes on: a release here is a miss
-            return None
         pane = self.pane
-        ids = pane.loading.selected_material_ids(index) if pane.material_model else []
-        material = pane.drop_placement.import_materials_for_viewer(viewer, world, ids) if ids else None
-        debug.event("drag", "material handed to a viewer", world=world, count=len(ids),
-                    material=material.path() if material is not None else "")
-        if material is None:    # its reason is shown
+        if not pane.material_model or index is None or not index.isValid():
             return False
-        return node_drag_mime(material), QtCore.Qt.DropAction.MoveAction
+        ids = pane.loading.selected_material_ids(index)
+        if dragengine.viewer_world(viewer) == "obj":
+            node = dragengine.object_under_cursor(viewer)
+            debug.event("drag", "material release", target="object",
+                        node=node.path() if node is not None else "", count=len(ids))
+            if node is None:    # empty viewport space is a miss: nothing is made
+                return self.reject_drop()
+            with dragengine.drop_group("Amaze Assign Material"):
+                return bool(pane.loading.assign_material_to_obj(ids, node))    # False: no material parameter
+        hit = dragengine.prim_under_cursor(viewer)
+        debug.event("drag", "material release", target="prim",
+                    prim=hit.prim if hit is not None else "", count=len(ids))
+        if hit is None or not hit.prim:
+            return self.reject_drop()
+        return pane.drop_placement.drop_materials_on_prim(ids, viewer, hit)
 
     def drop_material_at_release(self, index) -> bool:
         """Import a dropped material into the network under the cursor: True, or False on none."""

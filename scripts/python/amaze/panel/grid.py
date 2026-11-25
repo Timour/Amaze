@@ -117,8 +117,15 @@ def _open(panel, context, entries, indexes, view) -> None:
     if not entries or view is None:
         return
     current = selected_current(view, indexes)    # the row the menu is about is ALWAYS a selected row
+    engine = menus.Menu(context, entries, indexes, current, host=panel)    # it keeps the rows across Qt's loop
+    run_menu(panel, engine, engine.rows)
 
-    menu, keys, engine = build_menu(panel, context, entries, indexes, current)    # the engine keeps the rows across Qt's loop
+
+def run_menu(panel, engine, rows) -> None:
+    """`rows` of the engine's menu at the cursor, modal; the picked one runs. ▸r/menu-lifetime"""
+    menu = QtWidgets.QMenu(panel)
+    keys = {}
+    _draw(menu, panel, rows, keys)
     chosen = menu.exec_(QtGui.QCursor.pos())
     key = keys.get(chosen)    # a dismissed menu and a never-built entry are both None
     menu.deleteLater()    # after the lookup, which is keyed by its QActions ▸r/menu-lifetime

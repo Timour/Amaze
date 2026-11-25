@@ -1,5 +1,6 @@
-"""The drag and drop engine: Amaze's gesture until Houdini's own drop takes it ▸r/native-drag-paint"""
+"""One self-managed drag gesture, Qt's drag only over a Parameters pane ▸r/viewport-foreign-drag"""
 
+import collections
 import functools
 import importlib.util
 from contextlib import contextmanager
@@ -11,6 +12,11 @@ import hou
 PICK_INTERVAL = 0.03
 
 _logged_once: set = set()    # the `_dbg_once` keys this gesture has recorded
+
+PrimHit = collections.namedtuple(    # a pick in a Solaris viewer; `prim` is "" over empty space
+    "PrimHit", "viewport position prim")
+
+_lit = {"at": 0.0, "viewer": None}    # the last viewer pick, and the viewer whose prim is lit
 
 
 def _dbg(msg, **data):
@@ -31,14 +37,16 @@ def _dbg_once(key: str, msg: str, **data) -> None:
 def begin(section_key: str, ids=()) -> None:
     """Start a gesture: fresh one-time diagnostics, no outline state left from the last."""
     _logged_once.clear()
+    _lit["at"] = 0.0
     _reset_move()
     _move["snap_pos"] = None
     _move["release_snap_pos"] = None    # the previous release has already read it
 
 
 def end() -> None:
-    """End a gesture, however it ended: take the outline off, keep the snap point for the drop."""
+    """End a gesture, however it ended: outline, glow and prim highlight off, the snap point kept."""
     release_snap_pos = _move.get("snap_pos")    # the release reads it after this clears the outline
+    viewer_hover(None)
     ghost_clear()
     _reset_move()
     _move["release_snap_pos"] = release_snap_pos
@@ -542,6 +550,153 @@ def viewer_world(viewer):
     return None
 
 
+def _viewer_point(viewer):
+    """The cursor in the viewer's GL area: logical pixels, bottom-left origin; None. ▸r/pick-boundary"""
+    from PySide6 import QtGui
+    try:
+        window = viewer.qtWindow()
+        local = window.mapFromGlobal(QtGui.QCursor.pos())
+        return local.x(), window.height() - local.y()
+    except (hou.Error, AttributeError, RuntimeError) as exc:
+        _dbg_once("window_failure_logged", "viewer window not read", error=repr(exc))
+        return None
+
+
+def _prim_at(viewer, x, y) -> str:
+    """The prim at a whole-viewer point, instance ids stripped; "" over none. ▸r/pick-boundary"""
+    try:
+        depth, path = viewer.locateSceneGraphPrim(x, y)
+    except hou.Error as exc:
+        _dbg_once("pick_failure_logged", "prim pick refused", error=repr(exc))
+        return ""
+    path = str(path) if depth >= 0 else ""
+    return path.split("[", 1)[0]    # a point instance comes back as `path[ids]`
+
+
+def _viewport_at(viewer, x, y):
+    """(viewport, point inside it) for a whole-viewer point; the current viewport when none holds it."""
+    for viewport in viewer.viewports():
+        left, bottom, width, height = viewport.geometry()    # relative to the viewer's lower left
+        if left <= x < left + width and bottom <= y < bottom + height:
+            return viewport, (x - left, y - bottom)
+    return viewer.curViewport(), (x, y)
+
+
+def prim_under_cursor(viewer):
+    """A PrimHit for the cursor in a Solaris viewer, or None off one or unread. ▸r/pick-boundary"""
+    if viewer is None or viewer_world(viewer) != "lop":
+        return None
+    point = _viewer_point(viewer)
+    if point is None:
+        return None
+    viewport, position = _viewport_at(viewer, *point)
+    return PrimHit(viewport, position, _prim_at(viewer, *point))
+
+
+def object_under_cursor(viewer):
+    """The node under the cursor in an object viewer, or None. ▸r/pick-boundary"""
+    if viewer is None or viewer_world(viewer) != "obj":
+        return None
+    point = _viewer_point(viewer)
+    if point is None:
+        return None
+    viewport, (x, y) = _viewport_at(viewer, *point)    # it takes the viewport's own point
+    try:
+        return viewport.queryNodeAtPixel(x, y)
+    except hou.Error as exc:
+        _dbg_once("pick_failure_logged", "object pick refused", error=repr(exc))
+        return None
+
+
+GLOW_WIDGET = "RE_OpenGLDrawable"    # the host's viewport widget ▸r/viewport-drop-glow
+GLOW_FILE = "$HFS/houdini/pic/Mandril.pic"    # the file the viewport is told about
+
+
+class ViewportGlow:
+    """The host's own drop glow at object level, asked for with drag events. ▸r/viewport-drop-glow"""
+
+    def __init__(self) -> None:
+        self._widget = None    # the viewport told a drag is over it; its window is fetched per send
+        self._data = None
+
+    @staticmethod
+    def _window(widget):
+        import shiboken6
+        if widget is None or not shiboken6.isValid(widget):
+            return None
+        return widget.windowHandle()
+
+    def follow(self) -> None:
+        """Tell the viewport under the pointer that a file is dragged over it; clear off one."""
+        from PySide6 import QtCore, QtGui
+        app = QtCore.QCoreApplication.instance()    # the host's QApplication: it finds the widget at a point
+        pos = QtGui.QCursor.pos()
+        widget = app.widgetAt(pos) if app is not None else None
+        window = self._window(widget) if widget is not None and widget.objectName() == GLOW_WIDGET else None
+        if window is None:
+            self.clear()
+            return
+        if self._data is None:
+            self._data = QtCore.QMimeData()
+            self._data.setUrls([QtCore.QUrl.fromLocalFile(hou.text.expandString(GLOW_FILE))])
+        actions = (QtCore.Qt.DropAction.CopyAction | QtCore.Qt.DropAction.MoveAction
+                   | QtCore.Qt.DropAction.LinkAction)
+        held = (QtCore.Qt.MouseButton.LeftButton, QtCore.Qt.KeyboardModifier.NoModifier)
+        local = window.mapFromGlobal(pos)
+        if widget is not self._widget:
+            self.clear()
+            app.sendEvent(window, QtGui.QDragEnterEvent(local, actions, self._data, *held))
+            self._widget = widget
+        app.sendEvent(window, QtGui.QDragMoveEvent(local, actions, self._data, *held))
+
+    def clear(self) -> None:
+        """Tell the viewport the drag left; the host unlights the object on the next mouse move."""
+        from PySide6 import QtCore, QtGui
+        widget, self._widget = self._widget, None
+        window = self._window(widget)
+        if window is not None:
+            QtCore.QCoreApplication.sendEvent(window, QtGui.QDragLeaveEvent())
+
+
+glow = ViewportGlow()
+
+
+def viewer_hover(viewer, now=None) -> None:
+    """Per move, throttled: an object viewer's glow, a Solaris viewer's prim lit ▸p/drag-move-cost"""
+    now = time.time() if now is None else now
+    if viewer is not None and now - _lit["at"] < PICK_INTERVAL:
+        return
+    _lit["at"] = now
+    world = viewer_world(viewer) if viewer is not None else None
+    if world == "obj":
+        glow.follow()
+    else:
+        glow.clear()
+    _light_prim(viewer if world == "lop" else None)
+
+
+def _light_prim(viewer) -> None:
+    """The prim under the cursor lit in a Solaris `viewer`; None takes the lit one off."""
+    held = _lit["viewer"]
+    if held is not None and (viewer is None or held != viewer):    # off the viewer it lit
+        _set_highlight(held, [])
+        _lit["viewer"] = None
+    if viewer is None:
+        return
+    point = _viewer_point(viewer)
+    prim = _prim_at(viewer, *point) if point is not None else ""
+    _set_highlight(viewer, [prim] if prim else [])    # set again each pick: the viewer drops it
+    _lit["viewer"] = viewer
+
+
+def _set_highlight(viewer, prims) -> None:
+    """Houdini's own prim highlight, which touches no selection. ▸r/pick-boundary"""
+    try:
+        viewer.setSceneGraphHighlight(prims)
+    except hou.Error as exc:    # a closed viewer
+        _dbg_once("highlight_failure_logged", "prim highlight refused", error=repr(exc))
+
+
 @functools.cache
 def _load_stock_lop():
     """`lop_dragdrop.py` loaded from $HH, or None when the load fails; either result is cached."""
@@ -566,6 +721,22 @@ def stock_lop():
                             "were not loaded")
         return None
     return _load_stock_lop()
+
+
+class NodeDragSource:
+    """One node as Houdini's drop scripts read a drag: `dragdroputils.Source`'s shape."""
+
+    def __init__(self, node) -> None:
+        self._node = node
+
+    def hasData(self, token) -> bool:    # noqa: N802 - the name Houdini's scripts call
+        """Whether the drag carries `token`: only a node path."""
+        return token == hou.qt.mimeType.nodePath
+
+    def data(self, token):
+        """The node for a node path, as Houdini's generator yields a drag's items."""
+        if self.hasData(token):
+            yield self._node
 
 
 

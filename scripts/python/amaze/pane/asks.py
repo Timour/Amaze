@@ -34,6 +34,10 @@ class Asks:
         """A colour picked from `start`: `then("#rrggbb")`."""
         raise NotImplementedError
 
+    def ask_drop_choice(self, labels: list, then) -> None:
+        """One of `labels` picked at the cursor: `then(its place in labels)`."""
+        raise NotImplementedError
+
     def open_versions(self, name: str, listed: list, active: int, then) -> None:
         """The Versions dialog over `listed`: `then(the version number picked)`."""
         raise NotImplementedError

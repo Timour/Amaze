@@ -55,12 +55,16 @@ class DropPlacement:
         return False
 
     def _apply_drop_rule(self, rule, section, index, pane_tab, pane_kind) -> bool:
-        """One order for every DropRule: on_node (result final), resolve, on_space ▸o/section-api"""
+        """One order for every DropRule: on_node and on_viewer (final), resolve, on_space ▸o/section-api"""
         from amaze.sections import base as section_base
         if rule.on_node is not None:
             node = self.node_under_cursor(pane_tab, pane_kind)
             if node is not None:
                 return bool(section_base.drop_handler(section, rule.on_node)(index, node))
+        if rule.on_viewer is not None:
+            viewer = self.viewer_under_cursor(pane_tab, pane_kind)
+            if viewer is not None:
+                return bool(section_base.drop_handler(section, rule.on_viewer)(index, viewer))
         if rule.resolve is not None:
             return bool(section_base.drop_handler(section, rule.resolve)(index))
         if rule.on_space is not None:
@@ -154,6 +158,15 @@ class DropPlacement:
             return pane_tab, pane_tab.type()
         except AttributeError:
             return None, None
+
+    def viewer_under_cursor(self, pane_tab=None, pane_type=None):
+        """The scene viewer under the cursor when it shows objects or a LOP network; pass the pane."""
+        from amaze.core import dragengine
+        if pane_tab is None:
+            pane_tab, pane_type = self.pane_and_kind_under_cursor()
+        if pane_tab is None or pane_type != hou.paneTabType.SceneViewer:
+            return None
+        return pane_tab if dragengine.viewer_world(pane_tab) in ("obj", "lop") else None
 
     def node_under_cursor(self, pane_tab=None, pane_type=None) -> hou.Node | None:
         """The node under the cursor, or a Parameter Editor's node; pass the pane ▸p/drag-move-cost"""
@@ -291,31 +304,41 @@ class DropPlacement:
         except AttributeError:
             return None
 
-    def import_materials_for_viewer(self, viewer, world: str, ids):
-        """Materials dragged into an "obj" or "lop" viewer, where its own drop finds them; the pressed one."""
-        try:
-            with hou.undos.group("Amaze Import Materials"):    # a library made for them and the imports: one step
-                if world == "obj":
-                    return self.pane.loading.import_materials_to_mat(ids)
-                return self._import_for_lop_viewer(viewer, ids)
-        except hou.PermissionError as refusal:    # a locked network, as at a release
-            self._refused(refusal, "material")
-            return None
-
-    def _import_for_lop_viewer(self, viewer, ids):
-        """Into the library LOP Houdini's drop picks for the node the viewer shows ▸r/solaris-material-drag"""
+    def drop_materials_on_prim(self, ids, viewer, hit) -> bool:
+        """Imported in one undo step, then Houdini's own rows for the prim offered ▸r/viewport-foreign-drag"""
         from amaze.core import dragengine
         stock = dragengine.stock_lop()
         if stock is None:
             debug.refuse(messages.STOCK_LOP_HELPERS_UNAVAILABLE)    # ▸p/refuse-vs-alert
-            return None
+            return False
         lopnet = viewer.pwd()
         shown = lopnet.displayNode()
         if shown is None:
             children = lopnet.children()
             shown = children[-1] if children else None
-        imported = self._import_into_library_lop(stock, lopnet, shown, ids)
-        return imported[2] if imported is not None else None
+        with hou.undos.group("Amaze Import Materials"):    # a library made for them and the imports
+            imported = self._import_into_library_lop(stock, lopnet, shown, ids)
+        if imported is None:    # its reason is shown
+            return False
+        drop = (viewer, hit.viewport, lopnet.displayNode(), hit.prim,    # the import can show a library
+                dragengine.NodeDragSource(imported[2]), hit.position)
+        tokens, labels, _tips = stock.dropGetChoices(*drop)
+        debug.event("drag", "houdini drop rows", prim=hit.prim, rows=len(tokens))
+        if tokens:
+            self.pane.ui.ask_drop_choice(list(labels), lambda place: self._accept_drop_choice(
+                stock, drop, None if place is None else tokens[place]))
+        return True
+
+    def _accept_drop_choice(self, stock, drop, token) -> None:
+        """The row picked from Houdini's rows: Houdini's own assign, one undo step; None, nothing."""
+        if token is None:    # the menu was dismissed: the import stays, as its own undo step
+            return
+        try:
+            with hou.undos.group("Amaze Assign Material"):
+                stock.dropAccept(*drop, token)
+        except hou.Error as refusal:    # a locked network, or a node gone since the release
+            debug.event("drag", "houdini assign failed", error=str(refusal))
+            debug.refuse(messages.MATERIAL_ASSIGN_FAILED % refusal)
 
     def _import_into_library_lop(self, stock, lopnet, target_lop, ids):
         """`ids` imported into Houdini's own pick of library LOP: (anchor, library, pressed VOP), or None."""

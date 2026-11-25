@@ -54,7 +54,7 @@ from amaze.helpers import helpers, hostos, theme, ui_helpers, wording
 from amaze.utils import rc_calls
 from amaze.core import renderers, tile_icons, users
 from amaze.render import cop_nodes, husk_job, nodes
-from amaze.pane import asks
+from amaze.pane import asks, menus
 from amaze.pane import files as pane_files
 from amaze.pane import (assets as pane_assets, drop_placement, empty_state as pane_empty_state,
                         library as pane_library, loading as pane_loading, online_import,
@@ -424,6 +424,13 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
         """The colour picker, modal: `then` gets "#rrggbb", None for Cancel."""
         chosen = ui_helpers.pick_color(start, self, title)
         then(chosen.name() if chosen is not None else None)
+
+    def ask_drop_choice(self, labels: list, then) -> None:
+        """The engine's menu of `labels` at the cursor, modal: `then` gets the place picked, or None."""
+        choice = menus.Choice(labels)
+        menu = choice.menu(host=self)
+        grid.run_menu(self, menu, menu.rows[0].get("rows", []))
+        then(choice.place)
 
     def open_versions(self, name: str, listed: list, active: int, then) -> None:
         """The Versions dialog, modal: `then` gets the picked version on Select, None on Cancel."""
