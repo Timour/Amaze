@@ -103,9 +103,6 @@ class CopSection(base.AssetSection):
         if len(items) == 1 and cop_nodes.saves_whole_network(node):    # a container alone saves its network
             items = None
 
-        if answer.categories:
-            self.pane.cop_category_model.check_add_category(answer.categories)
-
         result = None
         save_error = None    # no layout wrapper: add_asset emits its own row-insert signals
         try:

@@ -35,14 +35,14 @@ def can_hold_a_library(folder: str) -> bool:
 
 
 def create_library(lib_dir: str) -> bool:
-    """Create `DataBase.json` with its version; True once it exists. ▸p/library-creation"""
-    from amaze.core import documents, guard, library_policy, library_settings
+    """Create `DataBase.json` at this Amaze's format; True once it exists. ▸p/library-creation"""
+    from amaze.core import documents, guard, library_settings
     held = guard.Guard(lib_dir)
     reading = held.read(library_files.MASTER)
     if reading.verdict != guard.FRESH:
         return reading.verdict == guard.FINE
-    version = {"version": library_policy.LIBRARY_VERSION, documents.BY: "",
-               documents.AT: held.stamp()}
+    version = dict(zip(library_settings.STAMPED, library_settings.THIS_AMAZE),
+                   **{documents.BY: "", documents.AT: held.stamp()})
     change = held.change("", setup=True)    # a new library has no user yet
     change.put(reading.ticket, {library_settings.POLICY: {
         library_settings.VERSION_ENTRY: version}})

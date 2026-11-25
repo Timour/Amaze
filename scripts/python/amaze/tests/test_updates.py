@@ -251,8 +251,9 @@ class UpdateTest(_Install):
         prefs_mod.create_library(library)
         newer = updater.Update(updater.NEWER, version="9.9", sentence="newer",
                                library_version=library_policy.LIBRARY_VERSION,
-                               formats=(library_policy.DATABASE_FORMAT + 1, 0))
-        self.assertEqual(messages.UPDATE_LIBRARY_AVAILABLE % ("9.9", "3.1"),
+                               formats=(library_policy.DATABASE_FORMAT + 1,
+                                        library_policy.RECORD_FORMAT))
+        self.assertEqual(messages.UPDATE_LIBRARY_AVAILABLE % ("9.9", "3.4"),
                          updater.offer_line(newer, library))
         unread = updater.Update(updater.NEWER, version="9.9", sentence="newer")
         self.assertEqual("newer", updater.offer_line(unread, library))

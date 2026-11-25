@@ -36,11 +36,18 @@ SHRUNK_FLOOR = 4    # a database this small or smaller in its backup is never ca
 
 
 class Kind:
-    """One database a library holds: its sections, and the section its size is counted by."""
+    """One database a library holds: its sections, the one counted, and how an older one reads."""
 
-    def __init__(self, sections: dict, counted: str = "") -> None:
+    def __init__(self, sections: dict, counted: str = "", upgrade=None) -> None:
         self.sections = dict(sections)
         self.counted = counted
+        self.upgrade = upgrade    # `upgrade(document)`: an older shape read as this Amaze's
+
+
+def _categories_by_id(document: dict) -> dict:
+    """A section database that names its categories, read with their ids."""
+    from amaze.core import category_conversion
+    return category_conversion.database(document)
 
 
 _ASSETS = {"assets": SHARED, "categories": SHARED, "comments": SHARED, "icons": SHARED,
@@ -49,10 +56,10 @@ _ASSETS = {"assets": SHARED, "categories": SHARED, "comments": SHARED, "icons": 
 DATABASES = {
     MASTER: Kind({"policy": SHARED, "settings": SHARED, "users": SHARED, MANIFEST: SHARED,
                   "marks": SHARED}),
-    "materials.json": Kind(_ASSETS, "assets"),
-    "nodes.json": Kind(_ASSETS, "assets"),
-    "code.json": Kind(_ASSETS, "assets"),
-    "colors.json": Kind(_ASSETS, "assets"),
+    "materials.json": Kind(_ASSETS, "assets", _categories_by_id),
+    "nodes.json": Kind(_ASSETS, "assets", _categories_by_id),
+    "code.json": Kind(_ASSETS, "assets", _categories_by_id),
+    "colors.json": Kind(_ASSETS, "assets", _categories_by_id),
     "files.json": Kind({"locations": PER_USER, "paths": SHARED, "comments": SHARED,
                         "icons": SHARED, "favorites": PER_USER}, "locations"),
 }
@@ -331,6 +338,8 @@ class Guard:
             return Reading(name, CORRUPT, why=why)
         if _format_of(document) > branding.LIBRARY_FORMAT:
             return Reading(name, NEWER, document, why="it was saved by a newer Amaze")
+        if kind.upgrade is not None:
+            document = kind.upgrade(document)
         return Reading(name, FINE, document, Ticket(name, raw),
                        shrunk=self._shrunk(name, kind, document))
 
@@ -512,6 +521,7 @@ class Change:
         self._documents = {}    # name -> (ticket, bytes)
         self._forced = {}    # name -> bytes, written whatever is there: a restore, a rebuild
         self._replacing = set()    # forced names whose old bytes are a plain backup, not an undo copy
+        self._kept = set()    # names backed up however recent their newest backup
         self._files = {}    # relative path -> bytes
         self._taken = {}    # relative path -> a file already written whole, moved into place
         self._removals = []
@@ -525,6 +535,10 @@ class Change:
         if not isinstance(ticket, Ticket) or ticket.name not in DATABASES:
             raise Refused("a database is written with the ticket of its read")
         self._documents[ticket.name] = (ticket, encode(document))
+
+    def keep_old(self, name: str) -> None:
+        """Back up a database's old bytes in this change, however recent its newest backup is."""
+        self._kept.add(name)
 
     def replace(self, name: str, document: dict) -> None:
         """Check Library's write: a database whatever is there, its old bytes backed up."""
@@ -576,8 +590,8 @@ class Change:
                     if old:
                         undo = name in self._forced and name not in self._replacing
                         tail = UNDO_TAIL if undo else BACKUP_TAIL
-                        steps += guard._backup_steps(name, old, tail, name not in self._forced,
-                                                     written)
+                        spaced = name not in self._forced and name not in self._kept
+                        steps += guard._backup_steps(name, old, tail, spaced, written)
                     tickets[name] = Ticket(name, data)
                 steps += [{"op": "move", "from": relative, "to": self._trash_target(relative)}
                           for relative in self._trashed]    # first: so a file written to the same path is kept

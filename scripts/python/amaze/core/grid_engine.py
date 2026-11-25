@@ -79,7 +79,7 @@ class GridEngine:
 
     TILE_FIELDS: tuple = ()    #: the record fields the tile dialog edits here, from name, tags and category
 
-    TileSubtitleRole = QtCore.Qt.ItemDataRole.UserRole + 14    #: the tile's second line; 269 is Color's own
+    TileSubtitleRole = QtCore.Qt.ItemDataRole.UserRole + 14    #: the tile's second line; 269 is Category
     PictureRole = QtCore.Qt.ItemDataRole.UserRole + 15    #: `picture_for_view`
 
     def __init__(self, *args, **kwargs) -> None:

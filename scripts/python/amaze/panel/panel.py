@@ -277,7 +277,7 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
             pane.material_model.TileSubtitleRole,
             self.thumblist,
             renderer_icon_role=pane.material_model.RendererIconRole,
-            category_role=pane.material_model.CategoryRole,
+            category_role=pane.material_model.CategoryLabelRole,
             tag_role=pane.material_model.TagRole,
             licence_role=pane.material_model.LicenceRole,
             category_color_role=pane.material_model.CategoryColorRole,
@@ -290,7 +290,7 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
         )
 
         node_roles = dict(
-            category_role=pane.material_model.CategoryRole,
+            category_role=pane.material_model.CategoryLabelRole,
             tag_role=pane.material_model.TagRole,
             licence_role=pane.material_model.LicenceRole,
             category_color_role=pane.material_model.CategoryColorRole,

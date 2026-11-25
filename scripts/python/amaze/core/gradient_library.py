@@ -99,8 +99,6 @@ class GradientLibrary(library.AssetLibrary):
         "comments": "NotesRole",
     }
 
-    CategoryLabelRole = QtCore.Qt.ItemDataRole.UserRole + 13  # the Category column's display string
-
     @staticmethod
     def _asset_from_row(row: dict):
         """A palette is stored as a `Material`, with `colors` and `ramp` among its extra keys."""
@@ -164,9 +162,10 @@ class GradientLibrary(library.AssetLibrary):
         }
 
     def user_categories(self) -> list:
-        """The categories the save dialog lists, with neither spelling of All (`_All`, `All`)."""
-        return [name for name in category.stored_order(self._doc())
-                if isinstance(name, str) and not category.is_all(name)]
+        """(key, name as shown) of each category, in the sidebar's order: what the save lists."""
+        held = self._doc()
+        return [(key, category.display_name(held.get(category.SECTION, key).get("name") or ""))
+                for key in category.stored_order(held)[1:]]
 
     def add_user_gradient(self, name: str, category_name: str,
                           ramp_data: dict, tags: str = "") -> None:
@@ -298,8 +297,7 @@ class GradientLibrary(library.AssetLibrary):
             return ", ".join(
                 str(c.get("name", "")) for c in self._colors_of(asset))
         if role == self.CategoryLabelRole:
-            cats = asset.categories
-            return cats[0] if cats else "Uncategorized"
+            return self.category_name(row) or "Uncategorized"
         return super().row_data(row, role)
 
 

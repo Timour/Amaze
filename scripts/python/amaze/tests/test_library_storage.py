@@ -7,10 +7,13 @@ import shutil
 import tempfile
 import types
 import unittest
+from unittest import mock
 
 from amaze import branding
-from amaze.core import asset_record, documents, guard, library_db, library_files, library_policy
-from amaze.core import layout_conversion, library_settings, material, texstore, tile_icons
+from amaze.actions import library as library_actions
+from amaze.core import asset_record, category_conversion, documents, guard, library_db
+from amaze.core import layout_conversion, library_files, library_policy, library_settings
+from amaze.core import material, texstore, tile_icons
 from amaze.core import versions
 from amaze.helpers import hostos
 from amaze.prefs import prefs as prefs_mod
@@ -245,6 +248,123 @@ class ConversionTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, fresh, True)
         self.assertTrue(prefs_mod.create_library(fresh))
         self.assertFalse(layout_conversion.needs_conversion(fresh), "a new library is 3.0")
+
+
+WOOD_RED = "#aa5500"
+BUILT = {"type": "subnet", "interface": "", "values": {}}
+RECORDS = {"materials/Oak__A1/A1": ("Oak", "Wood"), "materials/Steel__A2/A2": ("Steel", "Metal"),
+           "nodes/Rig__N1/N1": ("Rig", "Rigs")}
+
+
+def by_name(document: dict) -> bytes:
+    """A database or record as an Amaze before category ids wrote it, its format as given."""
+    return (json.dumps(document, indent=1, sort_keys=True) + "\n").encode("utf-8")
+
+
+def bytes_at(path: str) -> bytes:
+    with open(path, "rb") as handle:
+        return handle.read()
+
+
+def lay_out_by_name(folder: str) -> None:
+    """A 3.0 library that names its categories, with a backup saved a minute before the clock."""
+    put(folder, guard.MASTER, by_name({"format": 5, "policy": {"library": {
+        "version": 5, "database": 5, "record": 1}}, "users": {"u1": {"name": "Anna"}}}))
+    put(folder, MATERIALS, by_name({"format": 5, "categories": {
+        "Metal": {"order": 0}, "Wood": {"order": 1, "color": WOOD_RED}, "Empty": {"order": 2}},
+        ASSETS: {"A1": {"name": "Oak", "categories": ["Wood"]},
+                 "A2": {"name": "Steel", "categories": ["Metal"]},
+                 "A3": {"name": "Slate", "categories": ["Stone"]}}}))
+    put(folder, NODES, by_name({"format": 5, "categories": {"Rigs": {"order": 0}},
+                                ASSETS: {"N1": {"name": "Rig", "categories": ["Rigs"]}}}))
+    for relative, (name, named) in RECORDS.items():
+        put(folder, relative + ".mat", b"nodes of " + name.encode())
+        put(folder, relative + ".json", by_name({"format": 1, "builder": BUILT, "metadata": {
+            "name": name, "categories": [named]}}))
+    put(folder, "backup/%s.2026-11-16_095900.bak" % MATERIALS, by_name({"format": 5}))
+
+
+class CategoryIdsTest(unittest.TestCase):
+    """A library whose categories are stored by name given ids, and cut off at each step."""
+
+    def library(self) -> str:
+        folder = tempfile.mkdtemp(prefix="amaze_storage_ids_")
+        self.addCleanup(shutil.rmtree, folder, True)
+        lay_out_by_name(folder)
+        return folder
+
+    def converted(self, folder: str, disk=None) -> dict:
+        try:
+            category_conversion.convert(guard.Guard(folder, disk=disk, now=Clock()), "u1")
+        except faults.Cut:
+            pass
+        return state(folder)
+
+    def test_ls21_converting_categories_to_ids_keeps_them_whole_and_finishes_when_cut_off(self):
+        folder, key = self.library(), category_conversion.id_for
+        old, counting = state(folder), faults.FaultDisk()
+        whole = self.converted(folder, counting)
+        lists = {name: json.loads(whole[name]) for name in (MATERIALS, NODES)}
+        self.assertEqual({key("Metal"): ("Metal", 0, None), key("Wood"): ("Wood", 1, WOOD_RED),
+                          key("Empty"): ("Empty", 2, None), key("Stone"): ("Stone", 3, None)}, {
+            found: (entry["name"], entry["order"], entry.get("color"))
+            for found, entry in lists[MATERIALS]["categories"].items()})
+        self.assertEqual({"A1": "Wood", "A2": "Metal", "A3": "Stone", "N1": "Rigs"}, {
+            asset_id: listed["categories"][row["categories"][0]]["name"]
+            for listed in lists.values() for asset_id, row in listed[ASSETS].items()})
+        for relative, (name, named) in RECORDS.items():
+            self.assertEqual({"format": 2, "builder": BUILT, "category_names": {key(named): named},
+                              "metadata": {"name": name, "categories": [key(named)]}},
+                             json.loads(whole[relative + ".json"]), relative)
+        self.assertEqual({path: data for path, data in old.items() if not path.endswith(".json")},
+                         {path: data for path, data in whole.items() if not path.endswith(".json")})
+        self.assertIn(old[MATERIALS], [bytes_at(os.path.join(folder, "backup", name))
+                                       for name in os.listdir(os.path.join(folder, "backup"))],
+                      "the list as it was is kept, however recent the last backup")
+        for step in range(1, counting.steps + 1):
+            folder = self.library()
+            cut = self.converted(folder, faults.FaultDisk(cut_at=step))
+            for path, data in old.items():
+                self.assertIn(cut.get(path), (data, whole[path]),
+                              "cut at step %d: %s" % (step, path))
+            self.assertEqual(whole, self.converted(folder), "cut at step %d" % step)
+
+    def test_ls22_an_older_amaze_does_not_open_a_library_with_category_ids(self):
+        folder = self.library()
+        test_support.with_fixture_user(folder)
+        preferences = types.SimpleNamespace(dir=folder, library_user=test_support.FIXTURE_USER)
+        self.addCleanup(library_db.release, preferences)
+        self.assertTrue(library_actions.update(preferences))
+        self.assertEqual(library_settings.THIS_AMAZE, library_settings.library_formats(folder))
+        with mock.patch.object(library_policy, "LIBRARY_VERSION", library_policy.FORMAT_3_0[0]):
+            self.assertEqual(library_settings.THIS_AMAZE[0], library_actions.newer_version(
+                preferences), "an Amaze of format 3.0 would open it, and offer no update")
+        with mock.patch.object(branding, "LIBRARY_FORMAT", library_policy.FORMAT_3_0[1]):
+            self.assertEqual([guard.NEWER] * 2, [guard.Guard(folder).read(name).verdict
+                                                 for name in (MATERIALS, NODES)])
+
+    def test_ls23_a_list_or_record_by_name_from_an_older_amaze_gets_the_conversions_ids(self):
+        folder = self.library()
+        old = state(folder)
+        whole = self.converted(folder)
+        held = documents.Library(folder, "u1", now=Clock()).document(MATERIALS)
+        record = os.path.join(folder, "materials", "Oak__A1", "A1.json")
+        put(folder, MATERIALS, old[MATERIALS])    # synced back from an Amaze before ids
+        put(folder, "materials/Oak__A1/A1.json", old["materials/Oak__A1/A1.json"])
+        held.refresh()
+        converted, key = json.loads(whole[MATERIALS]), category_conversion.id_for
+        self.assertEqual({key(name) for name in ("Metal", "Wood", "Empty", "Stone")},
+                         set(converted["categories"]), "premise: the conversion gave these ids")
+        self.assertEqual((converted["categories"], converted[ASSETS]), (
+            held.table("categories"), held.table(ASSETS)))
+        self.assertEqual(([key("Wood")], {key("Wood"): "Wood"}), (
+            asset_record.read(record)[asset_record.METADATA]["categories"],
+            asset_record.read(record)[asset_record.NAMES]))
+        backup = [name for name in os.listdir(os.path.join(folder, "backup"))
+                  if bytes_at(os.path.join(folder, "backup", name)) == old[MATERIALS]]
+        guard.Guard(folder, now=Clock()).restore(MATERIALS, backup[0], "u1")
+        self.assertEqual(converted["categories"], guard.Guard(folder).read(MATERIALS).document[
+            "categories"], "an old backup restored")
 
 
 class LibraryFilesTest(_Library):
@@ -638,9 +758,9 @@ class ThroughThePreferencesTest(_Settings):
                           asset_record.FORMAT), library_settings.THIS_AMAZE,
                          "library_policy.py names a number the code does not write")
         self.assertTrue(prefs_mod.create_library(self.dir))
-        self.assertEqual(library_policy.FORMAT_3_0, library_settings.library_formats(self.dir))
-        self.assertEqual("3.0", library_settings.version_label(
-            library_settings.library_formats(self.dir)))
+        self.assertEqual(library_settings.THIS_AMAZE, library_settings.library_formats(self.dir))
+        self.assertEqual("3.3", library_settings.version_label(
+            library_settings.library_formats(self.dir)), "category ids: three steps above 3.0")
         version, database, record = library_policy.FORMAT_3_0
         for found, shown in (((version, database + 1, record), "3.1"),
                              ((version + 1, database + 1, record + 2), "3.4"),

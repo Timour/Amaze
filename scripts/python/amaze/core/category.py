@@ -1,5 +1,6 @@
 """The Category Model behind the panel's sidebar."""
 
+import uuid
 from typing import Any
 from PySide6 import QtCore
 
@@ -18,7 +19,7 @@ ROW_ROLES = frozenset((int(QtCore.Qt.ItemDataRole.DisplayRole), SIDEBAR_COUNT_RO
                        SIDEBAR_COLOR_ROLE, SIDEBAR_KEY_ROLE))    # every role a category row answers
 
 ALL = "_All"    # the first row: a view of every asset, never stored
-SECTION = "categories"    # {name: {"order": n, "color": c}} in the section's database
+SECTION = "categories"    # {id: {"name": n, "order": n, "color": c}} in the section's database
 
 
 def display_name(stored) -> str:
@@ -27,58 +28,79 @@ def display_name(stored) -> str:
     return text[1:] if text.startswith("_") else text
 
 
-def is_all(name) -> bool:
-    """Whether `name` is the All row, stored `_All` or shown `All`: a view, never a category."""
-    return name in ("All", "_All")
+def is_all(key) -> bool:
+    """Whether `key` is the All row, `_All`, or a name that means it, `All`: never a category."""
+    return key in ("All", "_All")
 
 
-def change_categories(model, names, on_assets, on_sidebar) -> bool:
-    """`on_assets(name)` in one layout change, saved after it, then `on_sidebar(name)`, per name."""
-    names = [name for name in names if name and not is_all(name)]
-    if not names or not model.takes_edits():
+def same_name(one, other) -> bool:
+    """Whether two names are one category's: as shown, capitals aside (`_WIP`, WIP and wip)."""
+    return display_name(str(one).strip()).casefold() == display_name(str(other).strip()).casefold()
+
+
+def change_categories(model, keys, on_assets, on_sidebar) -> bool:
+    """`on_assets(key)` in one layout change, saved after it, then `on_sidebar(key)`, per key."""
+    keys = [key for key in keys if key and not is_all(key)]
+    if not keys or not model.takes_edits():
         return False
     with grid_engine.relayout(model):    # the asset rows change in place
-        for name in names:
-            on_assets(name)
+        for key in keys:
+            on_assets(key)
     model.save()    # after the layout change: a save merging another session's rows inserts them
-    for name in names:
-        on_sidebar(name)
+    for key in keys:
+        on_sidebar(key)
     return True
 
 
-def rename(model, sidebar, names, typed) -> str:
-    """Categories `names` renamed to the one `typed` means; the new stored name, "" for none."""
-    new = sidebar.stored_name(typed)    # a typed WIP is the stored `_WIP`
-    if not new or is_all(new) or not change_categories(
-            model, names, lambda name: model.rename_category(name, new),
-            lambda name: sidebar.rename_category(name, new)):
+def rename(model, sidebar, keys, typed) -> str:
+    """Categories `keys` named `typed`, joined to a category already of that name; its key or ""."""
+    typed = str(typed or "").strip()
+    keys = [key for key in keys if key and not is_all(key)]
+    if not typed or is_all(typed) or not keys:
         return ""
-    return new
+    target = sidebar.key_of(typed) or keys[0]    # the category that stays
+
+    def assets(key):
+        if key != target:
+            model.rename_category(key, target)
+
+    def sidebar_row(key):
+        if key == target:
+            sidebar.set_name(key, typed)
+        else:
+            sidebar.join(key, target)
+    if not change_categories(model, keys, assets, sidebar_row):
+        return ""
+    model.repaint_category_names()
+    return target
 
 
-def remove(model, sidebar, names) -> bool:
-    """Categories `names` taken off every asset, then out of the sidebar; False when refused."""
-    return change_categories(model, names, model.remove_category, sidebar.remove_category)
+def remove(model, sidebar, keys) -> bool:
+    """Categories `keys` taken off every asset, then out of the sidebar; False when refused."""
+    return change_categories(model, keys, model.remove_category, sidebar.remove_category)
 
 
-def assign(model, sidebar, keys, name: str) -> bool:
-    """A drop of the tiles keyed `keys` on category `name`: each one moves into it."""
-    if not name or is_all(name) or not keys or not model.edit_tiles(keys, category=name):
-        return False
-    sidebar.check_add_category(name)
-    return True
+def assign(model, sidebar, keys, key: str) -> bool:
+    """A drop of the tiles keyed `keys` on the category keyed `key`: each one moves into it."""
+    return bool(key and not is_all(key) and keys and model.edit_tiles(keys, category=key))
+
+
+def new_key() -> str:
+    """The id of a new category, made as an asset's is."""
+    return uuid.uuid4().hex
 
 
 def stored_order(held) -> list:
-    """The category names a database holds, in their order, All first."""
+    """The keys of the categories a database holds, in their order, All first."""
     table = held.table(SECTION)
-    names = sorted((name for name in table if not is_all(name)),
-                   key=lambda name: ((table[name] or {}).get("order", 1 << 30), name))
-    return [ALL] + names
+    keys = sorted((key for key, entry in table.items() if isinstance(entry, dict)),
+                  key=lambda key: (table[key].get("order", 1 << 30),
+                                   str(table[key].get("name") or ""), key))
+    return [ALL] + keys
 
 
 class Categories(sidebar_model.SidebarModel):
-    """The category list for one library, backed by DB_FILENAME."""
+    """The category list for one library, backed by DB_FILENAME; each row keyed by its id."""
 
     DB_FILENAME = library_files.MATERIALS  # subclassed by each section over its own database
 
@@ -89,7 +111,9 @@ class Categories(sidebar_model.SidebarModel):
         self._categories = stored_order(self._doc())
         self._seen = list(self._categories)    # the database's order as last read or saved
         self._colour_table = self._read_colours()
-        self._removed = set()    # names this model took out, dropped from the database at its save
+        self._names = self._read_names()
+        self._named = set()    # keys this model named, their names written at its save
+        self._removed = set()    # keys this model took out, dropped from the database at its save
         self._shown = list(self._categories)    # the rows the views last showed; `apply_refresh` compares
         self._renderer_filter = None  # the grid's kind filter, folded; None = none. Counts match the grid
         self._one_kind = False    # the Filter names one kind; under All every category shows
@@ -97,7 +121,7 @@ class Categories(sidebar_model.SidebarModel):
         self.layoutChanged.connect(self.drop_count_cache)
 
     def top_keys(self) -> list:
-        """The stored names below All, in their order; row n shows `_categories[n]`."""
+        """The keys below All, in their order; row n shows `_categories[n]`."""
         return self._categories[1:]
 
     def data(
@@ -110,16 +134,15 @@ class Categories(sidebar_model.SidebarModel):
         key = super().data(index, SIDEBAR_KEY_ROLE)
         if key is None or role == SIDEBAR_KEY_ROLE:
             return key
-        name = key or ALL    # the stored name; All counts every asset as `_All`
 
         if role == QtCore.Qt.ItemDataRole.DisplayRole:
-            return display_name(name)
+            return display_name(self._names.get(key, "") if key else ALL)
 
         if role == SIDEBAR_COUNT_ROLE:
-            return self._category_count(name)
+            return self._category_count(key or ALL)    # All counts every asset as `_All`
 
         if role == SIDEBAR_COLOR_ROLE:
-            return self.color_of(name)
+            return self.color_of(key)
 
     def set_renderer_filter(self, render_filter) -> None:
         """The grid's Filter value as MultiFilterProxyModel gets it: None, one kind, or All's kinds."""
@@ -150,7 +173,7 @@ class Categories(sidebar_model.SidebarModel):
         """True unless the Filter names one kind: All shows every category, empty ones included."""
         return not self._one_kind
 
-    def _category_count(self, raw_name: str) -> int:
+    def _category_count(self, key: str) -> int:
         """How many visible assets are in this category; `_All` counts every visible asset."""
         counts = self._count_cache
         if counts is None:
@@ -162,21 +185,26 @@ class Categories(sidebar_model.SidebarModel):
                 if not self._asset_matches_renderer(asset):
                     continue
                 total += 1
-                for name in set(material.category_names(asset.get("categories"))):
-                    counts[name] = counts.get(name, 0) + 1
+                for one in set(material.category_names(asset.get("categories"))):
+                    counts[one] = counts.get(one, 0) + 1
             counts["_All"] = total
             self._count_cache = counts
-        if raw_name == "_All":
+        if key == "_All":
             return counts.get("_All", 0)
-        return counts.get(raw_name.strip(), 0)
+        return counts.get(key.strip(), 0)
 
     def _doc(self) -> documents.Document:
         """This sidebar's database, as library_db holds it in memory."""
         return library_db.document(self.preferences, self.DB_FILENAME)
 
     def _read_colours(self) -> dict:
-        return {name: str(entry.get("color")) for name, entry in self._doc().table(SECTION).items()
+        return {key: str(entry.get("color")) for key, entry in self._doc().table(SECTION).items()
                 if isinstance(entry, dict) and entry.get("color")}
+
+    def _read_names(self) -> dict:
+        table = self._doc().table(SECTION)
+        return {key: str(entry.get("name") or "") for key, entry in table.items()
+                if isinstance(entry, dict)}
 
     def switch_model_data(self):
         # Same whole-row-set replacement as MaterialLibrary.switch_model_data.
@@ -186,6 +214,7 @@ class Categories(sidebar_model.SidebarModel):
             self._categories = stored_order(self._doc())
             self._seen = list(self._categories)
             self._colour_table = self._read_colours()
+            self._names, self._named = self._read_names(), set()
             self._removed = set()
             self._shown = list(self._categories)    # the model reset has already updated the views
             self.drop_count_cache()
@@ -194,23 +223,24 @@ class Categories(sidebar_model.SidebarModel):
             self.endResetModel()
 
     def apply_refresh(self) -> bool:
-        """Read in the names and colours the database holds now; True when the sidebar changed."""
-        colours = self._read_colours()
+        """Read in the database's names, colours and order; True when the sidebar changed."""
+        colours, names = self._read_colours(), self._read_names()
         recoloured = colours != self._colour_table
-        self._colour_table = colours
+        renamed = [key for key in self.top_keys() if names.get(key) != self._names.get(key)]
+        self._colour_table, self._names = colours, names
         stored = stored_order(self._doc())
         moved, self._seen = stored != self._seen, stored    # a local edit not yet saved is kept
-        names = [name for name in stored if name not in self._removed]
+        keys = [key for key in stored if key not in self._removed]
         self.drop_count_cache()
-        if not moved or names == list(self._categories):
-            if recoloured and self._categories:
+        if not moved or keys == list(self._categories):
+            if (recoloured or renamed) and self._categories:
                 self.dataChanged.emit(
                     self.index(0, 0), self.index(len(self._categories) - 1, 0),
-                    [SIDEBAR_COLOR_ROLE])
-            return recoloured
+                    [SIDEBAR_COLOR_ROLE, QtCore.Qt.ItemDataRole.DisplayRole])
+            return recoloured or bool(renamed)
         self.beginResetModel()
         try:
-            self._categories[:] = names
+            self._categories[:] = keys
             self._mark_rows_shown()
             self._forget_rows()
         finally:
@@ -225,48 +255,42 @@ class Categories(sidebar_model.SidebarModel):
         """Whether its database takes a change now; when not, the user is told why."""
         return library_db.takes_change(self, tell=True)
 
-    def remove_category(self, cat: str) -> None:
-        """Remove a category from the library and from every asset; a no-op for a name that is not present."""
-        if cat not in self._categories or not self._takes():
-            return  # the sidebar strips a leading underscore, so a displayed name may not be a stored one
-        row = self._categories.index(cat)
+    def remove_category(self, key: str) -> None:
+        """Remove a category from the library and every asset; a no-op for a key not present."""
+        if key not in self._categories or not self._takes():
+            return
+        row = self._categories.index(key)
         self.beginRemoveRows(QtCore.QModelIndex(), row, row)
         try:
             self._categories.pop(row)
-            self._forget_row(self._node_ids.get((None, cat)))
+            self._forget_row(self._node_ids.get((None, key)))
         finally:
             self.endRemoveRows()
-        self._removed.add(cat)
+        self._removed.add(key)
         self._mark_rows_shown()
-        self._recolor(cat, "")
+        self._colour_table.pop(key, None)
         self.save()
 
-    def rename_category(self, old: str, new: str) -> None:
-        """Rename a category here and in every asset; renaming onto an existing name merges the two."""
-        if not self._takes():
+    def set_name(self, key: str, name: str) -> None:
+        """Give the category keyed `key` another name; its assets, colour and place stay."""
+        name = str(name or "").strip()
+        if not name or key not in self._categories or self._names.get(key) == name \
+                or not self._takes():
             return
-        merging = new != old and new in self._categories
-        for count in reversed(range(len(self._categories))):
-            if self._categories[count] != old:
-                continue
-            if merging:
-                self.beginRemoveRows(QtCore.QModelIndex(), count, count)
-                try:
-                    del self._categories[count]
-                    self._forget_row(self._node_ids.get((None, old)))
-                finally:
-                    self.endRemoveRows()
-            else:
-                self._categories[count] = new
-                self._rekey_top_row(None, old, new)    # the same row id: a view keeps its selection
-                index = self.index(count, 0)
-                self.dataChanged.emit(index, index)
-        if new != old:
-            self._removed.add(old)
-            self._removed.discard(new)
-        self._mark_rows_shown()
-        self._recolor(old, new)
+        self._names[key] = name
+        self._named.add(key)
+        index = self.index(self._categories.index(key), 0)
+        self.dataChanged.emit(index, index)
         self.save()
+
+    def join(self, key: str, into: str) -> None:
+        """The category keyed `key` taken into the one keyed `into`, which keeps its own colour."""
+        if key == into or key not in self._categories or into not in self._categories:
+            return
+        colour = self._colour_table.get(key)
+        if colour:
+            self._colour_table.setdefault(into, colour)    # a colour only where `into` has none
+        self.remove_category(key)
 
     def move_category(self, from_row: int, to_row: int) -> bool:
         """Move one category below `_All` to another row; the caller saves. ▸r/press-gestures"""
@@ -288,10 +312,10 @@ class Categories(sidebar_model.SidebarModel):
         return True
 
     def sort_categories(self) -> None:
-        """Sort everything below `_All` by label and save; it resets the model, so restore a selection."""
+        """Sort below `_All` by name and save; it resets the model, so restore a selection."""
         head = [c for c in self._categories if c == "_All"]
         rest = sorted((c for c in self._categories if c != "_All"),
-                      key=lambda c: display_name(c).lower())    # by the label: `_WIP` sorts as WIP
+                      key=lambda c: display_name(self._names.get(c, "")).lower())    # `_WIP` as WIP
         ordered = head + rest
         if ordered == self._categories or not self._takes():
             return
@@ -310,63 +334,67 @@ class Categories(sidebar_model.SidebarModel):
             self.endResetModel()
         self._mark_rows_shown()
 
-    def _recolor(self, old_name: str, new_name: str) -> None:
-        """Keep a colour through a rename, or drop it on a removal (empty new_name)."""
-        table = self.colors()
-        color = table.pop(str(old_name), "")
-        if color and new_name:
-            table.setdefault(str(new_name), color)    # a merge keeps the colour of the row that remains
+    def name_of(self, key: str) -> str:
+        """The stored name of the category keyed `key`, "" for none."""
+        return self._names.get(str(key or ""), "")
 
-    def stored_name(self, typed: str) -> str:
-        """The stored category a TYPED name means: itself, or the one shown as it (`_WIP` shows as WIP)."""
-        typed = str(typed or "").strip()
-        if typed in self._categories:
-            return typed
-        label = display_name(typed)
-        return next((name for name in self._categories
-                     if isinstance(name, str) and display_name(name) == label), typed)
+    def key_of(self, name: str) -> str:
+        """The key of the category named `name`, capitals aside, `_WIP` as WIP; "" for none."""
+        name = str(name or "").strip()
+        tops = self.top_keys() if name else []
+        exact = [key for key in tops if self._names.get(key, "").strip() == name]
+        alike = [key for key in tops if same_name(self._names.get(key, ""), name)]
+        return (exact + alike + [""])[0]
 
-    def check_add_category(self, cat: str) -> None:
-        """Add this category if it does not exist yet - one name, its commas included."""
-        cat = cat.strip()
-        if cat == "" or cat in self._categories or not self._takes():
-            return
-        row = len(self._categories)
+    def choices(self) -> list:
+        """(key, name as shown) of every category, by name: what a dialog's Category list offers."""
+        return sorted(((key, display_name(self._names.get(key, ""))) for key in self.top_keys()),
+                      key=lambda pair: pair[1].lower())
+
+    def check_add_category(self, name: str) -> str:
+        """The key of the category named `name`, its commas included, made when there is none."""
+        name = str(name or "").strip()
+        found = self.key_of(name)
+        if not name or found or is_all(name) or not self._takes():
+            return found
+        key, row = new_key(), len(self._categories)
         self.beginInsertRows(QtCore.QModelIndex(), row, row)
         try:
-            self._categories.append(cat)
+            self._categories.append(key)
+            self._names[key] = name
         finally:
             self.endInsertRows()
-        self._removed.discard(cat)
+        self._named.add(key)
         self._mark_rows_shown()
         self.save()
+        return key
 
     def colors(self) -> dict:
-        """{category name: colour} for this library, kept with the names in its database."""
+        """{category key: colour} for this library, kept with the names in its database."""
         return self._colour_table
 
-    def color_of(self, cat: str) -> str:
-        return str(self.colors().get(str(cat), "") or "")
+    def color_of(self, key: str) -> str:
+        return str(self.colors().get(str(key), "") or "")
 
-    def set_color(self, cat: str, color: str) -> None:
+    def set_color(self, key: str, color: str) -> None:
         """Colour one category, or clear it with an empty colour."""
         if not self._takes():
             return
         table = self.colors()
-        cat = str(cat)
+        key = str(key)
         if color:
-            table[cat] = str(color)
+            table[key] = str(color)
         else:
-            table.pop(cat, None)
+            table.pop(key, None)
         self.save()
-        row = self._row_of(cat)
+        row = self._row_of(key)
         if row is not None:
             index = self.index(row, 0)
             self.dataChanged.emit(index, index)
 
-    def _row_of(self, cat: str):
-        for row, name in enumerate(self._categories):
-            if name == cat:
+    def _row_of(self, key: str):
+        for row, held in enumerate(self._categories):
+            if held == key:
                 return row
         return None
 
@@ -377,18 +405,22 @@ class Categories(sidebar_model.SidebarModel):
         held = self._doc()
         with library_db.library_for(self.preferences).holding():
             order = 0
-            for name in self._categories:
-                if is_all(name) or not isinstance(name, str):
+            for key in self._categories:
+                if is_all(key) or not isinstance(key, str):
                     continue
-                entry = {"order": order}
-                if self._colour_table.get(name):
-                    entry["color"] = self._colour_table[name]
-                held.put(SECTION, name, entry)
+                entry = dict(held.get(SECTION, key) or {}, order=order)
+                if key in self._named or not entry.get("name"):
+                    entry["name"] = self._names.get(key, "")    # only a name this model gave
+                if self._colour_table.get(key):
+                    entry["color"] = self._colour_table[key]
+                else:
+                    entry.pop("color", None)
+                held.put(SECTION, key, entry)
                 order += 1
-            for name in self._removed:
-                if name not in self._categories:
-                    held.drop(SECTION, name)
-            self._removed = set()
+            for key in self._removed:
+                if key not in self._categories:
+                    held.drop(SECTION, key)
+            self._removed, self._named = set(), set()
         self._seen = stored_order(held)
         self.drop_count_cache()
         library_db.changed(self.preferences, self.DB_FILENAME)

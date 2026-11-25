@@ -4,13 +4,14 @@ import json
 import os
 import threading
 
-from amaze.core import debug, library_files, material
+from amaze.core import category_conversion, debug, library_files, material
 from amaze.helpers import hostos
 
-FORMAT = 1
+FORMAT = 2
 METADATA = "metadata"    # the row as its database holds it: what a lost database is rebuilt from
 BUILDER = "builder"    # the container's type, its interface as a dialog script, its changed values
-SECTIONS = (METADATA, BUILDER)
+NAMES = "category_names"    # {id: name} of the row's categories, so a rebuild keeps their names
+SECTIONS = (METADATA, BUILDER, NAMES)
 
 LOCK = threading.RLock()    # two writers share the file: the asset save and the metadata writer
 
@@ -35,7 +36,7 @@ def _load(path: str) -> tuple:
         debug.event("library", "asset record corrupt/unreadable - read as empty",
                     file=path, error="not an object")
         return {}, "not an object"
-    return document, ""
+    return category_conversion.record(document), ""
 
 
 def read(path: str) -> dict:
@@ -66,6 +67,19 @@ def with_sections(path: str, sections: dict) -> bytes:
             document.pop(section, None)
     document["format"] = FORMAT
     return encode(document)
+
+
+def in_this_format(path: str) -> bytes:
+    """The bytes a record should hold in this Amaze's format; b"" when it does, or does not read."""
+    try:
+        with open(path, "rb") as handle:
+            now = handle.read()
+    except OSError:
+        return b""
+    if unreadable(path):
+        return b""    # never written over
+    wanted = with_sections(path, {})
+    return b"" if wanted == now else wanted
 
 
 def guard_for(path: str):
@@ -110,8 +124,8 @@ def staged_write(target: str, write) -> tuple:
     return (TAKE, target, scratch)
 
 
-def add_staged(change, held, staged: list, metadata=None) -> None:
-    """Each staged file into `change`; `metadata` fills every record's metadata section."""
+def add_staged(change, held, staged: list, sections=None) -> None:
+    """Each staged file into `change`; `sections` fills these sections of every record."""
     for kind, target, what in staged:
         relative = held.inside(target)
         if not relative:
@@ -119,10 +133,7 @@ def add_staged(change, held, staged: list, metadata=None) -> None:
         if kind == TAKE:
             change.take(relative, what)
         else:
-            sections = dict(what)
-            if metadata is not None:
-                sections[METADATA] = metadata
-            change.put_file(relative, with_sections(target, sections))
+            change.put_file(relative, with_sections(target, dict(what, **(sections or {}))))
 
 
 def discard(staged: list) -> None:

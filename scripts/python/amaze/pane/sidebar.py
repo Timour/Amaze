@@ -87,7 +87,7 @@ class Sidebar:
 
     @staticmethod
     def raw_category_name(index) -> str:
-        """The stored name behind a sidebar row, not the displayed one, "" on All; key every action on it."""
+        """The key behind a sidebar row, never its shown name, "" on All; key every action on it."""
         if index is None or not index.isValid():
             return ""
         return str(index.data(category.SIDEBAR_KEY_ROLE) or "")    # DisplayRole drops a leading "_"
@@ -111,19 +111,6 @@ class Sidebar:
         index = indexes[0] if indexes else self.current()    # current but not selected after a restore
         name = self.raw_category_name(index)
         return "" if category.is_all(name) else name
-
-    @staticmethod
-    def category_names_from(model) -> list[str]:
-        """Every STORED category name, empty ones in and All out, sorted by the label a row shows."""
-        names = []
-        if not model:
-            return names
-        for elem in range(model.rowCount()):    # the source model, never the proxy, which hides empty ones
-            cidx = model.index(elem, 0)
-            name = model.data(cidx, category.SIDEBAR_KEY_ROLE)    # STORED: "_WIP" displays as WIP
-            if name and not category.is_all(name):
-                names.append(str(name))
-        return sorted(names, key=lambda name: category.display_name(name).lower())
 
     def proxies(self) -> tuple:
         """Every asset section's sidebar proxy that exists right now."""
@@ -188,7 +175,7 @@ class Sidebar:
                                 context.colour_title, apply)
 
     def assign_category(self, category_name: str) -> None:
-        """Move the active section's selected assets into a category; a drop on the sidebar."""
+        """Move the active section's selected assets into the category keyed `category_name`."""
         section = self.pane.active_section()
         stack = section.stack() if section is not None else None
         if stack is None:

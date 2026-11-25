@@ -120,7 +120,7 @@ class GradientSection(base.AssetSection):
     holder_node_type = "hmtlxrampc"  # the MaterialX colour ramp
 
     def accepts_category_drop(self, index, name: str) -> bool:
-        return name in self.pane.gradient_model.user_categories()    # excludes any synthetic sidebar row
+        return name in dict(self.pane.gradient_model.user_categories())    # no synthetic row
 
     SIDEBAR_MENU = (  # everything below All is a real user category, so the per-category entries exist only on such a row
         base.MenuEntry("Add", handler="menu_add_category", needs="always", opens="ask_name"),
@@ -193,7 +193,7 @@ class GradientSection(base.AssetSection):
 
     def save_categories(self) -> tuple:
         categories = self.pane.gradient_model.user_categories()
-        return categories, (categories[0] if categories else "")
+        return categories, (categories[0][0] if categories else "")
 
     def commit_save(self, nodes, node, answer) -> None:
         """The node's first color ramp, registered as a user gradient."""
@@ -204,9 +204,6 @@ class GradientSection(base.AssetSection):
             answer.name or node.name(), answer.categories, ramp_data,
             tags=answer.tags
         )
-        if answer.categories:
-            self.pane.gradient_categories_model.check_add_category(    # emits its own row-insert signals
-                answer.categories)
 
     @classmethod
     def save_rank(cls, nodes) -> int:

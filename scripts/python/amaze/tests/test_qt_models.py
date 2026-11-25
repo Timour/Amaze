@@ -48,10 +48,14 @@ class ModelContractTest(_Models):
             ("an add, as a convert and an import end",
              lambda: self.model.add_saved(material.Material(name="Added"))),
             ("a delete", lambda: self.model.remove_rows([self.row("glass")])),
-            ("a drop on a category",
-             lambda: category.assign(self.model, self.sidebar, {self.key("Golden")}, "Karma_Mats")),
-            ("a rename", lambda: category.rename(self.model, self.sidebar, ["usds"], "Shiny")),
-            ("a removal", lambda: category.remove(self.model, self.sidebar, ["Shiny"])),
+            ("a drop on a category", lambda: category.assign(
+                self.model, self.sidebar, {self.key("Golden")}, self.sidebar.key_of("Karma_Mats"))),
+            ("a rename", lambda: category.rename(
+                self.model, self.sidebar, [self.sidebar.key_of("usds")], "Shiny")),
+            ("a join", lambda: category.rename(
+                self.model, self.sidebar, [self.sidebar.key_of("Shiny")], "karma_mats")),
+            ("a removal", lambda: category.remove(
+                self.model, self.sidebar, [self.sidebar.key_of("Karma_Mats")])),
             ("a sort", lambda: (self.sidebar.check_add_category("Aaa"),
                                 self.sidebar.sort_categories())))
         for number, (what, action) in enumerate(actions):
@@ -88,13 +92,14 @@ class ModelContractTest(_Models):
         current = QtCore.QItemSelectionModel.SelectionFlag.NoUpdate
         selection.setCurrentIndex(proxy.index(2, 0), current)
         live = grid_columns.live_current_index(selection)
-        self.assertEqual("usds", live.data(category.SIDEBAR_KEY_ROLE), "premise: a live index")
+        usds = self.sidebar.key_of("usds")
+        self.assertEqual(usds, live.data(category.SIDEBAR_KEY_ROLE), "premise: a live index")
         self.sidebar.switch_model_data()
         self.assertIsNone(grid_columns.live_current_index(selection), "kept across a reset")
         replaced, other = proxy.index(1, 0), category.CategoriesSidebarProxy()
         other.setSourceModel(self.sidebar)
         held = self.sidebar.index(2, 0)
-        self.sidebar.remove_category("usds")
+        self.sidebar.remove_category(usds)
         for model, index in ((other, replaced), (self.sidebar, held)):
             shown = types.SimpleNamespace(model=lambda model=model: model,
                                           currentIndex=lambda index=index: index)

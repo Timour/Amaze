@@ -137,7 +137,7 @@ class CodeSection(base.AssetSection):
         pane = self.pane
         asset = pane.code_model.assets[row]
         question = asks.CodeQuestion(
-            categories=pane.saving.code_category_names(),
+            categories=pane.code_category_model.choices(),
             name=asset.name,
             language=asset.renderer,
             category=asset.categories[0] if asset.categories else "",
@@ -154,8 +154,6 @@ class CodeSection(base.AssetSection):
         saved = {"id": mat_id}
 
         def apply(answer):
-            if answer.category:
-                pane.code_category_model.check_add_category(answer.category)
             got = pane.code_model.save_from_editor(    # NO layout pair: it emits its own model signals
                 saved["id"], answer.code, answer.name, answer.language, answer.category, answer.tags)
             pane.sidebar.refresh()
@@ -193,8 +191,6 @@ class CodeSection(base.AssetSection):
         """The snippet is the current value of the node's code parm."""
         from amaze.helpers import helpers
         parm = helpers.find_code_parm(node)
-        if answer.categories:
-            self.pane.code_category_model.check_add_category(answer.categories)
         self.pane.code_model.add_asset(    # no layout wrapper: add_asset emits its own row-insert signals
             parm.eval(),
             answer.name or node.name(),

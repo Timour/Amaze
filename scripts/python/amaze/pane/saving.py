@@ -228,10 +228,6 @@ class Saving:
             setattr(self.pane.prefs, found.switch, True)
         self.pane.prefs.save()
 
-    def code_category_names(self) -> list[str]:
-        """The Code section's stored category names, as its dialogs list them."""
-        return self.pane.sidebar.category_names_from(self.pane.code_category_model)
-
     def _current_code_category(self) -> str:
         """The sidebar's category while Code shows, "" for All; the code dialog's default."""
         if self.pane.current_section != "code":
@@ -250,7 +246,7 @@ class Saving:
                 )
             return
         question = asks.CodeQuestion(
-            categories=self.code_category_names(), name="", language="VEX",
+            categories=self.pane.code_category_model.choices(), name="", language="VEX",
             category=self._current_code_category(), code="", versions_on=False)    # no versions
         pane.sections["code"].run_code_editor(question, "")    # the first Apply adds the snippet
 

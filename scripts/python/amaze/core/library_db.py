@@ -170,7 +170,7 @@ def _records(key: str, held: documents.Document, moved: list):
 
     def also(change):
         from amaze.core import material
-        for asset_id in held.changed("assets"):
+        for asset_id in _recorded(held):
             row = held.get("assets", asset_id)
             if row is None or not material.is_safe_asset_id(asset_id):
                 continue    # the delete itself removes a deleted row's files
@@ -187,18 +187,38 @@ def _records(key: str, held: documents.Document, moved: list):
     return also
 
 
+def _recorded(held: documents.Document) -> list:
+    """The rows whose records the next save writes: changed, or in a renamed category."""
+    renamed = {key for key in held.changed("categories")
+               if (held.get("categories", key) or {}).get("name")
+               != (held.was("categories", key) or {}).get("name")}
+    return sorted(set(held.changed("assets")) | {
+        asset_id for asset_id, row in held.table("assets").items()
+        if renamed and isinstance(row, dict) and renamed & set(row.get("categories") or ())})
+
+
+def record_sections(held: documents.Document, row: dict) -> dict:
+    """The sections of an asset's record its row gives: its metadata and its categories' names."""
+    from amaze.core import asset_record, material
+    metadata = {field: value for field, value in row.items() if field not in documents.STAMPS}
+    table = held.table("categories")
+    names = {key: str(table[key].get("name") or "")
+             for key in material.category_names(metadata.get("categories"))
+             if isinstance(table.get(key), dict)}
+    return {asset_record.METADATA: metadata, asset_record.NAMES: names}
+
+
 def _record(change, held, own: str, asset_id: str, row: dict) -> bool:
-    """The row's metadata into its `<id>.json`; False with no network or record, or one unreadable."""
+    """The row's sections into its `<id>.json`; False with no files of its own, or unreadable."""
     from amaze.core import asset_record
     path = os.path.join(own, asset_id + library_files.RECORD_SUFFIX)
     if not os.path.exists(path) and not os.path.exists(os.path.join(own, asset_id + ".mat")):
         return False    # no files of its own: nothing to rebuild a lost database from
     if asset_record.unreadable(path):
         return False
-    metadata = {field: value for field, value in row.items() if field not in documents.STAMPS}
-    if asset_record.read(path)[asset_record.METADATA] != metadata:
-        change.put_file(held.guard.inside(path), asset_record.with_sections(
-            path, {asset_record.METADATA: metadata}))
+    sections, found = record_sections(held, row), asset_record.read(path)
+    if any(found[name] != value for name, value in sections.items()):
+        change.put_file(held.guard.inside(path), asset_record.with_sections(path, sections))
     return True
 
 

@@ -5,18 +5,17 @@ from __future__ import annotations
 from PySide6 import QtCore, QtWidgets
 
 from amaze import amazetheme
-from amaze.core import category
 from amaze.helpers import theme, ui_helpers
 
 SAVE_WIDTH = amazetheme.SAVE_WIDTH    # every small save dialog is this wide, whatever its labels ▸p/save-dialog-rows
 
 
-def fill_categories(combo, stored_names, current: str = "",
+def fill_categories(combo, choices, current: str = "",
                     blank: bool = False) -> None:
-    """Rows LABELLED as the sidebar shows them, each carrying its STORED name; `current` selected."""
+    """One row per (key, name as shown) of `choices`, each carrying its key; `current` selected."""
     combo.clear()
-    for name in stored_names:
-        combo.addItem(category.display_name(name), name)
+    for key, shown in choices:
+        combo.addItem(shown, key)
     row = combo.findData(current) if current else -1
     if row >= 0:
         combo.setCurrentIndex(row)
@@ -26,7 +25,7 @@ def fill_categories(combo, stored_names, current: str = "",
 
 
 def chosen_category(combo) -> str:
-    """The STORED name behind the row a category combo shows, "" for none."""
+    """The key behind the row a category combo shows, "" for none."""
     return str(combo.currentData() or "")
 
 

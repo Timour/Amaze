@@ -147,9 +147,6 @@ class MaterialSection(base.AssetSection):
             for n in nodes)
 
     def commit_save(self, nodes, node, answer) -> None:
-        if answer.categories:
-            self.pane.category_model.check_add_category(answer.categories)
-
         renderers = []
         failures = []
         total, done = len(nodes), 0

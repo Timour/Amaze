@@ -16,7 +16,7 @@ class SaveDialog(base_dialog.AssetDialog):
 
     def __init__(
         self,
-        cat_list: list[str],
+        cat_list: list,
         default_cat: str = "",
         name: str | None = None,
         name_enabled: bool = True,

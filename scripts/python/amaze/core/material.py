@@ -156,7 +156,7 @@ def payload_path(preferences, asset_id, suffix: str, section: str, name: str = "
 
 
 def category_names(value) -> list:
-    """A record's `categories` as a list of names; a string is one name, its commas included."""
+    """A row's `categories` as a list: ids, or an older row's names; a string is one, commas kept."""
     if not isinstance(value, (list, tuple)):
         value = [value] if isinstance(value, str) else []
     return [name.strip() for name in value if isinstance(name, str) and name.strip()]

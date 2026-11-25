@@ -1,10 +1,10 @@
 """The library version this Amaze writes; an older Amaze's updater reads this file from a release."""
 
-LIBRARY_VERSION = 5    # 5 is format 3.0: each material and node in its own folder, no `matX`
+LIBRARY_VERSION = 6    # 6: each category under an id; 5 was format 3.0, one folder per asset
 LIBRARY_VERSION_SINCE = "2.0.0"    # the first released Amaze that reads it, quoted by Check for Updates
 LAYOUT_2_0 = 4    # the version of a 2.0 library, which is converted to 3.0 before it is opened
-DATABASE_FORMAT = 5    # `branding.LIBRARY_FORMAT`, the `format` of each database; a test holds them equal
-RECORD_FORMAT = 1    # `asset_record.FORMAT`, the `format` of each `<id>.json`; a test holds them equal
+DATABASE_FORMAT = 6    # `branding.LIBRARY_FORMAT`, the `format` of each database; a test holds them equal
+RECORD_FORMAT = 2    # `asset_record.FORMAT`, the `format` of each `<id>.json`; a test holds them equal
 FORMAT_3_0 = (5, 5, 1)    # the three numbers at format 3.0; each step above one of them adds one to 3.x
 
 

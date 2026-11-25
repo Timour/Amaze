@@ -53,7 +53,7 @@ class AssetLibrary(grid_engine.GridEngine,
     COLUMN_ROLES = {
         "name": QtCore.Qt.ItemDataRole.DisplayRole,
         "type": "RendererLabelRole",
-        "category": "CategoryRole",
+        "category": "CategoryLabelRole",
         "favorite": "FavoriteRole",
         "version": "ActiveVersionRole",
         "comments": "NotesRole",
@@ -83,6 +83,7 @@ class AssetLibrary(grid_engine.GridEngine,
     ActiveVersionRole = QtCore.Qt.ItemDataRole.UserRole + 11  # 267: the active version's name, "" when there are none
 
     CropRole = QtCore.Qt.ItemDataRole.UserRole + 12  # 268 - a capture is viewport-shaped, so it fills the tile
+    CategoryLabelRole = QtCore.Qt.ItemDataRole.UserRole + 13  # 269: the Category column, its name
 
     DB_FILENAME = ""  # the json file in the library dir backing this model; every subclass names its own
 
@@ -91,7 +92,7 @@ class AssetLibrary(grid_engine.GridEngine,
         self.preferences = preferences  # required, and shared with the panel ▸p/delete-both-duplicates
         self._removed_ids = set()    # ids this model removed, dropped from the database at its save
         self._assets = self._read_rows()
-        self._colours_seen = self._colours()
+        self._categories_seen = self._categories_held()
         self._remember_content_state()
 
         self._thumb_rows = {}  # maps each loaded thumbnail's key back to the row to repaint
@@ -118,11 +119,10 @@ class AssetLibrary(grid_engine.GridEngine,
                             asset_id=str(key), error=str(exc))
         return found
 
-    def _colours(self) -> dict:
-        """{category: colour} as the database holds them now."""
-        return {name: str(entry.get("color") or "")
-                for name, entry in self._doc().table(CATEGORIES).items()
-                if isinstance(entry, dict) and entry.get("color")}
+    def _categories_held(self) -> dict:
+        """{category key: (its name, its colour)} as the database holds them now."""
+        return {key: (str(entry.get("name") or ""), str(entry.get("color") or ""))
+                for key, entry in self._doc().table(CATEGORIES).items() if isinstance(entry, dict)}
 
     @staticmethod
     def _asset_from_row(row: dict):
@@ -157,7 +157,7 @@ class AssetLibrary(grid_engine.GridEngine,
         try:
             self._removed_ids = set()
             self._assets = self._read_rows()
-            self._colours_seen = self._colours()
+            self._categories_seen = self._categories_held()
             self._remember_content_state()  # a reload is a fresh read of the library, content included
             self._drop_content_label_caches()
             self.rebuild_thumbs()
@@ -234,13 +234,16 @@ class AssetLibrary(grid_engine.GridEngine,
 
     def category_color(self, row: int) -> str:
         """The colour set on this asset's category, "" for none."""
-        if not 0 <= row < len(self._assets):
-            return ""
-        cats = self._assets[row].categories
-        if not cats:
-            return ""
-        entry = self._doc().get(CATEGORIES, cats[0])
-        return str((entry or {}).get("color") or "") if isinstance(entry, dict) else ""
+        return self._category_field(row, "color")
+
+    def category_name(self, row: int) -> str:
+        """The name of this asset's category as stored, "" for none."""
+        return self._category_field(row, "name")
+
+    def _category_field(self, row: int, field: str) -> str:
+        cats = self._assets[row].categories if 0 <= row < len(self._assets) else None
+        entry = self._doc().get(CATEGORIES, cats[0]) if cats else None
+        return str(entry.get(field) or "") if isinstance(entry, dict) else ""
 
     def _thumb_key(self, row: int, spec=None):
         """Shared-RAM-cache key for one row's picture; every input to the picture belongs in it."""
@@ -328,19 +331,19 @@ class AssetLibrary(grid_engine.GridEngine,
         return True
 
     def tile_category(self, row: int) -> str:
-        """This asset's category, as the Customize dialog's Category dropdown shows it."""
+        """The key of this asset's category, as the Customize dialog's Category list holds it."""
         if not 0 <= row < len(self._assets):
             return ""
         cats = self._assets[row].categories or []
         return str(cats[0]) if cats else ""
 
-    def set_tile_category(self, row: int, name: str, save: bool = True) -> bool:
-        """Move one asset to category `name`, then save; a blank or a refused change is a no-op."""
-        name = (name or "").strip()
-        asset = self._changeable(row) if name else None
-        if asset is None or asset.categories == [name]:
+    def set_tile_category(self, row: int, key: str, save: bool = True) -> bool:
+        """Move one asset to the category keyed `key`, then save; blank or refused: no change."""
+        key = (key or "").strip()
+        asset = self._changeable(row) if key else None
+        if asset is None or asset.categories == [key]:
             return False
-        asset.categories = [name]    # one name, its commas included
+        asset.categories = [key]
         self._edited(asset, save)
         return True
 
@@ -495,6 +498,8 @@ class AssetLibrary(grid_engine.GridEngine,
             return asset.categories
         if role == self.CategoryColorRole:
             return self.category_color(row)
+        if role == self.CategoryLabelRole:
+            return self.category_name(row)
 
         if role == self.TagRole:
             return asset.tags
@@ -578,12 +583,17 @@ class AssetLibrary(grid_engine.GridEngine,
         self._insert_added_rows(added)
         self._apply_field_changes(fields)
         self._drop_rows(gone)
-        colours = self._colours()
-        recoloured = colours != self._colours_seen
-        self._colours_seen = colours
+        held, seen = self._categories_held(), self._categories_seen
+        self._categories_seen = held
+        recoloured = {key: one[1] for key, one in held.items()} != {
+            key: one[1] for key, one in seen.items()}
+        renamed = {key: one[0] for key, one in held.items()} != {
+            key: one[0] for key, one in seen.items()}
         if recoloured:
             self.repaint_category_colours()
-        return bool(added or fields or gone or recoloured)
+        if renamed:
+            self.repaint_category_names()
+        return bool(added or fields or gone or recoloured or renamed)
 
     def repaint_category_colours(self) -> None:
         """Repaint every tile's category band, for that role only: a colour never resizes a column."""
@@ -591,6 +601,12 @@ class AssetLibrary(grid_engine.GridEngine,
             self.dataChanged.emit(
                 self.index(0, 0), self.index(self.rowCount() - 1, 0),
                 [self.CategoryColorRole])
+
+    def repaint_category_names(self) -> None:
+        """Repaint every row's Category column, once a category has another name."""
+        self._categories_seen = self._categories_held()
+        if self.rowCount():
+            self._repaint_rows(0, self.rowCount() - 1, [self.CategoryLabelRole])
 
     def _apply_field_changes(self, fields: list) -> None:
         """Apply other sessions' `(id, field, value)` changes to the records in place; notify views."""
@@ -677,8 +693,9 @@ class AssetLibrary(grid_engine.GridEngine,
         guard = library_db.guard_of(self.preferences)
         with library_db.library_for(self.preferences).holding():
             self._stage_rows(self._doc())
+        sections = library_db.record_sections(self._doc(), row)
         saved = library_db.save(self.preferences, self.DB_FILENAME, also=lambda change: (
-            asset_record.add_staged(change, guard, staged, metadata=row)))
+            asset_record.add_staged(change, guard, staged, sections)))
         if not saved:
             asset_record.discard(staged)
             for record in records:
@@ -903,13 +920,13 @@ class AssetLibrary(grid_engine.GridEngine,
         with library_db.library_for(self.preferences).holding():
             self._stage_rows(self._doc())    # else the next save performs the failed delete
 
-    def remove_category(self, cat: str) -> None:
-        """Take this category off every asset in the library. Does not save."""
+    def remove_category(self, key: str) -> None:
+        """Take the category keyed `key` off every asset in the library. Does not save."""
         for asset in self._assets:
-            asset.remove_category(cat)
+            asset.remove_category(key)
 
     def rename_category(self, old: str, new: str) -> None:
-        """Rename this category on every asset in the library. Does not save."""
+        """Move every asset in the category keyed `old` into the one keyed `new`. Does not save."""
         for asset in self._assets:
             asset.rename_category(old, new)
 

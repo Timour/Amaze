@@ -334,8 +334,8 @@ def _save_model_rows(prefs, model, items, going=()) -> bool:
         if trash is not None:
             trash(change)
         for _model, asset, _entry, _row, written in items:
-            asset_record.add_staged(change, held, written,
-                                    metadata=json.loads(json.dumps(asset.get_as_dict())))
+            asset_record.add_staged(change, held, written, {
+                asset_record.METADATA: json.loads(json.dumps(asset.get_as_dict()))})
     saved = False
     try:
         saved = bool(library_db.save(prefs, model.DB_FILENAME, also=files))

@@ -148,7 +148,7 @@ Plus one *view mode*, not a section:
 | `update_preview(indexes)` | Update Render — offered only where `offers_preview_update` is True, i.e. where a preview is RENDERED rather than derived from the row's own content |
 | `delete_rows(indexes)` | Delete, highest row first — offered only where `deletes_rows` is True (File has no Delete: its rows are files on disk) |
 | `delete_prompt(count, name)` | what deleting costs, in this section's words — the wording lives in the UI text register |
-| `sidebar_key(index)` | what a **Sidebar** row is keyed by, read from the row's `category.SIDEBAR_KEY_ROLE` — a stored category name, the folder a File row shows, an online category, `""` on All; File reads a registered location through `location_key(index)` |
+| `sidebar_key(index)` | what a **Sidebar** row is keyed by, read from the row's `category.SIDEBAR_KEY_ROLE` — a category's id, the folder a File row shows, an online category, `""` on All; File reads a registered location through `location_key(index)` |
 | `sidebar_colour(name)` / `set_sidebar_colour(name, colour)` | read and write that row's colour — one implementation, which asks the section's sidebar list (`color_of`, `set_color`); each list keeps it in its own store (a category's in the section's database, a File location's in its location record), and `repaint_grid_colours()` repaints the tiles after a change |
 | `takes_file_drops` + `accepts_file_drop` / `drop_folder` / `move_files_to` / `can_undo_move` / `menu_undo_move` | a **Grid** tile released on a **Sidebar** folder moves the selected files there on disk (File only; `core/file_moves.py`), and Undo Move puts the last move back |
 | `menu_copy` / `menu_paste` / `menu_paste_enabled` | File's **Grid** menu: Copy puts the selected files on the system clipboard (`pane/files.copy_files`); Paste copies the clipboard's files into the folder shown on the same worker (`file_moves.copy`), asking once about names in use |
@@ -395,9 +395,9 @@ adapter, and return the uniform one if no adapter does better.
 
 ### 4c. The **Database Engine**: guard, documents, library_db {#o/keyed-store}
 
-Library format 3.0 (library version 5, `Current Library Format: 3.0`) keeps six
-databases at the library root, each a JSON document of named sections,
-every section a table keyed by id or key:
+Library format 3.3 (library version 6, database format 6, record format 2,
+`Current Library Format: 3.3`) keeps six databases at the library root, each a
+JSON document of named sections, every section a table keyed by id or key:
 
 | File | Sections |
 |---|---|
@@ -424,6 +424,16 @@ change of several files is being applied.
 - **`core/library_conversion.py`** is the only code that knows format 3's
   files: Package Import uses it to read an old package's builder. A format 3
   file left in a library is an unknown file to Check Library.
+- **A category is an id, its name one field**: a section's `categories` holds
+  id → `{name, order, color}`, and each row's `categories` lists ids, so a
+  rename writes one name. An asset's `<id>.json` keeps its categories' names
+  beside the ids (`category_names`), for a rebuild from records.
+  **`core/category_conversion.py`** is the only code that knows categories
+  by name: the guard's read gives a database by name its ids, the record's
+  read does the same for an `<id>.json`, and the ids come from the name
+  (uuid5), so every computer, an old backup and a late sync agree. The
+  version stamp (`library_settings.stamp_version`) writes the converted
+  files first, as one change, with the old lists in `backup/`.
 
 - **A location is an id, its path one property**: `files.json` ▸
   `paths` holds id → path, and every per-file key is
@@ -706,7 +716,7 @@ model (§5, the one model set). It is in `core/grid_engine.py`.
 | **Material** | One asset record (id, name, categories, tags, renderer, date, …). **NOT a favourite and NOT a tile icon**: those are the database's `favorites` (per user) and `icons` sections. **One category per asset** — multi-category was removed 2026-07-27; tags are the many-to-many axis. | `core/material.py` |
 | **Tile Icon** | A chosen Feather symbol on a colour, for assets with nothing to render; the section's database ▸ `icons` is the only store, keyed by asset id (a file key in `files.json`). Composed in memory for every section (`tile_icons.compose_for`); no file is written. | `core/tile_icons.py` |
 | **Comment** | A page of text + to-dos per asset (the Comments pane, toggled from the toolbar). Stored in the section's database ▸ `comments`, keyed by asset id or file key; a comment item belongs to its author. WHICH asset the pane shows is decided by the context — `Section.comment_subject(index)`, one of the four area hooks — because only the context can map an index through its proxy and read its roles; the panel finds the live current index and delegates. `takes_comments` is the separate, selection-free half that the toolbar chip reads. EVERY section takes notes, Color included - a gradient carries a full-uuid4 identity in `id` (from creation, or from the schema-8 migration that creates one for any row loaded without it — a construction-time backfill did this until 2026-08-20; the field was `uid` before 2026-08-09 and the VALUE never changed, so existing keys still resolve), keyed `gradient:<value>`. | `core/notes.py`, `panel/notes_panel.py` |
-| **Category Colour** | A colour on a category, painted under every tile in it and down its sidebar row. Stored beside the category names in the same JSON, so the grid reads it from the connector's shared data dict. | `core/category.py` → `Categories.set_color` |
+| **Category Colour** | A colour on a category, painted under every tile in it and down its sidebar row. Stored with the category's name under its id in the same JSON, so the grid reads it from the connector's shared data dict. | `core/category.py` → `Categories.set_color` |
 | **Sidebar Model** | What every Sidebar list is: All on row 0, the top rows, and the rows under a row, each row keyed by its parent row and its key. It answers the key role, `index_of(key)` and the reorder calls; the Categories Model, the Folders Model and the online source list are built on it. | `core/sidebar_model.py` → `SidebarModel` |
 | **Categories Model** | The Sidebar list for an Asset section, a Sidebar Model with top rows only. | `core/category.py` → `Categories` |
 | **Sidebar Proxy** | Presents the STORED category order (no sort — the manual order, 2026-08-14) and hides empty categories (renderer-aware). All four category sidebars go through it, Color included; the save dialog's dropdown keeps its own alphabetical sort. | `category.CategoriesSidebarProxy` |
@@ -728,6 +738,8 @@ model (§5, the one model set). It is in `core/grid_engine.py`.
 decides what this build may do: a library with a newer version is not opened,
 and the update is offered. A 2.0 library (version 4) is converted to 3.0 once,
 on the user's yes, before this Amaze opens it (`core/layout_conversion.py`).
+A 3.x library with categories by name is given ids at open, with no question,
+by the same step that records this Amaze's format (`core/category_conversion.py`).
 A library from before 2.0 has no `DataBase.json` and is not opened, and
 `prefs.create_library` writes the current version into a new library.
 
@@ -827,7 +839,7 @@ miss (red X); a drop that opens a menu shows no icon.
 
 An asset is two files in its own folder, `<section>/<name>__<id>/`:
 `<id>.mat`, a Houdini-native node archive (via `saveItemsToFile`), and
-`<id>.json`, its `metadata` and its `builder` (library format 3.0).
+`<id>.json`, its `metadata`, its `builder` and its categories' names (library format 3.3).
 Recoverable with vanilla Houdini without the plugin, but not portable
 outside Houdini (not `.mtlx`/`.usda`).
 
@@ -883,7 +895,7 @@ offers Overwrite. The value is stored in the library, so two machines
 using one library have the same value. A policy that cannot be read
 allows no save-over at all (`library_settings.policy_readable`, LS-20),
 checked in the function every caller calls. `library` holds the
-library's version (5, shown as `3.0`).
+library's version (6, shown with the database and record formats as `3.3`).
 
 ### Housekeeping semantics (settled 2026-07-31)
 
@@ -1098,6 +1110,7 @@ core/documents.py         each database as keyed sections, the merge
 core/library_db.py        one Library per open library, the save timer
 core/library_conversion.py  the only code that knows format 3's files
 core/layout_conversion.py  the only code that knows the 2.0 layout: converts it to 3.0
+core/category_conversion.py  the only code that knows categories by name: gives them ids
 render/nodes.py           MATERIAL ENGINE (build_karma_material) + save/import
 render/cop_nodes.py       the Node section's contexts and containers: which context
                           a network holds, which container to create, and

@@ -311,10 +311,11 @@ def _restore(preferences, mat_id: str, number: int, base: dict, ledger: dict) ->
         preferences, mat_id, library_files.MATERIALS)
     with asset_record.LOCK:    # no metadata write happens between the read and the copy
         document = {"format": asset_record.FORMAT}
-        metadata = asset_record.read(target)[asset_record.METADATA]
+        found = asset_record.read(target)
         builder = _builder_of(archive)
-        if metadata:
-            document[asset_record.METADATA] = metadata
+        for kept in (asset_record.METADATA, asset_record.NAMES):
+            if found[kept]:
+                document[kept] = found[kept]
         if builder:
             document[asset_record.BUILDER] = builder
         with _staged_record(archive, document) as staged:

@@ -140,20 +140,6 @@ class SidebarModel(RowMoves, QtCore.QAbstractItemModel):
             self._by_key.setdefault(key, set()).add(row_id)
         return row_id
 
-    def _rekey_top_row(self, parent_id, old, new) -> None:
-        """Give the top row keyed `old` the key `new` and keep its row id, so its index stays valid."""
-        row_id = self._node_ids.pop((parent_id, old), None) if old != new else None
-        if row_id is None:
-            return
-        self._node_ids[(parent_id, new)] = row_id
-        self._nodes[row_id] = (parent_id, new)
-        showing = self._by_key.get(old)
-        if showing is not None:
-            showing.discard(row_id)
-            if not showing:
-                del self._by_key[old]
-        self._by_key.setdefault(new, set()).add(row_id)
-
     def _children(self, row_id) -> list:
         """A row's child keys; the first call takes them from `child_keys`."""
         kids = self._kids.get(row_id)

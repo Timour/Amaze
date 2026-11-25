@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import types
 
-from amaze.core import documents, guard, library_db, library_files, library_policy
+from amaze.core import category_conversion, debug, documents, guard, library_db, library_files
+from amaze.core import library_policy
 
 POLICY, SETTINGS, MARKS = "policy", "settings", "marks"
 VERSION_ENTRY = "library"    # in `policy`: {"version": n}, the library's own version
@@ -24,7 +25,7 @@ def _folder(library_dir: str):
 
 THIS_AMAZE = (library_policy.LIBRARY_VERSION, library_policy.DATABASE_FORMAT,
               library_policy.RECORD_FORMAT)    # the three numbers this Amaze writes
-_STAMPED = ("version", "database", "record")    # their fields in the policy's `library` entry
+STAMPED = ("version", "database", "record")    # their fields in the policy's `library` entry
 
 
 def version_label(version, database: int = 0, record: int = 0) -> str:
@@ -40,7 +41,7 @@ def library_formats(library_dir: str) -> tuple:
         return 0, 0, 0
     reading = guard.Guard(str(library_dir)).read(library_files.MASTER)
     entry = ((reading.document or {}).get(POLICY) or {}).get(VERSION_ENTRY) or {}
-    found = [entry.get(field) if isinstance(entry, dict) else None for field in _STAMPED]
+    found = [entry.get(field) if isinstance(entry, dict) else None for field in STAMPED]
     found = [one if isinstance(one, int) and not isinstance(one, bool) and one > 0 else 0
              for one in found]
     if not found[0]:
@@ -54,12 +55,19 @@ def library_version(library_dir: str) -> int:
 
 
 def stamp_version(preferences) -> bool:
-    """Record this Amaze's three format numbers in the library's policy; True once they are there."""
+    """Bring the library's files to this Amaze's format, then record its three numbers there."""
     held = _master(preferences)
-    wanted = dict(zip(_STAMPED, THIS_AMAZE))
+    wanted = dict(zip(STAMPED, THIS_AMAZE))
     entry = held.get(POLICY, VERSION_ENTRY) or {}
-    if {field: entry.get(field) for field in _STAMPED} == wanted:
+    if {field: entry.get(field) for field in STAMPED} == wanted:
         return True
+    try:
+        written = category_conversion.convert(library_db.guard_of(preferences),
+                                              library_db.user(preferences))
+    except (guard.Refused, OSError, ValueError) as exc:    # no stamp: the next open tries again
+        debug.event("library", "categories not given ids", dir=str(preferences.dir), error=str(exc))
+        return False
+    debug.event("library", "categories given ids", dir=str(preferences.dir), files=written)
     return held.put(POLICY, VERSION_ENTRY, wanted) and \
         bool(library_db.save(preferences, library_files.MASTER))
 

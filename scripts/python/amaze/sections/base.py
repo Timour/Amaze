@@ -334,7 +334,7 @@ class Section:
         return True
 
     def sidebar_key(self, index) -> str:
-        """The key of this row, never its label: a category shown "WIP" is stored "_WIP"; "" on All."""
+        """The key of this row, never its label: a category's id; "" on All."""
         return self.pane.sidebar.raw_category_name(index)
 
     def colour_key(self, index) -> str:
@@ -476,28 +476,28 @@ class AssetSection(Section):
         def add(name):
             if st is None or not name:
                 return
-            name = ",".join(st.categories.stored_name(part) for part in name.split(","))    # WIP is `_WIP`
             st.categories.check_add_category(name)    # no relayout wrapper: begin/endInsertRows notify the view
 
         self.pane.ui.ask_name("Add Category", "", add)
 
     def menu_rename_category(self, indexes, current, payload=None) -> None:
-        names = [self.sidebar_key(index) for index in indexes]    # STORED, read now: rows move before an OK
-        old = names[0] if names else ""    # the field starts with the current name
+        keys = [self.sidebar_key(index) for index in indexes]    # read now: rows move before an OK
+        st = self.stack()
+        old = st.categories.name_of(keys[0]) if st is not None and keys else ""
         self.pane.ui.ask_name(
-            "Rename Category", "" if category.is_all(old) else category.display_name(old),
-            lambda new_name: self._rename_categories(names, new_name))
+            "Rename Category", category.display_name(old),    # the field starts with the name
+            lambda new_name: self._rename_categories(keys, new_name))
 
-    def _rename_categories(self, names, new_name) -> None:
-        """Rename the categories stored as `names` to `new_name`, assets first, then the sidebar rows."""
+    def _rename_categories(self, keys, new_name) -> None:
+        """Name the categories keyed `keys` `new_name`, joined to one already of that name."""
         st = self.stack()
         if st is None or not new_name:
             return
         shown = self.shown_sidebar_key()    # the grid's row: a right press moved only the sidebar
-        new_name = category.rename(st.model, st.categories, names, new_name)
-        if not new_name:
+        kept = category.rename(st.model, st.categories, keys, new_name)
+        if not kept:
             return
-        self.select_sidebar_key(new_name if shown in names else shown)    # a renamed row is found by its new name
+        self.select_sidebar_key(kept if shown in keys else shown)    # a joined row: the one kept
         self.pane.sidebar.refresh()    # updates counts and empty-category hiding after the rename
 
     exports_selection = True
@@ -560,13 +560,13 @@ class AssetSection(Section):
                 else (None, None))
 
     def save_categories(self) -> tuple:
-        """(this section's STORED categories, the sidebar's row - only while it shows this section)."""
+        """(this section's (key, name) choices, the sidebar's row while it shows this section)."""
         st = self.stack()
         if st is None:
             return [], ""
         pane = self.pane
         current = pane.sidebar.selected_category_name() if pane.active_section() is self else ""
-        return pane.sidebar.category_names_from(st.categories), current
+        return st.categories.choices(), current
 
     def stack(self):
         model = self._p(self.model_attr)
@@ -651,11 +651,11 @@ class AssetSection(Section):
         self.pane.sidebar.refresh()
 
     def select_category(self, index) -> None:
-        """Filter the grid to the clicked row's category, always by the STORED name."""
+        """Filter the grid to the clicked row's category, always by its key."""
         st = self.stack()
         if st is None:
             return
-        stored = self.sidebar_key(index)    # never index.data(): a category stored `_WIP` displays `WIP`
+        stored = self.sidebar_key(index)    # never index.data(), its name
         st.proxy.setFilter(st.model.CategoryRole,
                         "" if category.is_all(stored) else stored)    # `""` makes All match everything, not a literal category no asset has
 

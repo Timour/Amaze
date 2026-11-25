@@ -10,7 +10,7 @@ from PySide6 import QtCore, QtGui, QtTest, QtWidgets  # noqa: E402
 
 from amaze import messages
 from amaze.core import category, code_library, debug, gradient_library, library, library_db
-from amaze.core import library_files, locations, material, sidebar_model
+from amaze.core import grid_columns, library_files, locations, material, sidebar_model
 from amaze.tests import test_support
 
 try:    # without Houdini the Name window's test skips
@@ -38,6 +38,10 @@ class _Edits(unittest.TestCase):
     def key(self, name: str) -> str:
         return next(str(asset.mat_id) for asset in self.model.assets if asset.name == name)
 
+    def cat(self, name: str) -> str:
+        """The key of the category named `name`, made when there is none."""
+        return self.sidebar.check_add_category(name)
+
     def row(self, name: str) -> int:
         return self.model.find_asset_row_by_id(self.key(name))
 
@@ -57,12 +61,13 @@ class AssetEditingTest(_Edits):
         chosen = {self.key("gold"), self.key("glass")}
         self.assertEqual(1, self.model.remove_rows([self.row("glass")]))    # gone since chosen
         self.model.set_tile_name(self.row("plastic"), "Aaa")    # rows move: it now sorts first
-        self.assertTrue(self.model.edit_tiles(chosen, category="Picked"))
+        picked = self.cat("Picked")
+        self.assertTrue(self.model.edit_tiles(chosen, category=picked))
         gold = self.row("gold")
         self.model.toggle_favs([gold, -1, self.model.rowCount()])
         self.assertEqual(1, self.model.set_tile_icons([gold, -1], {"face": "generic"}))
         self.assertEqual(0, self.model.remove_rows([-1, self.model.rowCount()]))
-        picked = [a.name for a in self.model.assets if a.categories == ["Picked"]]
+        picked = [a.name for a in self.model.assets if a.categories == [picked]]
         starred = [a.name for a in self.model.assets
                    if locations.is_favourite(self.prefs, a.mat_id, MATERIALS)]
         faced = [a.name for row, a in enumerate(self.model.assets) if self.model.tile_icon(row)]
@@ -92,36 +97,42 @@ class AssetEditingTest(_Edits):
     def test_ed22_an_asset_has_one_category_and_a_mixed_field_keeps_each_own(self):
         two = {self.key("gold"), self.key("Bricks")}
         self.model.edit_tiles(two, name="One", tags="x", category="")
-        self.assertEqual((["usds"], ["Karma_Mats"], "gold"), (
+        self.assertEqual(([self.cat("usds")], [self.cat("Karma_Mats")], "gold"), (
             self.field("gold", "categories"), self.field("Bricks", "categories"),
             self.model.assets[self.row("gold")].name))
-        self.model.edit_tiles(two, category="Red, Brick")
-        self.assertEqual([["Red, Brick"]] * 2, [self.field(name, "categories")
-                                                 for name in ("gold", "Bricks")])
+        red = self.cat("Red, Brick")
+        self.model.edit_tiles(two, category=red)
+        self.assertEqual(([[red]] * 2, "Red, Brick"), (
+            [self.field(name, "categories") for name in ("gold", "Bricks")],
+            self.sidebar.name_of(red)))
         self.assertEqual(["A"], material.Material.from_dict({"categories": ["A", "B"]}).categories)
 
-    def test_ed23_renaming_a_category_renames_it_everywhere_and_onto_a_name_merges(self):
-        usds = [a.mat_id for a in self.model.assets if a.categories == ["usds"]]
-        self.sidebar.set_color("usds", "#ff8000")
-        self.assertEqual("Shiny", category.rename(self.model, self.sidebar, ["usds"], "Shiny"))
-        self.assertEqual(([["Shiny"]] * len(usds), ["Karma_Mats", "Shiny"], "#ff8000"), (
-            [self.model.assets[self.model.find_asset_row_by_id(i)].categories for i in usds],
-            self.sidebar.top_keys(), self.sidebar.color_of("Shiny")))
-        self.sidebar.check_add_category("_WIP")
-        self.assertEqual("_WIP", category.rename(self.model, self.sidebar,
-                                                 ["Shiny", "Karma_Mats"], "WIP"))
-        self.assertEqual("", category.rename(self.model, self.sidebar, ["_WIP"], "All"))
-        self.assertEqual((["_WIP"], {"_WIP"}), (self.sidebar.top_keys(), {
-            name for row in self.on_disk()["assets"].values() for name in row["categories"]}))
+    def test_ed23_renaming_a_category_changes_only_its_name_and_onto_a_used_name_joins(self):
+        usds, karma = self.cat("usds"), self.cat("Karma_Mats")
+        members = [a.mat_id for a in self.model.assets if a.categories == [usds]]
+        self.sidebar.set_color(usds, "#ff8000")
+        self.assertEqual(usds, category.rename(self.model, self.sidebar, [usds], "Shiny"))
+        saved, column = self.on_disk(), grid_columns.KEYS.index("category")
+        self.assertEqual(([[usds]] * len(members), [karma, usds], "#ff8000", "Shiny", "Shiny"), (
+            [saved["assets"][key]["categories"] for key in members], self.sidebar.top_keys(),
+            saved["categories"][usds]["color"], saved["categories"][usds]["name"],
+            self.model.index(self.row("gold"), column).data()))
+        self.assertEqual(karma, category.rename(self.model, self.sidebar, [usds], "karma_mats"))
+        saved = self.on_disk()
+        self.assertEqual(([karma], {karma}, "Karma_Mats", "#ff8000"), (
+            self.sidebar.top_keys(), {key for row in saved["assets"].values()
+                                      for key in row["categories"]},
+            saved["categories"][karma]["name"], self.sidebar.color_of(karma)))
 
     def test_ed24_removing_a_category_takes_it_off_every_asset_and_drops_its_colour(self):
-        self.sidebar.set_color("usds", "#ff8000")
+        usds, karma = self.cat("usds"), self.cat("Karma_Mats")
+        self.sidebar.set_color(usds, "#ff8000")
         rows = self.model.rowCount()
-        self.assertTrue(category.remove(self.model, self.sidebar, ["usds"]))
+        self.assertTrue(category.remove(self.model, self.sidebar, [usds]))
         saved = self.on_disk()
-        self.assertEqual((rows, ["Karma_Mats"], ""), (
-            len(saved["assets"]), list(saved["categories"]), self.sidebar.color_of("usds")))
-        self.assertNotIn(["usds"], [row["categories"] for row in saved["assets"].values()])
+        self.assertEqual((rows, [karma], ""), (
+            len(saved["assets"]), list(saved["categories"]), self.sidebar.color_of(usds)))
+        self.assertNotIn([usds], [row["categories"] for row in saved["assets"].values()])
 
     def drop(self, proxy, key: str, row: int) -> None:
         """The sidebar row keyed `key` dragged between rows, before shown row `row`."""
@@ -132,24 +143,25 @@ class AssetEditingTest(_Edits):
     def test_ed25_the_sidebar_keeps_its_dragged_or_sorted_order_and_a_refused_move_goes_back(self):
         proxy = category.CategoriesSidebarProxy()
         proxy.setSourceModel(self.sidebar)
-        self.sidebar.check_add_category("_WIP")
-        self.drop(proxy, "_WIP", 1)
+        karma, usds, wip = self.cat("Karma_Mats"), self.cat("usds"), self.cat("_WIP")
+        self.drop(proxy, wip, 1)
         test_support.reset_database_singletons()
-        self.assertEqual(["_WIP", "Karma_Mats", "usds"], category.Categories(self.prefs).top_keys())
+        self.assertEqual([wip, karma, usds], category.Categories(self.prefs).top_keys())
         self.sidebar.sort_categories()
         self.assertEqual(["All", "Karma_Mats", "usds", "WIP"],
                          [proxy.index(row, 0).data() for row in range(proxy.rowCount())])
         self.prefs.library_user = ""
         with mock.patch.object(debug, "refuse"):
-            self.drop(proxy, "_WIP", 1)
-        self.assertEqual(["Karma_Mats", "usds", "_WIP"], self.sidebar.top_keys())
+            self.drop(proxy, wip, 1)
+        self.assertEqual([karma, usds, wip], self.sidebar.top_keys())
 
     def test_ed26_a_categorys_colour_is_kept_with_the_library_and_shows_on_its_tiles(self):
-        self.sidebar.set_color("usds", "#4af2a1")
+        usds = self.cat("usds")
+        self.sidebar.set_color(usds, "#4af2a1")
         shown = {self.model.index(row, 0).data(self.model.CategoryColorRole)
-                 for row, asset in enumerate(self.model.assets) if asset.categories == ["usds"]}
+                 for row, asset in enumerate(self.model.assets) if asset.categories == [usds]}
         self.assertEqual(({"#4af2a1"}, "#4af2a1"),
-                         (shown, self.on_disk()["categories"]["usds"]["color"]))
+                         (shown, self.on_disk()["categories"][usds]["color"]))
 
     def test_ed27_a_tiles_face_is_kept_in_its_database_only(self):
         before = test_support.library_state(self.prefs.dir)
@@ -169,22 +181,23 @@ class AssetEditingTest(_Edits):
         self.assertEqual({}, fresh.tile_icon(glass))
 
     def test_ed28_customize_writes_one_save_for_the_whole_selection(self):
-        keys = {self.key(name) for name in ("gold", "glass", "Bricks")}
+        keys, shelf = {self.key(name) for name in ("gold", "glass", "Bricks")}, self.cat("Shelf")
         with mock.patch.object(self.model, "save", wraps=self.model.save) as saves:
-            self.model.edit_tiles(keys, tags="probe", category="Shelf")
-            self.model.edit_tiles(keys, tags="probe", category="Shelf")
+            self.model.edit_tiles(keys, tags="probe", category=shelf)
+            self.model.edit_tiles(keys, tags="probe", category=shelf)
         self.assertEqual(1, saves.call_count)
 
     def test_ed29_an_edit_the_library_refuses_is_not_shown_as_done_and_the_user_is_told(self):
         gold, code = self.key("gold"), code_library.CodeLibrary(self.prefs)
         snippet = code.add_snippet("print(1)", "Loop", "Python", "", "")
+        usds, karma = self.cat("usds"), self.cat("Karma_Mats")
         gestures = (
-            lambda: self.model.edit_tiles({gold}, name="Other", tags="t", category="C"),
-            lambda: category.rename(self.model, self.sidebar, ["usds"], "Shiny"),
-            lambda: category.remove(self.model, self.sidebar, ["usds"]),
-            lambda: category.assign(self.model, self.sidebar, {gold}, "Karma_Mats"),
+            lambda: self.model.edit_tiles({gold}, name="Other", tags="t", category=karma),
+            lambda: category.rename(self.model, self.sidebar, [usds], "Shiny"),
+            lambda: category.remove(self.model, self.sidebar, [usds]),
+            lambda: category.assign(self.model, self.sidebar, {gold}, karma),
             lambda: self.sidebar.check_add_category("New"),
-            lambda: self.sidebar.set_color("usds", "#ff0000"),
+            lambda: self.sidebar.set_color(usds, "#ff0000"),
             lambda: self.model.toggle_favs([self.row("gold")]),
             lambda: code.save_from_editor(snippet, "print(2)", "Spin", "Python", "", ""))
 
@@ -205,6 +218,22 @@ class AssetEditingTest(_Edits):
             library_db.refresh(self.prefs)
             self.assertFalse(self.model.edit_tiles({gold}, name="Other"))
         self.assertEqual(messages.CHANGE_REFUSED_READ_ONLY % "Materials", told.call_args.args[0])
+
+    def test_ed32_a_section_never_gets_two_categories_of_one_name(self):
+        usds, wood = self.cat("usds"), self.cat("Wood")
+        self.assertEqual([usds, usds, wood, wood, ""], [self.sidebar.check_add_category(name)
+                                                        for name in ("usds", "USDS", "wood",
+                                                                     " Wood ", "All")])
+        code = code_library.CodeLibrary(self.prefs)
+        sidebar = code_library.CodeCategories(self.prefs)
+        loops = sidebar.check_add_category("Loops")
+        snippet = code.add_snippet("print(1)", "Loop", "Python",
+                                   sidebar.check_add_category("loops"), "")
+        self.assertEqual(([loops], [(loops, "Loops")]), (
+            code.assets[code.find_asset_row_by_id(snippet)].categories, sidebar.choices()))
+        self.assertEqual(["Karma_Mats", "usds", "Wood"],
+                         sorted((entry["name"] for entry in self.on_disk()["categories"].values()),
+                                key=str.lower))
 
     def test_ed30_the_shipped_snippets_and_palettes_are_added_once_and_only_when_taken(self):
         for model, sidebar, seed in (
