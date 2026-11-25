@@ -44,7 +44,7 @@ def _collected(model, mat_id) -> dict:
     sources = {kind: path
                for kind, path in model.asset_files(mat_id).items()
                if kind not in DERIVED and os.path.exists(path)}
-    record = asset.get_as_dict()
+    record = dict(asset.get_as_dict(), categories=model.named_categories(asset))    # names travel
     textures = {}
     own = model.asset_directories(mat_id).get("folder", "")
     for token in (record.get("textures") or ()):
@@ -263,7 +263,7 @@ def read_manifest(path: str) -> dict:
         return manifest_from(bundle, path)
 
 
-def import_package(models, prefs, path: str, restore: bool = False) -> dict:
+def import_package(models, categories, prefs, path: str, restore: bool = False) -> dict:
     """Import a package with new ids, `restore` replacing curated presets; PackageError if incomplete."""
     with open_bundle(path) as bundle:    # one open file for the manifest, the check and the import
         manifest = manifest_from(bundle, path)
@@ -275,13 +275,13 @@ def import_package(models, prefs, path: str, restore: bool = False) -> dict:
             raise PackageError("%s is not whole: %s"
                                % (os.path.basename(path),
                                   "; ".join(problems)))
-        return import_entries(models, prefs, bundle,
+        return import_entries(models, categories, prefs, bundle,
                               manifest.get("entries", ()), restore)
 
 
-def import_entries(models, prefs, bundle, entries,
+def import_entries(models, categories, prefs, bundle, entries,
                    restore: bool = False) -> dict:
-    """Import chosen entries of an open package; a failing entry adds to `refused`, the rest go on."""
+    """Import entries of an open package; `categories` is each section's list. A failure is alone."""
     if not getattr(prefs, "dir", ""):
         raise PackageError("no library set - nowhere to import into")
     needed = unpacked_bytes(bundle, [arc for entry in entries for arc in _arcs(entry)])
@@ -289,14 +289,14 @@ def import_entries(models, prefs, bundle, entries,
         raise PackageError(messages.PACKAGE_TOO_LARGE % (
             wording.byte_size(needed), wording.byte_size(MAX_UNPACKED_BYTES)))
     summary = {"imported": 0, "skipped": 0, "replaced": 0, "files": 0, "refused": 0,
-               "categories": {}, "problems": []}
+               "problems": []}
     staged = []    # appended rows and their written files, committed once per model by `_commit_assets`
     for entry in entries:
         name = str((entry.get("record") or {}).get("name")
                    or entry.get("name") or "?")
         try:
             if entry.get("type") == "asset":
-                appended = _import_asset(models, prefs, bundle, entry,
+                appended = _import_asset(models, categories, prefs, bundle, entry,
                                          restore, summary)
                 if appended is not None:
                     staged.append(appended)
@@ -380,14 +380,12 @@ def _commit_assets(prefs, staged, summary, restore: bool = False) -> None:
             summary["refused"] += len(items)
             continue
         summary["replaced"] += len(going)
-        for _model, asset, entry, row, _written in items:
+        for _model, asset, entry, _row, _written in items:
             model._content_state[str(asset.mat_id)] = model._content_stat(asset.mat_id)    # saved now
             page = entry.get("note") or {}
             section = str(entry.get("section") or "")
             if page.get("items"):
                 pages[notes.note_key(section, asset.mat_id)] = page["items"]
-            summary["categories"].setdefault(section, set()).update(
-                material.category_names(row.get("categories")))
             summary["imported"] += 1
     if not pages:
         return
@@ -402,18 +400,19 @@ def _commit_assets(prefs, staged, summary, restore: bool = False) -> None:
             if notes.note_key(str(item[2].get("section") or ""), item[1].mat_id) in pages))
 
 
-def _import_asset(models, prefs, bundle, entry, restore, summary):
+def _import_asset(models, categories, prefs, bundle, entry, restore, summary):
     """One asset entry's row into its model and its files into scratches, unsaved; None when skipped."""
     section = str(entry.get("section") or "")
-    model = models.get(section)
-    if model is None:
+    model, listed = models.get(section), categories.get(section)
+    if model is None or listed is None:
         summary["skipped"] += 1
         return
     row = dict(entry.get("record") or {})
     row.pop("id", None)
     row.pop("uid", None)    # the old id key, which readers copy into `id`
-    if not (restore and row.get("curated")):    # a restored preset keeps its own category
-        row["categories"] = ["Import"]
+    named = material.category_names(row.get("categories")) \
+        if restore and row.get("curated") else ["Import"]    # a restored preset keeps its own
+    row["categories"] = [listed.check_add_category(name) for name in named[:1]]    # before its row
     asset = model._asset_from_row(row)
     pictures = entry.get("comment_pictures") or {}
     own = (material.claim_asset_dir(prefs, model.DB_FILENAME, asset.mat_id, asset.name)

@@ -11,7 +11,8 @@ import zipfile
 from unittest import mock
 
 from amaze import messages
-from amaze.core import gradient_library, guard, library, library_db, matx_sources, notes
+from amaze.core import category, gradient_library, guard, library, library_db, matx_sources
+from amaze.core import notes
 from amaze.core import packages
 from amaze.tests import faults, test_support
 
@@ -62,6 +63,8 @@ class _Library(unittest.TestCase):
         self.addCleanup(library_db.release, self.prefs)
         self.models = {"material": library.MaterialLibrary(self.prefs),
                        "gradient": gradient_library.GradientLibrary(self.prefs)}
+        self.categories = {"material": category.Categories(self.prefs),
+                           "gradient": gradient_library.GradientCategories(self.prefs)}
 
     def package(self, *made, manifest=None, name="p.amazepkg") -> str:
         """A package of `(entry, members)` pairs; `manifest`: its own, raw bytes, or False for none."""
@@ -78,7 +81,7 @@ class _Library(unittest.TestCase):
         return path
 
     def bring(self, path, restore=False) -> dict:
-        return packages.import_package(self.models, self.prefs, path, restore)
+        return packages.import_package(self.models, self.categories, self.prefs, path, restore)
 
     def state(self) -> dict:
         return test_support.library_state(self.lib)
@@ -224,7 +227,8 @@ class PackageTest(_Library):
         self.assertIsNot(shared.fp, bundle.fp, "the import shares the previews' reader")
         with mock.patch.object(zipfile.ZipFile, "read", lambda zf, name, pwd=None: reads.append(
                 getattr(name, "filename", name)) or real_read(zf, name, pwd)):
-            summary = packages.import_entries(self.models, self.prefs, bundle, [entry])
+            summary = packages.import_entries(self.models, self.categories, self.prefs, bundle,
+                                              [entry])
         self.assertEqual(1, summary["imported"])
         self.assertGreater(len(steps), 0, "no progress was shown")
         self.assertEqual(sorted(steps), steps)
@@ -249,7 +253,7 @@ class PackageTest(_Library):
         asset, = test_support.arrived(model, before)
         record = asset.get_as_dict()
         self.assertNotEqual("%032x" % 1, str(asset.mat_id))
-        self.assertEqual(["Import"], list(record["categories"]))
+        self.assertEqual(["Import"], model.named_categories(asset))
         self.assertEqual("kept", record["made_by_a_newer_amaze"])
         self.assertEqual(["Brick 1__%s" % asset.mat_id],
                          sorted({name.split("/")[0] for name in self.folders("Brick 1")}))
@@ -279,6 +283,24 @@ class PackageTest(_Library):
             summary = self.bring(self.package(brick()))
         self.assertEqual(1, summary["imported"])
         self.assertIn(messages.PACKAGE_COMMENTS_NOT_WRITTEN % "Brick 1", summary["problems"])
+
+    def test_pk31_an_export_names_categories_and_an_import_finds_them_by_name(self):
+        model, materials = self.models["material"], self.categories["material"]
+        before, kept = test_support.asset_ids(model), materials.check_add_category("import")
+        count = len(materials.top_keys())
+        self.bring(self.package(brick(1)))
+        self.bring(self.package(brick(2), name="q.amazepkg"))
+        one, two = test_support.arrived(model, before)
+        self.assertEqual(([kept], [kept], count), (one.categories, two.categories,
+                                                   len(materials.top_keys())))
+        self.assertEqual(["import"], packages.collect_asset(model, one.mat_id)["record"][
+            "categories"], "an export names the category")
+        palettes = self.models["gradient"]
+        mine = self.categories["gradient"].check_add_category("mine")
+        before = test_support.asset_ids(palettes)
+        self.bring(self.package(palette(3, "wada/a"), name="r.amazepkg"), restore=True)
+        restored, = test_support.arrived(palettes, before)
+        self.assertEqual([mine], restored.categories, "a restored preset made a second Mine")
 
     def test_pk30_amazes_own_packages_carry_only_marked_assets(self):
         self.assertEqual(["Palette 2"], packages.unmarked([palette(1, "wada/a")[0],

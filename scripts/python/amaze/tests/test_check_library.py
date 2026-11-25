@@ -24,11 +24,20 @@ from amaze.dialogs import check_dialog    # noqa: E402
 put, state = test_support.put, test_support.library_state
 MATERIALS, NODES, CODE = library_files.MATERIALS, library_files.NODES, library_files.CODE
 USER = test_support.FIXTURE_USER
+WALLS, RIGS, EXAMPLES = ("c-walls", "Walls"), ("c-rigs", "Rigs"), ("c-examples", "Examples")
+WOOD, METAL = ("c-wood-oak", "Wood, Oak"), ("c-metal", "Metal")    # categories by (id, name)
 
 
 def record(name: str, *categories) -> bytes:
-    return asset_record.encode({"format": asset_record.FORMAT, asset_record.METADATA: {
-        "name": name, "categories": list(categories)}})
+    """An asset's record, its `categories` (id, name) pairs: their ids, their names beside."""
+    found = {"format": asset_record.FORMAT, asset_record.METADATA: {
+        "name": name, "categories": [key for key, _named in categories]}}
+    return asset_record.encode(dict(found, **({asset_record.NAMES: dict(categories)}
+                                               if categories else {})))
+
+
+def listed(*categories) -> dict:
+    return {key: {"name": named, "order": order} for order, (key, named) in enumerate(categories)}
 
 
 def lay_out(folder: str) -> None:
@@ -37,20 +46,22 @@ def lay_out(folder: str) -> None:
                                "users": {USER: {"name": test_support.FIXTURE_USER_NAME}},
                                guard.MANIFEST: {name: {"created": "x", "by": ""}
                                                 for name in (MATERIALS, NODES, CODE)}})
-    put(folder, MATERIALS, {"assets": {"A1": {"name": "Brick", "categories": ["Walls"]},
-                                       "A2": {"name": "Gone", "categories": ["Walls"]},
+    put(folder, MATERIALS, {"assets": {"A1": {"name": "Brick", "categories": [WALLS[0]]},
+                                       "A2": {"name": "Gone", "categories": [WALLS[0]]},
                                        "A3": {"name": "Loose"}},
-                            "categories": {"Walls": {"order": 0}}})
-    put(folder, NODES, {"assets": {"N1": {"name": "Rig", "categories": ["Rigs"], "renderer": "LOP"}}})
-    put(folder, CODE, {"assets": {"C1": {"name": "Snippet", "categories": ["Examples"]}}})
-    for asset_id, name, categories in (("A1", "Brick", ("Walls",)), ("A3", "Loose", ())):
+                            "categories": listed(WALLS)})
+    put(folder, NODES, {"assets": {"N1": {"name": "Rig", "categories": [RIGS[0]],
+                                          "renderer": "LOP"}}, "categories": listed(RIGS)})
+    put(folder, CODE, {"assets": {"C1": {"name": "Snippet", "categories": [EXAMPLES[0]]}},
+                       "categories": listed(EXAMPLES)})
+    for asset_id, name, categories in (("A1", "Brick", (WALLS,)), ("A3", "Loose", ())):
         for suffix, data in ((".mat", b"nodes"), (".json", record(name, *categories)),
                              (".png", b"picture")):
             put(folder, "materials/%s__%s/%s%s" % (name, asset_id, asset_id, suffix), data)
     put(folder, "nodes/Rig__N1/N1.mat", b"nodes")
-    put(folder, "nodes/Rig__N1/N1.json", record("Rig", "Rigs"))
+    put(folder, "nodes/Rig__N1/N1.json", record("Rig", RIGS))
     put(folder, "materials/Found__U1/U1.mat", b"nodes")
-    put(folder, "materials/Found__U1/U1.json", record("Found", "Wood, Oak"))
+    put(folder, "materials/Found__U1/U1.json", record("Found", WOOD))
     put(folder, "materials/Bare__U2/U2.mat", b"nodes")    # no record: it cannot be recovered
     put(folder, "materials/notes.txt", b"mine")    # a file Amaze does not write
     put(folder, "stuff/thing.bin", b"?")    # a folder Amaze does not write
@@ -102,6 +113,13 @@ class _Library(unittest.TestCase):
 
     def rows(self, name: str = MATERIALS) -> dict:
         return guard.Guard(self.dir).read(name).document["assets"]
+
+    def named(self, name: str = MATERIALS) -> dict:
+        """{row id: the names of its categories} of a database on disk."""
+        document = guard.Guard(self.dir).read(name).document
+        return {asset_id: [document["categories"][key]["name"] for key in row.get("categories", ())
+                           if key in document["categories"]]
+                for asset_id, row in document["assets"].items()}
 
     def fix_all(self, named: bool, prefs=None) -> dict:
         shown = check_library.survey(self.dir, prefs)
@@ -205,7 +223,8 @@ class NothingIsLostTest(_Library):
 
     def test_cl10_a_restore_brings_back_what_was_saved_after_the_backup(self):
         put(self.dir, "%s/%s.2026-11-01_090000.bak" % (guard.BACKUP_DIR, MATERIALS),
-            {"assets": {"A1": {"name": "Brick", "categories": ["Walls"]}}})
+            {"assets": {"A1": {"name": "Brick", "categories": [WALLS[0]]}},
+             "categories": listed(WALLS)})
         check_library.restore(self.dir, MATERIALS, "%s.2026-11-01_090000.bak" % MATERIALS, USER)
         rows = self.rows()
         self.assertEqual("Loose", rows["A3"]["name"], "an asset saved after the backup is lost")
@@ -293,9 +312,10 @@ class WhatTheReportSaysTest(_Library):
 
     def test_cl22_fix_all_recovers_each_folder_from_its_record_or_as_recovered(self):
         self.assertEqual(2, self.fix_all(named=True)["recovered"])
-        rows = self.rows()
-        self.assertEqual(("Found", ["Wood, Oak"]), (rows["U1"]["name"], rows["U1"]["categories"]))
-        self.assertEqual(("Recovered U2", ["Recovered"]), (rows["U2"]["name"], rows["U2"]["categories"]))
+        rows, named = self.rows(), self.named()
+        self.assertEqual(("Found", [WOOD[0]], ["Wood, Oak"]),
+                         (rows["U1"]["name"], rows["U1"]["categories"], named["U1"]))
+        self.assertEqual(("Recovered U2", ["Recovered"]), (rows["U2"]["name"], named["U2"]))
         self.assertTrue(os.path.exists(self.at("materials", "Bare__U2", "U2.mat")), "it was trashed")
         put(self.dir, "nodes/Lost__N7/N7.mat", b"nodes")    # the one folder Recover can list, with no record
         houdini = Houdini()
@@ -317,9 +337,37 @@ class WhatTheReportSaysTest(_Library):
 
     def test_cl25_uncategorized_fills_rows_without_a_category_and_their_records(self):
         self.assertEqual(1, check_library.uncategorized(self.dir, USER))
-        self.assertEqual(["Uncategorized"], self.rows()["A3"]["categories"])
-        self.assertEqual(["Uncategorized"], asset_record.read(self.at(
-            "materials", "Loose__A3", "A3.json"))[asset_record.METADATA]["categories"])
+        key, = self.rows()["A3"]["categories"]
+        found = asset_record.read(self.at("materials", "Loose__A3", "A3.json"))
+        self.assertEqual((["Uncategorized"], [key], {key: "Uncategorized"}), (
+            self.named()["A3"], found[asset_record.METADATA]["categories"],
+            found[asset_record.NAMES]))
+
+    def test_cl31_a_restore_or_a_rebuild_keeps_each_asset_in_its_records_category(self):
+        put(self.dir, "materials/Steel__A4/A4.mat", b"nodes")    # saved after the backup, in Metal
+        put(self.dir, "materials/Steel__A4/A4.json", record("Steel", METAL))
+        put(self.dir, "%s/%s.2026-11-01_090000.bak" % (guard.BACKUP_DIR, MATERIALS),
+            {"assets": {"A1": {"name": "Brick", "categories": [WALLS[0]]}},
+             "categories": listed(WALLS)})
+        check_library.restore(self.dir, MATERIALS, "%s.2026-11-01_090000.bak" % MATERIALS, USER)
+        self.assertEqual({"A1": ["Walls"], "A3": [], "U1": ["Wood, Oak"], "A4": ["Metal"]},
+                         self.named())
+        put(self.dir, MATERIALS, b"{ not a database")
+        check_library.rebuild(self.dir, MATERIALS, USER)
+        self.assertEqual({"A1": ["Walls"], "A3": [], "U1": ["Wood, Oak"], "A4": ["Metal"],
+                          "U2": ["Recovered"]}, self.named())
+
+    def test_cl32_a_row_whose_category_is_not_listed_counts_as_none_and_fix_files_it(self):
+        document = guard.Guard(self.dir).read(MATERIALS).document
+        document["assets"]["A1"]["categories"] = ["c-gone"]    # its category is not in the list
+        put(self.dir, MATERIALS, document)
+        self.assertEqual([("A1", "Brick"), ("A3", "Loose")],
+                         check_library.survey(self.dir)["no_category"][MATERIALS])
+        check_library.fix_light(self.dir, USER)
+        key, = self.rows()["A1"]["categories"]
+        self.assertEqual((["Uncategorized"], ["Uncategorized"], {key: "Uncategorized"}), (
+            self.named()["A1"], self.named()["A3"], asset_record.read(self.at(
+                "materials", "Brick__A1", "A1.json"))[asset_record.NAMES]))
 
     def test_cl29_a_folder_holding_only_scratch_or_nothing_is_a_leftover(self):
         spent = {"materials/Half__S1": ("S1.mat.x1", "textures/brick.png.x2"),

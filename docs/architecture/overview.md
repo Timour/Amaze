@@ -434,6 +434,13 @@ change of several files is being applied.
   (uuid5), so every computer, an old backup and a late sync agree. The
   version stamp (`library_settings.stamp_version`) writes the converted
   files first, as one change, with the old lists in `backup/`.
+  **`core/category_list.py`** holds the name rules every writer shares: one
+  category per name in a section, capitals aside, found or added by name. The
+  sidebar's list (`Categories.check_add_category`) is the one way the panel adds
+  a category, so a save, an import and the shipped presets make one only when the
+  section has none of that name; Check Library, which works without a panel,
+  adds Uncategorized, Recovered and a record's category with `category_list.place`.
+  A package carries each category by its name.
 
 - **A location is an id, its path one property**: `files.json` ▸
   `paths` holds id → path, and every per-file key is
@@ -1118,6 +1125,7 @@ core/library_db.py        one Library per open library, the save timer
 core/library_conversion.py  the only code that knows format 3's files
 core/layout_conversion.py  the only code that knows the 2.0 layout: converts it to 3.0
 core/category_conversion.py  the only code that knows categories by name: gives them ids
+core/category_list.py     the category name rules: one per name, capitals aside; adding one by name
 render/nodes.py           MATERIAL ENGINE (build_karma_material) + save/import
 render/cop_nodes.py       the Node section's contexts and containers: which context
                           a network holds, which container to create, and

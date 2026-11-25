@@ -1,6 +1,5 @@
 """Saving into the library: scene nodes through the Save dialog, new versions, snippets, galleries."""
 
-import functools
 import os
 
 from PySide6 import QtCore
@@ -250,6 +249,15 @@ class Saving:
             category=self._current_code_category(), code="", versions_on=False)    # no versions
         pane.sections["code"].run_code_editor(question, "")    # the first Apply adds the snippet
 
+    def import_save(self):
+        """The material save an import calls with its category's NAME: that category, or a new one."""
+        pane = self.pane
+
+        def save(node, name, *args, **kwargs):
+            key = pane.category_model.check_add_category(name)    # before the row, which names it
+            return material_actions.add_asset(pane.material_model, node, key, *args, **kwargs)
+        return save
+
     def import_galleries(self) -> None:
         """Every material preset in a .gal file saved as a material; ONE render batch after it."""
         from amaze.core import gallery_import
@@ -318,14 +326,11 @@ class Saving:
                         "%d/%d  %s" % (index + 1, total, name),
                     )
                 gallery_import.import_entries(
-                    functools.partial(material_actions.add_asset, pane.material_model),
-                    entries, progress=progress, summary=summary,
+                    self.import_save(), entries, progress=progress, summary=summary,
                     library=pane.material_model)    # each save skips its render; ONE batch follows
         except hou.OperationInterrupted:
             interrupted = True
             debug.event("gallery", "import interrupted", **summary)
-        for name in sorted(summary.get("categories", {})):
-            pane.category_model.check_add_category(name)
         pane.sidebar.refresh()
         imported, skipped, failed = (summary.get(key, 0) for key in ("imported", "skipped", "failed"))
         if interrupted:

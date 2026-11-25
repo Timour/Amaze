@@ -240,10 +240,18 @@ class AssetLibrary(grid_engine.GridEngine,
         """The name of this asset's category as stored, "" for none."""
         return self._category_field(row, "name")
 
+    def named_categories(self, asset) -> list:
+        """The names of an asset's categories, as a package carries them; an unlisted one is not."""
+        return [name for name in (self._category_entry(key).get("name") for key in asset.categories)
+                if name]
+
     def _category_field(self, row: int, field: str) -> str:
         cats = self._assets[row].categories if 0 <= row < len(self._assets) else None
-        entry = self._doc().get(CATEGORIES, cats[0]) if cats else None
-        return str(entry.get(field) or "") if isinstance(entry, dict) else ""
+        return str(self._category_entry(cats[0]).get(field) or "") if cats else ""
+
+    def _category_entry(self, key) -> dict:
+        entry = self._doc().get(CATEGORIES, str(key))
+        return entry if isinstance(entry, dict) else {}
 
     def _thumb_key(self, row: int, spec=None):
         """Shared-RAM-cache key for one row's picture; every input to the picture belongs in it."""
@@ -709,12 +717,15 @@ class AssetLibrary(grid_engine.GridEngine,
         """Records shipped with Amaze, added once per library, only when it takes them; how many."""
         from amaze.core import library_settings, notes
         if not records or library_settings.marked(self.preferences, mark) or \
-                not self.add_all(records):
+                not library_db.takes_change(self):
+            return 0
+        for record in records:    # each in the category of its name, made before the rows
+            record.categories = [category_model.check_add_category(name)
+                                 for name in record.categories]
+        if not self.add_all(records):
             return 0
         if pages:
             notes.set_notes(self.preferences, pages)    # after the rows: a comment needs its row
-        for name in dict.fromkeys(name for record in records for name in record.categories):
-            category_model.check_add_category(name)
         if not library_settings.mark(self.preferences, mark, added=len(records)):
             debug.event("library", "shipped records not marked", store=self.DB_FILENAME)
         return len(records)

@@ -20,13 +20,6 @@ from amaze.core import code_library, gradient_library, packages, users  # noqa: 
 from amaze.prefs import prefs as prefs_mod  # noqa: E402
 
 
-class _Cats:
-    _categories = []
-
-    def check_add_category(self, name):
-        pass
-
-
 def main() -> int:
     if len(sys.argv) != 2:
         print(__doc__)
@@ -41,9 +34,9 @@ def main() -> int:
         prefs.library_user = users.create(prefs, "Amaze")    # a library takes no change without a user
         library_actions.ensure_library_dirs(prefs)
         gradients = gradient_library.GradientLibrary(prefs)
-        gradients.seed_curated_palettes(_Cats())
+        gradients.seed_curated_palettes(gradient_library.GradientCategories(prefs))
         code = code_library.CodeLibrary(prefs)
-        code.seed_starter_snippets(_Cats())
+        code.seed_starter_snippets(code_library.CodeCategories(prefs))
 
         wanted = [(gradients, curated["key"]) for curated in gradient_library.CURATED_SETS]
         wanted.append((code, "starter"))

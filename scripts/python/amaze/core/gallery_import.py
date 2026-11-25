@@ -76,7 +76,6 @@ def import_entries(save, entries, staging_parent=None,
     summary = summary if summary is not None else {}    # the caller's dict: after Esc it keeps the counts so far
     for key in ("imported", "skipped", "failed"):
         summary.setdefault(key, 0)
-    summary.setdefault("categories", {})
     asked = {} if library is None else {"render": False}    # `library`: one batch render after
     saved_ids = []
     if save is None or not entries:
@@ -104,9 +103,6 @@ def import_entries(save, entries, staging_parent=None,
                                     entry=entry.name(), type=type_name)
                         continue
                     summary["imported"] += 1
-                    summary["categories"][category] = summary[
-                        "categories"
-                    ].get(category, 0) + 1
                     saved_ids.append(node.userData("assetlib_id") or "")    # the id the save wrote on the node
                 except (AttributeError, hou.Error) as exc:    # one entry fails, not the run ▸r/gallery-entries
                     summary["failed"] += 1
@@ -126,9 +122,7 @@ def import_entries(save, entries, staging_parent=None,
                     parent.destroy()
             except hou.Error:
                 pass
-        debug.event("gallery", "import finished", **{
-            k: v for k, v in summary.items() if k != "categories"
-        })
+        debug.event("gallery", "import finished", **summary)
         _render_saved(library, saved_ids)    # after Esc too: what was saved gets its picture
     return summary
 

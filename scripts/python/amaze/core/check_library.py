@@ -5,8 +5,8 @@ import os
 import time
 
 from amaze import messages
-from amaze.core import asset_record, debug, documents, guard, library_db, library_files
-from amaze.core import layout_conversion, library_policy, locations, material
+from amaze.core import asset_record, category_list, debug, documents, guard, library_db
+from amaze.core import layout_conversion, library_files, library_policy, locations, material
 from amaze.helpers import hostos, wording
 
 SCRATCH_MIN_AGE = 60 * 60    # a younger scratch may be another session's live write
@@ -36,6 +36,7 @@ def survey(library_dir: str, preferences=None) -> dict:
     held = guard.Guard(library_dir)
     databases = [_database(held, reading) for reading in held.health()]
     rows = {entry["name"]: entry["rows"] for entry in databases if entry["name"] in LISTS}
+    listed = {entry["name"]: entry["listed"] for entry in databases if entry["name"] in LISTS}
     ids = set().union(*(set(found) for found in rows.values()))
     listing, out_of_place, unreadable = _walk(library_dir)
     spent = _spent_folders(library_dir, listing, ids)
@@ -45,7 +46,8 @@ def survey(library_dir: str, preferences=None) -> dict:
                 "orphans": _orphan_versions(library_dir, listing), "trash": held.trash_held()}
     for section in LISTS:
         if section in ASSET_SECTIONS:
-            _assets(findings, section, rows.get(section, {}), listing, accounted)
+            _assets(findings, section, rows.get(section, {}), listed.get(section, set()), listing,
+                    accounted)
         else:
             _inline_folders(findings, section, listing, accounted)
     findings.update(_out_of_place(library_dir, out_of_place, spent))
@@ -64,7 +66,8 @@ def _database(held, reading) -> dict:
         state = "empty"
     return {"name": reading.name, "state": state, "count": count, "why": reading.why,
             "backups": held.backups(reading.name), "shrunk": reading.shrunk,
-            "rows": dict((document or {}).get("assets") or {}) if reading.name in LISTS else {}}
+            "rows": dict((document or {}).get("assets") or {}) if reading.name in LISTS else {},
+            "listed": set((document or {}).get("categories") or {})}
 
 
 def _walk(library_dir: str) -> tuple:
@@ -120,15 +123,16 @@ def _asset_folders(listing: dict, section: str) -> dict:
             if kind == library_files.FOLDER and library_files.folder_id(name)}
 
 
-def _assets(findings: dict, section: str, rows: dict, listing: dict, ids: set) -> None:
-    """A section's rows without files or category, and its folders no database lists."""
+def _assets(findings: dict, section: str, rows: dict, listed: set, listing: dict,
+            ids: set) -> None:
+    """A section's rows without files or a listed category, and its folders no database lists."""
     top = library_files.SECTION_FOLDERS[section]
     folders = _asset_folders(listing, section)
     missing, loose = [], []
     for asset_id, row in sorted(rows.items()):
         row = row if isinstance(row, dict) else {}
         named = (asset_id, str(row.get("name") or asset_id))
-        if not material.category_names(row.get("categories")):
+        if not listed & set(material.category_names(row.get("categories"))):
             loose.append(named)
         if not library_files.is_safe_id(asset_id):
             continue
@@ -143,7 +147,8 @@ def _assets(findings: dict, section: str, rows: dict, listing: dict, ids: set) -
                 findings["directory"], top, name, asset_id + library_files.RECORD_SUFFIX))
             findings["unlisted"].append({"section": section, "id": asset_id,
                                          "folder": top + "/" + name,
-                                         "record": record[asset_record.METADATA] or None})
+                                         "record": record[asset_record.METADATA] or None,
+                                         "names": record[asset_record.NAMES]})
 
 
 def _inline_folders(findings: dict, section: str, listing: dict, ids: set) -> None:
@@ -152,7 +157,8 @@ def _inline_folders(findings: dict, section: str, listing: dict, ids: set) -> No
     for asset_id, name in sorted(_asset_folders(listing, section).items()):
         if asset_id not in ids:
             findings["unlisted"].append({"section": section, "id": asset_id,
-                                         "folder": top + "/" + name, "record": None})
+                                         "folder": top + "/" + name, "record": None,
+                                         "names": {}})
 
 
 def _orphan_versions(library_dir: str, listing: dict) -> list:
@@ -391,34 +397,36 @@ def _section_reading(held, section: str):
     return reading
 
 
-def _with_rows(reading, rows: dict) -> dict:
-    """The database's document with `rows` as its assets and every category they name listed."""
+def _with_rows(reading, rows: dict, wanted: dict) -> dict:
+    """The document with `rows` as its assets, each `wanted` row in its category or one named so."""
     document = dict(reading.document or {})
-    categories = dict(document.get("categories") or {})
-    for row in rows.values():
-        for name in material.category_names((row or {}).get("categories")):
-            categories.setdefault(name, {"order": len(categories)})
-    return dict(document, assets=rows, categories=categories)
+    table, rows = dict(document.get("categories") or {}), dict(rows)
+    for asset_id, named in wanted.items():
+        keys = [category_list.place(table, name, key) or key for key, name in named]
+        rows[asset_id] = dict(rows[asset_id], categories=[key for key in keys if key])
+    return dict(document, assets=rows, categories=table)
 
 
-def _row_of(asset_id: str, record) -> dict:
-    """A row from an asset's record, or a placeholder in Recovered when it has none."""
+def _row_of(asset_id: str, record, names: dict) -> tuple:
+    """(a row from an asset's record, or a placeholder in Recovered; its (key, name) categories)."""
     if isinstance(record, dict) and record:
         row = {key: value for key, value in record.items() if key not in documents.STAMPS}
-        return dict(row, id=asset_id)
-    return {"id": asset_id, "name": "%s %s" % (RECOVERED, asset_id), "categories": [RECOVERED]}
+        return dict(row, id=asset_id), [(key, names.get(key, ""))
+                                        for key in material.category_names(row.get("categories"))]
+    return {"id": asset_id, "name": "%s %s" % (RECOVERED, asset_id)}, [("", RECOVERED)]
 
 
 def _records_of(library_dir: str, section: str) -> dict:
-    """{id: its record or None} of every asset folder of a section that holds an asset file."""
+    """{id: (its record or None, its categories' names)} of every folder holding an asset file."""
     base = material.section_folder(library_dir, section)
     found = {}
     for name in sorted(os.listdir(base)) if os.path.isdir(base) else ():
         owner = library_files.folder_id(name)
         if (owner and os.path.isdir(os.path.join(base, name))
                 and _scratch_only(os.path.join(base, name)) is None):
-            found[owner] = asset_record.read(os.path.join(
-                base, name, owner + library_files.RECORD_SUFFIX))[asset_record.METADATA] or None
+            record = asset_record.read(os.path.join(
+                base, name, owner + library_files.RECORD_SUFFIX))
+            found[owner] = (record[asset_record.METADATA] or None, record[asset_record.NAMES])
     return found
 
 
@@ -430,13 +438,13 @@ def recover(library_dir: str, user: str = "") -> int:
         if not found:
             continue
         reading = _section_reading(held, section)
-        rows = dict((reading.document or {}).get("assets") or {})
+        rows, wanted = dict((reading.document or {}).get("assets") or {}), {}
         for one in found:
             if one["id"] not in rows:
-                rows[one["id"]] = _row_of(one["id"], one["record"])
+                rows[one["id"]], wanted[one["id"]] = _row_of(one["id"], one["record"], one["names"])
                 added += 1
         change = held.change(user)
-        change.put(reading.ticket, _with_rows(reading, rows))
+        change.put(reading.ticket, _with_rows(reading, rows, wanted))
         change.commit()
     return added
 
@@ -451,18 +459,16 @@ def restore(library_dir: str, name: str, backup: str, user: str = "") -> int:
     if name not in ASSET_SECTIONS:
         return 0
     reading = _section_reading(held, name)
-    rows = dict((reading.document or {}).get("assets") or {})
-    changed = 0
-    for asset_id, record in _records_of(library_dir, name).items():
-        newer = _row_of(asset_id, record)
+    rows, wanted = dict((reading.document or {}).get("assets") or {}), {}
+    for asset_id, (record, names) in _records_of(library_dir, name).items():
+        newer, named = _row_of(asset_id, record, names)
         if record and rows.get(asset_id, {}) != newer:    # saved or changed after the backup
-            rows[asset_id] = dict(rows.get(asset_id) or {}, **newer)
-            changed += 1
-    if changed:
+            rows[asset_id], wanted[asset_id] = dict(rows.get(asset_id) or {}, **newer), named
+    if wanted:
         change = held.change(user)
-        change.put(reading.ticket, _with_rows(reading, rows))
+        change.put(reading.ticket, _with_rows(reading, rows, wanted))
         change.commit()
-    return changed
+    return len(wanted)
 
 
 def rebuild(library_dir: str, name: str, user: str = "") -> int:
@@ -470,10 +476,12 @@ def rebuild(library_dir: str, name: str, user: str = "") -> int:
     held = _guard(library_dir)
     if name not in ASSET_SECTIONS or held.read(name).verdict not in (guard.CORRUPT, guard.MISSING):
         raise Refused(messages.CHECK_REBUILD_REFUSED % library_files.section_label(name))
-    rows = {asset_id: _row_of(asset_id, record)
-            for asset_id, record in _records_of(library_dir, name).items()}
+    made = {asset_id: _row_of(asset_id, record, names)
+            for asset_id, (record, names) in _records_of(library_dir, name).items()}
+    rows = {asset_id: row for asset_id, (row, _named) in made.items()}
     change = held.change(user)
-    change.replace(name, _with_rows(guard.Reading(name, guard.FRESH, {}), rows))
+    change.replace(name, _with_rows(guard.Reading(name, guard.FRESH, {}), rows, {
+        asset_id: named for asset_id, (_row, named) in made.items()}))
     change.commit()
     return len(rows)
 
@@ -544,7 +552,7 @@ def trash(library_dir: str, shown: dict, keys: list, user: str = "") -> tuple:
 
 
 def uncategorized(library_dir: str, user: str = "") -> int:
-    """Every row with no category put in Uncategorized, in its database and its record."""
+    """Every row with no listed category put in Uncategorized, in its database and its record."""
     held, done = _guard(library_dir), 0
     fresh = survey(library_dir)
     for section in ASSET_SECTIONS:
@@ -552,18 +560,20 @@ def uncategorized(library_dir: str, user: str = "") -> int:
         if not loose:
             continue
         reading = _section_reading(held, section)
-        rows = dict((reading.document or {}).get("assets") or {})
+        document = _with_rows(reading, (reading.document or {}).get("assets") or {}, {
+            asset_id: [("", UNCATEGORIZED)] for asset_id in loose})
         change = held.change(user)
         for asset_id in loose:
-            rows[asset_id] = dict(rows.get(asset_id) or {}, categories=[UNCATEGORIZED])
+            keys = document["assets"][asset_id]["categories"]
             record = os.path.join(material.folder_in(library_dir, section, asset_id),
                                   asset_id + library_files.RECORD_SUFFIX)
             if os.path.isfile(record) and not asset_record.unreadable(record):
                 metadata = dict(asset_record.read(record)[asset_record.METADATA] or {},
-                                categories=[UNCATEGORIZED])
-                change.put_file(held.inside(record), asset_record.with_sections(
-                    record, {asset_record.METADATA: metadata}))
-        change.put(reading.ticket, _with_rows(reading, rows))
+                                categories=keys)
+                names = {key: document["categories"][key]["name"] for key in keys}
+                change.put_file(held.inside(record), asset_record.with_sections(record, {
+                    asset_record.METADATA: metadata, asset_record.NAMES: names}))
+        change.put(reading.ticket, document)
         change.commit()
         done += len(loose)
     return done

@@ -1,12 +1,10 @@
 """The online import: catalogue records into the library or the scene, for one pane."""
 
 import contextlib
-import functools
 
 import hou
 
 from amaze import messages
-from amaze.actions import materials as material_actions
 from amaze.core import debug, matx_sources, renderers
 from amaze.render import nodes
 
@@ -85,12 +83,11 @@ class OnlineImport:
         ok, reason = matx_import.import_record(    # NO layout pair: it ends in add_asset, an insert
             record, source, resolution, self.pane.material_model, self.pane.prefs,
             progress=on_progress, renderer=renderer,
-            save=functools.partial(material_actions.add_asset, self.pane.material_model),
+            save=self.pane.saving.import_save(),
             render=render,    # False: the caller renders its batch once
         )
         if not ok:
             return (False, reason or messages.ONLINE_IMPORT_FAILED)
-        self.pane.category_model.check_add_category(record.category)    # no relayout wrapper: it emits its own row-insert signals
         self.pane.sidebar.refresh()
         return (True, "")
 

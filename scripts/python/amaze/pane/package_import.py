@@ -18,10 +18,10 @@ class PackageImport:
     def import_file(self, path: str, restore: bool = False) -> dict:
         """Import a whole package; `restore=True` replaces curated presets. Returns packages' summary."""
         from amaze.core import packages
-        summary = packages.import_package(self.models(),
+        summary = packages.import_package(self.models(), self.categories(),
                                           self.pane.prefs, path,
                                           restore=restore)
-        self.register_imported_categories(summary)
+        self.show_import_folder(summary)
         return summary
 
     def import_package(self) -> None:
@@ -88,15 +88,18 @@ class PackageImport:
                 models[cls.key] = model
         return models
 
-    def register_imported_categories(self, summary) -> None:
-        """Register a package import's categories on their sidebars, and its import folder."""
-        for key, names in summary.get("categories", {}).items():
+    def categories(self) -> dict:
+        """{section key: its category list} for every section `models` names."""
+        found = {}
+        for key in self.models():
             section = self.pane.sections.get(key)
-            st = section.stack() if section is not None else None
-            if st is None:
-                continue
-            for name in sorted(names):
-                st.categories.check_add_category(name)
+            stack = section.stack() if section is not None else None
+            if stack is not None:
+                found[key] = stack.categories
+        return found
+
+    def show_import_folder(self, summary) -> None:
+        """A package import's plain files: its import folder in the File sidebar."""
         if summary.get("files"):
             folder = hostos.canonical_path_key(
                 os.path.join(self.pane.prefs.dir, "import"))
@@ -133,10 +136,10 @@ class PackageImport:
                 on_progress(min(done / float(max(total, 1)), 1.0)))
             bundle = source.import_reader(url, notify=notify)    # a separate reader: a preview may be using the shared one
             summary = packages.import_entries(
-                self.models(), self.pane.prefs, bundle, [entry],
+                self.models(), self.categories(), self.pane.prefs, bundle, [entry],
                 restore=restore)
             self.last_summary = summary
-            self.register_imported_categories(summary)
+            self.show_import_folder(summary)
             if on_progress is not None:
                 on_progress(1.0)
             if summary.get("refused"):
