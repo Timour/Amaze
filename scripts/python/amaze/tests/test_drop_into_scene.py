@@ -19,9 +19,9 @@ try:    # without Houdini every test here skips
     import hou
     from amaze.core import debug, dragengine, lop_assign
     from amaze.helpers import helpers
-    from amaze.pane import drop_placement, loading
+    from amaze.pane import drag_session, drop_placement, loading
     from amaze.qml import pane as qml_pane
-    from amaze.sections import code as code_section, file as file_section
+    from amaze.sections import code as code_section, file as file_section, material as material_section
 except ImportError:
     hou = None
 
@@ -74,17 +74,55 @@ class _Stock:
         assign.parm("matspecpath1").set(matpath)
 
 
-class _MenuHost:
-    """The drop menu's host: it picks `label` at once, as a modal menu, or only on `pick()`."""
+class _Marks:
+    """The name tag and the red X a drag shows, with no widgets: the red X is counted."""
 
-    def __init__(self, label: str, at_once: bool):
-        self.label, self.at_once, self.offered, self.pick = label, at_once, [], None
+    def __init__(self):
+        self.misses = 0
 
-    def ask_drop_choice(self, labels, then):
-        self.offered = [label for label in labels if label]
-        self.pick = lambda: then(labels.index(self.label))
-        if self.at_once:
-            self.pick()
+    def show_tag(self, name):
+        pass
+
+    def move_tag(self):
+        pass
+
+    def tag_shown(self, shown):
+        pass
+
+    def hide_tag(self):
+        pass
+
+    def show_miss(self):
+        self.misses += 1
+
+    @staticmethod
+    def tag_picture(name):
+        return QtGui.QPixmap()
+
+
+class _QtDrag:
+    """Qt's drag as the session starts it: what it carries and proposes is kept; no drag runs."""
+
+    given = []
+
+    def __init__(self, source):
+        self.data = None
+
+    def setMimeData(self, data):
+        self.data = data
+
+    def setPixmap(self, picture):
+        pass
+
+    def exec(self, action):
+        formats = ("application/sidefx-houdini-node.path", "application/sidefx-houdini-item.path")
+        _QtDrag.given.append(tuple(bytes(self.data.data(kind)).decode() for kind in formats)
+                             + (self.data.text(), action))
+        return action
+
+
+HOUDINI_MIME = types.SimpleNamespace(mimeType=types.SimpleNamespace(    # hou.qt, absent headless
+    nodePath="application/sidefx-houdini-node.path", itemPath="application/sidefx-houdini-item.path"))
 
 
 @unittest.skipUnless(hou, "Houdini is not loaded")
@@ -137,9 +175,32 @@ class _Drops(unittest.TestCase):
                 mock.patch.dict(sys.modules, {"nodegraphutils": host}):
             return self.placement.release("code", "s1", object(), hou.paneTabType.NetworkEditor)
 
-    def lop_drop(self, ids, choice):
-        return self.placement._assign_dropped(_Stock, self.lopnet, self.sphere,
-                                              ids, choice)
+    def viewer_import(self, ids):
+        """`ids` dragged into a Solaris viewer showing the LOP network: the pressed material, or None."""
+        viewer = types.SimpleNamespace(pwd=lambda: self.lopnet)
+        with mock.patch.object(dragengine, "stock_lop", return_value=_Stock):
+            return self.placement.import_materials_for_viewer(viewer, "lop", ids)
+
+    def hand_over(self, network, loads=None):
+        """A material row dragged over a viewer showing `network`: (Qt drags given, red Xs, running)."""
+        rows = QtGui.QStandardItemModel()
+        rows.appendRow(QtGui.QStandardItem("dd_material"))
+        self.pane.loading = loads or types.SimpleNamespace(
+            import_material_into_container=self.material_into,
+            selected_material_ids=lambda index: ["dd_mat", "dd_other"])
+        self.pane.sections["material"] = material_section.MaterialSection(self.pane)
+        marks, viewer = _Marks(), types.SimpleNamespace(pwd=lambda: network)
+        session = drag_session.DragSession(QtWidgets.QWidget(), marks)
+        self.addCleanup(session.cancel)
+        _QtDrag.given = []
+        with mock.patch.object(dragengine, "pane_under_cursor_tracked",
+                               return_value=(viewer, hou.paneTabType.SceneViewer, True)), \
+                mock.patch.object(dragengine, "stock_lop", return_value=_Stock), \
+                mock.patch.object(hou, "qt", HOUDINI_MIME, create=True), \
+                mock.patch.object(QtGui, "QDrag", _QtDrag):
+            session.begin(self.pane, "material", rows.index(0, 0), "dd_material")
+            session.move()
+        return _QtDrag.given, marks.misses, session.running
 
     @staticmethod
     def names(network) -> list:
@@ -159,7 +220,7 @@ class ADropIsWholeOrNothingTest(_Drops):
         self.assertEqual(([upstream], ["box1", "null1"]), (list(downstream.inputs()), self.names(self.geo)))
         before = self.names(self.lopnet)
         hou.undos.clear()
-        self.assertTrue(self.lop_drop(["dd01_mat"], ("assign", "Set as Material", "/sphere1")))
+        self.assertIsNotNone(self.viewer_import(["dd01_mat", "dd01_other"]))
         self.assertIn("materiallibrary1", self.names(self.lopnet), "premise: no library was made")
         hou.undos.performUndo()
         self.assertEqual(before, self.names(self.lopnet), "one undo left part of the drop")
@@ -189,7 +250,7 @@ class ADropIsWholeOrNothingTest(_Drops):
                 self.geo, "attribwrangle", "dd02", None, *wrangle[2:]))
         self.assertIn("the parameter is locked", self.refused[-1])
         before = self.names(self.lopnet)
-        self.assertFalse(self.lop_drop(["fails", "dd02_other"], ("assign", "Set", "/sphere1")))
+        self.assertIsNone(self.viewer_import(["fails", "dd02_other"]))
         self.assertEqual((before, ["fails"]), (self.names(self.lopnet), self.imported))
         self.assertEqual(before_geo, self.names(self.geo), "a node the failed drops made was left")
 
@@ -294,39 +355,32 @@ class WhereADropGoesTest(_Drops):
                          "the SOP Create is not chained to the display node")
         self.assertEqual("cube", hou.node("/obj/cube").name())
 
-    def test_dd24_a_prim_offers_a_swap_per_bound_material_then_a_set_per_parent(self):
-        for at_once in (True, False):    # the widget panel's menu answers at once, the QML pane's later
-            with self.subTest(at_once=at_once):
-                scene = _Library(self)
-                viewer = types.SimpleNamespace(pwd=lambda: scene.lopnet)
-                for prim, offered, picked in (
-                        ("/sphere_a", ["Swap mat_b", "Set as Material on sphere_a"], "Swap mat_b"),
-                        ("/sphere_b", ["Set as Material on sphere_b"], "Set as Material on sphere_b")):
-                    host = self.pane.ui = _MenuHost(picked, at_once)
-                    before = self.names(scene.lopnet)
-                    with mock.patch.object(dragengine, "stock_lop", return_value=_Stock):
-                        self.placement.material_lop_viewport_drop(["dd24_mat"], viewer, prim)
-                    if not at_once:
-                        self.assertEqual(before, self.names(scene.lopnet), "made before the pick")
-                        host.pick()
-                    self.assertEqual(offered, host.offered)
-                bound = {(node.parm("primpattern1").eval(), node.parm("matspecpath1").eval())
-                         for node in scene.lopnet.children()
-                         if node.type().name() == "assignmaterial" and node != scene.shown}
-                self.assertEqual({("/sphere_a", "/materials/dd24_mat"), ("/sphere_b", "/materials/dd24_mat")},
-                                 bound, "the picks did not import and bind")
+    def test_dd24_a_material_dragged_into_a_solaris_viewer_is_imported_then_given_to_houdini(self):
+        given, misses, running = self.hand_over(self.lopnet)
+        library = self.lopnet.node("materiallibrary1")
+        self.assertIsNotNone(library, "no Material Library LOP was made after the node shown")
+        self.assertEqual(([self.sphere], ["dd_mat", "dd_other"]), (list(library.inputs()), self.names(library)))
+        path = library.node("dd_mat").path()
+        self.assertEqual(([(path, path, path, QtCore.Qt.DropAction.MoveAction)], 0, False),
+                         (given, misses, running), "(Houdini's node drag of the pressed one, red Xs, running)")
 
-    def test_dd25_an_object_with_no_material_parameter_gets_nothing(self):
+    def test_dd25_a_material_dragged_into_an_object_viewer_is_imported_into_mat_then_given_to_houdini(self):
         imported = []
-        pane = types.SimpleNamespace(material_model=object())
-        loads = loading.Loading(pane)
-        loads._import_material_builder = lambda aid, target: imported.append(aid) or hou.node("/mat")
-        takes_none = hou.node("/obj").createNode("cam", "dd25_cam")
-        self.addCleanup(test_support.drop_node, takes_none)
-        self.assertFalse(loads.assign_material_to_obj(["a", "b"], takes_none))
-        self.assertEqual([], imported, "a material was imported for an object that takes none")
-        self.assertTrue(loads.assign_material_to_obj(["a", "b"], self.geo))
-        self.assertEqual((["a", "b"], "/mat"), (imported, self.geo.parm("shop_materialpath").eval()))
+
+        def into_mat(aid, target):
+            imported.append((aid, target))
+            made = hou.node("/mat").createNode("subnet", aid)
+            self.addCleanup(test_support.drop_node, made)
+            return made
+        loads = loading.Loading(self.pane)
+        loads._import_material_builder = into_mat
+        loads.selected_material_ids = lambda index: ["dd25_a", "dd25_b"]
+        self.assertEqual(([], 0, True), self.hand_over(self.geo, loads), "a viewer inside a geo took it")
+        self.assertEqual([], imported)
+        given, misses, running = self.hand_over(hou.node("/obj"), loads)
+        self.assertEqual([("dd25_a", "mat"), ("dd25_b", "mat")], imported)
+        self.assertEqual(([("/mat/dd25_a",) * 3 + (QtCore.Qt.DropAction.MoveAction,)], 0, False),
+                         (given, misses, running), "(Houdini's node drag of the pressed one, red Xs, running)")
 
     def test_dd26_placing_dropped_nodes_never_moves_the_users_nodes(self):
         mine = [self.geo.createNode("null") for _ in range(4)]

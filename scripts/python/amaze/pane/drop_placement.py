@@ -9,26 +9,6 @@ from amaze.core import debug, geo_library
 from amaze.helpers import helpers, theme, wording
 
 
-class PendingOutcome:
-    """A drop's outcome that the user's answer decides after the release: `settle` it, `then` hears it."""
-
-    def __init__(self) -> None:
-        self._outcome = None    # True or False once settled
-        self._heard = None
-
-    def settle(self, outcome) -> None:
-        """The outcome, given once: to the listener, or kept for it when a modal host answered first."""
-        self._outcome = bool(outcome)
-        if self._heard is not None:
-            self._heard(self._outcome)
-
-    def then(self, heard) -> None:
-        """`heard(outcome)` once the outcome is settled, at once if it already is."""
-        self._heard = heard
-        if self._outcome is not None:
-            heard(self._outcome)
-
-
 class DropPlacement:
     """Where one pane's drops create nodes; the pane holds it as `drop_placement`."""
 
@@ -47,8 +27,8 @@ class DropPlacement:
                 return index if index.isValid() else None
         return None
 
-    def release(self, section_key: str, key: str, pane_tab=None, pane_kind=None):
-        """Tile `key` released over Houdini: True, False for a miss, or a PendingOutcome; one undo step."""
+    def release(self, section_key: str, key: str, pane_tab=None, pane_kind=None) -> bool:
+        """Tile `key` released over Houdini: True, or False for a miss; one undo step."""
         from amaze.core import dragengine
         from amaze.helpers import helpers
         from amaze.sections import base as section_base
@@ -61,7 +41,7 @@ class DropPlacement:
         try:
             with dragengine.holding_drop_group():    # the handler, its placement and the splice
                 outcome = self._apply_drop_rule(rule, section, index, pane_tab, pane_kind)
-                if outcome is True:    # a PendingOutcome's nodes come with the answer: none to splice now
+                if outcome:
                     self._splice_if_on_a_wire(pane_tab)
         except hou.PermissionError as refusal:    # a locked network; any other error is a bug and raises
             return self._refused(refusal, section_key)
@@ -74,7 +54,7 @@ class DropPlacement:
         debug.refuse(str(refusal), section=section_key)    # ▸p/refuse-vs-alert
         return False
 
-    def _apply_drop_rule(self, rule, section, index, pane_tab, pane_kind):
+    def _apply_drop_rule(self, rule, section, index, pane_tab, pane_kind) -> bool:
         """One order for every DropRule: on_node (result final), resolve, on_space ▸o/section-api"""
         from amaze.sections import base as section_base
         if rule.on_node is not None:
@@ -82,7 +62,7 @@ class DropPlacement:
             if node is not None:
                 return bool(section_base.drop_handler(section, rule.on_node)(index, node))
         if rule.resolve is not None:
-            return section_base.drop_handler(section, rule.resolve)(index)
+            return bool(section_base.drop_handler(section, rule.resolve)(index))
         if rule.on_space is not None:
             net = self.network_under_release()
             if net is None:
@@ -311,54 +291,66 @@ class DropPlacement:
         except AttributeError:
             return None
 
-    def material_lop_viewport_drop(self, ids, viewer, primpath):
-        """LOP-viewport release: the prim menu, False when none opens; its answer settles the outcome."""
-        from amaze.core import dragengine, lop_assign
+    def import_materials_for_viewer(self, viewer, world: str, ids):
+        """Materials dragged into an "obj" or "lop" viewer, where its own drop finds them; the pressed one."""
+        try:
+            with hou.undos.group("Amaze Import Materials"):    # a library made for them and the imports: one step
+                if world == "obj":
+                    return self.pane.loading.import_materials_to_mat(ids)
+                return self._import_for_lop_viewer(viewer, ids)
+        except hou.PermissionError as refusal:    # a locked network, as at a release
+            self._refused(refusal, "material")
+            return None
+
+    def _import_for_lop_viewer(self, viewer, ids):
+        """Into the library LOP Houdini's drop picks for the node the viewer shows ▸r/solaris-material-drag"""
+        from amaze.core import dragengine
         stock = dragengine.stock_lop()
         if stock is None:
             debug.refuse(messages.STOCK_LOP_HELPERS_UNAVAILABLE)    # ▸p/refuse-vs-alert
-            return False
-        try:
-            lopnet = viewer.pwd()
-        except AttributeError:
-            return False
-        target_lop = lopnet.displayNode()
-        if target_lop is None:
+            return None
+        lopnet = viewer.pwd()
+        shown = lopnet.displayNode()
+        if shown is None:
             children = lopnet.children()
-            target_lop = children[-1] if children else None
+            shown = children[-1] if children else None
+        imported = self._import_into_library_lop(stock, lopnet, shown, ids)
+        return imported[2] if imported is not None else None
 
-        stage = target_lop.stage() if target_lop is not None else None
-        choices = lop_assign.drop_choices(stage, primpath)    # lop_assign decides what the menu offers
-        if not choices:
-            return False
-        labels, previous_kind = [], None
-        for kind, label, _payload in choices:
-            if previous_kind == "swap" and kind != "swap":
-                labels.append("")    # a divider between the swaps and the rest
-            labels.append(label)
-            previous_kind = kind
-        picked = [index for index, label in enumerate(labels) if label]
-        outcome = PendingOutcome()
-        self.pane.ui.ask_drop_choice(labels, lambda chosen: self._assign_picked(
-            outcome, stock, lopnet, target_lop, ids,
-            None if chosen is None else choices[picked.index(chosen)]))    # None: the menu was dismissed
-        return outcome
-
-    def _assign_picked(self, outcome, stock, lopnet, target_lop, ids, choice) -> None:
-        """The prim menu's answer continues the drop; a dismissal (None) or a failure settles a miss."""
-        assigned = False
-        try:
-            if choice is not None:
-                assigned = self._assign_dropped(stock, lopnet, target_lop, ids, choice)
-        except hou.PermissionError as refusal:    # as at the release: a locked network
-            self._refused(refusal, "material")
-        finally:
-            outcome.settle(assigned)
+    def _import_into_library_lop(self, stock, lopnet, target_lop, ids):
+        """`ids` imported into Houdini's own pick of library LOP: (anchor, library, pressed VOP), or None."""
+        from amaze.helpers import helpers
+        before = set(lopnet.children())
+        try:    # Houdini's own library picker ▸r/houdini-after-create
+            if target_lop is not None:
+                anchor, liblop, _vop = stock.getMaterialLibraryLop(target_lop)
+            else:    # an empty network: a Material Library LOP as Houdini's code makes it, unwired
+                liblop = lopnet.createNode("materiallibrary")
+                helpers.auto_place(liblop)
+                liblop.setDisplayFlag(True)
+                liblop.setCurrent(True, True)
+                anchor = liblop
+        except hou.Error as refusal:    # a locked asset raises PermissionError, not OperationFailed
+            debug.event("drag", "material library not created "
+                        "in the network", dest=lopnet.path(),
+                        error=str(refusal))
+            debug.refuse(messages.NETWORK_REFUSED_MATERIAL_LIBRARY
+                         % (lopnet.name(), refusal))
+            return None
+        pressed_vop = self.pane.loading.import_material_into_container(ids[0], liblop)
+        if pressed_vop is None:    # its reason is shown; a library made for it goes too
+            for made in set(lopnet.children()) - before:
+                made.destroy()
+            return None
+        for aid in ids[1:]:
+            self.pane.loading.import_material_into_container(aid, liblop)
+        debug.event("drag", "materials imported into a library LOP", imported=len(ids),
+                    library=liblop.path())
+        return anchor, liblop, pressed_vop
 
     def _assign_dropped(self, stock, lopnet, target_lop, ids, choice) -> bool:
-        """The picked prim-menu row: import the materials into a library LOP, then assign or swap."""
+        """A `drop_choices` row: import into a library LOP, then assign or swap; for Swap Material."""
         from amaze.core import lop_assign
-        from amaze.helpers import helpers
         kind, _label, payload = choice
         assign_path = payload if kind == "assign" else None
         swap_targets = payload if kind == "swap" else None
@@ -367,33 +359,12 @@ class DropPlacement:
             else "Amaze Assign Material"
         )
         with hou.undos.group(undo_label):    # the library, the import and the assign revert as one step
-            before = set(lopnet.children())
-            try:    # Houdini's own library picker and its own assign ▸r/houdini-after-create
-                if target_lop is not None:
-                    node2, liblop, _vop = stock.getMaterialLibraryLop(target_lop)
-                else:    # an empty network: a Material Library LOP as Houdini's code makes it, unwired
-                    liblop = lopnet.createNode("materiallibrary")
-                    helpers.auto_place(liblop)
-                    liblop.setDisplayFlag(True)
-                    liblop.setCurrent(True, True)
-                    node2 = liblop
-            except hou.Error as refusal:    # a locked asset raises PermissionError, not OperationFailed
-                debug.event("drag", "material library not created "
-                            "in the network", dest=lopnet.path(),
-                            error=str(refusal))
-                debug.refuse(messages.NETWORK_REFUSED_MATERIAL_LIBRARY
-                             % (lopnet.name(), refusal))
-                return False
             ids = list(ids)[:1] if swap_targets is not None else list(ids)    # a swap replaces one
-            pressed_vop = self.pane.loading.import_material_into_container(ids[0], liblop)
-            if pressed_vop is None:    # its reason is shown; a library made for it goes too
-                for made in set(lopnet.children()) - before:
-                    made.destroy()
+            imported = self._import_into_library_lop(stock, lopnet, target_lop, ids)
+            if imported is None:
                 return False
-            for aid in ids[1:]:
-                self.pane.loading.import_material_into_container(aid, liblop)
-            debug.event("drag", "lop viewport drop", imported=len(ids),
-                        amaze=liblop.path(), assign=str(assign_path),
+            node2, liblop, pressed_vop = imported
+            debug.event("drag", "lop assign", assign=str(assign_path),
                         swap=bool(swap_targets))
             if swap_targets is not None:
                 reason = lop_assign.swap_assignments(    # lop_assign edits the USD and returns a reason; the pane shows it

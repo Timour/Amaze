@@ -77,54 +77,6 @@ def _houdini_below(build):
             lambda env: bool(env.houdini) and env.houdini < build)
 
 
-_ON_MACOS = ("macOS", lambda env: bool(env.macos))
-_SCALED = ("a scaled display (dpr != 1)",
-           lambda env: bool(env.scale) and env.scale != 1.0)
-
-
-OBJ_PICK_DEVICE_PIXELS = Capability(  # whether queryNodeAtPixel expects device pixels, not logical points
-    base=False,
-    base_evidence=(
-        "The documented behaviour and what SideFX ships today: the "
-        "logical bottom-left GL point. MEASURED in use on macOS "
-        "22.0.393 and 22.0.394, and independently CONFIRMED ON WINDOWS "
-        "under H22, where picking works in both OBJ and Stage with no "
-        "opinion applied at all. Two platforms, no workaround - which "
-        "is what a base should look like. Unknown and future builds "
-        "compose against this rather than against a workaround. "
-        "SideFX's changelog records 22.0.391 as the build that fixed "
-        "retina lasso and contained picking in the new UI on macOS - "
-        "documentation for a reader of this report, NOT a boundary "
-        "this engine tests against."),
-    overrides=(
-        Override(
-            value=True,
-            conditions=(_houdini_below((22, 0, 0)), _ON_MACOS, _SCALED),
-            evidence=(
-                "21.0.780 MEASURED with the four-way transform probe, "
-                "cursor on a sphere at window-local (292, 136) in a "
-                "481x279 widget at dpr 2.0: only the two DEVICE "
-                "candidates returned the node. Confirmed in use - "
-                "true_local [248, 174] -> passed [496, 210] -> hit, and "
-                "three drops landed on the intended object. 21.0.790 in "
-                "use since, same behaviour. It is a pure SCALE, never a "
-                "flip: a flip alongside it puts the pick a full viewport "
-                "from the cursor, which an earlier attempt did and it "
-                "looked identical to the bug it was fixing. "
-                "SCOPE NOTE - the macOS condition follows SideFX's "
-                "changelog wording and is UNVERIFIED on Windows and "
-                "Linux, which also report scale factors (150% is the "
-                "Windows default). It stays narrow because a too-wide "
-                "scope breaks a working configuration while a too-narrow "
-                "one merely leaves a host bug in place. To settle it: "
-                "run a drag on Windows at >100% scaling under 21.x and "
-                "read the transform probe - if the DEVICE candidates hit "
-                "there too, widen the scope and record the measurement."),
-        ),
-    ),
-)
-
-
 NEW_COPS = Capability(  # whether EXR->PNG can use the new COPs (copnet) with full OCIO
     base=True,
     base_evidence=(
@@ -155,11 +107,6 @@ def houdini_version():
         return tuple(int(v) for v in hou.applicationVersion()[:3])
     except Exception:                                    # noqa: BLE001
         return ()
-
-
-def obj_pick_wants_device_pixels(device_scale):
-    """Whether queryNodeAtPixel expects the point multiplied by the device pixel ratio."""
-    return OBJ_PICK_DEVICE_PIXELS.resolve(Env(scale=device_scale))
 
 
 def has_new_cops():

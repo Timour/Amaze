@@ -55,13 +55,6 @@ PaneRoot {
         view.forceActiveFocus(Qt.MouseFocusReason)
         root.openMenu(SharedState.tileMenu(view.rowAt(at.x, at.y)))
     }
-    Connections {    // a menu the engine opens itself, at the cursor; one that cannot open is closed at once
-        target: SharedState
-        function onMenuOffered(rows) {
-            if (!root.openMenu(rows))
-                SharedState.menuClosed()
-        }
-    }
     Component {
         id: menuMaker
         AmazeMenu {

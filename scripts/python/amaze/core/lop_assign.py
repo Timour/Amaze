@@ -1,4 +1,4 @@
-"""LOP material assignment for a viewport drop: find, rebind and remove bindings; no Qt here."""
+"""LOP material assignment: find, rebind and remove bindings; no Qt here."""
 
 import hou
 
@@ -243,7 +243,7 @@ def remove_unreferenced_material(lopnet, liblop,
 
 
 def drop_choices(stage, primpath):
-    """A drop's menu as `(kind, label, payload)`: swaps first, then one assign per ancestor prim."""
+    """A prim's `(kind, label, payload)` rows, swaps then a set per parent: for a Swap Material menu."""
     choices = []
     if not primpath or stage is None:
         return choices

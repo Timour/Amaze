@@ -27,8 +27,8 @@ FilterEntry = collections.namedtuple(    # `id` is what the remembered choice sa
 DropRule = collections.namedtuple(
     "DropRule",
     "on_node on_space resolve click_on_node click_resolve "
-    "holder_node_type context",
-    defaults=(None, None, None, None, None, "", ""),
+    "holder_node_type context native_drag",    # native_drag: a handler; DragSession switches to Qt's drag by it
+    defaults=(None, None, None, None, None, "", "", None),
 )    # context: the childTypeCategory a network must have to accept this drop ("" = any network)
 
 
