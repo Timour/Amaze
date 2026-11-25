@@ -34,14 +34,15 @@ Menu {
                 menu.itemAt(menu.count - 1).enabled = row.enabled
             } else {
                 // `checked` alone draws the mark: Houdini's MenuItem cannot set checkable in a window menu
-                const item = entry.createObject(menu.contentItem, { text: row.text, enabled: row.enabled,
-                                                                     checked: row.checked === true })
+                // owned by the menu, not in it yet: our pick is wired before the menu's own close
+                const item = entry.createObject(menu, { text: row.text, enabled: row.enabled,
+                                                        checked: row.checked === true })
                 if (row.chip) {    // a colour: Houdini's square glyph in it
                     item.symbol = PhosphorGlyphs.square
                     item.symbolColor = row.chip
                 }    // a ui/ icon is not drawn: Houdini's row takes only its own icon names
                 const key = row.key
-                item.triggered.connect(() => root.chosen = key)
+                item.triggered.connect(() => root.chosen = key)    // before the menu closes it
                 menu.addItem(item)
             }
         }
