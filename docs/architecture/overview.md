@@ -827,14 +827,15 @@ viewer the drop glow, asked for with drag events sent to the viewport's window
 cursor through `SceneViewer.setSceneGraphHighlight`, set again on every pick
 because the viewer drops it. Both go at every end of the drag. At the release the
 handler gets the viewer. A material on an object is imported into `/mat` and set as
-its material, one undo step, with no menu, as Houdini's object-level drop does. A
-material on a prim is imported, one undo step, into the Material Library LOP that
-Houdini's `getMaterialLibraryLop` picks; Houdini's own `dropGetChoices` then gives
-the rows for that prim, with `dragengine.NodeDragSource` standing for the drag
-(the pressed material's node), and they open after the release in the pane's own
-menu engine (`Asks.ask_drop_choice`: the widget panel's modal QMenu, the QML pane's
-`AmazeMenu`, not waited on). The row picked runs Houdini's own `dropAccept`, a
-second undo step. Over empty space the release is a miss.
+its material, one undo step, with no menu, as Houdini's object-level drop does. On a
+prim the rows open at once, at the release point, in the pane's own menu engine
+(`Asks.ask_drop_choice`: the widget panel's modal QMenu, the QML pane's `AmazeMenu`,
+not waited on): `lop_assign.drop_choices`, Set as Material on the prim and on each
+parent, worded as Houdini's `dropGetChoices` words them. Only the row picked imports
+the material, into the Material Library LOP Houdini's `getMaterialLibraryLop` picks,
+and assigns it with Houdini's `assignMat`, one undo step; a dismissed menu imports
+nothing (an import first took 0.4 s before the menu, ▸r/solaris-drop-timing). Over
+empty space the release is a miss.
 **The switch to Qt's native drag** is one mechanism in `DragSession`, declared per
 row by the drop rule's `native_drag` handler: given the pane under the cursor, it
 answers None (Amaze's drag goes on), False (the work before it failed: the drag

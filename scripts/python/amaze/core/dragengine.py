@@ -723,23 +723,6 @@ def stock_lop():
     return _load_stock_lop()
 
 
-class NodeDragSource:
-    """One node as Houdini's drop scripts read a drag: `dragdroputils.Source`'s shape."""
-
-    def __init__(self, node) -> None:
-        self._node = node
-
-    def hasData(self, token) -> bool:    # noqa: N802 - the name Houdini's scripts call
-        """Whether the drag carries `token`: only a node path."""
-        return token == hou.qt.mimeType.nodePath
-
-    def data(self, token):
-        """The node for a node path, as Houdini's generator yields a drag's items."""
-        if self.hasData(token):
-            yield self._node
-
-
-
 def _first_child_where(network, matches, connected_to=None):
     """The first child of `network` that `matches`, or None; `connected_to` limits to its chain."""
     try:

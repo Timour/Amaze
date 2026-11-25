@@ -305,10 +305,10 @@ class DropPlacement:
             return None
 
     def drop_materials_on_prim(self, ids, viewer, hit) -> bool:
-        """Imported in one undo step, then Houdini's own rows for the prim offered ▸r/viewport-foreign-drag"""
-        from amaze.core import dragengine
+        """The prim's rows at once; only the row picked imports, then assigns ▸r/solaris-drop-timing"""
+        from amaze.core import dragengine, lop_assign
         from PySide6 import QtGui
-        at = QtGui.QCursor.pos()    # the release point: the import before the menu lets the pointer move on
+        at = QtGui.QCursor.pos()    # the release point, where the menu opens
         stock = dragengine.stock_lop()
         if stock is None:
             debug.refuse(messages.STOCK_LOP_HELPERS_UNAVAILABLE)    # ▸p/refuse-vs-alert
@@ -318,29 +318,14 @@ class DropPlacement:
         if shown is None:
             children = lopnet.children()
             shown = children[-1] if children else None
-        with hou.undos.group("Amaze Import Materials"):    # a library made for them and the imports
-            imported = self._import_into_library_lop(stock, lopnet, shown, ids)
-        if imported is None:    # its reason is shown
+        choices = lop_assign.drop_choices(shown.stage() if shown is not None else None, hit.prim)
+        debug.event("drag", "drop rows", prim=hit.prim, rows=len(choices))
+        if not choices:
             return False
-        drop = (viewer, hit.viewport, lopnet.displayNode(), hit.prim,    # the import can show a library
-                dragengine.NodeDragSource(imported[2]), hit.position)
-        tokens, labels, _tips = stock.dropGetChoices(*drop)
-        debug.event("drag", "houdini drop rows", prim=hit.prim, rows=len(tokens))
-        if tokens:
-            self.pane.ui.ask_drop_choice(list(labels), lambda place: self._accept_drop_choice(
-                stock, drop, None if place is None else tokens[place]), at)
+        self.pane.ui.ask_drop_choice([label for _kind, label, _path in choices], lambda place: (
+            None if place is None    # dismissed: nothing was imported
+            else self._assign_dropped(stock, lopnet, shown, ids, choices[place])), at)
         return True
-
-    def _accept_drop_choice(self, stock, drop, token) -> None:
-        """The row picked from Houdini's rows: Houdini's own assign, one undo step; None, nothing."""
-        if token is None:    # the menu was dismissed: the import stays, as its own undo step
-            return
-        try:
-            with hou.undos.group("Amaze Assign Material"):
-                stock.dropAccept(*drop, token)
-        except hou.Error as refusal:    # a locked network, or a node gone since the release
-            debug.event("drag", "houdini assign failed", error=str(refusal))
-            debug.refuse(messages.MATERIAL_ASSIGN_FAILED % refusal)
 
     def _import_into_library_lop(self, stock, lopnet, target_lop, ids):
         """`ids` imported into Houdini's own pick of library LOP: (anchor, library, pressed VOP), or None."""

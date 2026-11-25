@@ -244,20 +244,11 @@ def remove_unreferenced_material(lopnet, liblop,
 
 
 def drop_choices(stage, primpath):
-    """A prim's `(kind, label, payload)` rows, swaps then a set per parent: for a Swap Material menu."""
+    """A prim's drop rows `("assign", label, path)`: Set as Material on it and each parent."""
     choices = []
     if not primpath or stage is None:
         return choices
-
-    bound = bound_materials_under(stage, primpath)
-    for mpath, prims in bound:
-        choices.append(
-            ("swap", "Swap %s" % mpath.rsplit("/", 1)[-1], [(mpath, prims)])
-        )
-    if len(bound) > 1:
-        choices.append(("swap", "Swap All Materials", list(bound)))
-
-    prim = stage.GetPrimAtPath(primpath)
+    prim = stage.GetPrimAtPath(primpath)    # labels as `lop_dragdrop.dropGetChoices` words them
     first = True
     while prim is not None and prim.IsValid() \
             and prim != stage.GetPseudoRoot():

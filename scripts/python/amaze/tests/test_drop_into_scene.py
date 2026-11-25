@@ -245,12 +245,10 @@ class ADropIsWholeOrNothingTest(_Drops):
         before = self.names(self.lopnet)
         hou.undos.clear()
         self.assertEqual(0, self.drag(_Viewer(self.lopnet, "/world/ball"), _MenuHost("Set as Material on ball")))
-        imported = sorted(before + ["materiallibrary1"])
-        self.assertEqual(sorted(imported + ["assignmaterial"]), self.names(self.lopnet), "premise: not assigned")
+        made = sorted(child.type().name() for child in self.lopnet.children() if child.name() not in before)
+        self.assertEqual(["assignmaterial", "materiallibrary"], made, "premise: not imported and assigned")
         hou.undos.performUndo()
-        self.assertEqual(imported, self.names(self.lopnet), "one undo did not take back Houdini's assign alone")
-        hou.undos.performUndo()
-        self.assertEqual(before, self.names(self.lopnet), "one undo left part of the import")
+        self.assertEqual(before, self.names(self.lopnet), "one undo left part of the import or the assign")
 
     def test_dd02_a_drop_that_fails_at_any_step_leaves_no_node_and_says_why(self):
         folder = test_support.scratch_dir("amaze_dd02_")
@@ -277,9 +275,8 @@ class ADropIsWholeOrNothingTest(_Drops):
                 self.geo, "attribwrangle", "dd02", None, *wrangle[2:]))
         self.assertIn("the parameter is locked", self.refused[-1])
         before, self.ids = self.names(self.lopnet), ["fails", "dd02_other"]
-        host = _MenuHost("Set as Material on ball")
-        self.assertEqual(1, self.drag(_Viewer(self.lopnet, "/world/ball"), host), "no red X")
-        self.assertEqual((before, ["fails"], []), (self.names(self.lopnet), self.imported, host.offered))
+        self.drag(_Viewer(self.lopnet, "/world/ball"), _MenuHost("Set as Material on ball"))    # fails on the pick
+        self.assertEqual((before, ["fails"]), (self.names(self.lopnet), self.imported))    # the real import says why
         self.assertEqual(before_geo, self.names(self.geo), "a node the failed drops made was left")
 
 
@@ -383,7 +380,7 @@ class WhereADropGoesTest(_Drops):
                          "the SOP Create is not chained to the display node")
         self.assertEqual("cube", hou.node("/obj/cube").name())
 
-    def test_dd24_a_material_dropped_on_a_prim_gets_houdinis_own_rows_and_assign(self):
+    def test_dd24_a_material_dropped_on_a_prim_offers_its_rows_and_imports_only_on_the_pick(self):
         for at_once in (True, False):    # the widget panel's menu answers at once, the QML pane's later
             with self.subTest(at_once=at_once):
                 lopnet = hou.node("/stage").createNode("lopnet")
@@ -395,16 +392,20 @@ class WhereADropGoesTest(_Drops):
                 self.assertEqual(0, self.drag(viewer, host), "a red X")
                 self.assertEqual([["/world/ball"], []], viewer.lit, "the prim not lit while dragging, then off")
                 self.assertEqual(["Set as Material on ball", "Set as Material on ../world"], host.offered)
-                library = lopnet.node("materiallibrary1")
-                self.assertEqual(([sphere], ["dd_mat", "dd_other"]), (list(library.inputs()), self.names(library)))
                 if not at_once:
-                    self.assertIsNone(lopnet.node("assignmaterial"), "assigned before the pick")
+                    self.assertEqual(["sphere1"], self.names(lopnet), "imported or assigned before the pick")
                     with self.houdini_drop():
                         host.pick()
-                assign = lopnet.node("assignmaterial")
+                library = lopnet.node("materiallibrary1")
+                self.assertEqual(([sphere], ["dd_mat", "dd_other"]), (list(library.inputs()), self.names(library)))
+                assign, = [child for child in lopnet.children() if child.type().name() == "assignmaterial"]
                 self.assertEqual(("/world", "/materials/dd_mat"),
                                  (assign.parm("primpattern1").eval(), assign.parm("matspecpath1").eval()))
-        before, imported, host = self.names(self.lopnet), len(self.imported), _MenuHost("Set as Material on ball")
+        before, imported, host = self.names(self.lopnet), len(self.imported), _MenuHost(None)
+        self.assertEqual(0, self.drag(_Viewer(self.lopnet, "/world/ball"), host))
+        self.assertEqual((before, imported), (self.names(self.lopnet), len(self.imported)),
+                         "a dismissed menu imported")
+        host = _MenuHost("Set as Material on ball")
         self.assertEqual(1, self.drag(_Viewer(self.lopnet), host), "empty space is no miss")
         self.assertEqual((before, [], imported), (self.names(self.lopnet), host.offered, len(self.imported)))
 
