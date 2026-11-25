@@ -141,12 +141,12 @@ class GradientSection(base.AssetSection):
         return self.pane.gradient_model.entry(source.row())
 
     def ramp_bases(self, indexes, current) -> tuple:
-        """Every interpolation by its stored name, the palette's own checked."""
+        """Every interpolation by its stored name, with its ui/ icon; the palette's own checked."""
         from amaze.helpers import helpers
         entry = self._entry_at(current)
         shown = gradient_library.GradientLibrary.interpolation(    # its Info pane label
             entry["colors"], entry["ramp"]) if entry is not None else ""
-        return tuple((basis, basis, "", True,
+        return tuple((basis, basis, "interp_" + basis.lower(), True,
                       gradient_library.BASIS_LABELS.get(basis, basis) == shown)
                      for basis in helpers.RAMP_BASES)
 
