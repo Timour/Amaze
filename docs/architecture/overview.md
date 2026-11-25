@@ -807,31 +807,41 @@ removing a material nothing references any more. No Qt, no panel — it
 reports reasons rather than showing dialogs, so it is testable
 headlessly (`tests/test_drop_into_scene.py`). No drag uses it since
 Houdini's own viewport drop assigns; it is kept, with
-`DropPlacement._assign_dropped` and `Loading.assign_material_to_obj`, for
-the coming right-click Swap Material.
+`DropPlacement._assign_dropped`, for the coming right-click Swap Material.
 
-One SELF-MANAGED gesture for every section, until it reaches a pane whose
-own drop Houdini runs for that row. The widgets run press-move-release on the
+One SELF-MANAGED gesture for every section: a viewport never sees Qt's drag
+loop, because Houdini repaints its viewports only from its own main loop and a
+nested one stops every repaint for the whole drag (▸r/viewport-foreign-drag,
+▸r/native-drag-paint). The widgets run press-move-release on the
 live event loop; the engine handles everything about position and timing: the
 drag image's target check and the rect-tracked pane (`ghost_tick` /
 `pane_under_cursor_tracked` — target checks at the picking rate, the pane kept
 by its screen rect and checked again slowly, the outline following every move;
 a full per-move lookup kept the event loop fully busy at the mouse's event rate,
-2026-08-23), the assign node a swap reuses (`find_assignmaterial`), and Houdini's
-stock LOP helpers (`stock_lop()`).
+2026-08-23), the viewer picks and highlights, the assign node a swap reuses
+(`find_assignmaterial`), and Houdini's stock LOP drop script (`stock_lop()`).
+**Over a scene viewer** a row whose drop rule names an `on_viewer` handler gets, at
+the picking rate, Houdini's own highlight of what it would drop on: in an object
+viewer the drop glow, asked for with drag events sent to the viewport's window
+(`ViewportGlow`, ▸r/viewport-drop-glow); in a Solaris viewer the prim under the
+cursor through `SceneViewer.setSceneGraphHighlight`, set again on every pick
+because the viewer drops it. Both go at every end of the drag. At the release the
+handler gets the viewer. A material on an object is imported into `/mat` and set as
+its material, one undo step, with no menu, as Houdini's object-level drop does. A
+material on a prim is imported, one undo step, into the Material Library LOP that
+Houdini's `getMaterialLibraryLop` picks; Houdini's own `dropGetChoices` then gives
+the rows for that prim, with `dragengine.NodeDragSource` standing for the drag
+(the pressed material's node), and they open after the release in the pane's own
+menu engine (`Asks.ask_drop_choice`: the widget panel's modal QMenu, the QML pane's
+`AmazeMenu`, not waited on). The row picked runs Houdini's own `dropAccept`, a
+second undo step. Over empty space the release is a miss.
 **The switch to Qt's native drag** is one mechanism in `DragSession`, declared per
 row by the drop rule's `native_drag` handler: given the pane under the cursor, it
 answers None (Amaze's drag goes on), False (the work before it failed: the drag
 ends with the red X), or the mime data and drop action of Houdini's own drag
 there. The session then ends and runs one `QDrag` with the name tag as its
-picture; Houdini's pane does the rest. A File row over a Parameters pane hands
-over its path as text (copy). A material row over a viewer showing an object
-network or a LOP network is first imported, in one undo step: into `/mat`, or
-into the Material Library LOP that Houdini's own `getMaterialLibraryLop` picks
-for the node the viewer shows; then it hands over the pressed material's node
-path as node path, item path and text (move), as Houdini's own node drag does
-(▸r/material-palette-drag, ▸r/solaris-material-drag). Houdini's viewport then
-highlights the geometry, shows its own menu on the drop and assigns.
+picture; Houdini's pane does the rest. Only a File row over a Parameters pane
+uses it, handing over its path as text (copy).
 One drag is a `drag_session.DragSession`, one per view, the same for both panes: `begin`
 (the pressed row; the drop handlers read the selection), `move` per pointer move, and one end,
 `release` or `cancel`. Its `_end` is reached by the release, Esc (the view grabs the keyboard
@@ -852,10 +862,9 @@ for both panes.
 A node dragged the other way, from a network editor onto either pane, is read by `pane/node_drop.py`
 (the node paths a drag carries) and saved as Houdini's right-click Save to Amaze saves it, after the
 drop has returned; the widget panel's central widget and the QML pane's view both call it.
-Rules: an item is placed where it is dropped; nothing is created before release, except the
-material a drag brings into a viewer, which stays when that drag is then cancelled (one undo
-takes it out); SOP and LOP contexts never reference each other; a release where nothing takes
-the row is a miss (red X).
+Rules: an item is placed where it is dropped; nothing is created before release; a material
+dropped on a prim stays imported when its menu is dismissed (one undo takes it out); SOP and LOP
+contexts never reference each other; a release where nothing takes the row is a miss (red X).
 
 ## Storage format
 
