@@ -139,6 +139,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
 
     pane = None    # the engine, built by `start`
     drag = None    # the view's `drag_session`, which a press on a tile or row past the drag distance begins
+    reorder = None    # the view's `SidebarReorder`, which a press on a sidebar row past it begins
     os_file_icon = staticmethod(delegates.os_file_icon)    # held by the shared File model
 
     def __init__(self, **kwargs) -> None:
@@ -421,6 +422,12 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         self.drag.begin(self.pane, key, index, index.data(QtCore.Qt.ItemDataRole.DisplayRole) or "",
                         sidebar=SidebarDrop(self.drag.source))
 
+    @QtCore.Slot(QtCore.QModelIndex)
+    def dragSidebarRow(self, index: QtCore.QModelIndex) -> None:
+        """A press on sidebar row `index` moved past the drag distance: the row may move between rows."""
+        if self.reorder is not None and index.isValid():
+            self.reorder.begin(index)
+
     @QtCore.Slot(int, result="QVariantList")
     def tileMenu(self, row: int) -> list:
         """The rows of the right-click menu on tile or row `row`; as in Qt's views, it selects it first."""
@@ -656,6 +663,7 @@ class PaneView(qmlviews.BaseQmlWidget):
         self.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._context_menu)
         self.drag = self.sharedState().drag = drag_session.DragSession(self, ui_helpers.DragMarks())
+        self.reorder = self.sharedState().reorder = SidebarReorder(self)
         self._drag_held = False    # a drag's left button is still down: another button goes nowhere
 
     def _context_menu(self, at) -> None:
@@ -676,8 +684,8 @@ class PaneView(qmlviews.BaseQmlWidget):
         return super().event(event)
 
     def keyPressEvent(self, event) -> None:
-        if self.drag.running and event.key() == QtCore.Qt.Key.Key_Escape:    # the view holds the keys mid-drag
-            self.drag.cancel()
+        if self._gesture() is not None and event.key() == QtCore.Qt.Key.Key_Escape:    # it ends any drag
+            self._gesture().cancel()
             event.accept()
             return
         self._route(event, lambda: super(PaneView, self).keyPressEvent(event), act=True)
@@ -707,9 +715,14 @@ class PaneView(qmlviews.BaseQmlWidget):
         event.accept()
         return True
 
+    def _gesture(self):
+        """The drag the view runs, of tiles or of a sidebar row, or None; each has one end."""
+        return next((gesture for gesture in (self.drag, self.reorder) if gesture.running), None)
+
     def _drag_takes(self, event) -> bool:
         """Whether a press belongs to the drag: any while it runs, another button while its left is down."""
-        return self.drag.running or (self._drag_held and event.button() != QtCore.Qt.MouseButton.LeftButton)
+        return (self._gesture() is not None
+                or (self._drag_held and event.button() != QtCore.Qt.MouseButton.LeftButton))
 
     def mousePressEvent(self, event) -> None:
         """A press the drag takes goes nowhere: in the QML it would start a second drag."""
@@ -728,9 +741,10 @@ class PaneView(qmlviews.BaseQmlWidget):
     @debug.guarded("PaneView.mouseMoveEvent")
     def mouseMoveEvent(self, event) -> None:
         """A running drag takes the move alone: in the QML too, Qt sent it on to the pane under it."""
-        if self.drag.running:    # measured: the network editor repainted between outline draws
+        gesture = self._gesture()
+        if gesture is not None:    # measured: the network editor repainted between outline draws
             self._drag_held = True
-            self.drag.move()
+            gesture.move()
             event.accept()
             return
         super().mouseMoveEvent(event)
@@ -738,17 +752,21 @@ class PaneView(qmlviews.BaseQmlWidget):
     @debug.guarded("PaneView.mouseReleaseEvent")
     def mouseReleaseEvent(self, event) -> None:
         """The left release drops a running drag; another button's ends it and makes nothing."""
+        gesture = self._gesture()
         if self._drag_held and event.button() != QtCore.Qt.MouseButton.LeftButton:
-            self.drag.cancel(miss=True)
+            if gesture is not None:
+                gesture.cancel(miss=True)
             event.accept()
             return
         if not event.buttons() & QtCore.Qt.MouseButton.LeftButton:
             self._drag_held = False
         super().mouseReleaseEvent(event)    # the QML's press ends first: the drop may open a menu
-        self.drag.release()
+        if gesture is not None:
+            gesture.release()
 
     def hideEvent(self, event) -> None:
         self.drag.cancel()    # a pane hidden mid-drag gets no release
+        self.reorder.cancel()
         self._drag_held = False
         super().hideEvent(event)
 
@@ -785,6 +803,66 @@ class SidebarDrop:
             QtCore.QMetaObject.invokeMethod(self.view.rootObject(), "showSidebarDrop",
                                             QtCore.Qt.ConnectionType.DirectConnection,
                                             QtCore.Q_ARG("QVariant", index))
+
+
+class SidebarReorder:
+    """A sidebar row dragged between rows: its list's own drop moves it there, as Qt's view drops it."""
+
+    def __init__(self, view) -> None:
+        self.view = view
+        self.running = False
+        self._model = None
+        self._data = None    # the list's own drag data for the row, made once at the start as Qt's drag does
+        self._gap = None    # (row, parent) of the gap under the pointer, while the list takes the row there
+        self._shown = -1
+
+    def begin(self, index) -> None:
+        """Drag sidebar row `index`, where its list lets that row move; All and a fixed list never do."""
+        model = index.model()
+        if self.running or model is None or not model.flags(index) & QtCore.Qt.ItemFlag.ItemIsDragEnabled:
+            return
+        self._model, self._data, self.running = model, model.mimeData([index]), True
+
+    def move(self) -> None:
+        """The gap under the pointer is lined where the list would take the row, as Qt asks it."""
+        found = self._gap_under()
+        takes = found is not None and self._model.canDropMimeData(
+            self._data, QtCore.Qt.DropAction.MoveAction, found[1], 0, found[2])
+        self._gap = found[1:] if takes else None
+        self._line(found[0] if takes else -1)
+
+    def release(self) -> None:
+        """The left release: the list's own drop moves the row and saves, or puts it back if refused."""
+        gap, model, data = self._gap, self._model, self._data
+        self.cancel()
+        if gap is not None:
+            model.dropMimeData(data, QtCore.Qt.DropAction.MoveAction, gap[0], 0, gap[1])
+
+    def cancel(self, miss: bool = False) -> None:
+        if self.running:
+            self.running, self._gap = False, None
+            self._line(-1)
+
+    def _gap_under(self):
+        """(tree row, list row, parent) of the gap under the pointer; None off the top rows' gaps."""
+        at = self.view.mapFromGlobal(QtGui.QCursor.pos())
+        found = QtCore.QMetaObject.invokeMethod(
+            self.view.rootObject(), "sidebarGapAt", QtCore.Qt.ConnectionType.DirectConnection,
+            QtCore.Q_RETURN_ARG("QVariant"), QtCore.Q_ARG("QVariant", at.x()), QtCore.Q_ARG("QVariant", at.y()))
+        found = found.toVariant() if isinstance(found, QtQml.QJSValue) else found    # a JS array, as Qt converts it
+        if not found:
+            return None
+        row, below = found
+        if not below.isValid():    # after the last row
+            return row, self._model.rowCount(), QtCore.QModelIndex()
+        return None if below.parent().isValid() else (row, below.row(), QtCore.QModelIndex())
+
+    def _line(self, row: int) -> None:
+        """The tree draws its insert line above tree row `row`, none for -1."""
+        if row != self._shown:
+            self._shown = row
+            QtCore.QMetaObject.invokeMethod(self.view.rootObject(), "showSidebarGap",
+                                            QtCore.Qt.ConnectionType.DirectConnection, QtCore.Q_ARG("QVariant", row))
 
 
 def _takes_hotkeys_first(item) -> bool:

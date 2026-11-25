@@ -28,6 +28,13 @@ PaneRoot {
         const side = root.onSidebar(x, y)
         return side ? sidebar.indexAt(side.x, side.y) : sidebar.index(-1, 0)
     }
+    function sidebarGapAt(x, y) {    // the sidebar's gap at (x, y) in the pane's widget, null off it
+        const side = root.onSidebar(x, y)
+        return side ? sidebar.gapAt(side.x, side.y) : null
+    }
+    function showSidebarGap(row) {    // the gap a dragged sidebar row would go into; -1 for none
+        sidebar.gapRow = row
+    }
     function showSidebarDrop(index) {    // the row a dragged tile would drop on; an invalid index for none
         sidebar.dropRow = index.valid ? sidebar.rowAtIndex(index) : -1
     }
@@ -128,6 +135,7 @@ PaneRoot {
                     wheelFix: SharedState.wheelFix
                     drawn: SharedState.sidebar
                     onStepped: SharedState.stepSidebar()
+                    onRowDragged: index => SharedState.dragSidebarRow(index)
 
                     Connections {
                         target: SharedState

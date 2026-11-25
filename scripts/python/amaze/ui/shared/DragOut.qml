@@ -1,4 +1,4 @@
-// A press that becomes a drag out of the pane past the platform's drag distance; the pane follows it.
+// A press that becomes a drag past the platform's drag distance: out of the pane, or between sidebar rows.
 import QtQuick
 
 DragHandler {
