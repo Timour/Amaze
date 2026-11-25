@@ -6,6 +6,7 @@ import shiboken6
 import amaze
 from amaze import amazetheme, tooltips
 from amaze.core import debug, grid_columns, grid_engine
+from amaze.dialogs import name_window
 from amaze.helpers import ui_helpers
 from amaze.pane import asks, drag_session, menus, pane as pane_mod, sidebar as pane_sidebar
 from amaze.panel import delegates
@@ -483,6 +484,10 @@ class PaneState(qmlviews.SharedState, asks.Asks):
             if self._menu is menu:    # the QML opened it; else it already closed
                 closed.exec()
         then(choice.place)
+
+    def ask_name(self, title: str, default: str, then) -> None:
+        """The Name window, not modal: `then` gets the name, "" for a cleared field, None for Cancel."""
+        name_window.ask(self, title, default, then)
 
     def ask_colour(self, start: str, title: str, then) -> None:
         """Houdini's colour picker, the one the widget panel opens: `then` gets "#rrggbb", None for Cancel."""
