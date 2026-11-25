@@ -374,6 +374,71 @@ class PicturesTest(_Library):
         importlib.reload(workers)
         self.assertIn(stuck, workers._unstoppable, "a thread that would not stop was let go")
 
+    @needs_houdini
+    def test_tp21_no_viewer_renders_nothing_and_a_renderer_not_loaded_is_named_once(self):
+        from amaze import preview
+        from amaze.core import library
+        from amaze.preview import thumbnail_scene
+        from amaze.render import thumbs
+        prefs = test_support.fixture_prefs(self)
+        model = library.MaterialLibrary(prefs)
+        gold = model.assets[model.find_asset_row_by_id("139888336889814930")]
+        mats = [gold] + [types.SimpleNamespace(mat_id=key, name=name, renderer=renderer)
+                         for key, name, renderer in (("R1", "Ruby", "Redshift"),
+                                                     ("O1", "Opal", "Octane"))]
+        said, jobs = [], []
+        scene = sorted(node.path() for node in hou.node("/").allSubChildren())
+        ui = types.SimpleNamespace(displayMessage=lambda text, **how: said.append(text),
+                                   curDesktop=lambda: types.SimpleNamespace(
+                                       paneTabOfType=lambda kind: None))
+        with mock.patch.object(hou, "ui", ui, create=True), test_support.plugins_loaded(), \
+                mock.patch.object(husk_job.jobs, "submit", lambda job, **how: jobs.append(job)):
+            thumbs.ThumbNailRenderer.render_assets(prefs, mats)
+            self.assertEqual(([messages.NO_SCENE_VIEWER_FOR_THUMBNAIL], [], scene), (said, jobs, sorted(
+                node.path() for node in hou.node("/").allSubChildren())), "no viewer, yet it went on")
+            said.clear()
+            viewer = {"display": "sRGB", "view": "Raw", "space": "ACEScg"}    # one is open now
+            with mock.patch.object(thumbnail_scene, "ocio_from_viewer", lambda: viewer), \
+                    mock.patch.object(preview, "ocio_from_viewer", lambda: viewer):
+                thumbs.ThumbNailRenderer.render_assets(prefs, mats)
+        self.assertEqual(1, len(said), said)
+        self.assertTrue("Ruby" in said[0] and "Opal" in said[0], said)
+        self.assertEqual([str(gold.mat_id)], [key for job in jobs for key, _path in job.frames])
+
+    @needs_houdini
+    def test_tp24_a_files_capture_is_one_file_in_the_library_and_stays_through_a_save(self):
+        import hashlib
+        from amaze.core import captures, file_library, locations
+        from amaze.prefs import prefs as prefs_mod
+        self.prefs = prefs_mod.Prefs()    # what the File grid reads too
+        self.prefs.dir, self.prefs.library_user = self.dir, ANNA
+        self.prefs.path = test_support.scratch_dir("amaze_settings_")
+        self.addCleanup(shutil.rmtree, self.prefs.path, True)
+        shots = test_support.scratch_dir("amaze_shots_")
+        self.addCleanup(shutil.rmtree, shots, True)
+        self.addCleanup(hou.hipFile.clear, suppress_save_prompt=True)
+        scene = os.path.join(shots, "shot" + scene_captures.scene_extension())
+        self.assertTrue(locations.register(self.prefs, shots))
+        hou.hipFile.save(scene)
+        patcher, _calls = capturing(write(NEW))
+        with patcher, mock.patch.object(scene_captures, "scene_viewer", lambda: Viewer()):
+            taken = scene_captures.capture_open_scene(self.prefs)    # the shelf tool
+        key = captures.file_key(self.prefs, scene)
+        self.assertEqual(os.path.join(self.dir, "files", hashlib.sha1(key.encode()).hexdigest()
+                                      + ".png"), taken)
+        grid = file_library.FileFiles(self.prefs)
+        grid.set_folder(shots)
+        self.assertEqual(taken, grid.capture_path(grid.row_for_path(scene)), "the tile reads another")
+        elsewhere = test_support.scratch_dir("amaze_shots_")    # the same folder on another computer
+        self.addCleanup(shutil.rmtree, elsewhere, True)
+        os.rmdir(elsewhere)
+        os.rename(shots, elsewhere)
+        self.assertTrue(locations.relocate_record(self.prefs, shots, elsewhere))
+        moved = os.path.join(elsewhere, os.path.basename(scene))
+        self.assertEqual(taken, captures.file_path(self.prefs, captures.file_key(self.prefs, moved)))
+        hou.hipFile.save(moved)
+        self.assertEqual(NEW, self.shown(taken), "the capture went when the scene was saved again")
+
     def test_tp25_only_the_open_saved_scene_is_captured(self):
         saved = test_support.put(self.dir, "shots/saved.hip", b"scene")
         taken = []
