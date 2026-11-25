@@ -6,7 +6,7 @@ import hou
 from PySide6 import QtCore, QtGui
 
 from amaze import messages
-from amaze.core import category_list, debug, section_list
+from amaze.core import category_list, debug, gradient_library, section_list
 from amaze.helpers import wording
 from amaze.sections import base
 
@@ -38,11 +38,11 @@ class GradientSection(base.AssetSection):
 
     offers_preview_update = False  # drawn from its ramp; nothing to re-render
     GRID_MENU = (  # both submenus are built per entry, so `children` names a method
-        base.MenuEntry("Load Asset", handler="menu_apply_ramp", needs="one"),
-        base.MenuEntry("Load Asset as", handler="menu_apply_ramp", children="ramp_bases",
-                  needs="one"),
-        base.MenuEntry("Copy Color", handler="menu_copy_swatch",
-                  children="palette_swatches", needs="one"),
+        base.MenuEntry("Import", handler="menu_import", needs="one", glyph="upload_simple"),
+        base.MenuEntry("Interpolation", handler="menu_set_interpolation", children="ramp_bases",
+                       needs="one", glyph="line_segments"),
+        base.MenuEntry("Copy Color", handler="menu_copy_swatch", children="palette_swatches",
+                       needs="one", glyph="eyedropper"),
         base.SEPARATOR,
     ) + base.GRID_MENU_TAIL
 
@@ -50,10 +50,7 @@ class GradientSection(base.AssetSection):
                     on_space="create_gradient_node_in",
                     click_on_node="apply_gradient_to_node")
 
-    def apply_gradient_to_node(
-        self, index: QtCore.QModelIndex, node: hou.Node,
-        basis: str = "",
-    ) -> bool:
+    def apply_gradient_to_node(self, index: QtCore.QModelIndex, node: hou.Node) -> bool:
         """Apply the dropped gradient to the node under the cursor; False with no colour ramp."""
         from amaze.core import dragengine
         from amaze.helpers import helpers
@@ -65,37 +62,31 @@ class GradientSection(base.AssetSection):
             debug.refuse(messages.NODE_HAS_NO_COLOR_RAMP % node.name())
             return False
         with dragengine.drop_group("Amaze Apply Gradient"):
-            parm.set(self._entry_ramp(entry, basis))
+            parm.set(self._entry_ramp(entry))
         return True
 
     @staticmethod
-    def _entry_ramp(entry: dict, basis: str = "") -> hou.Ramp:
+    def _entry_ramp(entry: dict) -> hou.Ramp:
         from amaze.helpers import helpers
-        if basis:    # a basis rebuilds the ramp on that interpolation; otherwise the recorded ramp applies
-            return helpers.build_basis_ramp(
-                [c["hex"] for c in entry["colors"]], basis)
         ramp = entry.get("ramp")
         if ramp:
             return helpers.data_to_ramp(ramp)
         return helpers.build_stepped_ramp([c["hex"] for c in entry["colors"]])
 
-    def create_gradient_node_in(self, index, dest, position=None,
-                                basis: str = "") -> bool:
-        """Create a MtlX colour ramp node; empty `basis` means the recorded ramp."""
+    def create_gradient_node_in(self, index, dest, position=None) -> bool:
+        """Create a MtlX colour ramp node holding the palette's recorded ramp."""
         entry = self._entry_at(index)
         if entry is None:
             return False
-        return self._create_gradient_holder_node(entry, dest, basis,
-                                                 position=position)
+        return self._create_gradient_holder_node(entry, dest, position=position)
 
-    def _create_gradient_holder_node(self, entry, dest, basis: str = "",
-                                     position=None) -> bool:
+    def _create_gradient_holder_node(self, entry, dest, position=None) -> bool:
         """Node creation shared by the drop (an index) and the click actions (an entry)."""
         from amaze.helpers import helpers
         name = wording.sanitize_usd_path(str(entry.get("name") or "")) or "gradient"
         return self.pane.drop_placement.create_holder_node(
             dest, "hmtlxrampc", name, position, helpers.find_color_ramp_parm,
-            self._entry_ramp(entry, basis), "Amaze Create Gradient Node")
+            self._entry_ramp(entry), "Amaze Create Gradient Node")
 
     def _copy_gradient_swatch(self, color: dict) -> None:
         """Put one swatch's hex code on the system clipboard; it assigns nothing."""
@@ -150,10 +141,14 @@ class GradientSection(base.AssetSection):
         return self.pane.gradient_model.entry(source.row())
 
     def ramp_bases(self, indexes, current) -> tuple:
-        """Every interpolation, always offered."""
+        """Every interpolation by its name in Houdini's ramp menu, the palette's own checked."""
         from amaze.helpers import helpers
-        return tuple((basis, basis, "", True)
-                     for basis in helpers.RAMP_BASES)
+        entry = self._entry_at(current)
+        shown = gradient_library.GradientLibrary.interpolation(
+            entry["colors"], entry["ramp"]) if entry is not None else ""
+        labels = [gradient_library.BASIS_LABELS.get(basis, basis) for basis in helpers.RAMP_BASES]
+        return tuple((label, basis, "", True, label == shown)
+                     for label, basis in zip(labels, helpers.RAMP_BASES))
 
     def palette_swatches(self, indexes, current) -> tuple:
         """One row per colour in this palette, each with its hex as the swatch colour."""
@@ -166,8 +161,11 @@ class GradientSection(base.AssetSection):
             for colour in entry["colors"]
         )
 
-    def menu_apply_ramp(self, indexes, current, payload=None) -> None:
-        self.pane.loading.click_on_row(self, current, payload or None)    # Apply and Apply as through `click_on_row`; the payload is the ramp basis
+    def menu_set_interpolation(self, indexes, current, payload) -> None:
+        basis, _checked = payload    # a choice, not a toggle: picking the checked row keeps it
+        if current is not None:
+            row = self.pane.gradient_sorted_model.mapToSource(current).row()
+            self.pane.gradient_model.set_interpolation(row, basis)
 
     def menu_copy_swatch(self, indexes, current, payload=None) -> None:
         if payload is not None:

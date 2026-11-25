@@ -28,11 +28,12 @@ class CodeSection(base.AssetSection):
     key = "code"
     label = section_list.label(key)
     empty_noun = "snippet"
-    GRID_MENU = (    # Load Asset and Edit act on one snippet; New File needs no selection and stays enabled
-        base.MenuEntry("New File", handler="menu_new_snippet", needs="always", opens="open_code"),
+    GRID_MENU = (    # Import and Edit act on one snippet; New File needs no selection and stays enabled
+        base.MenuEntry("New File", handler="menu_new_snippet", needs="always", opens="open_code",
+                       glyph="file"),
         base.SEPARATOR,
-        base.MenuEntry("Load Asset", handler="menu_apply", needs="one"),
-        base.MenuEntry("Edit", handler="menu_edit", needs="one", opens="open_code"),
+        base.MenuEntry("Import", handler="menu_import", needs="one", glyph="upload_simple"),
+        base.MenuEntry("Edit", handler="menu_edit", needs="one", opens="open_code", glyph="code"),
         base.SEPARATOR,
     ) + base.GRID_MENU_TAIL
 
@@ -109,9 +110,6 @@ class CodeSection(base.AssetSection):
 
     def menu_new_snippet(self, indexes, current, payload=None) -> None:
         self.pane.saving.new_code_snippet()
-
-    def menu_apply(self, indexes, current, payload=None) -> None:
-        self.pane.loading.click_on_row(self, current)    # `click_on_row`, the same call as a double-click
 
     def _code_row(self, current):
         """The code model's row under a grid index, or None."""

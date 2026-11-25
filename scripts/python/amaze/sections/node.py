@@ -25,8 +25,8 @@ class CopSection(base.AssetSection):
     key = "cop"
     label = section_list.label(key)
     empty_noun = "node asset"
-    GRID_MENU = (    # the material menu without renderer-specific entries; Load Asset is enabled on a multi-selection
-        base.MenuEntry("Load Asset", handler="menu_load"),
+    GRID_MENU = (    # the material menu without renderer-specific entries; Import takes a multi-selection
+        base.MenuEntry("Import", handler="menu_import", glyph="upload_simple"),
         base.SEPARATOR,
     ) + base.GRID_MENU_TAIL
 
@@ -65,8 +65,6 @@ class CopSection(base.AssetSection):
                                 pane.drop_placement.release_position_in(context))
         return True
 
-    def menu_load(self, indexes, current, payload=None) -> None:
-        self.pane.loading.import_cop_assets()
     library_model_attrs = ("cop_model", "cop_category_model")
     model_attr = "cop_model"
     proxy_attr = "cop_sorted_model"

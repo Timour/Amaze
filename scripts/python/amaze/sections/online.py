@@ -58,12 +58,13 @@ class OnlineContext(base.Section):
 
     GRID_MENU = (    # named for where the material goes, a submenu for its renderer, as in C06/C06a/C06b
         base.MenuEntry("Import to Materials", handler="menu_import_to_library",
-                  children="import_targets", count_suffix=True),
+                       children="import_targets", count_suffix=True, glyph="upload_simple"),
         base.MenuEntry("Import to Scene", handler="menu_import_to_scene",
-                  children="import_targets", count_suffix=True),
+                       children="import_targets", count_suffix=True, glyph="upload_simple"),
         base.MenuEntry("Restore", handler="menu_restore_packages",
-                  shown="selection_is_amaze_packages", count_suffix=True),
-        base.MenuEntry("Refresh", handler="menu_refresh", needs="always"),
+                       shown="selection_is_amaze_packages", count_suffix=True,
+                       glyph="clock_clockwise"),
+        base.MenuEntry("Refresh", handler="menu_refresh", needs="always", glyph="arrows_clockwise"),
     )
 
     def _records(self, indexes) -> list:

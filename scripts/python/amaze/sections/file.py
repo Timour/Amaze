@@ -16,7 +16,8 @@ from amaze.sections import base
 
 
 UNDO_MOVE = (    # first in both File menus while the last move can be undone
-    base.MenuEntry("Undo Move", handler="menu_undo_move", needs="always", shown="can_undo_move"),
+    base.MenuEntry("Undo Move", handler="menu_undo_move", needs="always", shown="can_undo_move",
+                   glyph="arrow_counter_clockwise"),
     base.SEPARATOR,
 )
 
@@ -197,6 +198,7 @@ class FolderSection(base.Section):
         return bool(path) and path == scene_captures.current_scene_path()
 
     def menu_import(self, indexes, current, payload=None) -> None:
+        """Import: geometry files all at once, an image as its double-click does."""
         files = self._p(self.files_attr)
         if files is None:
             return
@@ -482,21 +484,22 @@ class FileSection(FolderSection):
 
     GRID_MENU = UNDO_MOVE + (  # the selection's KINDS decide the actions; no Delete: these are the user's own files
         base.MenuEntry("New Folder", handler="menu_new_folder", needs="menu_new_enabled",
-                       opens="ask_name"),
+                       opens="ask_name", glyph="folder"),
         base.SEPARATOR,
-        base.MenuEntry("Copy", handler="menu_copy"),
-        base.MenuEntry("Paste", handler="menu_paste", needs="menu_paste_enabled"),
+        base.MenuEntry("Copy", handler="menu_copy", glyph="copy"),
+        base.MenuEntry("Paste", handler="menu_paste", needs="menu_paste_enabled",
+                       glyph="arrow_bend_right_down"),
         base.SEPARATOR,
         base.MenuEntry("Open Scene", handler="menu_load_scene", needs="one",
-                  shown="selection_has_scene"),
-        base.MenuEntry("Save Scene", handler="menu_save_scene", needs="menu_new_enabled",
-                       opens="ask_name"),
+                       shown="selection_has_scene", glyph="files"),
+        base.MenuEntry("Save Scene Here", handler="menu_save_scene", needs="menu_new_enabled",
+                       opens="ask_name", glyph="folder_open"),
         base.SEPARATOR,
-        base.MenuEntry("Load Asset", handler="menu_import", needs="menu_import_enabled",
-                  shown="selection_has_importable"),
-        base.MenuEntry("Copy Path", handler="menu_copy_path"),
+        base.MenuEntry("Import", handler="menu_import", needs="menu_import_enabled",
+                       shown="selection_has_importable", glyph="upload_simple"),
+        base.MenuEntry("Copy Path", handler="menu_copy_path", glyph="cursor_text"),
         base.SEPARATOR,
-        base.MenuEntry("Show Location", handler="menu_reveal", needs="one"),
+        base.MenuEntry("Show Location", handler="menu_reveal", needs="one", glyph="folders"),
         base.SEPARATOR,
     ) + base.GRID_MENU_TAIL
 

@@ -36,11 +36,10 @@ class MaterialSection(base.AssetSection):
                 "are deleted permanently. Materials already used in a scene are "
                 "not affected." % count)
 
-    GRID_MENU = (    # the section's entries, a divider, then GRID_MENU_TAIL, as in the C01/C01b frames
-        base.MenuEntry("Load Asset to", handler="menu_copy_to", children="copy_to_targets"),
-        base.MenuEntry("Convert", handler="menu_convert_to",
-                  children="convert_targets",
-                  needs="selection_is_convertible"),
+    GRID_MENU = (    # Import is the double-click: into the network the editor shows
+        base.MenuEntry("Import", handler="menu_import", glyph="upload_simple"),
+        base.MenuEntry("Convert", handler="menu_convert_to", children="convert_targets",
+                       needs="selection_is_convertible", glyph="copy_simple"),
         base.SEPARATOR,
     ) + base.GRID_MENU_TAIL
 
@@ -51,7 +50,7 @@ class MaterialSection(base.AssetSection):
 
     def click_import_material(self, _index) -> bool:
         """The material import reads the selection and the network under the cursor itself."""
-        self.pane.loading.import_materials("auto")
+        self.pane.loading.import_materials()
         return True
 
     def material_drag_into_viewer(self, index, viewer, pane_kind):
@@ -86,14 +85,6 @@ class MaterialSection(base.AssetSection):
         position = pane.drop_placement.release_position_in(context)
         pane.drop_placement.import_materials_into_context(context, ids, position)
         return True
-
-    def copy_to_targets(self, indexes, current) -> tuple:
-        """Where the saved material is loaded, named the way Houdini writes the path: /stage."""
-        return (("/mat", "mat", "", True),
-                ("/stage/materiallibrary", "lop", "", True))    # names the DESTINATION: the copy goes INSIDE a material library under /stage, never stage root
-
-    def menu_copy_to(self, indexes, current, payload=None) -> None:
-        self.pane.loading.import_materials("lop" if payload == "lop" else "mat")
 
     def _convertible_renderers(self, indexes) -> frozenset:
         """The renderers among these rows that convert: one loop over the rows per menu."""

@@ -202,19 +202,7 @@ def build_stepped_ramp(hex_colors: list) -> hou.Ramp:
     return hou.Ramp(bases, keys, values)
 
 
-RAMP_BASES = tuple(_RAMP_BASIS)  # the Apply as submenu's entries, in Houdini's own order
-
-
-def build_basis_ramp(hex_colors: list, basis: str) -> hou.Ramp:
-    """A colour ramp from hex strings, every key on one basis; an unknown name means Linear."""
-    b = _RAMP_BASIS.get(basis, hou.rampBasis.Linear)
-    n = len(hex_colors)
-    if n <= 1:
-        values = [_hex_to_rgb(hex_colors[0])] if hex_colors else [(0.0, 0.0, 0.0)]
-        return hou.Ramp([b], [0.0], values)
-    keys = [i / (n - 1) for i in range(n)]
-    values = [_hex_to_rgb(c) for c in hex_colors]
-    return hou.Ramp([b] * n, keys, values)
+RAMP_BASES = tuple(_RAMP_BASIS)  # the Interpolation submenu's entries, in Houdini's own order
 
 
 def get_connected_nodes(node: hou.Node) -> list[hou.Node]:

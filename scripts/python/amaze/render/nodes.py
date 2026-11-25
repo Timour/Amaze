@@ -1020,7 +1020,7 @@ class NodeHandler:
                 + '" is a '
                 + mat.renderer
                 + " VOP material and cannot be imported into a LOP/Solaris "
-                + "context. Use Load Asset to /mat instead.",
+                + "context. Open /mat in the network editor and import it there.",
             )
 
         self._use_existing_node = False    # each branch sets whether it reused a node, for THIS import
