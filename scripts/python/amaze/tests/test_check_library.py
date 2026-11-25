@@ -291,6 +291,14 @@ class WhatTheReportSaysTest(_Library):
                             for line in lines), lines)
         self.assertIn(check_library.messages.CHECK_DATABASE_SHRUNK % ("Materials", 3, 10), lines)
 
+    def test_cl21_a_row_has_no_picture_only_when_its_tile_is_set_to_show_one(self):
+        os.remove(self.at("materials", "Brick__A1", "A1.png"))
+        os.remove(self.at("materials", "Loose__A3", "A3.png"))
+        document = guard.Guard(self.dir).read(MATERIALS).document
+        put(self.dir, MATERIALS, dict(document, icons={"A1": {"face": "generic"}}))
+        found = check_library.survey(self.dir)["no_picture"][MATERIALS]
+        self.assertEqual([("A3", "Loose")], found, "a row set to Generic was reported")
+
     def test_cl22_fix_all_recovers_each_folder_from_its_record_or_as_recovered(self):
         self.assertEqual(2, self.fix_all(named=True)["recovered"])
         rows = self.rows()

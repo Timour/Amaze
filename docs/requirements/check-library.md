@@ -26,7 +26,7 @@ own folder. The levels and the rules for tests are in the [README](README.md).
 ## Wrong output
 
 - CL-20 Wrong output: The report gives each database's state and what it holds, its backups when it is in trouble, and a database holding under half of its newest backup.
-- CL-21 Wrong output: The report names rows whose files are missing (a file still syncing looks the same), rows that can have a picture and have none, rows with no category, unlisted asset folders and which can be recovered, leftovers, conflict copies left where they are, unknown files and folders, locations not on this computer, favorites of missing files, and what the trash holds.
+- CL-21 Wrong output: The report names rows whose files are missing (a file still syncing looks the same), rows set to show a picture that have none, rows with no category, unlisted asset folders and which can be recovered, leftovers, conflict copies left where they are, unknown files and folders, locations not on this computer, favorites of missing files, and what the trash holds.
 - CL-22 Wrong output: Recover, which Fix All runs first, lists every Materials or Nodes asset folder no database lists in its section's database, with the name, category and tags of its record; one whose record cannot be read becomes "Recovered <id>" in the category Recovered. Fix Safe, which runs Recover, is offered whenever there is such a folder, its record read or not.
 - CL-23 Wrong output: A sync service's copy is a leftover only when it matches its original, and a scratch file only once it is an hour old.
 - CL-24 Wrong output: A version file its ledger does not list is an orphaned file, never a version.

@@ -6,7 +6,7 @@ import time
 
 from amaze import messages
 from amaze.core import asset_record, debug, documents, guard, library_db, library_files
-from amaze.core import layout_conversion, library_policy, locations, material, renderers
+from amaze.core import layout_conversion, library_policy, locations, material, renderers, tile_icons
 from amaze.helpers import hostos, wording
 
 SCRATCH_MIN_AGE = 60 * 60    # a younger scratch may be another session's live write
@@ -34,6 +34,7 @@ def survey(library_dir: str, preferences=None) -> dict:
     held = guard.Guard(library_dir)
     databases = [_database(held, reading) for reading in held.health()]
     rows = {entry["name"]: entry["rows"] for entry in databases if entry["name"] in LISTS}
+    faces = {entry["name"]: entry["icons"] for entry in databases if entry["name"] in LISTS}
     ids = set().union(*(set(found) for found in rows.values()))
     listing, out_of_place, unreadable = _walk(library_dir)
     spent = _spent_folders(library_dir, listing, ids)
@@ -43,7 +44,8 @@ def survey(library_dir: str, preferences=None) -> dict:
                 "orphans": _orphan_versions(library_dir, listing), "trash": held.trash_held()}
     for section in LISTS:
         if section in ASSET_SECTIONS:
-            _assets(findings, section, rows.get(section, {}), listing, accounted)
+            _assets(findings, section, rows.get(section, {}), faces.get(section, {}), listing,
+                    accounted)
         else:
             _inline_folders(findings, section, listing, accounted)
     findings.update(_out_of_place(library_dir, out_of_place, spent))
@@ -60,9 +62,11 @@ def _database(held, reading) -> dict:
     state = _STATES.get(reading.verdict, "unreadable")
     if state == "ok" and reading.name in LISTS and not count:
         state = "empty"
+    listed = (document or {}) if reading.name in LISTS else {}
     return {"name": reading.name, "state": state, "count": count, "why": reading.why,
             "backups": held.backups(reading.name), "shrunk": reading.shrunk,
-            "rows": dict((document or {}).get("assets") or {}) if reading.name in LISTS else {}}
+            "rows": dict(listed.get("assets") or {}),
+            "icons": dict(listed.get(tile_icons.SECTION) or {})}
 
 
 def _walk(library_dir: str) -> tuple:
@@ -118,7 +122,7 @@ def _asset_folders(listing: dict, section: str) -> dict:
             if kind == library_files.FOLDER and library_files.folder_id(name)}
 
 
-def _assets(findings: dict, section: str, rows: dict, listing: dict, ids: set) -> None:
+def _assets(findings: dict, section: str, rows: dict, faces: dict, listing: dict, ids: set) -> None:
     """A section's rows without files, picture or category, and its folders no database lists."""
     top = library_files.SECTION_FOLDERS[section]
     folders = _asset_folders(listing, section)
@@ -133,8 +137,8 @@ def _assets(findings: dict, section: str, rows: dict, listing: dict, ids: set) -
         here = listing.get(top + "/" + folders[asset_id], {}) if asset_id in folders else {}
         if asset_id + ".mat" not in here or asset_id + library_files.RECORD_SUFFIX not in here:
             missing.append(named)
-        elif asset_id + library_files.PICTURE_SUFFIX not in here and (
-                section == library_files.MATERIALS or renderers.can_hold_a_render(row.get("renderer"))):
+        elif (asset_id + library_files.PICTURE_SUFFIX not in here
+              and _shows_picture(section, row, faces.get(asset_id))):
             unpictured.append(named)
     findings["missing_files"][section] = missing
     findings["no_picture"][section] = unpictured
@@ -146,6 +150,13 @@ def _assets(findings: dict, section: str, rows: dict, listing: dict, ids: set) -
             findings["unlisted"].append({"section": section, "id": asset_id,
                                          "folder": top + "/" + name,
                                          "record": record[asset_record.METADATA] or None})
+
+
+def _shows_picture(section: str, row: dict, stored) -> bool:
+    """Whether the row's tile shows its picture: its face as its section's model reads it."""
+    can = section == library_files.MATERIALS or renderers.can_hold_a_render(row.get("renderer"))
+    face = tile_icons.face_of(tile_icons.stored_choice(stored), "image" if can else "generic", can)
+    return face == "image"
 
 
 def _inline_folders(findings: dict, section: str, listing: dict, ids: set) -> None:
