@@ -5,7 +5,7 @@ import hou
 from amaze import messages
 from amaze.actions import materials as material_actions
 from amaze.actions import nodes as node_actions
-from amaze.core import debug, grid_columns
+from amaze.core import debug, grid_columns, scene_captures
 from amaze.sections import base as section_base
 from amaze.render import nodes
 
@@ -132,11 +132,16 @@ class Loading:
                               title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
 
     def import_geo_assets(self, indexes) -> None:
-        """Import geometry files into the network editor's current network, as one undo step."""
+        """Geometry files as Houdini's own Import puts them, by the scene viewer's setting; one undo step."""
         paths = [index.data(self.pane.file_files_model.PathRole) for index in indexes]
+        viewer = scene_captures.scene_viewer()    # the one Capture Image and Swap Material use
+        placement = self.pane.drop_placement
         with hou.undos.group("Amaze Import Geometry"):
             for path in filter(None, paths):
-                self.pane.drop_placement.import_geo_in_context(path, self._active_network_pwd())
+                if viewer is None:    # no scene viewer: into the network the editor shows, as a drop
+                    placement.import_geo_in_context(path, self._active_network_pwd())
+                else:
+                    placement.import_geo_by_viewer(path, viewer)
 
     def _import_material_builder(self, asset_id, target, context_node=None):
         """Import a library material by id on a drop; the builder VOP, or None once reported."""

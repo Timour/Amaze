@@ -273,6 +273,25 @@ class DropPlacement:
         made.setCurrent(True, True)    # current and selected, as a node from the Tab menu is
         return made
 
+    def import_geo_by_viewer(self, path: str, viewer) -> hou.Node | None:
+        """Houdini's own File ▸ Import ▸ Geometry of `path`, by the viewer's setting ▸r/houdini-geo-import"""
+        import soptoolutils
+        base = os.path.basename(path)
+        name = wording.sanitize_usd_path(os.path.splitext(base)[0]) or "geo"
+        at_objects = viewer.pwd().childTypeCategory() == hou.objNodeTypeCategory()
+        try:
+            loader = soptoolutils.genericSopNodeGeneratorTool(    # what that Import runs for each file
+                {"pane": viewer, "ctrlclick": True, "cmdclick": True}, geo_library.loader_sop_for(path),
+                name, merge_context=at_objects and viewer.isCreateInContext(), exact_node_type=False)
+        except hou.Error as exc:    # a locked network, or one that cannot hold geometry
+            debug.event("import", "geometry import failed", file=base, error=str(exc))
+            debug.refuse(messages.GEOMETRY_IMPORT_FAILED % (base, exc))    # ▸p/refuse-vs-alert
+            return None
+        helpers.find_file_parm(loader).set(self.scene_path(path))
+        if len(loader.parent().children()) == 1:    # that Import names a holder of one loader after the file
+            loader.parent().setName(name, unique_name=True)
+        return loader
+
     def context_under_cursor(
         self, matcher, include_viewports: bool = False    # a type-name substring, or a callable(node) -> bool
     ) -> hou.Node | None:

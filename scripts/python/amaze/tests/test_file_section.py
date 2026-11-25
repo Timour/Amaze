@@ -2,6 +2,7 @@
 
 import os
 import shutil
+import sys
 import time
 import types
 import unittest
@@ -19,9 +20,12 @@ from amaze.tests import test_support  # noqa: E402
 
 try:    # without Houdini the tests that need it skip
     import hou
+    import soptoolutils
     from amaze.actions import files as files_actions
     from amaze.core import debug, scene_captures
+    from amaze.helpers import helpers
     from amaze.pane import drop_placement, files as pane_files, loading
+    from amaze.render import nodes
     from amaze.sections import file as file_section
 except ImportError:
     hou = None
@@ -197,17 +201,80 @@ class IntoTheSceneTest(_Folders):
 
     @staticmethod
     def rows(*paths) -> list:
-        return [types.SimpleNamespace(data=lambda role, path=path: path) for path in paths]
+        """Grid rows of `paths`, each with its path and its kind."""
+        kind = file_library.FileFiles.KindRole
+        return [types.SimpleNamespace(isValid=lambda: True, data=lambda role, path=path: (
+            file_library.kind_for(os.path.basename(path)) if role == kind else path)) for path in paths]
 
-    def test_fi24_load_asset_imports_the_geometry_into_the_network_shown_as_one_undo_step(self):
-        loads = loading.Loading(self.pane)
+    def test_fi24_double_click_and_import_put_geometry_where_houdinis_own_import_puts_it(self):
+        section = file_section.FileSection(self.pane)
+        self.pane.loading = loading.Loading(self.pane)
+        cube, = rows = self.rows(self.at("a", "cube.bgeo"))
+        written = self.pane.drop_placement.scene_path(self.at("a", "cube.bgeo"))
+        ui = types.SimpleNamespace(selectFile=lambda **kwargs: written, paneTabs=lambda: (),    # absent headless
+                                   paneTabOfType=lambda *args: None, orientationUpAxis=lambda: hou.orientUpAxis.Y)
+        nodegraph = types.ModuleType("nodegraphutils")
+        nodegraph.moveNodesToAvoidOverlap = lambda *args, **kwargs: None
+
+        def shown(network):
+            """A network editor showing `network`, where a click looks for the one node selected."""
+            return mock.patch.object(nodes.NodeHandler, "network_editors",
+                                     staticmethod(lambda: [types.SimpleNamespace(pwd=lambda: network)]))
+
+        def scene(where, in_context, gesture) -> list:
+            """Every node `gesture` leaves, a File SOP selected in /obj/fi24; the viewer shows `where`."""
+            roots = (hou.node("/obj"), hou.node("/stage"))
+            before = {node for root in roots for node in root.children()}
+            geo = hou.node("/obj").createNode("geo", "fi24")
+            taker = geo.createNode("file", "taker")
+            taker.setDisplayFlag(True)
+            taker.setSelected(True, clear_all_selected=True)
+            lopnet = hou.node("/stage").createNode("lopnet", "fi24")
+            lopnet.createNode("sphere").setDisplayFlag(True)
+            viewer = mock.Mock(spec=hou.SceneViewer, **{    # a viewer as Houdini's own tool asks it
+                "pwd.return_value": {"geo": geo, "obj": geo.parent(), "lop": lopnet}[where],
+                "isCreateInContext.return_value": in_context, "curViewport.return_value": None,
+                "isWorldSpaceLocal.return_value": False})
+            with mock.patch.object(hou, "ui", ui, create=True), \
+                    mock.patch.dict(sys.modules, {"nodegraphutils": nodegraph}), \
+                    mock.patch.object(scene_captures, "scene_viewer", return_value=viewer), shown(geo):
+                gesture(viewer)
+            left = [(node.path(), node.type().name(), node.isSelected(), node.isCurrent(),
+                     [flag for flag in ("isDisplayFlagSet", "isRenderFlagSet", "isSelectableTemplateFlagSet")
+                      if getattr(node, flag, lambda: False)()],
+                     [str(item.path()) for item in node.inputs() if item is not None],
+                     (helpers.find_file_parm(node) or types.SimpleNamespace(rawValue=str)).rawValue())
+                    for root in roots for node in root.allSubChildren()]
+            for node in {node for root in roots for node in root.children()} - before:
+                test_support.drop_node(node)
+            return left
+
+        def houdinis(viewer) -> None:    # File ▸ Import ▸ Geometry, its file chooser answered
+            soptoolutils.chooseAndOpenGeoFile({"pane": viewer}, False)
+        made = {}
+        for where in ("geo", "obj", "lop"):
+            for in_context in (True, False):
+                with self.subTest(where=where, in_context=in_context):
+                    made[where, in_context] = scene(where, in_context, houdinis)
+                    self.assertNotEqual(scene(where, in_context, lambda _viewer: None), made[where, in_context],
+                                        "premise: Houdini's import made nothing")
+                    self.assertEqual(made[where, in_context],
+                                     scene(where, in_context, lambda _viewer: section.double_click(cube)))
+                    self.assertEqual(made[where, in_context],
+                                     scene(where, in_context, lambda _viewer: section.menu_import(rows, cube)))
+        self.assertNotEqual(made["geo", True], made["geo", False], "premise: the setting changed nothing")
+        taker = self.geo.createNode("file", "taker")
+        taker.setSelected(True, clear_all_selected=True)
+        path = taker.parm("file").rawValue()
         hou.undos.clear()
-        with mock.patch.object(loads, "_active_network_pwd", return_value=self.geo):
-            loads.import_geo_assets(self.rows(CUBE, self.at("a", "cube.bgeo")))
-        self.assertEqual(["cube", "cube1"], sorted(node.name() for node in self.geo.children()))
-        self.assertEqual(("Amaze Import Geometry",), hou.undos.undoLabels())
+        with mock.patch.object(scene_captures, "scene_viewer", return_value=None), shown(self.geo):
+            section.double_click(cube)    # no scene viewer: into the network shown
+            section.menu_import(self.rows(CUBE, self.at("a", "cube.bgeo")), cube)
+        self.assertEqual((["cube", "cube1", "cube2", "taker"], path),
+                         (sorted(node.name() for node in self.geo.children()), taker.parm("file").rawValue()))
+        self.assertEqual(("Amaze Import Geometry",) * 2, hou.undos.undoLabels())
         hou.undos.performUndo()
-        self.assertEqual((), self.geo.children())
+        self.assertEqual(["cube", "taker"], sorted(node.name() for node in self.geo.children()))
 
     def test_fi25_copy_path_spells_each_path_as_write_paths_as_one_per_line(self):
         home = hou.text.expandString("$HOME")
