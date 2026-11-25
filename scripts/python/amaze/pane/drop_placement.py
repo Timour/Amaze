@@ -377,7 +377,14 @@ class DropPlacement:
         try:
             with hou.undos.group("Amaze Swap Material"):
                 if obj is not None:    # its Material parameter, the material imported into /mat
-                    self.pane.loading.assign_material_to_obj(ids[:1], obj)
+                    parm = obj.parm("shop_materialpath")
+                    old = obj.node(parm.eval()) if parm is not None and parm.eval() else None
+                    swapped = self.pane.loading.assign_material_to_obj(ids[:1], obj)
+                    removed = bool(swapped and old is not None and not lop_assign.used_by_a_node(old))
+                    debug.event("drag", "swap", obj=obj.path(), old=old.path() if old else "",
+                                removed=removed)
+                    if removed:    # nothing else uses it: the swap takes it out of the scene
+                        old.destroy()
                     return
                 stock = dragengine.stock_lop()
                 if stock is None:

@@ -147,9 +147,10 @@ def _branch_ends(node) -> list:
     return ends
 
 
-def _used_by_a_node(vop) -> bool:
+def used_by_a_node(vop) -> bool:
     """Whether a node outside the material libraries refers to `vop`, as an object's material does."""
-    return any(node.type().name() != "materiallibrary" and not node.path().startswith(vop.path() + "/")
+    return any(node != vop    # a VOP in a Material Library LOP lists itself ▸r/material-self-dependent
+               and node.type().name() != "materiallibrary" and not node.path().startswith(vop.path() + "/")
                for node in vop.dependents())
 
 
@@ -202,7 +203,7 @@ def remove_unreferenced_material(lopnet, liblop,
     if vop is not None and not vop.path().startswith(
             liblop.path() + "/"):
         vop = None
-    if vop is not None and _used_by_a_node(vop):
+    if vop is not None and used_by_a_node(vop):
         debug.event("lop", "material kept - a node refers to it", material=matprimpath)
         return False
     if vop is not None:
