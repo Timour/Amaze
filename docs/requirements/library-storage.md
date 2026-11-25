@@ -3,7 +3,7 @@
 What the library's storage must do. The engine is `core/guard.py`, `core/documents.py`,
 `core/library_db.py`, `core/library_settings.py`, `core/library_policy.py`, the asset folders
 in `core/material.py`, `core/texstore.py` and the comment pictures in `core/notes.py`, and
-`core/layout_conversion.py`. Check Library is its own engine, with its own
+`core/layout_conversion.py` and `core/category_conversion.py`. Check Library is its own engine, with its own
 [list](check-library.md). The levels and the rules for tests are in the [README](README.md).
 
 ## Catastrophe
@@ -27,6 +27,9 @@ in `core/material.py`, `core/texstore.py` and the comment pictures in `core/note
 - LS-17 Catastrophe: A failed write, a full disk included, leaves the library as it was, leaves no stray files, and tells the user.
 - LS-18 Catastrophe: Converting a 2.0 library to 3.0 moves every asset's files into its own folder: a material's or node's files, a snippet's or color's picture, its old versions, and each picture pasted into its comments; every `matX` texture and every comment picture goes into each asset that uses it, a copy for each one after the first; a conversion cut off at any moment loses nothing and is finished when it runs again.
 - LS-19 Catastrophe: A 2.0 library is not opened or written by this Amaze until the user chose to convert it.
+- LS-21 Catastrophe: Converting categories to ids keeps every asset in its category, and every category keeps its name, colour and place. The old lists are kept in `backup/`. If the conversion stops halfway, nothing is lost, and it finishes the next time the library opens.
+- LS-22 Catastrophe: An older Amaze does not open a library with category ids. It offers the update instead.
+- LS-23 Catastrophe: A list or record from an older Amaze, a sync or an old backup gets the same ids the conversion gave.
 
 ## Severe
 

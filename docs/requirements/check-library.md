@@ -36,3 +36,5 @@ own folder. The levels and the rules for tests are in the [README](README.md).
 - CL-28 Wrong output: `tools/library-audit.py` lists what does not belong in a library, by kind; it changes nothing and runs without Houdini.
 - CL-29 Wrong output: An asset folder no database lists that holds only scratch files, or nothing, is a leftover, not an asset: Recover and a rebuild never make it a row, and Fix All trashes it whole once it is an hour old.
 - CL-30 Wrong output: Preferences' Check Database row shows one state of the check: a red light and Repair, which runs Fix All, when Repair has something to fix; a yellow light and Fix, which only puts rows with no category in Uncategorized, when that is all it found; a yellow light and Check when it found only what no fix puts right, or could not check a part; a green light and Check when it found nothing. The light's tip names every finding.
+- CL-31 Wrong output: Restoring a backup or rebuilding from records keeps each asset in its category, using the category name in its record.
+- CL-32 Wrong output: An asset whose category is missing from the list counts as having no category, and Fix puts it in Uncategorized.

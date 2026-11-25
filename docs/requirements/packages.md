@@ -34,3 +34,4 @@ the [README](README.md).
 - PK-28 Wrong output: An Amaze that cannot read a package's textures refuses it as too new; it never imports it in part.
 - PK-29 Wrong output: Export Asset packs the selected tiles, Export Category the category or the whole section for All, and the File section each selected file whole with its kind.
 - PK-30 Wrong output: Amaze's own packages carry only assets with their `curated` mark: a build names every asset without one and writes no package.
+- PK-31 Wrong output: An export names each asset's category. An import puts the asset in the category of that name, and makes the category only when the section has none.
