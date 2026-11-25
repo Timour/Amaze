@@ -52,7 +52,8 @@ class Library:
         if not self.pane.prefs_loaded:
             self._open_libraryless()
             return False
-        if (library_actions.index_unreadable(prefs.dir)
+        if (any(library_actions.index_unreadable(prefs.dir, name)
+                for name in library_files.ASSET_SECTIONS)
                 or library_actions.folder_not_empty_without_library(prefs.dir)):
             self._open_later()    # a dialog opened during the build blocks the pane
             opened = False    # the pane opens without a library; its dialog comes later
@@ -94,19 +95,21 @@ class Library:
                 and hostos.comparable_path(str(self.models_dir or ""))
                 == hostos.comparable_path(str(folder or "")))
 
-    def _repaired(self, folder: str) -> bool:
-        """Offer a repair of `folder`'s unreadable index; True once the chosen fix makes it read."""
+    def _repaired(self, folder: str, name: str = library_files.MATERIALS) -> bool:
+        """Offer a repair of `folder`'s unreadable database `name`; True once the fix makes it read."""
         from amaze.dialogs import check_dialog
         switching = getattr(self.pane, "material_model", None) is not None    # a library is open
-        debug.event("session", "library index unreadable", dir=folder, switching=switching)
+        debug.event("session", "library index unreadable", dir=folder, switching=switching,
+                    database=name)
         ui = getattr(hou, "ui", None)
         if ui is None:
             return False
-        broken = library_actions.index_unreadable(folder)
+        label = library_files.section_label(name)
+        blocks = name == library_files.MATERIALS    # without Nodes the library still opens
         choice = ui.displayMessage(
-            messages.LIBRARY_INDEX_UNREADABLE_SWITCHING % broken if switching
-            else messages.LIBRARY_INDEX_UNREADABLE % broken,
-            buttons=messages.BUTTONS_REPAIR_OR_CANCEL if switching
+            messages.LIBRARY_INDEX_UNREADABLE_SWITCHING % label if switching
+            else messages.LIBRARY_INDEX_UNREADABLE % label,
+            buttons=messages.BUTTONS_REPAIR_OR_CANCEL if switching or not blocks
             else messages.BUTTONS_REPAIR_OR_OPEN_WITHOUT,
             severity=hou.severityType.Warning,
             default_choice=0, close_choice=1,
@@ -115,11 +118,10 @@ class Library:
             debug.event("session", "index repair declined")
             return False
         check_dialog.repair_failed(folder, self.pane.prefs)    # the user picks the fix there
-        still = library_actions.index_unreadable(folder)
-        if still:
+        if library_actions.index_unreadable(folder, name):
             debug.event("session", "index still unreadable after Check Library", dir=folder)
-            ui.displayMessage(messages.DATABASE_STILL_UNREADABLE_SWITCHING % still if switching
-                              else messages.DATABASE_STILL_UNREADABLE % still,
+            ui.displayMessage(messages.DATABASE_STILL_UNREADABLE_SWITCHING % label if switching
+                              else messages.DATABASE_STILL_UNREADABLE % label,
                               severity=hou.severityType.Warning, title=messages.TITLE_AMAZE)
             return False
         debug.event("session", "index repaired", dir=folder)
@@ -165,6 +167,8 @@ class Library:
         if (library_actions.index_unreadable(prefs.dir)
                 and not self._repaired(prefs.dir)):
             return self._stay_closed()
+        if library_actions.index_unreadable(prefs.dir, library_files.NODES):
+            self._repaired(prefs.dir, library_files.NODES)    # declined, Nodes opens read-only
         library_actions.prepare(prefs)
         if not library_actions.index_present(prefs.dir):    # prepare could not set one up
             return self._stay_closed()

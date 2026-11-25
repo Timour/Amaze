@@ -9,13 +9,11 @@ from amaze.helpers import hostos
 from amaze.prefs import prefs as prefs_mod
 
 
-def index_unreadable(lib_dir: str) -> str:
-    """The Materials or Nodes database that is there but cannot be read, named; Repair mends it."""
+def index_unreadable(lib_dir: str, name: str = library_files.MATERIALS) -> bool:
+    """Whether database `name`, the Materials one by default, is there but cannot be read."""
     if not lib_dir or not os.path.isdir(lib_dir):
-        return ""
-    held = guard.Guard(lib_dir)
-    return next((library_files.section_label(name) for name in library_files.ASSET_SECTIONS
-                 if held.read(name).verdict == guard.CORRUPT), "")
+        return False
+    return guard.Guard(lib_dir).read(name).verdict == guard.CORRUPT
 
 
 def index_unopenable(lib_dir: str) -> str:

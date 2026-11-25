@@ -502,8 +502,8 @@ class InThePaneTest(unittest.TestCase):
         with self.answering(0, 0):    # Repair, then Rebuild: no backup
             opening.library.start()
             test_support.pump_until(lambda: opening.library.serves(other), 5)
-        self.assertEqual([messages.BUTTONS_REPAIR_OR_OPEN_WITHOUT, messages.BUTTONS_REBUILD_ONLY],
-                         self.asked)
+        self.assertEqual([messages.BUTTONS_REPAIR_OR_CANCEL, messages.BUTTONS_REBUILD_ONLY],
+                         self.asked)    # the library opens without its Nodes either way
         self.assertNotEqual(guard.CORRUPT, guard.Guard(other).read(NODES).verdict)
 
     def test_cl27_after_a_fix_the_pane_shows_the_library_as_it_is_now(self):
