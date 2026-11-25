@@ -826,7 +826,10 @@ a button is down, hands it the moves and the release. A grid or list holds its f
 a tile or row is pressed, or at a UI scale under 1 the flick takes a downward drag. Over the
 sidebar, `Sidebar.drop_target` says which row a tile may drop on, for both panes; the QML tree
 lights that row as it lights its selected rows. The QML pane's drop menu is the one menu engine
-in an `AmazeMenu` at the cursor, waited on as the widget panel's QMenu is.
+in an `AmazeMenu` at the cursor, and nothing waits on it: the release opens it and returns, and
+the pick continues the drop. The widget panel's modal QMenu answers before the release returns.
+Either way the drop handler returns a `PendingOutcome`, which the pick settles; the drag session
+shows the red X when it settles as a miss.
 The name tag is hidden while another application is in front.
 Sections' release handlers call the import code. What a release does is one engine call,
 `DropPlacement.release(section_key, key, pane_tab, pane_kind)` in `pane/drop_placement.py`: the
@@ -834,7 +837,8 @@ tile's drop rule, its handler and the wire splice as one undo step; the drag ses
 for both panes. The one native drag left is the texture file drag.
 Rules: an item is placed where it is dropped; nothing is created before release;
 SOP and LOP contexts never reference each other; empty viewport space is a
-miss (red X); a drop that opens a menu shows no icon.
+miss (red X); a drop that opens a menu shows the red X only when the menu is dismissed or the
+pick fails.
 
 ## Storage format
 

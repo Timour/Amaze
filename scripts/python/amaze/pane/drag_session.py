@@ -6,6 +6,7 @@ import hou
 from amaze import sections
 from amaze.core import debug, dragengine
 from amaze.helpers import helpers
+from amaze.pane import drop_placement
 from amaze.render import cop_nodes
 from amaze.sections import base as section_base
 
@@ -70,8 +71,14 @@ class DragSession:
             debug.exception("drop failed - permission error", refusal, section=self.section)
             debug.refuse(str(refusal), section=self.section)    # Houdini's own message ▸p/refuse-vs-alert
         finally:
-            if not outcome:
-                self.marks.show_miss()
+            self._show_outcome(outcome)
+
+    def _show_outcome(self, outcome) -> None:
+        """A miss shows the red X; a PendingOutcome shows it once the user's answer settles it."""
+        if isinstance(outcome, drop_placement.PendingOutcome):
+            outcome.then(self._show_outcome)
+        elif not outcome:
+            self.marks.show_miss()
 
     def cancel(self, miss: bool = False) -> None:
         """End with no drop: Esc and a hidden view quietly, another button or an error with the red X."""

@@ -74,6 +74,19 @@ class _Stock:
         assign.parm("matspecpath1").set(matpath)
 
 
+class _MenuHost:
+    """The drop menu's host: it picks `label` at once, as a modal menu, or only on `pick()`."""
+
+    def __init__(self, label: str, at_once: bool):
+        self.label, self.at_once, self.offered, self.pick = label, at_once, [], None
+
+    def ask_drop_choice(self, labels, then):
+        self.offered = [label for label in labels if label]
+        self.pick = lambda: then(labels.index(self.label))
+        if self.at_once:
+            self.pick()
+
+
 @unittest.skipUnless(hou, "Houdini is not loaded")
 class _Drops(unittest.TestCase):
     """The pane's drop placement over a stub pane, what is refused recorded, a geo and a LOP network."""
@@ -282,10 +295,26 @@ class WhereADropGoesTest(_Drops):
         self.assertEqual("cube", hou.node("/obj/cube").name())
 
     def test_dd24_a_prim_offers_a_swap_per_bound_material_then_a_set_per_parent(self):
-        stage = _Library(self).shown.stage()
-        for prim, offered in (("/sphere_a", [("swap", "Swap mat_b"), ("assign", "Set as Material on sphere_a")]),
-                              ("/sphere_b", [("assign", "Set as Material on sphere_b")])):
-            self.assertEqual(offered, [choice[:2] for choice in lop_assign.drop_choices(stage, prim)])
+        for at_once in (True, False):    # the widget panel's menu answers at once, the QML pane's later
+            with self.subTest(at_once=at_once):
+                scene = _Library(self)
+                viewer = types.SimpleNamespace(pwd=lambda: scene.lopnet)
+                for prim, offered, picked in (
+                        ("/sphere_a", ["Swap mat_b", "Set as Material on sphere_a"], "Swap mat_b"),
+                        ("/sphere_b", ["Set as Material on sphere_b"], "Set as Material on sphere_b")):
+                    host = self.pane.ui = _MenuHost(picked, at_once)
+                    before = self.names(scene.lopnet)
+                    with mock.patch.object(dragengine, "stock_lop", return_value=_Stock):
+                        self.placement.material_lop_viewport_drop(["dd24_mat"], viewer, prim)
+                    if not at_once:
+                        self.assertEqual(before, self.names(scene.lopnet), "made before the pick")
+                        host.pick()
+                    self.assertEqual(offered, host.offered)
+                bound = {(node.parm("primpattern1").eval(), node.parm("matspecpath1").eval())
+                         for node in scene.lopnet.children()
+                         if node.type().name() == "assignmaterial" and node != scene.shown}
+                self.assertEqual({("/sphere_a", "/materials/dd24_mat"), ("/sphere_b", "/materials/dd24_mat")},
+                                 bound, "the picks did not import and bind")
 
     def test_dd25_an_object_with_no_material_parameter_gets_nothing(self):
         imported = []

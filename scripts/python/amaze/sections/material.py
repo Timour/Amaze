@@ -43,8 +43,8 @@ class MaterialSection(base.AssetSection):
         self.pane.loading.import_materials("auto")
         return True
 
-    def drop_material_at_release(self, index) -> bool:
-        """Import a dropped material; True on a target, False on none, `menu` if a menu showed."""
+    def drop_material_at_release(self, index):
+        """Import a dropped material: True on a target, False on none; on a prim, its menu's outcome."""
         from amaze.core import dragengine
         pane = self.pane
         if not pane.material_model or index is None or not index.isValid():
@@ -58,8 +58,7 @@ class MaterialSection(base.AssetSection):
             if kind == "lop":
                 if not data:
                     return self.reject_drop()    # empty viewport space is a MISS, not an import offer
-                shown = pane.drop_placement.material_lop_viewport_drop(ids, viewer, data)
-                return "menu" if shown is not False else False    # "menu" only when a menu was shown: it suppresses the miss icon
+                return pane.drop_placement.material_lop_viewport_drop(ids, viewer, data)
             if kind == "obj" and data is not None:
                 with dragengine.drop_group("Amaze Assign Material"):
                     return bool(pane.loading.assign_material_to_obj(ids, data))    # False when the picked object has no shop_materialpath
