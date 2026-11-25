@@ -92,7 +92,6 @@ class Categories(sidebar_model.SidebarModel):
         self._removed = set()    # names this model took out, dropped from the database at its save
         self._shown = list(self._categories)    # the rows the views last showed; `apply_refresh` compares
         self._renderer_filter = None  # the grid's kind filter, folded; None = none. Counts match the grid
-        self._one_kind = False    # the Filter names one kind; under All every category shows
         self._count_cache = None  # category -> visible count, `_All` = total; cleared on every change
         self.layoutChanged.connect(self.drop_count_cache)
 
@@ -125,7 +124,6 @@ class Categories(sidebar_model.SidebarModel):
         """The grid's Filter value as MultiFilterProxyModel gets it: None, one kind, or All's kinds."""
         empty = render_filter is None or render_filter == ""
         self._renderer_filter = None if empty else multifilterproxy_model.folded(render_filter)
-        self._one_kind = isinstance(render_filter, str) and not empty
         self.drop_count_cache()
 
     def drop_count_cache(self, *args) -> None:
@@ -145,10 +143,6 @@ class Categories(sidebar_model.SidebarModel):
         if rf is None:
             return True
         return multifilterproxy_model.kind_matches(rf, renderers.normalized(asset.get("renderer", "")))
-
-    def showing_all_renderers(self) -> bool:
-        """True unless the Filter names one kind: All shows every category, empty ones included."""
-        return not self._one_kind
 
     def _category_count(self, raw_name: str) -> int:
         """How many visible assets are in this category; `_All` counts every visible asset."""
@@ -464,8 +458,6 @@ class CategoriesSidebarProxy(sidebar_model.RowMoves, QtCore.QSortFilterProxyMode
             return True
         model = self.sourceModel()
         if model is None:
-            return True
-        if model.showing_all_renderers():  # All shows every category, empty ones included
             return True
         raw = model.index(source_row, 0, source_parent).data(SIDEBAR_KEY_ROLE)
         if not raw:    # All, keyed ""

@@ -132,6 +132,7 @@ class AssetEditingTest(_Edits):
     def test_ed25_the_sidebar_keeps_its_dragged_or_sorted_order_and_a_refused_move_goes_back(self):
         proxy = category.CategoriesSidebarProxy()
         proxy.setSourceModel(self.sidebar)
+        proxy.hide_empty = False    # the order is tested: the new, empty category must show
         self.sidebar.check_add_category("_WIP")
         self.drop(proxy, "_WIP", 1)
         test_support.reset_database_singletons()
