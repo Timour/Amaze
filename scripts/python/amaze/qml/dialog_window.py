@@ -31,12 +31,13 @@ class DialogState(qmlviews.SharedState):
 class DialogWindow(qmlviews.BaseQmlView):
     """A dialog window, each kind a subclass naming its QML and width: not modal, one open per kind."""
 
+    STATE = DialogState    # what the kind's QML reads: a kind with more to show names its own
     _content_height = 0.0    # the QML's own height, in design px, once it has loaded
     _then = None    # the asker's, called once at the close
     _answer = None    # OK's answer; any other close leaves None, a Cancel
 
     def __init__(self, title: str, question: dict, then) -> None:
-        super().__init__(state=DialogState(question=question))
+        super().__init__(state=self.STATE(question=question))
         self._then = then
         self.sharedState().setParent(self)    # deleted by Qt with the window, on the main thread
         self.sharedState().answered.connect(self._accept)

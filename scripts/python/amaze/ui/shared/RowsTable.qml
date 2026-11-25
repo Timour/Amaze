@@ -14,6 +14,8 @@ Item {
     property bool descending: false
     property var ink: colour => colour    // a cell's own text colour as it is drawn
     property bool wheelFix: false    // the wheel as Houdini's Context Options list takes it; off, Qt's
+    property bool headings: true    // the heading row over the columns
+    property bool ownKeys: false    // the arrow and page keys taken here, where no pane hands on hotkeys
     readonly property bool hotkeysFirst: true    // Amaze's hotkeys before its ScrollView's own arrow scrolling
     signal rowClicked(int row, int modifiers)    // the user's click; row -1 is the space below the rows
     signal rowDoubleClicked(int row)
@@ -29,6 +31,8 @@ Item {
         keys.step(name, extend, view.rows,
                   Math.max(1, Math.floor(view.height * view.rows / Math.max(view.contentHeight, 1))), view.moved)
     }
+
+    Keys.forwardTo: root.ownKeys ? [view] : []    // the table given the keys: the rows take them
 
     readonly property int last: {    // the last shown column, which takes the rest of the width
         let found = -1
@@ -56,7 +60,8 @@ Item {
     HorizontalHeaderView {
         id: header
         width: root.width
-        height: root.drawn.header_h
+        height: root.headings ? root.drawn.header_h : 0
+        visible: root.headings
         syncView: view
         clip: true
         delegate: HeadingCellDelegate {
@@ -82,6 +87,17 @@ Item {
             interactive: !(tap.pressed || drag.active)    // no flick takes a press, so a drag goes out
             pointerNavigationEnabled: false    // Qt's own click only makes a row current: `rowClicked` selects
             keyNavigationEnabled: false    // keys are Amaze's hotkeys, landing through `step`
+            Keys.enabled: root.ownKeys    // before the ScrollView round it, which scrolls on arrows
+            Keys.onUpPressed: event => root.step("up", event.modifiers & Qt.ShiftModifier)
+            Keys.onDownPressed: event => root.step("down", event.modifiers & Qt.ShiftModifier)
+            Keys.onPressed: event => {    // the page keys, by the names Houdini's hotkeys give them
+                const name = {[Qt.Key_Home]: "home", [Qt.Key_End]: "end",
+                              [Qt.Key_PageUp]: "page_up", [Qt.Key_PageDown]: "page_down"}[event.key]
+                if (name !== undefined) {
+                    root.step(name, event.modifiers & Qt.ShiftModifier)
+                    event.accepted = true
+                }
+            }
             columnWidthProvider: column => root.widthOf(column)
             onWidthChanged: forceLayout()
 

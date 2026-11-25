@@ -6,7 +6,7 @@ import shiboken6
 import amaze
 from amaze import amazetheme, tooltips
 from amaze.core import debug, grid_columns, grid_engine
-from amaze.dialogs import name_window
+from amaze.dialogs import name_window, versions_window
 from amaze.helpers import ui_helpers
 from amaze.pane import asks, drag_session, menus, pane as pane_mod, sidebar as pane_sidebar
 from amaze.panel import delegates
@@ -16,7 +16,7 @@ from hutil.qt.common import qmlviews    # Houdini's own QML panels' base ▸r/ho
 
 PANE_QML = amaze.package_file("ui", "pane", "Pane.qml")
 SIZE_SAVE_MS = 500    # the slider's pause before its tile size is saved, as in the widget panel
-WIRED_BADGES = ("favourite",)    # the badges whose click works here; the others come with the menus
+WIRED_BADGES = ("favourite", "versions")    # the badges whose click works here; the others come later
 PINNED_BADGES = ("favourite",)    # shown while on; every other badge shows only under the pointer
 
 
@@ -488,6 +488,10 @@ class PaneState(qmlviews.SharedState, asks.Asks):
     def ask_name(self, title: str, default: str, then) -> None:
         """The Name window, not modal: `then` gets the name, "" for a cleared field, None for Cancel."""
         name_window.ask(self, title, default, then)
+
+    def open_versions(self, name: str, listed: list, active: int, then) -> None:
+        """The Versions window, not modal: `then` gets the version picked on Select, None for Cancel."""
+        versions_window.ask(self, name, listed, active, then)
 
     def ask_colour(self, start: str, title: str, then) -> None:
         """Houdini's colour picker, the one the widget panel opens: `then` gets "#rrggbb", None for Cancel."""

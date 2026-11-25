@@ -9,9 +9,12 @@ Item {
 
     default property alias content: rows.data    // the kind's rows, top to bottom, each as wide as the window
     property var answer: null    // what OK hands on: each kind binds it to its fields
+    property string okText: "OK"    // the primary button's word, as the kind's frame names it
+    property bool okEnabled: true    // off while the kind has nothing to hand on
 
-    function accept() {    // OK, and Return in a field
-        SharedState.accept(root.answer)
+    function accept() {    // OK, and Return
+        if (root.okEnabled)
+            SharedState.accept(root.answer)
     }
     function reject() {    // Cancel, as Esc and the window's own close
         SharedState.reject()
@@ -20,6 +23,8 @@ Item {
     anchors.fill: parent
     focus: true
     Keys.onEscapePressed: root.reject()
+    Keys.onReturnPressed: root.accept()    // the primary button is the default one, as a dialog's
+    Keys.onEnterPressed: root.accept()
 
     ScaledContent {
         Column {
@@ -44,8 +49,9 @@ Item {
                     Layout.fillWidth: true
                 }
                 Button {
-                    text: "OK"
+                    text: root.okText
                     primary: true
+                    enabled: root.okEnabled
                     implicitWidth: 80
                     onClicked: root.accept()
                 }
