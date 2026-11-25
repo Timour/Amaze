@@ -91,6 +91,7 @@ NODE_CANNOT_BE_SAVED = "\"%s\" can't be saved — it's not a material, color ram
 NODE_SAVE_FAILED_WITH_REASON = "\"%s\" could not be saved: %s"
 NODE_SAVE_FAILED = "\"%s\" could not be saved."
 OBJECT_HAS_NO_MATERIAL_PARM = "\"%s\" has no material parameter, so nothing was imported."
+NOTHING_TO_SWAP = "No material is bound to \"%s\", so nothing was swapped."
 DROP_CANCELED = 'The action was canceled.'
 
 MOVE_DONE = 'Moved %s to %s.'
