@@ -1,8 +1,8 @@
-"""DialogWindow: Amaze's separate dialog windows, made as Houdini makes its own; each answers once."""
+"""DialogWindow: Amaze's separate dialog windows, made as Houdini makes its own windows."""
 
 import math
 
-from PySide6 import QtCore
+from PySide6 import QtCore, QtQml
 
 from amaze.core import debug
 from hutil.qt.common import qmlviews    # Houdini's own QML windows' base ▸r/qml-widget-blackout
@@ -11,16 +11,30 @@ _open: dict = {}    # the one open window of each kind, by its class
 
 
 class DialogState(qmlviews.SharedState):
-    """What a dialog window's QML reads, its `question`, and its two ends: OK with an answer, Cancel."""
+    """What a dialog window's QML reads, its `question`, and its ends: OK or Apply with an answer."""
 
     question: dict = {}    # what the window opens with; each kind names its own fields
 
     answered = QtCore.Signal("QVariant")    # OK, with what the window's QML hands on
+    applied = QtCore.Signal("QVariant")    # Apply, with the same: the window stays open
+
+    def refused(self, answer) -> bool:
+        """Whether the kind refuses `answer`, having said why; the window then stays as it is."""
+        return False
 
     @QtCore.Slot("QVariant")
     def accept(self, answer) -> None:
-        """OK: the window closes, then its asker gets `answer`."""
-        self.answered.emit(answer)
+        """OK: the window closes, then its asker gets `answer`, a JavaScript object as a dict."""
+        answer = answer.toVariant() if isinstance(answer, QtQml.QJSValue) else answer
+        if not self.refused(answer):
+            self.answered.emit(answer)
+
+    @QtCore.Slot("QVariant")
+    def apply(self, answer) -> None:
+        """Apply: the asker gets `answer` and the window stays open."""
+        answer = answer.toVariant() if isinstance(answer, QtQml.QJSValue) else answer
+        if not self.refused(answer):
+            self.applied.emit(answer)
 
     @QtCore.Slot()
     def reject(self) -> None:
@@ -41,11 +55,12 @@ class DialogWindow(qmlviews.BaseQmlView):
         self._then = then
         self.sharedState().setParent(self)    # deleted by Qt with the window, on the main thread
         self.sharedState().answered.connect(self._accept)
+        self.sharedState().applied.connect(self._apply)
         self.setTitle(title)
 
     @classmethod
     def ask(cls, owner, title: str, question: dict, then) -> "DialogWindow":
-        """Open this kind on `question`; `then(answer)` once, None for Cancel. Asked again, it is replaced."""
+        """`question` in this kind, replacing an open one: `then` at each Apply, once at the close."""
         shown = _open.get(cls)
         if shown is not None:
             try:
@@ -75,6 +90,11 @@ class DialogWindow(qmlviews.BaseQmlView):
     def _accept(self, answer) -> None:
         self._answer = answer
         self.close()
+
+    @debug.guarded("DialogWindow.apply")
+    def _apply(self, answer) -> None:
+        if self._then is not None:
+            self._then(answer)
 
     def closeEvent(self, event) -> None:
         super().closeEvent(event)

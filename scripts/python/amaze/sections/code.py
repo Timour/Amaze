@@ -29,7 +29,7 @@ class CodeSection(base.AssetSection):
     label = section_list.label(key)
     empty_noun = "snippet"
     GRID_MENU = (    # Load Asset and Edit act on one snippet; New File needs no selection and stays enabled
-        base.MenuEntry("New File", handler="menu_new_snippet", needs="always"),
+        base.MenuEntry("New File", handler="menu_new_snippet", needs="always", opens="open_code"),
         base.SEPARATOR,
         base.MenuEntry("Load Asset", handler="menu_apply", needs="one"),
         base.MenuEntry("Edit", handler="menu_edit", needs="one", opens="open_code"),

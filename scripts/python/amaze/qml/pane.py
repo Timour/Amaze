@@ -6,9 +6,9 @@ import shiboken6
 import amaze
 from amaze import amazetheme, tooltips
 from amaze.core import debug, grid_columns, grid_engine
-from amaze.dialogs import name_window, versions_window
+from amaze.dialogs import code_window, name_window, save_window, versions_window
 from amaze.helpers import ui_helpers
-from amaze.pane import asks, drag_session, menus, pane as pane_mod, sidebar as pane_sidebar
+from amaze.pane import asks, drag_session, menus, node_drop, pane as pane_mod, sidebar as pane_sidebar
 from amaze.panel import delegates
 from amaze.qml import hotkeys
 from amaze.utils import rc_calls
@@ -496,6 +496,14 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         """The Versions window, not modal: `then` gets the version picked on Select, None for Cancel."""
         versions_window.ask(self, name, listed, active, then)
 
+    def open_save(self, question, then) -> None:
+        """The Save window, not modal: `then` gets a SaveAnswer on OK, None for Cancel."""
+        save_window.ask(self, question, then)
+
+    def open_code(self, question, apply) -> None:
+        """The code window, not modal: each Apply hands `apply` a CodeAnswer; a close hands on nothing."""
+        code_window.ask(self, question, apply)
+
     def ask_colour(self, start: str, title: str, then) -> None:
         """Houdini's colour picker, the one the widget panel opens: `then` gets "#rrggbb", None for Cancel."""
         chosen = ui_helpers.pick_color(start, None, title)
@@ -661,6 +669,7 @@ class PaneView(qmlviews.BaseQmlWidget):
         self.drag = self.sharedState().drag = drag_session.DragSession(self, ui_helpers.DragMarks())
         self.reorder = self.sharedState().reorder = SidebarReorder(self)
         self._drag_held = False    # a drag's left button is still down: another button goes nowhere
+        self._node_drag = False    # Qt's drag over the pane carries scene nodes: the pane saves them
 
     def _context_menu(self, at) -> None:
         """The pane's menu for whatever is under `at`, as the QML finds it."""
@@ -759,6 +768,36 @@ class PaneView(qmlviews.BaseQmlWidget):
         super().mouseReleaseEvent(event)    # the QML's press ends first: the drop may open a menu
         if gesture is not None:
             gesture.release()
+
+    def dragEnterEvent(self, event) -> None:
+        """Nodes dragged in from a network editor are the pane's to save; any other drag goes to Qt."""
+        self._node_drag = event.source() is not self and bool(node_drop.node_paths(event.mimeData()))
+        if self._node_drag:
+            event.acceptProposedAction()
+            return
+        super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event) -> None:
+        if self._node_drag:    # the QML has no drop area: passed on, the move would refuse the drop
+            event.acceptProposedAction()
+            return
+        super().dragMoveEvent(event)
+
+    def dragLeaveEvent(self, event) -> None:
+        if self._node_drag:
+            self._node_drag = False
+            return
+        super().dragLeaveEvent(event)
+
+    @debug.guarded("PaneView.dropEvent")
+    def dropEvent(self, event) -> None:
+        """Dropped nodes are saved as Save to Amaze saves them, once the drop has returned."""
+        if not self._node_drag:
+            super().dropEvent(event)
+            return
+        self._node_drag = False
+        if node_drop.save(self.sharedState().pane, event.mimeData()):
+            event.acceptProposedAction()
 
     def hideEvent(self, event) -> None:
         self.drag.cancel()    # a pane hidden mid-drag gets no release

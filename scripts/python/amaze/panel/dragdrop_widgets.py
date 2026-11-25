@@ -1,12 +1,11 @@
 """Drag and drop between the panel's views and Houdini. ▸o/section-api"""
 
 from PySide6 import QtWidgets, QtGui, QtCore
-import hou
 
 from amaze.core import debug
-from amaze.helpers import helpers, theme
+from amaze.helpers import theme
 from amaze.helpers import ui_helpers
-from amaze.pane import drag_session
+from amaze.pane import drag_session, node_drop
 
 
 def _find_panel(widget: QtWidgets.QWidget):
@@ -215,28 +214,6 @@ class PanelSidebar:
         return category, (None if category is not None else self.panel._folder_under_cursor())
 
 
-def _node_paths_from_mime(mime) -> list:
-    """Node paths in a drag: node-path mime, then item-path list, then text. ▸r/drop-mime"""
-    raw = ""
-    for attr in ("nodePath", "itemPath"):
-        try:
-            fmt = getattr(hou.qt.mimeType, attr)
-        except AttributeError:
-            continue
-        if mime.hasFormat(fmt):
-            raw = bytes(mime.data(fmt)).decode("utf-8", "replace")
-            if raw.strip():
-                break
-    if not raw.strip():
-        raw = mime.text() or ""
-    paths = []
-    for piece in raw.replace("\r", "\t").replace("\n", "\t").split("\t"):
-        piece = piece.strip()
-        if piece and hou.node(piece) is not None:
-            paths.append(piece)
-    return paths
-
-
 class DragDropCentralWidget(QtWidgets.QWidget):
     """Receives a node dragged in from a network editor and saves it to the library."""
 
@@ -246,7 +223,7 @@ class DragDropCentralWidget(QtWidgets.QWidget):
         src = event.source()
         if src is not None and _find_panel(src) is not None:
             return
-        if _node_paths_from_mime(event.mimeData()):
+        if node_drop.node_paths(event.mimeData()):
             event.acceptProposedAction()
 
     @debug.guarded("DragDropCentralWidget.dropEvent")
@@ -254,33 +231,9 @@ class DragDropCentralWidget(QtWidgets.QWidget):
         src = event.source()    # a drop that started in the panel is ignored, though it carries a node path
         if src is not None and _find_panel(src) is not None:
             return
-        mime = event.mimeData()
-        paths = _node_paths_from_mime(mime)
-        debug.event(
-            "save", "drop received",
-            formats=[str(f) for f in mime.formats()][:8],
-            text=(mime.text() or "")[:120],
-            parsed=paths,
-        )
-        if not paths:
-            return
-        event.acceptProposedAction()
-        nodes = [hou.node(p) for p in paths]
-        with hou.undos.disabler():    # a selection is an undo entry of its own
-            for i, n in enumerate(nodes):    # the dropped nodes become the selection the save reads
-                n.setSelected(True, clear_all_selected=(i == 0))
         panel = _find_panel(self)
-        if panel is None:
-            return
-        section = panel.pane.active_section()    # deferred out of the drop, so no modal opens mid-gesture ▸r/qt-windows-macos
-
-        @debug.guarded("dropEvent.deferred_save")
-        def _route(panel=panel, section=section, node=nodes[0]):
-            debug.event("save", "drop save routed",
-                        node=node.path(), section=getattr(section, "key", None))
-            panel.pane.saving.save_from_node(node, prefer=getattr(section, "key", ""))
-
-        helpers.run_at_top_of_loop(_route, "drop save")    # a bare timer can fire during a builder's processEvents call
+        if panel is not None and node_drop.save(panel.pane, event.mimeData()):
+            event.acceptProposedAction()
 
 
 class DragDropListView(GridGestureMixin, QtWidgets.QListView):

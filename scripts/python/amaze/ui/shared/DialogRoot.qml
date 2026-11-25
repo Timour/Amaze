@@ -9,12 +9,17 @@ Item {
 
     default property alias content: rows.data    // the kind's rows, top to bottom, each as wide as the window
     property var answer: null    // what OK hands on: each kind binds it to its fields
-    property string okText: "OK"    // the primary button's word, as the kind's frame names it
+    property string okText: "OK"    // the primary button's word, as the kind's frame names it; "" for none
     property bool okEnabled: true    // off while the kind has nothing to hand on
+    property string applyText: ""    // a button that hands the answer on and keeps the window, as Houdini's Apply
+    property bool fills: false    // the rows take the height the window is given, not the window theirs
 
     function accept() {    // OK, and Return
-        if (root.okEnabled)
+        if (root.okText !== "" && root.okEnabled)
             SharedState.accept(root.answer)
+    }
+    function apply() {
+        SharedState.apply(root.answer)
     }
     function reject() {    // Cancel, as Esc and the window's own close
         SharedState.reject()
@@ -28,20 +33,28 @@ Item {
 
     ScaledContent {
         Column {
+            id: column
             x: 8
             width: parent.width - 16
+            height: root.fills ? parent.height : implicitHeight
             topPadding: 8
             bottomPadding: 8
             spacing: 12
 
-            onHeightChanged: SharedState.contentHeightChanged(height)    // the window takes this height
+            onHeightChanged: {
+                if (!root.fills)
+                    SharedState.contentHeightChanged(height)    // the window takes this height
+            }
 
             Column {
                 id: rows
                 width: parent.width
+                height: (root.fills ? column.height - column.topPadding - column.bottomPadding
+                                      - column.spacing - buttons.height : implicitHeight)
                 spacing: 4
             }
-            RowLayout {    // Houdini's order: the primary button, then Cancel, at the right
+            RowLayout {    // Houdini's order: Apply, the primary button, then Cancel, at the right
+                id: buttons
                 width: parent.width
                 spacing: 8
 
@@ -49,7 +62,14 @@ Item {
                     Layout.fillWidth: true
                 }
                 Button {
+                    text: root.applyText
+                    visible: root.applyText !== ""
+                    implicitWidth: 80
+                    onClicked: root.apply()
+                }
+                Button {
                     text: root.okText
+                    visible: root.okText !== ""
                     primary: true
                     enabled: root.okEnabled
                     implicitWidth: 80
