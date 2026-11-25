@@ -329,7 +329,6 @@ CHECK_ORPHANS = '%s that no database or version list names.'
 CHECK_LEFTOVERS_FOUND = "%s left over from Amaze's own work."
 CHECK_CONFLICTS_KEPT = '%s from a sync service, left where they are: each differs from its original, or has none.'
 CHECK_UNKNOWN_FOUND = 'Not known to Amaze: %s.'
-CHECK_NO_PICTURE = '%s with no picture.'
 CHECK_NO_CATEGORY = '%s with no category, shown only under All.'
 CHECK_LOCATIONS_GONE = 'Files section folders not on this computer: %s.'
 CHECK_FAVORITES_GONE = '%s of files that are gone.'

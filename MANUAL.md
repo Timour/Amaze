@@ -899,11 +899,9 @@ covers:
   names a database that is empty, corrupt, missing or saved by a newer
   Amaze, with its backups. A database that holds under half of what its
   newest backup holds is named as well.
-- **Missing files and renders.** A material or node setup in a database
-  whose `.mat` or `.json` file is not in the library is named and
-  stays in the database; **Delete** removes it. Materials and node setups
-  that can have a render and have none are counted; **Thumbnail ▸ Render
-  Image** renders them.
+- **Missing files.** A material or node setup in a database whose
+  `.mat` or `.json` file is not in the library is named and stays in the
+  database; **Delete** removes it.
 - **Orphaned files.** Asset folders that no database lists, and version
   files that no version list names.
 - **Leftovers.** Files Amaze made that nothing needs any more:

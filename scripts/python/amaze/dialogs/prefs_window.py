@@ -142,7 +142,9 @@ RENDERER_SWITCHES = [{"label": renderer.label, "pref": renderer.switch} for rend
 SECTION_SWITCHES = [{"label": label, "pref": SECTION + key} for key, label in section_list.SECTIONS]
 
 FILE_TAB_SWITCHES = frozenset(("render_rat_files", "system_file_icons"))    # applied: File relists
-LIGHT_FILLS = {check_library.FOUND: amazetheme.P01_LIGHT_FOUND,    # the light: first state any part is in
+CHECK_BUTTONS = {check_library.REPAIR: amazetheme.BTN_REPAIR, check_library.FIX: amazetheme.BTN_FIX,
+                 check_library.CHECK: amazetheme.BTN_CHECK}    # by `check_library.summary`
+LIGHT_FILLS = {check_library.FOUND: amazetheme.P01_LIGHT_FOUND,    # the light, by the same
                check_library.UNCHECKED: amazetheme.P01_LIGHT_UNCHECKED,
                check_library.CLEAN: amazetheme.P01_LIGHT_CLEAN}
 
@@ -280,7 +282,7 @@ class AmazePrefsState(mainprefs.PrefsState):
         self._last_update = None    # what the last Check for Updates found
         self._added: list = []    # folders Add put in the Library list, until applied
         self._shown_folder = None    # the library the Check Database row was last emptied for
-        self._check_found = None    # what the last check found, while Repair can fix some of it
+        self._check_button = check_library.CHECK    # what the button does now, by the last check
         self._addons_found: list = []    # what the last add-on check found, until installed
         self._addon_rows: dict = {}    # an add-on switch's `pref` -> (root, folder, row)
         self._refused: dict = {}    # the library pick the last Apply could not open, kept pending
@@ -708,24 +710,22 @@ class AmazePrefsState(mainprefs.PrefsState):
 
     def _clear_check(self) -> None:
         """The Check Database row before a check: a grey light, no tip, `Check`."""
-        self._check_found = None
         self.checkLight = amazetheme.P01_LIGHT_IDLE
-        self._show_check_line("", False)
+        self._show_check_line("", check_library.CHECK)
 
-    def _show_check_line(self, info: str, fixable: bool) -> None:
-        """What the check found, the light's tip, and the one button: `Check`, or `Repair` drawn red."""
+    def _show_check_line(self, info: str, button: str, tip: str = "") -> None:
+        """What the check found, the light's tip, and the button: Check, Fix, or Repair in red."""
+        self._check_button = button
         self.checkInfo = info
-        self.checkTip = _tip_html(info)
-        self.checkFixable = fixable
-        self.checkLabel = amazetheme.BTN_REPAIR if fixable else amazetheme.BTN_CHECK
+        self.checkTip = _tip_html(tip or info)
+        self.checkFixable = button == check_library.REPAIR
+        self.checkLabel = CHECK_BUTTONS[button]
 
     def _show_check(self, findings: dict) -> None:
         """Fill the row from one survey: the light's colour, its tip, the button."""
         found = check_library.summary(findings)
-        states = {state for state, _number in found["lights"].values()}
-        self.checkLight = next(fill for state, fill in LIGHT_FILLS.items() if state in states)
-        self._check_found = findings if found["lines"] else None
-        self._show_check_line(found["info"], bool(found["lines"]))
+        self.checkLight = LIGHT_FILLS[found["state"]]
+        self._show_check_line(found["info"], found["button"], "\n".join(found["lines"]))
 
     def _survey_open_library(self) -> dict:
         """One survey of the open library on disk, the pane's pending changes saved first."""
@@ -739,18 +739,23 @@ class AmazePrefsState(mainprefs.PrefsState):
     @QtCore.Slot()
     @debug.guarded("prefs.check_or_repair")
     def checkOrRepair(self) -> None:
-        """The row's button: `Check` checks; `Repair` opens the Repair dialog, then checks again."""
+        """Check checks; Fix runs the light fixes and Repair opens Repair, each then checks again."""
         if not self._is_open(self.getPref(LIBRARY)):
             return
-        if self._check_found is None:
+        if self._check_button == check_library.CHECK:
             self._show_check(self._survey_open_library())
             return
         from amaze.dialogs import check_dialog
-        if self._pane is not None:
-            check_actions.save_before_check(self._pane)
         pane = self._pane
-        check_dialog.show(str(self._prefs.dir), self._prefs,
-                          changed=None if pane is None else lambda: check_actions.reload_after_check(pane))
+        if pane is not None:
+            check_actions.save_before_check(pane)
+        if self._check_button == check_library.FIX:
+            check_library.fix_light(str(self._prefs.dir), str(self._prefs.library_user or ""))
+            if pane is not None:
+                check_actions.reload_after_check(pane)    # the panel shows the change at once
+        else:
+            check_dialog.show(str(self._prefs.dir), self._prefs, changed=None if pane is None
+                              else lambda: check_actions.reload_after_check(pane))
         self._show_check(self._survey_open_library())
 
     @QtCore.Slot()
