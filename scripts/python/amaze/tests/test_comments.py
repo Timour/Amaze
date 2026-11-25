@@ -1,16 +1,22 @@
 """Comments: one test per requirement in docs/requirements/comments.md."""
 
+import json
 import os
 import shutil
+import types
 import unittest
+import zipfile
+from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PySide6 import QtCore, QtWidgets  # noqa: E402
+from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
-from amaze.core import (documents, guard, library, library_db, library_files,  # noqa: E402
-                        notes, texstore, users)
+from amaze.core import (category, documents, file_library, guard, library,  # noqa: E402
+                        library_db, library_files, locations, model_registry, notes, packages,
+                        texstore, users)
+from amaze.helpers import hostos  # noqa: E402
 from amaze.tests import faults, test_support  # noqa: E402
 
 MATERIALS = library_files.MATERIALS
@@ -149,6 +155,164 @@ class CommentsTest(unittest.TestCase):
         self.assertEqual((b"pasted", b"pasted", b"pasted", stamp), (
             read(self.file_of(self.key, one)), read(self.file_of(self.key, two)),
             read(self.shot), os.stat(self.shot).st_mtime_ns))
+
+    def test_cm24_a_picture_not_here_shows_its_fallback_then_itself_once_it_arrives(self):
+        from amaze.panel import notes_panel
+        from amaze.sections import base
+        coming = {"t": "image", "src": texstore.OWN_PREFIX + "comments/" + "f" * 32 + ".png",
+                  "text": "[image: still syncing]"}
+        self.assertTrue(self.page(self.key, text("gold"), coming))
+        shown = notes_panel.NotesPanel(self.prefs)
+        self.addCleanup(shown.deleteLater)
+        subject, edit = base.CommentSubject(self.key, "gold", ""), shown.text_edit
+
+        def pictures() -> int:
+            document = edit.document()
+            return sum(edit.is_image_block(document.findBlockByNumber(number))
+                       for number in range(document.blockCount()))
+
+        shown.set_subject(subject)
+        self.assertEqual(("[image: still syncing]", 0), (edit.toPlainText().split("\n")[-1],
+                                                          pictures()))
+        os.makedirs(os.path.dirname(self.file_of(self.key, coming)), exist_ok=True)
+        self.assertTrue(QtGui.QImage(4, 4, QtGui.QImage.Format.Format_RGB32).save(
+            self.file_of(self.key, coming)))
+        shown.clear_subject()
+        shown.set_subject(subject)
+        self.assertEqual((1, False), (pictures(), "still syncing" in edit.toPlainText()))
+
+    def test_cm25_a_files_comment_follows_its_location_through_every_change(self):
+        root = test_support.scratch_dir("amaze_cm_files_")
+        self.addCleanup(shutil.rmtree, root, True)
+        a, b = os.path.join(root, "a"), os.path.join(root, "b")
+        shot = test_support.put(root, "a/sub/shot.exr", b"exr")
+        written = [text("check the gamma")]
+
+        def comment(path: str) -> list:
+            key = notes.note_key("file", locations.file_ident(self.prefs, path))
+            return bare(notes.note_for(self.prefs, key).get("items", []))
+
+        self.assertTrue(locations.register(self.prefs, a))
+        self.assertTrue(notes.set_note(self.prefs, notes.note_key(
+            "file", locations.file_ident(self.prefs, shot)), written))
+        self.assertTrue(locations.set_field(self.prefs, a, "name", "Shots"))
+        self.assertEqual(written, comment(shot), "lost by a rename")
+        os.rename(a, b)
+        shot = os.path.join(b, "sub", "shot.exr")
+        self.assertTrue(locations.relocate_record(self.prefs, a, b))
+        self.assertEqual(written, comment(shot), "lost by a relocate")
+        for where, added in (("inside", os.path.join(b, "sub")), ("above", root)):
+            self.assertTrue(locations.register(self.prefs, added))
+            self.assertEqual(written, comment(shot), "lost by a location added " + where)
+        inner = hostos.storage_path_key(os.path.join(b, "sub"))
+        other = documents.Library(self.prefs.dir, "u-other").document(library_files.FILES)
+        other.put(locations.PATHS, "0" * 32, {"path": inner})    # another session's id for it
+        other.put(notes.SECTION, locations.LOC_PREFIX + "0" * 32 + "/shot.exr",
+                  {"items": [text("theirs")]})
+        self.assertTrue(other.save())
+        model_registry.refresh_all(self.prefs)
+        self.assertEqual([text("theirs")] + written, comment(shot), "the two pages not joined")
+
+    def test_cm26_removing_a_location_drops_its_comments_but_moves_those_still_covered(self):
+        root = test_support.scratch_dir("amaze_cm_files_")
+        self.addCleanup(shutil.rmtree, root, True)
+        top, deep = (test_support.put(root, name, b"png") for name in ("a/top.png", "a/sub/deep.png"))
+        a, sub = (hostos.storage_path_key(os.path.join(root, *parts)) for parts in (("a",), ("a", "sub")))
+        folders = file_library.FileFolders(self.prefs)
+        for path in (a, sub):
+            self.assertTrue(folders.add_folder(path))
+
+        def key(path: str) -> str:
+            return notes.note_key("file", locations.file_ident(self.prefs, path))
+
+        pages = {locations.file_ident(self.prefs, path): [text(words)]
+                 for path, words in ((top, "top"), (deep, "deep"))}
+        self.assertTrue(notes.set_notes(self.prefs, {notes.note_key("file", ident): items
+                                                     for ident, items in pages.items()}))
+        held, moving = library_db.guard_of(self.prefs), locations.rekey_to_covering_location
+
+        def full_at_the_move(*args):
+            held.disk = faults.FaultDisk(full_from=1)
+            try:
+                return moving(*args)
+            finally:
+                held.disk = guard.Disk()
+
+        with mock.patch.object(locations, "rekey_to_covering_location", full_at_the_move), \
+                test_support.captured_log():
+            folders.remove_folder(folders.row_of(sub))
+        self.assertEqual(pages, {page: [text(item["text"]) for item in found["items"]] for page, found
+                                 in self.on_disk(library_files.FILES)[notes.SECTION].items()},
+                         "a failed move dropped a comment")
+        self.assertTrue(folders.add_folder(sub))
+        self.assertTrue(folders.remove_folder(folders.row_of(sub)))
+        self.assertEqual(["deep"], [item["text"] for item in notes.note_for(
+            self.prefs, key(deep)).get("items", [])], "a comment still covered was not moved")
+        self.assertTrue(folders.remove_folder(folders.row_of(a)))
+        self.assertEqual({}, self.on_disk(library_files.FILES).get(notes.SECTION) or {})
+
+    def test_cm27_an_exported_asset_takes_its_comment_and_pictures_and_shows_them_imported(self):
+        written = [text("gold"), self.picture(self.key)]
+        self.assertTrue(self.page(self.key, *written))
+        model = library.MaterialLibrary(self.prefs)
+        out = os.path.join(test_support.scratch_dir("amaze_cm_package_"), "gold.amazepkg")
+        self.addCleanup(shutil.rmtree, os.path.dirname(out), True)
+        self.assertEqual(1, packages.write_package(out, [packages.collect_asset(model, GOLD)]))
+        before = test_support.asset_ids(model)
+        summary = packages.import_package({"material": model}, {"material": category.Categories(
+            self.prefs)}, self.prefs, out)
+        self.assertEqual(1, summary["imported"], summary)
+        arrived, = test_support.arrived(model, before)
+        key = notes.note_key("material", arrived.mat_id)
+        items = notes.note_for(self.prefs, key)["items"]
+        self.assertEqual(bare(written), bare(items))
+        self.assertTrue(os.path.isfile(self.file_of(key, items[1])), "its picture did not travel")
+        self.assertEqual(b"pasted", read(self.file_of(key, items[1])))
+
+    def test_cm28_a_comment_that_comes_with_new_assets_is_written_only_for_saved_ones(self):
+        from amaze.core import gradient_library, matx_import, matx_sources
+        model, ours = library.MaterialLibrary(self.prefs), {}
+
+        def pages(folder: str, name: str = MATERIALS) -> dict:
+            found = guard.Guard(folder).read(name).document.get(notes.SECTION) or {}
+            return {key: [item["text"] for item in page["items"]] for key, page in found.items()
+                    if key not in ours}
+
+        ours.update(pages(self.prefs.dir))
+        good, refused = ({"type": "asset", "section": "material", "id": "%032x" % n,
+                          "record": {"name": name}, "note": {"items": [text(name)]},
+                          "files": {}, "textures": textures}
+                         for n, name, textures in ((1, "saved", {}), (2, "refused", {"x": "x"})))
+        out = os.path.join(test_support.scratch_dir("amaze_cm_package_"), "two.amazepkg")
+        self.addCleanup(shutil.rmtree, os.path.dirname(out), True)
+        with zipfile.ZipFile(out, "w") as bundle:
+            bundle.writestr(packages.MANIFEST, json.dumps({"format": packages.ASSETS_FORMAT,
+                                                           "entries": [good, refused]}))
+            bundle.writestr("x", b"x")
+        known = test_support.asset_ids(model)
+        packages.import_package({"material": model}, {"material": category.Categories(
+            self.prefs)}, self.prefs, out)
+        saved, = test_support.arrived(model, known)
+        self.assertEqual({str(saved.mat_id): ["saved"]}, pages(self.prefs.dir), "an import")
+
+        def refused_save(builder, *args, **how):
+            builder.setUserData("assetlib_id", "%032x" % 3)    # stamped, but no row was saved
+            ours[None] = builder
+
+        record = matx_sources.MatxRecord(source="Test", uid="brick", title="Brick",
+                                         kind="values", payload={})
+        source = types.SimpleNamespace(page_url=lambda record: "https://example.invalid/brick",
+                                       fetch=lambda *a, **k: {"values": {"color": [0.5, 0.4, 0.3]}})
+        ok, why = matx_import.import_record(record, source, None, model, self.prefs,
+                                             save=refused_save)
+        self.assertEqual((False, True, {str(saved.mat_id): ["saved"]}), (
+            ok, None in ours, pages(self.prefs.dir)), why)
+        colours = gradient_library.GradientLibrary(self.prefs)
+        switched = test_support.with_fixture_user(test_support.fresh_library(self))
+        self.prefs.dir = switched    # the folder changed, the rows not switched yet
+        self.assertEqual(0, colours.seed_curated_palettes(gradient_library.GradientCategories(
+            self.prefs)))
+        self.assertEqual({}, pages(switched, library_files.COLORS), "a starter set")
 
     def test_cm29_a_page_of_any_shape_reads_and_names_nothing_outside(self):
         held = library_db.document(self.prefs, MATERIALS)

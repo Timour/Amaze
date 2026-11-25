@@ -278,12 +278,12 @@ def set_record(preferences, path: str, value) -> bool:
 def _rekey_into_new_location(preferences, path: str, lid: str) -> None:
     """A location is new: the keys of files under it, kept under an outer one or by path, follow."""
     held = _files(preferences)
-    inside = {path_identity(path): lid}
+    owners = _id_table(preferences)    # this one among them: a file is keyed under its innermost
     moves = {}
     for key in list(held.table(COMMENTS)) + list(held.table(ICONS)) + _everyones_favorite_keys(held):
         full = "" if key.startswith(LOC_PREFIX + lid) else _path_of_key(preferences, key)
-        fresh = _ident_under(inside, path_identity(full)) if full else ""
-        if fresh and fresh != key and fresh != LOC_PREFIX + lid:
+        fresh = _ident_under(owners, path_identity(full)) if full else ""
+        if fresh.startswith(LOC_PREFIX + lid + "/") and fresh != key:
             moves[key] = fresh
     if moves and files_moved(preferences, moves):
         _move_captures(preferences, moves)
