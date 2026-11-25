@@ -45,13 +45,14 @@ def _collected(model, mat_id) -> dict:
                for kind, path in model.asset_files(mat_id).items()
                if kind not in DERIVED and os.path.exists(path)}
     record = dict(asset.get_as_dict(), categories=model.named_categories(asset))    # names travel
-    textures = {}
+    textures, missing = {}, []
     own = model.asset_directories(mat_id).get("folder", "")
     for token in (record.get("textures") or ()):
         source = texstore.resolve(str(token), model.preferences, own)
         if os.path.isfile(source):
             textures[texstore.tokenize(source, model.preferences, own)] = source    # where it is in its folder
         else:
+            missing.append("%s (%s)" % (os.path.basename(str(token)), asset.name))
             debug.event("packages", "inventory texture missing",
                         token=str(token), mat_id=mat_id)
     if sorted(textures) != list(record.get("textures") or ()):
@@ -73,7 +74,8 @@ def _collected(model, mat_id) -> dict:
                if model.DB_FILENAME in library_files.ASSET_SECTIONS else {})
     return {"type": "asset", "section": model.NOTES_SECTION,
             "id": mat_id, "record": record, "note": page, "sources": sources,
-            "textures": textures, "comment_pictures": pictures, "builder": builder}
+            "textures": textures, "comment_pictures": pictures, "builder": builder,
+            "missing_textures": missing}
 
 
 def _picture_name(src) -> str:
@@ -100,9 +102,11 @@ def write_package(out_path: str, items) -> int:
     entries = []
     payload = []
     written = []    # (arc, bytes) composed here rather than copied from a file
+    missing = []    # each texture a record lists that was not found, named for the user
     for n, item in enumerate(items):
         entry = dict(item)
         if entry.get("type") == "asset":
+            missing.extend(entry.pop("missing_textures", ()))
             arcs = {}
             for kind, source in entry.pop("sources", {}).items():
                 arc = "assets/%s/%s/%s" % (
@@ -154,6 +158,8 @@ def write_package(out_path: str, items) -> int:
                 bundle.write(source, arc)
             for arc, raw in written:
                 bundle.writestr(arc, raw)
+    if missing:
+        debug.refuse(messages.PACKAGE_TEXTURES_NOT_FOUND % wording.and_list(missing))
     return len(entries)
 
 

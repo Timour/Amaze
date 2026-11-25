@@ -10,11 +10,14 @@ import unittest
 import zipfile
 from unittest import mock
 
-from amaze import messages
-from amaze.core import category, gradient_library, guard, library, library_db, matx_sources
-from amaze.core import notes
-from amaze.core import packages
-from amaze.tests import faults, test_support
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+from PySide6 import QtWidgets  # noqa: E402
+
+from amaze import messages  # noqa: E402
+from amaze.core import (asset_record, category, gradient_library, guard, library,  # noqa: E402
+                        library_db, matx_sources, notes, packages)
+from amaze.helpers import hostos  # noqa: E402
+from amaze.tests import faults, test_support  # noqa: E402
 
 PICTURE = "$AMAZEASSET/comments/" + "a" * 32 + ".png"
 TEXTURE = "$AMAZEASSET/textures/brick.png"
@@ -246,6 +249,44 @@ class PackageTest(_Library):
         self.assertEqual(old["Palette 3"], now["Palette 3"], "an unmarked asset was touched")
         self.assertNotIn(now["Palette 4"], ("%032x" % 4, old["Palette 1"], old["Palette 2"]))
 
+    def exported(self) -> tuple:
+        """Brick 1 with all it can hold, a lost texture too, exported: entry, members, builder, said."""
+        model, gone = self.models["material"], "$AMAZEASSET/textures/gone.png"
+        before = test_support.asset_ids(model)
+        self.bring(self.package(brick(textures=[TEXTURE, gone])))
+        asset, = test_support.arrived(model, before)
+        files = model.asset_files(asset.mat_id)
+        for kind, data in (("cop", b"cop network"), ("thumbnail", b"picture")):
+            test_support.put(os.path.dirname(files[kind]), os.path.basename(files[kind]), data)
+        builder = asset_record.builder_section({"type": "subnet", "interface": "controls",
+                                                "values": {"rough": 0.5}})
+        test_support.write_section(files["json"], asset_record.BUILDER, builder)
+        out = os.path.join(self.out, "export.amazepkg")
+        with test_support.captured_log() as log:
+            self.assertEqual(1, packages.write_package(out, [packages.collect_asset(
+                model, asset.mat_id)]))
+        with zipfile.ZipFile(out) as bundle:
+            entry, = json.loads(bundle.read(packages.MANIFEST))["entries"]
+            members = {arc: bundle.read(arc) for arc in bundle.namelist()}
+        return entry, members, builder, log.messages("refuse")
+
+    def test_pk20_an_export_carries_the_whole_asset_and_its_record_lists_what_it_packs(self):
+        entry, members, builder, _said = self.exported()
+        files = {kind: members[arc] for kind, arc in entry["files"].items()}
+        self.assertEqual(("Brick 1", [TEXTURE], [TEXTURE]), (
+            entry["record"]["name"], entry["record"]["textures"], list(entry["textures"])))
+        self.assertEqual((b"nodes 1", b"cop network", b"picture", b"brick texture"), (
+            files["mat"], files["cop"], files["thumbnail"], members[entry["textures"][TEXTURE]]))
+        self.assertEqual(builder, asset_record.builder_section(
+            json.loads(files["json"])[asset_record.BUILDER]))
+        self.assertEqual((["rough", PICTURE], b"pasted picture"), (
+            [item.get("text") or item.get("src") for item in entry["note"]["items"]],
+            members[entry["comment_pictures"][PICTURE]]))
+
+    def test_pk21_an_export_names_a_texture_it_cannot_find(self):
+        _entry, _members, _builder, said = self.exported()
+        self.assertEqual([messages.PACKAGE_TEXTURES_NOT_FOUND % "gone.png (Brick 1)"], said)
+
     def test_pk22_an_imported_asset_is_new_in_import_with_every_field(self):
         model = self.models["material"]
         before = test_support.asset_ids(model)
@@ -327,6 +368,64 @@ class PackageTest(_Library):
             self.assertEqual(code, ended.exception.code)
             self.assertEqual(wrote, bool(os.path.isdir(out) and os.listdir(out)))
 
+
+class InThePaneTest(unittest.TestCase):
+    """Export and import as a pane on a fixture library runs them."""
+
+    def setUp(self):
+        self.app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+        self.pane = test_support.fixture_pane(self)
+        self.out = test_support.scratch_dir("amaze_packages_")
+        self.addCleanup(shutil.rmtree, self.out, True)
+
+    def packed(self, export, *args) -> list:
+        """The entries of the package `export(*args, path)` writes."""
+        path = os.path.join(self.out, "%d.amazepkg" % len(os.listdir(self.out)))
+        export(*args, path)
+        with zipfile.ZipFile(path) as bundle:
+            self.bundle = {arc: bundle.read(arc) for arc in bundle.namelist()}
+            return json.loads(self.bundle[packages.MANIFEST])["entries"]
+
+    def test_pk25_a_plain_file_goes_into_import_numbered_and_its_location_keeps_a_users_name(self):
+        plain = {"type": "file", "kind": "text", "name": "notes.txt", "arc": "files/0_notes.txt"}
+        path = os.path.join(self.out, "plain.amazepkg")
+        with zipfile.ZipFile(path, "w") as bundle:
+            bundle.writestr(packages.MANIFEST, json.dumps({"format": packages.ASSETS_FORMAT,
+                                                           "entries": [plain]}))
+            bundle.writestr(plain["arc"], b"from the package")
+        folder = os.path.join(self.pane.prefs.dir, "import")
+        key = hostos.canonical_path_key(folder)
+        for _time in range(2):
+            self.pane.package_import.import_file(path)
+        listed = [hostos.canonical_path_key(one) for one in self.pane.prefs.file_folders]
+        self.assertEqual((["notes.txt", "notes_1.txt"], True, "Import"), (
+            sorted(os.listdir(folder)), key in listed,
+            self.pane.prefs.file_folder_names.get(key)))
+        self.assertIsNotNone(self.pane.file_folders_model.row_of(key), "not in the File sidebar")
+        self.pane.prefs.set_file_folder_name(key, "Packages")
+        self.pane.package_import.import_file(path)
+        self.assertEqual("Packages", self.pane.prefs.file_folder_names.get(key))
+
+    def test_pk29_each_export_packs_what_was_picked(self):
+        materials = self.pane.sections["material"]
+        model, proxy = self.pane.material_model, self.pane.material_sorted_model
+        picked = [proxy.index(row, 0) for row in (0, 2)]
+        self.assertEqual([proxy.mapToSource(index).data(model.IdRole) for index in picked],
+                         [entry["id"] for entry in self.packed(materials.export_package_to, picked)])
+        key = next(key for asset in model.assets for key in asset.categories)
+        self.assertEqual(sorted(str(a.mat_id) for a in model.assets if key in a.categories),
+                         sorted(e["id"] for e in self.packed(materials.export_category_to, key)))
+        self.assertEqual(sorted(str(a.mat_id) for a in model.assets),
+                         sorted(e["id"] for e in self.packed(materials.export_category_to, None)))
+        files = self.pane.file_files_model
+        files.set_folder(self.pane.prefs.file_folders[0])
+        rows = [files.index(row, 0) for row in range(min(2, files.rowCount()))]
+        entries = self.packed(self.pane.sections["file"].export_package_to, rows)
+        wanted = []
+        for index in rows:
+            with open(index.data(files.PathRole), "rb") as handle:
+                wanted.append((index.data(files.KindRole), handle.read()))
+        self.assertEqual(wanted, [(entry["kind"], self.bundle[entry["arc"]]) for entry in entries])
 
 if __name__ == "__main__":
     unittest.main()

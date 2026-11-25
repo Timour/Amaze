@@ -50,6 +50,7 @@ PACKAGE_EXPORTED = "Exported %d items to %s."
 PACKAGE_EXPORTED_ONE = "Exported 1 item to %s."
 PACKAGE_EXPORT_EMPTY = "Nothing to export. This category is empty."
 PACKAGE_NOT_SAVED = "The package could not be saved: %s"
+PACKAGE_TEXTURES_NOT_FOUND = "Exported without these textures, which were not found: %s."
 PACKAGE_NOT_READABLE ='"%s" is not a package Amaze can read.'
 PACKAGE_TOO_LARGE = "This package unpacks to %s, more than the %s Amaze imports at once."
 DOWNLOAD_TOO_LARGE = "This download is larger than the %s Amaze imports at once."
