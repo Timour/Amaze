@@ -791,54 +791,59 @@ window's own close and the pane's close all hand on None. Each kind's QML is a
 
 ## Drag & Drop Engine (core/dragengine.py + pane/drag_session.py + core/lop_assign.py)
 
-**`core/lop_assign.py`** is the USD half of a LOP viewport drop, split
+**`core/lop_assign.py`** is the USD half of a LOP material assign, split
 out of the panel 2026-07-27: what is already bound under a prim,
 rebinding it, naming an assign after the geometry it applies to, and
 removing a material nothing references any more. No Qt, no panel — it
 reports reasons rather than showing dialogs, so it is testable
-headlessly (`tests/test_drop_into_scene.py`). The panel keeps the menu,
-because choosing the prim is UI.
+headlessly (`tests/test_drop_into_scene.py`). No drag uses it since
+Houdini's own viewport drop assigns; it is kept, with
+`DropPlacement._assign_dropped` and `Loading.assign_material_to_obj`, for
+the coming right-click Swap Material.
 
-One SELF-MANAGED gesture for every section — no native QDrag, no drop
-hooks. The widgets run press-move-release on the live event loop; the
-engine handles everything about position and timing: throttled per-move picking
-(`locateSceneGraphPrim` / `queryNodeAtPixel`), the drag image's target check
-and the rect-tracked pane (`ghost_tick` / `pane_under_cursor_tracked` —
-target checks at the picking rate, the pane kept by its screen rect
-and checked again slowly, the outline following every move; a full
-per-move lookup kept the event loop fully busy at the mouse's event rate,
-2026-08-23), the hover highlight (in LOPs the viewer's own prim highlight;
-at object level the host's own drop glow, asked for by `ViewportGlow` with drag
-events sent to the viewport's window while no drag runs - no selection is read
-or changed), release-target resolution (`viewport_release_target`),
-container placement (`first_materiallibrary(connected_to=)`,
-`find_assignmaterial`), Houdini's stock LOP helpers (`stock_lop()`), and
-`keep_editor_focus` — a viewport release never moves the user's editors.
+One SELF-MANAGED gesture for every section, until it reaches a pane whose
+own drop Houdini runs for that row. The widgets run press-move-release on the
+live event loop; the engine handles everything about position and timing: the
+drag image's target check and the rect-tracked pane (`ghost_tick` /
+`pane_under_cursor_tracked` — target checks at the picking rate, the pane kept
+by its screen rect and checked again slowly, the outline following every move;
+a full per-move lookup kept the event loop fully busy at the mouse's event rate,
+2026-08-23), the assign node a swap reuses (`find_assignmaterial`), and Houdini's
+stock LOP helpers (`stock_lop()`).
+**The switch to Qt's native drag** is one mechanism in `DragSession`, declared per
+row by the drop rule's `native_drag` handler: given the pane under the cursor, it
+answers None (Amaze's drag goes on), False (the work before it failed: the drag
+ends with the red X), or the mime data and drop action of Houdini's own drag
+there. The session then ends and runs one `QDrag` with the name tag as its
+picture; Houdini's pane does the rest. A File row over a Parameters pane hands
+over its path as text (copy). A material row over a viewer showing an object
+network or a LOP network is first imported, in one undo step: into `/mat`, or
+into the Material Library LOP that Houdini's own `getMaterialLibraryLop` picks
+for the node the viewer shows; then it hands over the pressed material's node
+path as node path, item path and text (move), as Houdini's own node drag does
+(▸r/material-palette-drag, ▸r/solaris-material-drag). Houdini's viewport then
+highlights the geometry, shows its own menu on the drop and assigns.
 One drag is a `drag_session.DragSession`, one per view, the same for both panes: `begin`
 (the pressed row; the drop handlers read the selection), `move` per pointer move, and one end,
 `release` or `cancel`. Its `_end` is reached by the release, Esc (the view grabs the keyboard
-for the length of the drag), another mouse button, a hidden view and an error while following
-the pointer; it is the only caller of `dragengine.end()`. The session has no widget: the name
-tag and the red X are `ui_helpers.DragMarks`, handed to it by the view. The widget panel's
-views start it past the drag distance (`GridGestureMixin`); the QML grid and list start it
-from `ui/shared/DragOut.qml`, a DragHandler, and the pane's view, which keeps the mouse while
-a button is down, hands it the moves and the release. A grid or list holds its flicking while
-a tile or row is pressed, or at a UI scale under 1 the flick takes a downward drag. Over the
-sidebar, `Sidebar.drop_target` says which row a tile may drop on, for both panes; the QML tree
-lights that row as it lights its selected rows. The QML pane's drop menu is the one menu engine
-in an `AmazeMenu` at the cursor, and nothing waits on it: the release opens it and returns, and
-the pick continues the drop. The widget panel's modal QMenu answers before the release returns.
-Either way the drop handler returns a `PendingOutcome`, which the pick settles; the drag session
-shows the red X when it settles as a miss.
+for the length of the drag), another mouse button, a hidden view, an error while following
+the pointer and the switch to a native drag; it is the only caller of `dragengine.end()`. The
+session has no widget: the name tag and the red X are `ui_helpers.DragMarks`, handed to it by
+the view. The widget panel's views start it past the drag distance (`GridGestureMixin`); the
+QML grid and list start it from `ui/shared/DragOut.qml`, a DragHandler, and the pane's view,
+which keeps the mouse while a button is down, hands it the moves and the release. A grid or
+list holds its flicking while a tile or row is pressed, or at a UI scale under 1 the flick
+takes a downward drag. Over the sidebar, `Sidebar.drop_target` says which row a tile may drop
+on, for both panes; the QML tree lights that row as it lights its selected rows.
 The name tag is hidden while another application is in front.
 Sections' release handlers call the import code. What a release does is one engine call,
 `DropPlacement.release(section_key, key, pane_tab, pane_kind)` in `pane/drop_placement.py`: the
 tile's drop rule, its handler and the wire splice as one undo step; the drag session calls it
-for both panes. The one native drag left is the texture file drag.
-Rules: an item is placed where it is dropped; nothing is created before release;
-SOP and LOP contexts never reference each other; empty viewport space is a
-miss (red X); a drop that opens a menu shows the red X only when the menu is dismissed or the
-pick fails.
+for both panes.
+Rules: an item is placed where it is dropped; nothing is created before release, except the
+material a drag brings into a viewer, which stays when that drag is then cancelled (one undo
+takes it out); SOP and LOP contexts never reference each other; a release where nothing takes
+the row is a miss (red X).
 
 ## Storage format
 
