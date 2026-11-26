@@ -62,6 +62,10 @@ class Asks:
         """The Comments pane, opened or closed as its toolbar button does."""
         raise NotImplementedError
 
+    def after_drawn(self, then) -> None:
+        """`then()` once what the pane just changed is on screen, before work that holds the main thread."""
+        raise NotImplementedError
+
     @staticmethod
     def os_file_icon(path: str, side: int):
         """The system's icon for `path`'s file type, a QImage `side` square; held by shared models."""

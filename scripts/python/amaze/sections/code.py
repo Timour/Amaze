@@ -121,15 +121,28 @@ class CodeSection(base.AssetSection):
             self._edit_code_row(row)
 
     def menu_run(self, indexes, current, payload=None) -> None:
-        """Run the snippet in this Houdini; why it did not run or stopped is on the status line."""
+        """Run the snippet, its tile marked running till it ends; a failure is on the status line."""
         row = self._code_row(current)
-        if row is None:
+        model = self.pane.code_model
+        if row is None or model.running():    # a click while a run waits to start does nothing
             return
-        asset = self.pane.code_model.assets[row]
-        problem = code_actions.run(asset.name, asset.code, asset.renderer,
-                                   QtGui.QGuiApplication.keyboardModifiers())
-        if problem:
-            debug.refuse(problem)
+        asset = model.assets[row]
+        held = QtGui.QGuiApplication.keyboardModifiers()    # the keys held at the click, not at the run
+        model.set_running(str(asset.mat_id))
+
+        def run() -> None:
+            try:
+                problem = code_actions.run(asset.name, asset.code, asset.renderer, held)
+            finally:
+                model.set_running("")
+            if problem:
+                debug.refuse(problem)
+
+        host = self.pane.ui
+        if asks.answers(host, "after_drawn"):    # the mark on screen first, as the run holds Houdini
+            host.after_drawn(run)
+        else:
+            run()
 
     def _edit_code_row(self, row: int) -> None:
         pane = self.pane

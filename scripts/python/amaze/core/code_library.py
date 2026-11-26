@@ -162,7 +162,23 @@ class CodeLibrary(library.AssetLibrary):
                              for item in page.get("items", [])
                              if item.get("t") == "text").strip()
             return said or None  # no name: the tile shows it
+        if role == self.RunningRole:
+            return bool(self._running) and str(self._assets[row].mat_id) == self._running
         return super().row_data(row, role)
+
+    RunningRole = QtCore.Qt.ItemDataRole.UserRole + 17    # True for the snippet Run is running now
+    _running = ""    # that snippet's id, "" while none runs
+
+    def running(self) -> str:
+        """The id of the snippet Run is running, "" for none."""
+        return self._running
+
+    def set_running(self, mat_id: str) -> None:
+        """`mat_id`'s snippet runs now, "" for none: the rows whose running mark changes repaint."""
+        rows = {self.find_asset_row_by_id(one) for one in (self._running, mat_id) if one}
+        self._running = str(mat_id or "")
+        for row in rows:
+            self.row_changed(row, [self.RunningRole])
 
     def seed_starter_snippets(self, category_model) -> int:
         """The shipped `Examples` snippets added once per library; how many were added."""

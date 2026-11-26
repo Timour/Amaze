@@ -727,6 +727,29 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("tile subtitle", 9, 157, 18, 15, "HIP"),
         ),
     },
+    "QML T05": {   # a Python snippet at rest: the running mark in dark grey (layer named CheckCircle)
+        "frame": (138, 177),
+        "nodes": (
+            ("tile card", 4, 4, 130, 173, None),
+            ("thumbnail", 4, 4, 130, 130, None),
+            ("face ▸ face_code.svg", 4, 4, 130, 130, None),
+            ("tile name", 9, 139, 52, 15, "Mtxl to RS"),
+            ("tile subtitle", 9, 157, 37, 15, "Python"),
+            ("CheckCircle", 113, 155, 16, 16, None),
+        ),
+    },
+    "QML T05B": {   # the same snippet while it runs: the running mark in green, the code under the pointer
+        "frame": (138, 177),
+        "nodes": (
+            ("tile card", 4, 4, 130, 173, None),
+            ("thumbnail", 4, 4, 130, 130, None),
+            ("bg", 4, 4, 130, 130, None),
+            ("tile name", 9, 139, 52, 15, "Mtxl to RS"),
+            ("tile subtitle", 9, 157, 37, 15, "Python"),
+            ("code preview ▸ Amaze's painter, text at 50%", 4, 4, 130, 130, None),
+            ("CheckCircle", 113, 155, 16, 16, None),
+        ),
+    },
     "QML T20": {   # the buttons on the picture at rest: Favorite in its corner, Run in the middle
         "frame": (138, 177),
         "nodes": (
@@ -737,6 +760,7 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("tile subtitle", 9, 157, 20, 15, "rest"),
             ("badge execute (lower-right) ▸ badge_execute", 43, 42, 52, 52, None),
             ("category strip (example colour)", 4, 134, 130, 4, None),
+            ("CheckCircle", 113, 155, 16, 16, None),
         ),
     },
     "QML T23": {   # a favourite, and the comment mark left of the renderer icon

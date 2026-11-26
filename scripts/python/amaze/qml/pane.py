@@ -24,12 +24,17 @@ TILE_BUTTONS = (    # the tile's buttons on its picture, by `tile_badges` ID; ar
      "art": "tile/run", "hover": "tile/run_hover", "press": "tile/run_press", "on": ""},
 )
 TILE_MARKS = (    # the marks on the tile's second line left of a renderer icon, right to left
-    {"name": "open", "frames": ("QML T08", "QML T08b"), "layer": "CheckCircle", "alone": None,
-     "role": "OpenSceneRole", "art": "tile/open", "off": "tile/open_off",
+    {"name": "open", "with": "open", "frames": ("QML T08", "QML T08b"), "layer": "CheckCircle",
+     "alone": None, "role": "OpenSceneRole", "art": "tile/open", "off": "tile/open_off",
      "kindRole": "KindRole", "kind": locations.KIND_HIP},    # on every scene file, grey while not open
-    {"name": "comment", "frames": ("QML T23",), "layer": "message-circle", "alone": ("QML T24", "icon"),
-     "role": "NotesRole", "art": "tile/comment", "off": "", "kindRole": "", "kind": ""},
-)    # alone: the frame and layer whose right edge a mark keeps when nothing is right of it
+    {"name": "running", "with": "execute", "frames": ("QML T05", "QML T05B"), "layer": "CheckCircle",
+     "alone": None, "role": "RunningRole", "art": "tile/running", "off": "tile/running_off",
+     "kindRole": "RendererRole", "kind": "Python"},    # on every snippet Run runs, green while it runs
+    {"name": "comment", "with": "comment", "frames": ("QML T23",), "layer": "message-circle",
+     "alone": ("QML T24", "icon"), "role": "NotesRole", "art": "tile/comment", "off": "",
+     "kindRole": "", "kind": ""},
+)    # with: the `tile_badges` ID showing it; alone: its right edge with nothing right of it
+RUN_WAIT_LIMIT_MS = 250    # a hidden pane draws nothing: Run's snippet starts anyway after this
 RENDERER_MARKS = {    # a material's renderer icon on that line, by the art its model names
     "renderer_materialx": ("QML T24", "icon", "tile/materialx"),
     "renderer_redshift": ("QML T25", "icon", "tile/redshift"),
@@ -84,7 +89,7 @@ def mark_rows(section) -> list:
     """The section's marks on the tile's second line, right to left, each with its drawn box."""
     rows = []
     for mark in TILE_MARKS:
-        if mark["name"] not in section.tile_badges:
+        if mark["with"] not in section.tile_badges:
             continue
         drawn = amazetheme.drawn_line_mark(mark["frames"], mark["layer"])
         alone = amazetheme.drawn_line_mark(mark["alone"][:1], mark["alone"][1]) if mark["alone"] else drawn
@@ -172,7 +177,15 @@ class PaneState(qmlviews.SharedState, asks.Asks):
     pane = None    # the engine, built by `start`
     drag = None    # the view's `drag_session`, which a press on a tile or row past the drag distance begins
     reorder = None    # the view's `SidebarReorder`, which a press on a sidebar row past it begins
+    after_paint = None    # the view's `AfterPaint`, which `after_drawn` waits on
     os_file_icon = staticmethod(delegates.os_file_icon)    # held by the shared File model
+
+    def after_drawn(self, then) -> None:
+        """`then()` once the pane's change is in Houdini's window ▸r/qml-on-screen-before-a-block."""
+        if self.after_paint is None:    # no view yet: nothing is on screen to wait for
+            then()
+            return
+        self.after_paint.wait(then)
 
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -682,6 +695,46 @@ class PaneState(qmlviews.SharedState, asks.Asks):
             self._prefs_window = None
 
 
+class AfterPaint(QtCore.QObject):
+    """Runs what waits once a newer frame is on screen. ▸r/qml-on-screen-before-a-block"""
+
+    def __init__(self, view) -> None:
+        super().__init__(view)    # the view is reached as the Qt parent: no Python cycle through the state
+        self._waiting = []
+        self._rendered = False    # a frame was drawn since the wait began
+        self._limit = QtCore.QTimer(self)
+        self._limit.setSingleShot(True)
+        self._limit.setInterval(RUN_WAIT_LIMIT_MS)
+        self._limit.timeout.connect(self._release)
+        view.installEventFilter(self)
+
+    def wait(self, then) -> None:
+        """`then()` after the next frame drawn and painted, or after the limit."""
+        if not self._waiting:
+            self._rendered = False
+            self.parent().quickWindow().afterRendering.connect(self._on_rendered)
+            self._limit.start()
+        self._waiting.append(then)
+
+    def _on_rendered(self) -> None:
+        self._rendered = True
+
+    def eventFilter(self, watched, event) -> bool:
+        if self._waiting and self._rendered and event.type() == QtCore.QEvent.Type.Paint:
+            self._rendered = False
+            QtCore.QTimer.singleShot(0, self._release)
+        return False
+
+    def _release(self) -> None:
+        if not self._waiting:
+            return
+        self._limit.stop()
+        self.parent().quickWindow().afterRendering.disconnect(self._on_rendered)
+        waiting, self._waiting = self._waiting, []
+        for then in waiting:
+            then()
+
+
 class PaneView(qmlviews.BaseQmlWidget):
     """The pane's QML, made as Houdini makes its own QML panels."""
 
@@ -695,6 +748,7 @@ class PaneView(qmlviews.BaseQmlWidget):
         self.customContextMenuRequested.connect(self._context_menu)
         self.drag = self.sharedState().drag = drag_session.DragSession(self, ui_helpers.DragMarks())
         self.reorder = self.sharedState().reorder = SidebarReorder(self)
+        self.sharedState().after_paint = AfterPaint(self)
         self._drag_held = False    # a drag's left button is still down: another button goes nowhere
         self._node_drag = False    # Qt's drag over the pane carries scene nodes: the pane saves them
 
