@@ -9,6 +9,7 @@ import tempfile
 
 import hou
 
+from amaze import messages
 from amaze.core import debug, library_files, material, matx_sources, matx_translate, renderers
 from amaze.core import texstore
 from amaze.helpers import helpers, hostos, wording
@@ -224,13 +225,9 @@ def _producer_for(record, source, resolution, dest, progress=None):
     if repairs:
         debug.event("import", "mtlx references repaired",
                     material=name, repairs=repairs)
-        unresolved = [r for r in repairs if not r["fixed_to"]]
-        if unresolved:
-            debug.note(   # the only message about the effect; repair_mtlx_references reports the cause
-                "%d of the textures for %s were not downloaded and "
-                "could not be matched, so those inputs render black. "
-                "The rest of the material came through."
-                % (len(unresolved), name))
+        unresolved = sorted(os.path.basename(r["reference"]) for r in repairs if not r["fixed_to"])
+        if unresolved:    # the only message about the effect; repair_mtlx_references reports the cause
+            debug.note(messages.DOWNLOAD_TEXTURES_MISSING % (name, wording.and_list(unresolved)))
 
     def produce(builder):
         return matx_translate.build_material(mtlx_path, builder, name)

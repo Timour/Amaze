@@ -57,6 +57,7 @@ PACKAGE_TEXTURES_NOT_FOUND = "These textures were not found and are not in the p
 PACKAGE_NOT_READABLE ='"%s" is not a package Amaze can read.'
 PACKAGE_TOO_LARGE = "This package unpacks to %s, more than the %s Amaze imports at once."
 DOWNLOAD_TOO_LARGE = "This download is larger than the %s Amaze imports at once."
+DOWNLOAD_TEXTURES_MISSING = "These textures for %s were not downloaded and could not be matched, so their inputs render black: %s. The rest of the material came through."
 MATERIAL_PRESETS_FOUND = "No material presets found in: %s"
 IMPORT_MATERIAL_PRESETS_FROM = "Import %d material presets from:\n%s\n\n%s\n\nPreviews aren't generated during import — select the new materials afterwards and use Render Image."
 IMPORT_MATERIAL_PRESETS_FROM_RENDERING = 'Import %d material presets from:\n%s\n\n%s\n\nNote: Thumbnails are rendered in one batch once the import finishes.'

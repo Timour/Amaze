@@ -234,6 +234,23 @@ class OnlineSourceTest(unittest.TestCase):
                 matx_import._download_folder(record) as second:
             self.assertNotEqual(first, second, "two library imports share one download")
 
+    def test_on24_a_missing_texture_is_matched_by_name_or_named_and_the_rest_imports(self):
+        class Short(_Fetch):    # the document names three textures; the download holds a.jpg and b.png
+
+            def fetch(self, record, resolution, dest, progress=None):
+                test_support.put(dest, "a.jpg", b"a")
+                test_support.put(dest, "b.png", b"b")
+                return {"mtlx": test_support.put(dest, "m.mtlx", '<materialx version="1.38">%s</materialx>' % "".join(
+                    '<input value="%s"/>' % name for name in ("a.jpg", "b.jpg", "tex/c.jpg")))}
+
+        dest = os.path.join(self.dir, "tex", "brick")
+        with test_support.captured_log() as log:
+            produce, _note, error = matx_import._producer_for(self.record(), Short(), "1k", dest)
+        self.assertEqual((True, ""), (produce is not None, error), "the rest did not import")
+        with open(os.path.join(dest, "m.mtlx"), encoding="utf-8") as handle:
+            self.assertIn('value="b.png"', handle.read(), "b.jpg was not matched by its name")
+        self.assertEqual([messages.DOWNLOAD_TEXTURES_MISSING % ("Brick", "c.jpg")], log.messages())
+
     def test_on26_import_to_scene_keeps_its_download_in_hip_tex_as_write_paths_as_says(self):
         test_support.pin_env(self, "OCIO", "/dev/null")
         test_support.hip_in_scratch(self)
