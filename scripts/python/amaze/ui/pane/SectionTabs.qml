@@ -27,6 +27,7 @@ Item {
 
     TabBar {
         id: bar
+        borderColor: "transparent"    // no outline round the bar, as Houdini's ColorEditor sets it
 
         Repeater {
             model: root.tabs
