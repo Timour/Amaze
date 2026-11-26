@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.2
+
+- Color: every tile runs top to bottom, whatever its interpolation.
+- Amaze (QML), File: a click on a folder shows that folder.
+- Amaze (QML): the views scroll by the wheel, not by dragging.
+- Amaze (QML): the sidebar's move line shows whole.
+- Preferences ▸ UI: Qt Mouse Scroll Wheel Fix is removed.
+
 ## 2.0.1
 
 - Versions window: a Select or a Delete that could not be done shows a message naming the version.
