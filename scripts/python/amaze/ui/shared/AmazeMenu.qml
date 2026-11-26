@@ -8,6 +8,7 @@ Menu {
 
     enter: null    // whole on its first frame: the grow-and-fade shows nothing for 250 ms
     exit: null    // a menu still fading out keeps the release of the click that closed it
+    delegate: entry    // a submenu's row too has its height while the menu is closed
 
     property string chosen: ""    // the picked row's key, handed on only once the menu has closed
     signal picked(string key)
@@ -26,6 +27,10 @@ Menu {
     function showUnder(rows, item) {    // fills the menu and opens it below `item`, left edges lined up
         root.fill(root, rows)
         root.popup(item, 0, item.height)
+    }
+
+    function layOut(menu) {    // pluto's ListView takes the rows now: Qt places the menu at its full height
+        menu.contentItem.children[0].forceLayout()
     }
 
     function rowSymbol(row) {    // the row's Phosphor glyph; a colour with none is Houdini's square in it
@@ -62,6 +67,7 @@ Menu {
                 menu.addItem(item)
             }
         }
+        root.layOut(menu)
     }
 
     onClosed: {    // the row runs after the menu is gone, so a window it opens is not under a closing menu
@@ -73,7 +79,10 @@ Menu {
 
     Component {
         id: entry
-        MenuItem {
+        MenuItem {    // pluto's height, kept while the menu is closed ▸r/qml-menu-placed-before-layout
+            implicitHeight: Math.max(implicitBackgroundHeight + topInset + bottomInset,
+                                     contentItem.implicitHeight + topPadding + bottomPadding,
+                                     implicitIndicatorHeight + topPadding + bottomPadding)
             symbolColor: enabled ? textColor : Theme.dimFg    // Houdini's row dims its text but not its glyph
         }
     }
@@ -86,6 +95,7 @@ Menu {
         Menu {
             enter: null    // whole on its first frame, as its menu
             exit: null    // closed by the same press as its menu, so gone before the release too
+            delegate: entry    // its own submenus' rows, as its menu's
         }
     }
 }
