@@ -49,6 +49,11 @@ def library_formats(library_dir: str) -> tuple:
     return tuple(one or base for one, base in zip(found, library_policy.FORMAT_3_0))
 
 
+def written_by_newer(found) -> bool:
+    """Whether any of a library's three format numbers is above the one this Amaze writes."""
+    return any(one > ours for one, ours in zip(found, THIS_AMAZE))
+
+
 def library_version(library_dir: str) -> int:
     """The version in the policy of the library in `library_dir`; 0 for a folder that holds none."""
     return library_formats(library_dir)[0]

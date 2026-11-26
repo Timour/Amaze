@@ -336,9 +336,12 @@ class CategoryIdsTest(unittest.TestCase):
         self.addCleanup(library_db.release, preferences)
         self.assertTrue(library_actions.update(preferences))
         self.assertEqual(library_settings.THIS_AMAZE, library_settings.library_formats(folder))
-        with mock.patch.object(library_policy, "LIBRARY_VERSION", library_policy.FORMAT_3_0[0]):
-            self.assertEqual(library_settings.THIS_AMAZE[0], library_actions.newer_version(
-                preferences), "an Amaze of format 3.0 would open it, and offer no update")
+        this = library_settings.THIS_AMAZE
+        for at in range(3):    # an Amaze one behind in the version, the database or the record format
+            behind = tuple(number - (place == at) for place, number in enumerate(this))
+            with mock.patch.object(library_settings, "THIS_AMAZE", behind):
+                self.assertEqual(this[0], library_actions.newer_version(preferences),
+                                 "an Amaze behind in number %d would open it" % at)
         with mock.patch.object(branding, "LIBRARY_FORMAT", library_policy.FORMAT_3_0[1]):
             self.assertEqual([guard.NEWER] * 2, [guard.Guard(folder).read(name).verdict
                                                  for name in (MATERIALS, NODES)])

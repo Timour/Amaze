@@ -54,8 +54,8 @@ def folder_not_empty_without_library(lib_dir: str) -> bool:
 def newer_version(preferences) -> int:
     """The library's version if a newer Amaze wrote it, so this one does not open it; else 0."""
     library_dir = str(preferences.dir or "")
-    found = library_settings.library_version(library_dir) if library_dir else 0
-    return found if found > library_policy.LIBRARY_VERSION else 0
+    found = library_settings.library_formats(library_dir) if library_dir else (0, 0, 0)
+    return found[0] if library_settings.written_by_newer(found) else 0
 
 
 def starter_would_overwrite(lib_dir: str) -> list:

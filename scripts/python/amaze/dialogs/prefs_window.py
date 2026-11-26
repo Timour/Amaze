@@ -435,7 +435,7 @@ class AmazePrefsState(mainprefs.PrefsState):
             return amazetheme.LABEL_LIBRARY_FORMAT % label(known), "", True    # set up on Apply
         found = library_settings.library_formats(folder)
         shown = amazetheme.LABEL_LIBRARY_FORMAT % label(found)
-        if any(one > ours for one, ours in zip(found, known)):
+        if library_settings.written_by_newer(found):
             return shown, amazetheme.LABEL_LIBRARY_TOO_NEW, False
         if any(one < ours for one, ours in zip(found, known)):
             return shown, amazetheme.LABEL_UPGRADES_LIBRARY % label(known), True
