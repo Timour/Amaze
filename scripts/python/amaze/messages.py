@@ -20,6 +20,7 @@ NOTHING_CHANGED_REASON = 'Amaze changed nothing: %s.'
 LIBRARY_CHANGED_SINCE_CHECK = "Something changed in the library since the check. Run Check Library again."
 
 USER_DELETE_CONFIRM = "Delete user \"%s\" from this library?"
+VERSION_DELETE_CONFIRM = 'Delete the version "%s"?'
 USER_NAME_TAKEN = "A user named \"%s\" already exists in this library. Choose another name."
 NO_USER_PICKED = "No user is picked for this library. Open Preferences, pick or create your user, and press Apply."
 MATERIAL_VERSIONS_TURN_ON_CONFIRM = "Turn on Material Versions for this library?"
@@ -393,6 +394,7 @@ BUTTONS_SAVE_NEW = ('Save New', 'Cancel')
 
 HELP_MATERIAL_VERSIONS = "This is shared: everyone working from this library gets the same setting.\n\nWith it on, saving over an existing material keeps the previous version."
 HELP_DELETE_USER = 'Their favorites and registered folders are removed from this library everywhere it syncs. A machine signed in as "%s" will ask who is using the library the next time it opens. This cannot be undone.'
+HELP_DELETE_VERSION = 'Moves the version to the library trash. It will be deleted after %d days.'
 
 HELP_LOG_SAVED = 'It contains your file paths, asset and material names - check before sharing it.'
 

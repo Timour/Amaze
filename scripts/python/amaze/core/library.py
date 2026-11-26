@@ -970,6 +970,18 @@ class AssetLibrary(grid_engine.GridEngine,
         self._versions_changed(mat)
         return True
 
+    def delete_version(self, row: int, number: int) -> bool:
+        """Delete version `number` at `row`; the one in use is first replaced by the newest left."""
+        listed, active = self.version_list(row)
+        left = [int(entry.get("n", 0)) for entry in reversed(listed)
+                if int(entry.get("n", 0)) != number]
+        if not left or (number == active and not self.switch_version(row, left[0])):
+            return False
+        if not versions.delete_version(self.preferences, self._assets[row].mat_id, number):
+            return False
+        self._versions_changed(self._assets[row])
+        return True
+
     def rename_version(self, row: int, number: int, name: str) -> bool:
         """Rename one version, clear the cache and repaint the view."""
         if not (self.KEEPS_VERSIONS and 0 <= row < len(self._assets)):

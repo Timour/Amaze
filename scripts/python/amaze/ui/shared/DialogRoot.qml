@@ -13,6 +13,11 @@ Item {
     property bool okEnabled: true    // off while the kind has nothing to hand on
     property string applyText: ""    // a button that hands the answer on and keeps the window, as Houdini's Apply
     property bool fills: false    // the rows take the height the window is given, not the window theirs
+    property string extraText: ""    // a button after the primary one that hands on `extraAnswer` and keeps the window
+    property var extraAnswer: null
+    property bool extraEnabled: true
+    property string extraTip: ""
+    property real buttonWidth: 80    // each button's width, as the kind's frame draws it
 
     function accept() {    // OK, and Return
         if (root.okText !== "" && root.okEnabled)
@@ -64,7 +69,7 @@ Item {
                 Button {
                     text: root.applyText
                     visible: root.applyText !== ""
-                    implicitWidth: 80
+                    implicitWidth: root.buttonWidth
                     onClicked: root.apply()
                 }
                 Button {
@@ -72,12 +77,22 @@ Item {
                     visible: root.okText !== ""
                     primary: true
                     enabled: root.okEnabled
-                    implicitWidth: 80
+                    implicitWidth: root.buttonWidth
                     onClicked: root.accept()
                 }
                 Button {
+                    text: root.extraText
+                    visible: root.extraText !== ""
+                    enabled: root.extraEnabled
+                    implicitWidth: root.buttonWidth
+                    ToolTip.text: root.extraTip
+                    ToolTip.visible: hovered && root.extraTip !== ""
+                    ToolTip.delay: Config.toolTipDelay
+                    onClicked: SharedState.apply(root.extraAnswer)
+                }
+                Button {
                     text: "Cancel"
-                    implicitWidth: 80
+                    implicitWidth: root.buttonWidth
                     onClicked: root.reject()
                 }
             }

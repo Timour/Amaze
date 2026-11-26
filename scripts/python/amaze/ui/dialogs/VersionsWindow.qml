@@ -1,4 +1,4 @@
-// The Versions window: a material's versions, newest first; Select hands on the one picked.
+// The Versions window: a material's versions, newest first; Select or Delete hands on the one picked.
 import QtQuick
 import houdini.pluto
 import houdini.ui
@@ -10,6 +10,11 @@ DialogRoot {
     okText: SharedState.selectText
     okEnabled: SharedState.picked >= 0
     answer: SharedState.picked
+    extraText: SharedState.deleteText
+    extraEnabled: SharedState.picked >= 0 && SharedState.deletable
+    extraAnswer: ({"delete": SharedState.picked})
+    extraTip: SharedState.deleteTip
+    buttonWidth: SharedState.buttonWidth
 
     TextMetrics {    // a day as the list draws it: the date column is as wide as one, the name the rest
         id: day

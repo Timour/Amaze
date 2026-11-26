@@ -5,7 +5,7 @@ import hou
 
 from amaze import messages
 from amaze.actions import materials as material_actions
-from amaze.core import captures, grid_columns, tile_icons
+from amaze.core import captures, grid_columns, guard, tile_icons, versions
 from amaze.pane import asks
 
 
@@ -113,10 +113,28 @@ class Assets:
 
         def chosen(picked):
             row = model.find_asset_row_by_id(mat.mat_id)    # the rows may have changed while the dialog was open
-            if picked is not None and picked != active and row >= 0:
+            if row < 0:
+                return None
+            if isinstance(picked, dict):    # Delete in the QML window: the question to show next
+                return self.delete_version(model, row, int(picked["delete"]))
+            if picked is not None and picked != model.version_list(row)[1]:
                 model.switch_version(row, picked)
+            return None
 
         self.pane.ui.open_versions(mat.name, listed, active, chosen)
+
+    def delete_version(self, model, row: int, number: int) -> dict:
+        """Version `number` of `row` deleted once the question is answered Delete; the versions left."""
+        listed = model.version_list(row)[0]
+        entry = next((entry for entry in listed if int(entry.get("n", 0)) == number), None)
+        if entry is not None and hou.ui.displayMessage(
+                messages.VERSION_DELETE_CONFIRM % versions.version_label(entry),
+                help=messages.HELP_DELETE_VERSION % guard.TRASH_DAYS,
+                buttons=messages.BUTTONS_DELETE, default_choice=1, close_choice=1,
+                title=messages.TITLE_AMAZE, severity=hou.severityType.Warning) == 0:
+            model.delete_version(row, number)
+        listed, active = model.version_list(row)
+        return {"listed": listed, "active": active}
 
     def edit_tile_icon(self, model, proxy, proxy_indexes, categories=()) -> None:
         """Customize on any tile: one handler for every section, applied to the WHOLE selection."""
