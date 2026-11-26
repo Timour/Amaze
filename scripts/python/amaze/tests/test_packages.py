@@ -15,7 +15,7 @@ from PySide6 import QtWidgets  # noqa: E402
 
 from amaze import messages  # noqa: E402
 from amaze.core import (addons, asset_record, category, gradient_library, guard, library,  # noqa: E402
-                        library_db, matx_sources, notes, packages)
+                        library_db, matx_sources, notes, packages, texstore)
 from amaze.helpers import hostos  # noqa: E402
 from amaze.tests import faults, test_support  # noqa: E402
 
@@ -308,6 +308,24 @@ class PackageTest(_Library):
         self.assertEqual(["rough", PICTURE], [i.get("text") or i.get("src") for i in items])
         with open(notes.image_path(self.lib, key, PICTURE), "rb") as handle:
             self.assertEqual(b"pasted picture", handle.read())
+
+    def test_pk24_a_package_from_an_older_amaze_imports_the_same_way(self):
+        entry, members = brick()
+        old = "$AMAZELIB/matX/brick/b.png"    # a texture where 2.0 kept it
+        builder = {"type": "subnet", "dialog_script": "controls", "values": {"rough": 0.5}}
+        entry["record"]["textures"] = [old]
+        entry.update(textures={old: "t"}, files=dict(entry["files"], builder="b", capture="c"))
+        members.update(t=b"old texture", b=json.dumps(builder).encode(), c=b"old picture")
+        model = self.models["material"]
+        before = test_support.asset_ids(model)
+        self.bring(self.package((entry, members)))
+        asset, = test_support.arrived(model, before)
+        files = model.asset_files(asset.mat_id)
+        with open(texstore.resolve(old, self.prefs, os.path.dirname(files["mat"])), "rb") as handle:
+            self.assertEqual(b"old texture", handle.read(), "not where LS-38 reads it")
+        self.assertEqual({"type": "subnet", "interface": "controls", "values": {"rough": 0.5}},
+                         asset_record.saved_builder(self.prefs, asset.mat_id, model.DB_FILENAME))
+        self.assertFalse(os.path.exists(files["thumbnail"]), "the old tile picture was brought in")
 
     def test_pk26_an_asset_that_fails_is_refused_alone(self):
         broken, members = brick(2)
