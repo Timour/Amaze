@@ -834,10 +834,8 @@ As](#write-paths-as).
   Categories**. With a [Filter](#the-panel-at-a-glance) choice other
   than All, Hide Empty Categories hides the categories that have nothing
   to show; under All, every category shows.
-- **Grid**: **Step Size** (the size slider moves in steps of 64 px),
-  **Custom Icons Line Width** (Thin, or Regular (Feather)) and **Qt
-  Mouse Scroll Wheel Fix** (on: the mouse wheel moves the grid, list and
-  sidebar the distance the system reports; off: Qt's fixed step).
+- **Grid**: **Step Size** (the size slider moves in steps of 64 px) and
+  **Custom Icons Line Width** (Thin, or Regular (Feather)).
 - **File Tab**: **Render RAT Files** (off: RAT files in the File tab
   show a rat and are not converted) and **Show Generic File Icons** (on:
   files with no preview show the generic file icon).
