@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.0.4
+
+- Amaze (QML): a menu opened near the bottom of the screen moves up and shows every row.
+
 ## 2.0.3
 
 - With two panes open, a pane that saves twice keeps the settings the other changed.
