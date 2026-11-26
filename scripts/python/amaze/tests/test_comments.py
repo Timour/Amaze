@@ -286,7 +286,7 @@ class CommentsTest(unittest.TestCase):
         out = os.path.join(test_support.scratch_dir("amaze_cm_package_"), "two.amazepkg")
         self.addCleanup(shutil.rmtree, os.path.dirname(out), True)
         with zipfile.ZipFile(out, "w") as bundle:
-            bundle.writestr(packages.MANIFEST, json.dumps({"format": packages.ASSETS_FORMAT,
+            bundle.writestr(packages.MANIFEST, json.dumps({"format": packages.FORMAT,
                                                            "entries": [good, refused]}))
             bundle.writestr("x", b"x")
         known = test_support.asset_ids(model)

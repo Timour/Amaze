@@ -14,7 +14,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6 import QtWidgets  # noqa: E402
 
 from amaze import messages  # noqa: E402
-from amaze.core import (asset_record, category, gradient_library, guard, library,  # noqa: E402
+from amaze.core import (addons, asset_record, category, gradient_library, guard, library,  # noqa: E402
                         library_db, matx_sources, notes, packages)
 from amaze.helpers import hostos  # noqa: E402
 from amaze.tests import faults, test_support  # noqa: E402
@@ -73,7 +73,7 @@ class _Library(unittest.TestCase):
         """A package of `(entry, members)` pairs; `manifest`: its own, raw bytes, or False for none."""
         path = os.path.join(self.out, name)
         manifest = manifest if manifest is not None else {
-            "format": packages.ASSETS_FORMAT, "entries": [entry for entry, _m in made]}
+            "format": packages.FORMAT, "entries": [entry for entry, _m in made]}
         with zipfile.ZipFile(path, "w") as bundle:
             if manifest is not False:
                 bundle.writestr(packages.MANIFEST, manifest if isinstance(manifest, bytes)
@@ -168,7 +168,7 @@ class PackageTest(_Library):
 
     def test_pk04_a_package_that_cannot_be_read_whole_changes_nothing(self):
         entry, members = brick()
-        manifest = {"format": packages.ASSETS_FORMAT, "entries": [entry]}
+        manifest = {"format": packages.FORMAT, "entries": [entry]}
         cases = {
             "damaged zip": test_support.put(self.out, "junk.amazepkg", b"PK\x03\x04 junk"),
             "no manifest": self.package((entry, members), manifest=False, name="none.amazepkg"),
@@ -324,6 +324,15 @@ class PackageTest(_Library):
         self.assertEqual(1, summary["imported"])
         self.assertIn(messages.PACKAGE_COMMENTS_NOT_WRITTEN % "Brick 1", summary["problems"])
 
+    def test_pk28_an_amaze_that_cannot_read_a_packages_textures_refuses_it_as_too_new(self):
+        self.exported()
+        before = self.state()
+        with mock.patch.object(packages, "FORMAT", 4), \
+                self.assertRaises(packages.PackageError):    # an Amaze before 2.0.6 reads up to 4
+            self.bring(os.path.join(self.out, "export.amazepkg"))
+        self.assertEqual(before, self.state(), "a part of it was imported")
+        self.assertEqual(4, addons.FORMAT, "an add-on package is no longer one every Amaze reads")
+
     def test_pk31_an_export_names_categories_and_an_import_finds_them_by_name(self):
         model, materials = self.models["material"], self.categories["material"]
         before, walls = test_support.asset_ids(model), materials.check_add_category("walls")
@@ -390,7 +399,7 @@ class InThePaneTest(unittest.TestCase):
         plain = {"type": "file", "kind": "text", "name": "notes.txt", "arc": "files/0_notes.txt"}
         path = os.path.join(self.out, "plain.amazepkg")
         with zipfile.ZipFile(path, "w") as bundle:
-            bundle.writestr(packages.MANIFEST, json.dumps({"format": packages.ASSETS_FORMAT,
+            bundle.writestr(packages.MANIFEST, json.dumps({"format": packages.FORMAT,
                                                            "entries": [plain]}))
             bundle.writestr(plain["arc"], b"from the package")
         folder = os.path.join(self.pane.prefs.dir, "import")

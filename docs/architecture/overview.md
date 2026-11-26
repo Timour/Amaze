@@ -1188,7 +1188,7 @@ core/users.py             WHO uses this library - a uuid4 UID per
                           changes the name and moves nothing
 core/notes.py             comments: each database's `comments` section
 core/packages.py          the .amazepkg container (library packages are
-                          format 2): export collectors, guarded writer,
+                          format 5): export collectors, guarded writer,
                           a reader that rejects a malformed package
 core/addons.py            add-on packages (format 4, a Houdini package):
                           the one writer, the reader, the Add-On tab's

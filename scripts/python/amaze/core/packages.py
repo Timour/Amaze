@@ -10,8 +10,7 @@ from amaze.core import asset_record, debug, library_conversion, library_files, m
 from amaze.core import texstore
 from amaze.helpers import hostos, wording
 
-FORMAT = 4    # the newest this build reads; 4: add-on rows (groups, Add-On tab icons), core/addons.py
-ASSETS_FORMAT = 2    # what a package of library assets is written as, so an older Amaze still reads it
+FORMAT = 5    # the newest this build reads, and what it writes for assets; 5: `$AMAZEASSET/` textures
 SUFFIX = ".amazepkg"
 MANIFEST = "package.json"
 RECORD_KIND = "json"    # `<id>.json` holding the builder alone: the row is stored in the manifest
@@ -148,7 +147,7 @@ def write_package(out_path: str, items) -> int:
             raise PackageError("unknown entry type %r"
                                % entry.get("type"))
         entries.append(entry)
-    manifest = {"format": ASSETS_FORMAT, "app": branding.APP_VERSION,
+    manifest = {"format": FORMAT, "app": branding.APP_VERSION,
                 "entries": entries}
     with hostos.scratch_beside(out_path) as scratch:
         with zipfile.ZipFile(scratch, "w",

@@ -13,6 +13,7 @@ from amaze.core import debug, guard, packages
 from amaze.helpers import hostos, wording
 
 KIND = "houdini-package"
+FORMAT = 4    # what an add-on package is written as: every Amaze with an Add-On tab reads it
 MAX_UNPACKED_BYTES = 512 * 1024 * 1024    # the largest unpacked size of an add-on, as of a release ▸r/zip-declared-size
 ROOT = "addons"    #: the add-ons' folder, in Amaze's install and in the package store alike
 REQUIRED = ("name", "folder", "version", "author", "houdini", "houdini_min", "changelog")
@@ -130,7 +131,7 @@ def file_name(manifest) -> str:
 
 def write(out_dir: str, fields: dict, root: str, files) -> str:
     """The ONE add-on package writer: `files`, relative to `root`, into `out_dir`; returns the path."""
-    manifest = dict(fields, format=packages.FORMAT, kind=KIND, app=branding.APP_VERSION,
+    manifest = dict(fields, format=FORMAT, kind=KIND, app=branding.APP_VERSION,
                     files=sorted(set(files)))
     found = problems(manifest)
     found += ["no file %s under %s" % (member, root) for member in manifest["files"]
