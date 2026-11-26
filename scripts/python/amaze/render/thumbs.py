@@ -109,15 +109,15 @@ class ThumbNailRenderer:
                                   title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
             return
         for renderer, group in groups.items():
-            ThumbNailRenderer._render_group(preferences, renderer, group)
+            refused += ThumbNailRenderer._render_group(preferences, renderer, group)
         ui = getattr(hou, "ui", None)
-        if refused and ui is not None:    # ONE message for the rows no husk renders
+        if refused and ui is not None:    # ONE message for every row that was not rendered
             ui.displayMessage("\n".join(refused),
                               title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
 
     @staticmethod
-    def _render_group(preferences, renderer: str, mats) -> None:
-        """Import each into /mat, write the batch from them, then delete them."""
+    def _render_group(preferences, renderer: str, mats) -> list:
+        """Import each into /mat, write the batch from them, then delete them; why each was not."""
         handlers = []
         items = []
         refused = []
@@ -140,10 +140,7 @@ class ThumbNailRenderer:
             finally:
                 for handler in handlers:
                     handler.cleanup()    # the stage is written: husk reads the file, not these
-        ui = getattr(hou, "ui", None)
-        if refused and ui is not None:    # ONE message for the batch
-            ui.displayMessage("\n".join(refused),
-                              title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
+        return refused
 
     def create_thumbnail(self) -> None:
         """Render this material's thumbnail in the background: a batch of one."""

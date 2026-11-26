@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import types
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -467,6 +468,7 @@ class NotesPanel(side_pane.SidePage):
         self.preferences = preferences
         self._key = None
         self._library = ""    # the library the page was read from, and so the one its saves write to
+        self._typed_in = None    # the library and user of the typing waiting to be saved
         self._loading = False
         self._save_timer = QtCore.QTimer(self)
         self._save_timer.setSingleShot(True)
@@ -595,6 +597,9 @@ class NotesPanel(side_pane.SidePage):
     def _something_changed(self) -> None:
         if self._loading or self._key is None:
             return
+        if not self._save_timer.isActive():    # a switch then names another library and its user
+            self._typed_in = types.SimpleNamespace(
+                dir=self._library, library_user=self.preferences.library_user)
         self._save_timer.start()
 
     def flush(self) -> None:
@@ -606,9 +611,8 @@ class NotesPanel(side_pane.SidePage):
     def _save_now(self) -> None:
         if self._key is None:
             return
-        written = notes.set_note(
-            self.preferences, self._key, self.text_edit.serialize(),
-            self._library)
+        written = notes.set_notes(    # written now: at quit no save timer fires again
+            self._typed_in, {self._key: self.text_edit.serialize()})
         if written:
             self.changed.emit(self._key)
         else:

@@ -13,8 +13,9 @@ from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 from amaze import messages  # noqa: E402
-from amaze.core import category, file_library, folders, locations  # noqa: E402
+from amaze.core import category, file_library, folders, locations, notes, users  # noqa: E402
 from amaze.helpers import hostos  # noqa: E402
+from amaze.prefs import prefs as prefs_mod  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
 try:    # without Houdini the tests that need it skip
@@ -152,6 +153,30 @@ class LocationsTest(_Folders):
                   for row in range(grid.rowCount())}
         self.assertEqual({"cube.bgeo": locations.KIND_GEO, "notes.txt": locations.KIND_OTHER,
                           "shot.hip": locations.KIND_HIP, "top.png": locations.KIND_IMAGE}, listed)
+
+    def test_fi21_one_id_for_every_user_and_each_users_own_name_colour_and_place(self):
+        second = prefs_mod.Prefs()
+        second.dir, second.path = self.prefs.dir, test_support.scratch_dir("amaze_fi_second_")
+        self.addCleanup(shutil.rmtree, second.path, True)
+        second.library_user = users.create(self.prefs, "Second")
+        a, b = self.key(self.a), self.key(self.b)
+        for prefs, order in ((self.prefs, (a, b)), (second, (b, a))):
+            sidebar = file_library.FileFolders(prefs)
+            for path in order:
+                self.assertTrue(sidebar.add_folder(path))
+        self.assertEqual(locations.location_id(self.prefs, a), locations.location_id(second, a))
+        self.prefs.set_file_folder_name(a, "Shots")
+        self.prefs.set_file_folder_color(a, "#123456")
+        self.assertEqual(([a, b], "Shots", "#123456"), (self.prefs.file_folders, self.prefs.file_folder_names.get(
+            a), self.prefs.file_folder_colors.get(a)))
+        self.assertEqual(([b, a], {}, {}), (second.file_folders, second.file_folder_names,
+                                            second.file_folder_colors))
+        ident = locations.file_ident(self.prefs, self.at("a", "notes.txt"))
+        self.assertTrue(notes.set_note(self.prefs, notes.note_key("file", ident),
+                                       [{"t": "text", "text": "the first user's"}]))
+        self.assertTrue(locations.register(second, self.root))    # a location around it
+        self.assertEqual(ident, locations.file_ident(second, self.at("a", "notes.txt")))
+        self.assertTrue(notes.has_note(second, notes.note_key("file", ident)))
 
     def test_fi22_locate_keeps_the_locations_id_name_and_data_and_refuses_a_location(self):
         sidebar = file_library.FileFolders(self.prefs)

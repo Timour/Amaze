@@ -4,6 +4,7 @@ import contextlib
 import errno
 import hashlib
 import io
+import json
 import os
 import re
 import shutil
@@ -13,12 +14,17 @@ import unittest
 import zipfile
 from unittest import mock
 
-from amaze import messages
-from amaze.actions import library as library_actions
-from amaze.core import guard, library_policy, library_settings, matx_sources, updater
-from amaze.helpers import helpers
-from amaze.prefs import prefs as prefs_mod
-from amaze.tests import faults, test_support
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+from PySide6 import QtWidgets  # noqa: E402
+
+from amaze import amazetheme, messages  # noqa: E402
+from amaze.actions import library as library_actions  # noqa: E402
+from amaze.core import (guard, library_db, library_policy, library_settings,  # noqa: E402
+                        matx_sources, updater, users)
+from amaze.helpers import helpers  # noqa: E402
+from amaze.prefs import persistence  # noqa: E402
+from amaze.prefs import prefs as prefs_mod  # noqa: E402
+from amaze.tests import faults, test_support  # noqa: E402
 
 URL = "https://example.invalid/Amaze-9.9.zip"
 ENTRIES = updater.INSTALL_ENTRIES
@@ -260,6 +266,86 @@ class UpdateTest(_Install):
         self.assertTrue(re.match(r"\d+\.\d+$", library_settings.version_label(
             library_settings.library_formats(library))))
 
+
+class OpeningTest(unittest.TestCase):
+    """A pane on a fixture library, and copies of it in other formats to open."""
+
+    def setUp(self):
+        self.app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+        self.pane = test_support.fixture_pane(self)
+        self.first = self.pane.prefs.dir
+
+    def library(self, version: int) -> tuple:
+        """A copy of the fixture library as an Amaze of library `version` left it: (folder, Sage)."""
+        folder = test_support.seeded_library(self)
+        sage = users.create(types.SimpleNamespace(dir=folder, library_user=""), "Sage",
+                            library=folder)
+        library_db.release(types.SimpleNamespace(dir=folder))
+        test_support.set_library_version(folder, version)
+        return folder, sage
+
+    def answering(self):
+        """`hou.ui` answering Cancel to every message; each message's text is kept."""
+        import hou
+        self.asked = []
+
+        def message(text, buttons=("OK",), **_how):
+            self.asked.append(text)
+            return len(buttons) - 1
+        return mock.patch.object(hou, "ui", types.SimpleNamespace(displayMessage=message),
+                                 create=True)
+
+    def test_up23_a_library_an_older_amaze_wrote_takes_this_format_at_once_unasked(self):
+        older, _sage = self.library(library_policy.FORMAT_3_0[0])
+        self.assertLess(library_settings.library_formats(older), library_settings.THIS_AMAZE)
+        with self.answering():
+            self.assertTrue(test_support.apply_library(self, types.SimpleNamespace(
+                pane=self.pane), older, user="Sage"))
+        self.assertEqual(([], library_settings.THIS_AMAZE),
+                         (self.asked, library_settings.library_formats(older)))
+
+    def test_up24_a_library_a_newer_amaze_wrote_stays_closed_and_update_is_offered_once_idle(self):
+        newer, sage = self.library(library_policy.LIBRARY_VERSION + 1)
+        settings = os.path.join(self.pane.prefs.path, "settings.json")
+        with open(settings, encoding="utf-8") as handle:
+            named = dict(json.load(handle), directory=newer, library_user=sage)
+        test_support.put(self.pane.prefs.path, "settings.json", json.dumps(named))
+        with self.answering(), mock.patch.object(prefs_mod.Prefs, "save",
+                                                 persistence._Persistence.save):
+            self.pane.library.reload()
+            with open(settings, encoding="utf-8") as handle:
+                stayed = (self.pane.library.models_dir, json.load(handle)["directory"],
+                          list(self.asked))
+            test_support.pump_until(lambda: self.asked, 2)
+        self.assertEqual((self.first, self.first, []), stayed, "it opened, or asked at once")
+        self.assertEqual([messages.LIBRARY_NEEDS_NEWER_AMAZE % library_settings.version_label(
+            library_settings.library_formats(newer))], self.asked)
+
+    def test_up25_preferences_says_what_apply_will_do_and_shows_the_format_after_it(self):
+        from amaze.dialogs import prefs_window
+        label, this = library_settings.version_label, library_settings.THIS_AMAZE
+        older, _sage = self.library(library_policy.FORMAT_3_0[0])
+        newer, _sage = self.library(library_policy.LIBRARY_VERSION + 1)
+        shown = prefs_window.AmazePrefsState(self.pane.prefs, pane=self.pane)
+        lines = {}
+        for folder in (self.first, older, newer):
+            shown.pick_library(folder)
+            lines[folder] = (shown.libraryFormat, shown.applyLine)
+        formats = amazetheme.LABEL_LIBRARY_FORMAT
+        self.assertEqual({self.first: (formats % label(this), ""),
+                          older: (formats % label(library_settings.library_formats(older)),
+                                  amazetheme.LABEL_UPGRADES_LIBRARY % label(this)),
+                          newer: (formats % label(library_settings.library_formats(newer)),
+                                  amazetheme.LABEL_LIBRARY_TOO_NEW)}, lines)
+        with self.answering():
+            self.assertFalse(test_support.apply_library(self, types.SimpleNamespace(
+                pane=self.pane), newer, user="Sage", state=shown))
+            test_support.pump_until(lambda: self.asked, 0.2)    # an open tried offers Update
+            self.assertEqual((self.first, []), (self.pane.library.models_dir, self.asked),
+                             "Apply was not refused")
+            self.assertTrue(test_support.apply_library(self, types.SimpleNamespace(
+                pane=self.pane), older, user="Sage", state=shown))
+        self.assertEqual((formats % label(this), ""), (shown.libraryFormat, shown.applyLine))
 
 if __name__ == "__main__":
     unittest.main()

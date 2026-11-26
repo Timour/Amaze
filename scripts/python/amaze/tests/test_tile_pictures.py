@@ -374,6 +374,233 @@ class PicturesTest(_Library):
         importlib.reload(workers)
         self.assertIn(stuck, workers._unstoppable, "a thread that would not stop was let go")
 
+    @needs_houdini
+    def test_tp20_each_material_its_own_picture_in_its_renderer_with_its_samples_one_job_each(self):
+        from amaze import preview
+        from amaze.actions import materials as material_actions
+        from amaze.core import library
+        from amaze.preview import thumbnail_scene
+        from amaze.render import thumbs
+        test_support.pin_env(self, "OCIO", "/dev/null")    # a conversion's save checks it
+        prefs = test_support.fixture_prefs(self)
+        prefs.karma_rendersamples, prefs.rendersamples, prefs.octane_rendersamples = 7, 9, 11
+        model = library.MaterialLibrary(prefs)
+        mats = [model.assets[model.find_asset_row_by_id(key)]
+                for key in ("139888336889814930", "139888337058723210")]
+        target = next((key for key in ("Redshift", "Octane") if test_support.renderer_loaded(key)), "")
+        if target:    # a second renderer, where one is loaded
+            held = test_support.asset_ids(model)
+            ok, report = material_actions.convert(model, model.index(model.find_asset_row_by_id(
+                mats[1].mat_id), 0), target, render=False)
+            self.assertTrue(ok, report)
+            mats += test_support.arrived(model, held)
+        jobs, samples, write = [], {}, preview.write_batch
+        names = ("samplesperpixel", "redshiftglobalUnifiedMaxSamples",
+                 "xn__octaneglobalmaxsamples4_jebg")
+
+        def written(scaffold, items, out_dir):    # the stage as it is written, its samples read
+            samples[scaffold["renderer"]] = [node.parm(name).eval() for node in scaffold[
+                "net"].allSubChildren() for name in names if node.parm(name) is not None]
+            return write(scaffold, items, out_dir)
+
+        viewer = {"display": "sRGB", "view": "Raw", "space": "ACEScg"}
+        with mock.patch.object(thumbnail_scene, "ocio_from_viewer", lambda: viewer), \
+                mock.patch.object(preview, "ocio_from_viewer", lambda: viewer), \
+                mock.patch.object(preview, "write_batch", written), \
+                mock.patch.object(husk_job.jobs, "submit", lambda job, **how: jobs.append(job)):
+            thumbs.ThumbNailRenderer.render_assets(prefs, mats)
+        wanted = {thumbs.usd_renderer(mat): [] for mat in mats}
+        for mat in mats:
+            wanted[thumbs.usd_renderer(mat)].append((str(mat.mat_id), tile_icons.thumbnail_path(
+                prefs, str(mat.mat_id), library_files.MATERIALS)))
+        self.assertEqual(wanted, {job.renderer: sorted(job.frames) for job in jobs})
+        self.assertEqual(len(wanted), len(jobs), "not one background render per renderer")
+        self.assertEqual({renderer: [{"Karma": 7, "Redshift": 9, "Octane": 11}[renderer]]
+                          for renderer in wanted}, samples)
+
+    @needs_houdini
+    def test_tp21_no_viewer_renders_nothing_and_a_renderer_not_loaded_is_named_once(self):
+        from amaze import preview
+        from amaze.core import library
+        from amaze.preview import thumbnail_scene
+        from amaze.render import thumbs
+        prefs = test_support.fixture_prefs(self)
+        model = library.MaterialLibrary(prefs)
+        gold = model.assets[model.find_asset_row_by_id("139888336889814930")]
+        mats = [gold] + [types.SimpleNamespace(mat_id=key, name=name, renderer=renderer)
+                         for key, name, renderer in (("R1", "Ruby", "Redshift"),
+                                                     ("O1", "Opal", "Octane"))]
+        said, jobs = [], []
+        scene = sorted(node.path() for node in hou.node("/").allSubChildren())
+        ui = types.SimpleNamespace(displayMessage=lambda text, **how: said.append(text),
+                                   curDesktop=lambda: types.SimpleNamespace(
+                                       paneTabOfType=lambda kind: None))
+        with mock.patch.object(hou, "ui", ui, create=True), test_support.plugins_loaded(), \
+                mock.patch.object(husk_job.jobs, "submit", lambda job, **how: jobs.append(job)):
+            thumbs.ThumbNailRenderer.render_assets(prefs, mats)
+            self.assertEqual(([messages.NO_SCENE_VIEWER_FOR_THUMBNAIL], [], scene), (said, jobs, sorted(
+                node.path() for node in hou.node("/").allSubChildren())), "no viewer, yet it went on")
+            said.clear()
+            viewer = {"display": "sRGB", "view": "Raw", "space": "ACEScg"}    # one is open now
+            with mock.patch.object(thumbnail_scene, "ocio_from_viewer", lambda: viewer), \
+                    mock.patch.object(preview, "ocio_from_viewer", lambda: viewer):
+                thumbs.ThumbNailRenderer.render_assets(prefs, mats)
+        self.assertEqual(1, len(said), said)
+        self.assertTrue("Ruby" in said[0] and "Opal" in said[0], said)
+        self.assertEqual([str(gold.mat_id)], [key for job in jobs for key, _path in job.frames])
+
+    @needs_houdini
+    def test_tp22_each_picture_is_a_png_of_its_own_shape_and_size(self):
+        from amaze import preview
+        from amaze.actions import nodes as node_actions
+        from amaze.core import cop_library, library
+        from amaze.preview import thumbnail_scene
+        from amaze.render import thumbs
+        test_support.pin_env(self, "OCIO", "/dev/null")    # the save checks it
+        prefs = test_support.fixture_prefs(self)
+        prefs.rendersize, prefs.render_on_import = 96, 1
+        networks = cop_library.CopLibrary(preferences=prefs)
+        with hou.undos.disabler():
+            made = {"SOP": hou.node("/obj").createNode("geo", "tp_geo"),
+                    "COP": hou.node("/obj").createNode("copnet", "tp_cops")}
+            made["SOP"].createNode("box")
+            orange = made["COP"].createNode("constant")
+            orange.parm("signature").set("f4")
+            orange.parmTuple("f4").set((1.0, 0.5, 0.0, 1.0))
+            orange.setDisplayFlag(True)
+        for node in made.values():
+            self.addCleanup(test_support.drop_node, node)
+            node_actions.add_asset(networks, node, "", "", False)    # each renders its picture
+        geometry = os.path.join(prefs.path, "cube.png")
+        self.assertTrue(thumbs.ThumbNailRenderer(prefs).create_thumb_geo_file(os.path.join(
+            test_support.FILES_FIXTURE_DIR, "cube.bgeo"), geometry, prefs.rendersize))
+        pictures = {kind: tile_icons.thumbnail_path(prefs, node.userData("assetlib_id"),
+                                                    library_files.NODES)
+                    for kind, node in made.items()}
+        pictures["geometry"] = geometry
+        shapes = {kind: (self.shown(path)[:4], QtGui.QImage(path).size().toTuple())
+                  for kind, path in pictures.items()}
+        cop = QtGui.QImage(pictures["COP"])
+        self.assertEqual({"SOP": (b"\x89PNG", (96, 96)), "geometry": (b"\x89PNG", (96, 96))},
+                         {kind: shape for kind, shape in shapes.items() if kind != "COP"})
+        self.assertEqual(b"\x89PNG", shapes["COP"][0])
+        self.assertNotEqual((96, 96), shapes["COP"][1], "the network's image was made square")
+        centre = cop.pixelColor(cop.width() // 2, cop.height() // 2)
+        self.assertEqual((255, True, 0), (centre.red(), 64 < centre.green() < 224, centre.blue()),
+                         "not the network's own orange")
+        model, sizes, batch_of = library.MaterialLibrary(prefs), [], preview.write_batch
+        viewer = {"display": "sRGB", "view": "Raw", "space": "ACEScg"}
+
+        def written(scaffold, items, out_dir):    # the stage as husk will render it
+            sizes.append(tuple(scaffold["render_props"].parm(name).eval()
+                               for name in ("resolutionx", "resolutiony")))
+            return batch_of(scaffold, items, out_dir)
+
+        jobs = []
+        with mock.patch.object(thumbnail_scene, "ocio_from_viewer", lambda: viewer), \
+                mock.patch.object(preview, "ocio_from_viewer", lambda: viewer), \
+                mock.patch.object(preview, "write_batch", written), \
+                mock.patch.object(husk_job.jobs, "submit", lambda job, **how: jobs.append(job)):
+            thumbs.ThumbNailRenderer.render_assets(prefs, model.assets[1:2])
+        self.assertEqual(([(96, 96)], [".png"]), (sizes, [os.path.splitext(path)[1]
+                                                          for job in jobs for _key, path in job.frames]))
+        patcher, calls = capturing(write(NEW))
+        with patcher:
+            scene_captures.capture_viewport(self.picture, Viewer(size=(2048, 1024)), ANNA)
+        self.assertEqual(([(1024, 512)], b"\x89PNG"), (calls, self.shown()[:4]))
+
+    @needs_houdini
+    def test_tp23_a_save_renders_when_on_a_hosted_picture_wins_and_render_image_always(self):
+        from amaze.actions import materials as material_actions, nodes as node_actions
+        from amaze.core import cop_library, library
+        from amaze.render import nodes, thumbs
+        test_support.pin_env(self, "OCIO", "/dev/null")    # the save checks it
+        prefs = test_support.fixture_prefs(self)
+        materials, networks = library.MaterialLibrary(prefs), cop_library.CopLibrary(preferences=prefs)
+        rendered = []
+        spies = [mock.patch.object(thumbs.ThumbNailRenderer, name, lambda renderer, key, *a, kind=kind: (
+            rendered.append((kind, key)) or True)) for name, kind in (
+                ("create_thumb_sop", "SOP"), ("create_thumb_cop", "COP"))] + [
+            mock.patch.object(thumbs.ThumbNailRenderer, "render_assets", lambda prefs, mats: (
+                rendered.extend(("material", str(mat.mat_id)) for mat in mats))),
+            mock.patch.object(thumbs.ThumbNailRenderer, "create_thumb", lambda renderer, kind, node,
+                              key: rendered.append(("material", key)) or True)]
+        for spy in spies:    # a save renders a material through `create_thumb`, Render Image a batch
+            spy.start()
+            self.addCleanup(spy.stop)
+        with hou.undos.disabler():
+            made = {"material": nodes.build_karma_material(hou.node("/mat"), "tp_brick", lambda b: (
+                        b.createNode("mtlxstandard_surface", "surface"))).builder,
+                    "SOP": hou.node("/obj").createNode("geo", "tp_geo"),
+                    "COP": hou.node("/obj").createNode("copnet", "tp_cops"),
+                    "other": hou.node("/obj").createNode("subnet", "tp_other")}
+            made["SOP"].createNode("box")
+            made["COP"].createNode("constant").setDisplayFlag(True)
+        for node in made.values():
+            self.addCleanup(test_support.drop_node, node)
+
+        def save_each() -> dict:
+            """Each network saved anew: {kind: its id}."""
+            material_actions.add_asset(materials, made["material"], "", "", False)
+            for kind in ("SOP", "COP", "other"):
+                node_actions.add_asset(networks, made[kind], "", "", False)
+            return {kind: node.userData("assetlib_id") for kind, node in made.items()}
+
+        for on in (1, 0):
+            prefs.render_on_import, rendered[:] = on, []
+            saved = save_each()
+            self.assertEqual([(kind, saved[kind]) for kind in ("material", "SOP", "COP")] if on
+                             else [], rendered, "Render Thumbnails on Import is %d" % on)
+        hosted = test_support.put(self.dir, "hosted.png", NEW)
+        prefs.render_on_import, rendered[:] = 1, []
+        before = test_support.asset_ids(materials)
+        material_actions.add_asset(materials, made["material"], "", "", False, picture=hosted)
+        online, = test_support.arrived(materials, before)
+        self.assertEqual([], rendered, "rendered over the hosted picture")
+        self.assertTrue(self.shown(tile_icons.thumbnail_path(prefs, str(online.mat_id),
+                                                             library_files.MATERIALS)).startswith(b"\x89PNG"))
+        prefs.render_on_import = 0
+        material_actions.render_thumbnails(materials, [materials.find_asset_row_by_id(online.mat_id)])
+        with test_support.captured_log():
+            node_actions.render_thumbnails(networks, [networks.find_asset_row_by_id(saved[kind])
+                                                      for kind in ("SOP", "COP", "other")])
+        self.assertEqual([("material", str(online.mat_id)), ("SOP", saved["SOP"]),
+                          ("COP", saved["COP"])], rendered, "Render Image did not render again")
+
+    @needs_houdini
+    def test_tp24_a_files_capture_is_one_file_in_the_library_and_stays_through_a_save(self):
+        import hashlib
+        from amaze.core import captures, file_library, locations
+        from amaze.prefs import prefs as prefs_mod
+        self.prefs = prefs_mod.Prefs()    # what the File grid reads too
+        self.prefs.dir, self.prefs.library_user = self.dir, ANNA
+        self.prefs.path = test_support.scratch_dir("amaze_settings_")
+        self.addCleanup(shutil.rmtree, self.prefs.path, True)
+        shots = test_support.scratch_dir("amaze_shots_")
+        self.addCleanup(shutil.rmtree, shots, True)
+        self.addCleanup(hou.hipFile.clear, suppress_save_prompt=True)
+        scene = os.path.join(shots, "shot" + scene_captures.scene_extension())
+        self.assertTrue(locations.register(self.prefs, shots))
+        hou.hipFile.save(scene)
+        patcher, _calls = capturing(write(NEW))
+        with patcher, mock.patch.object(scene_captures, "scene_viewer", lambda: Viewer()):
+            taken = scene_captures.capture_open_scene(self.prefs)    # the shelf tool
+        key = captures.file_key(self.prefs, scene)
+        self.assertEqual(os.path.join(self.dir, "files", hashlib.sha1(key.encode()).hexdigest()
+                                      + ".png"), taken)
+        grid = file_library.FileFiles(self.prefs)
+        grid.set_folder(shots)
+        self.assertEqual(taken, grid.capture_path(grid.row_for_path(scene)), "the tile reads another")
+        elsewhere = test_support.scratch_dir("amaze_shots_")    # the same folder on another computer
+        self.addCleanup(shutil.rmtree, elsewhere, True)
+        os.rmdir(elsewhere)
+        os.rename(shots, elsewhere)
+        self.assertTrue(locations.relocate_record(self.prefs, shots, elsewhere))
+        moved = os.path.join(elsewhere, os.path.basename(scene))
+        self.assertEqual(taken, captures.file_path(self.prefs, captures.file_key(self.prefs, moved)))
+        hou.hipFile.save(moved)
+        self.assertEqual(NEW, self.shown(taken), "the capture went when the scene was saved again")
+
     def test_tp25_only_the_open_saved_scene_is_captured(self):
         saved = test_support.put(self.dir, "shots/saved.hip", b"scene")
         taken = []

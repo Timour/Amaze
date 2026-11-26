@@ -12,10 +12,18 @@ import urllib.error
 import zipfile
 from unittest import mock
 
-import hou
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+from PySide6 import QtWidgets  # noqa: E402
 
-from amaze.core import debug, matx_import, matx_sources, matx_translate, notes, packages
-from amaze.tests import test_support
+_app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
+import hou  # noqa: E402
+
+from amaze import messages  # noqa: E402
+from amaze.core import (debug, matx_import, matx_library, matx_sources,  # noqa: E402
+                        matx_translate, notes, packages)
+from amaze.render import thumbs  # noqa: E402
+from amaze.tests import test_support  # noqa: E402
 
 SIMREADY = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "simready")
 URL = "https://example.invalid/v9/Stone.zip"
@@ -63,6 +71,18 @@ class _Fetch:
 
     def page_url(self, record) -> str:
         return "https://example.invalid/" + record.uid
+
+
+class _Listing(matx_sources.MatxSource):
+    """A source listing one material named after it, or one that cannot be reached."""
+
+    def __init__(self, name: str, reached: bool = True) -> None:
+        self.name, self.reached = name, reached
+
+    def list_materials(self, search="", offset=0, limit=60):
+        if not self.reached:
+            raise urllib.error.URLError("no route to host")
+        return [matx_sources.MatxRecord(source=self.name, uid="m", title="From " + self.name)]
 
 
 class OnlineSourceTest(unittest.TestCase):
@@ -180,6 +200,20 @@ class OnlineSourceTest(unittest.TestCase):
         with self.assertRaises(hou.OperationInterrupted):
             source.fetch(record, None, os.path.join(self.dir, "stopped"), progress=esc)
 
+    def test_on20_each_source_lists_and_one_not_reached_is_named_while_the_others_list(self):
+        sources = [_Listing("Brick Works"), _Listing("Gone Site", reached=False),
+                   _Listing("Stone Yard")]
+        with mock.patch.object(matx_sources, "all_sources", lambda: sources), \
+                test_support.captured_log() as log:
+            model = matx_library.MatxOnlineLibrary()
+            self.addCleanup(model.shutdown)
+            model.reload(force=True)
+            test_support.pump_until(lambda: not model._loading)
+        self.assertEqual(["From Brick Works", "From Stone Yard"], sorted(
+            model.index(row, 0).data() for row in range(model.rowCount())))
+        self.assertEqual(1, sum("Gone Site" in line for line in log.messages("refuse")),
+                         log.messages(None))
+
     def test_on21_the_resolution_asked_for_or_the_nearest_is_fetched(self):
         offered = ["1k", "2k", "8k"]
         self.assertEqual("2k", matx_sources.pick_resolution(offered, "2k"))
@@ -217,6 +251,96 @@ class OnlineSourceTest(unittest.TestCase):
                               if not p.unexpandedString().startswith("$HIP/tex/")
                               or not os.path.isfile(p.eval())])
 
+
+class _Measured(matx_sources.MatxSource):
+    """A source of measured materials: a record's uid `fails` cannot be had, `esc` is stopped."""
+
+    name = "Measured"
+
+    @staticmethod
+    def page_url(record) -> str:
+        return "https://example.invalid/" + record.uid
+
+    @staticmethod
+    def fetch(record, resolution, dest, progress=None):
+        if record.uid == "fails":
+            raise OSError("the site sent nothing")
+        if record.uid == "esc":
+            raise hou.OperationInterrupted()
+        return {"values": {"color": [0.5, 0.4, 0.3]}}
+
+
+def measured(uid: str, title: str) -> matx_sources.MatxRecord:
+    return matx_sources.MatxRecord(source="Measured", uid=uid, title=title, author="A. Mason",
+                                   category="Stone", tags=["rough", "red"], licence="CC0",
+                                   kind="values")
+
+
+class InThePaneTest(unittest.TestCase):
+    """A pane on a fixture library, the Measured source among its online ones; each message kept."""
+
+    def setUp(self):
+        test_support.pin_env(self, "OCIO", "/dev/null")    # the save checks it
+        self.pane = test_support.fixture_pane(self)
+        self.pane.prefs.render_on_import = 1
+        sources, source = self.pane.matx_online_model.sources, _Measured()
+        sources.append(source)
+        self.addCleanup(sources.remove, source)
+        self.model, self.said, self.rendered = self.pane.material_model, [], []
+        ui = types.SimpleNamespace(displayMessage=lambda text, details="", **how: self.said.append(
+            (text, details)), setStatusMessage=lambda *a, **k: None)
+        for patcher in (mock.patch.object(hou, "ui", ui, create=True), mock.patch.object(
+                thumbs.ThumbNailRenderer, "render_assets", lambda prefs, made: self.rendered.extend(
+                    str(each.mat_id) for each in made))):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def test_on23_the_new_material_has_its_renderer_fields_and_a_credit_comment(self):
+        target = next((key for key in ("Redshift", "Octane") if test_support.renderer_loaded(key)), "")
+        for renderer in ("Karma",) + ((target,) if target else ()):
+            before = test_support.asset_ids(self.model)
+            ok, why = matx_import.import_record(
+                measured("brick-7", "Brick"), _Measured(), None, self.model, self.pane.prefs,
+                renderer=renderer, save=self.pane.saving.import_save(), render=False)
+            self.assertTrue(ok, why)
+            made, = test_support.arrived(self.model, before)
+            row = made.get_as_dict()
+            self.assertEqual((renderer, "Brick", ["Stone"], ["rough", "red"], "CC0", "Measured",
+                              "brick-7"), (row["renderer"], row["name"], self.model.named_categories(
+                                  made), row["tags"], row["license"], row["source"], row["online_uid"]))
+            credit = notes.note_for(self.pane.prefs, notes.note_key("material", made.mat_id))
+            self.assertTrue(all(part in credit["items"][0]["text"] for part in (
+                "Measured", "A. Mason", "https://example.invalid/brick-7")), credit)
+
+    def test_on25_a_failing_record_stops_nothing_one_message_names_it_and_esc_keeps_the_saved(self):
+        before = test_support.asset_ids(self.model)
+        self.pane.online_import.import_records([measured("a", "Granite"), measured(
+            "fails", "Basalt"), measured("b", "Marble")])
+        self.assertEqual(["Granite", "Marble"], sorted(
+            made.name for made in test_support.arrived(self.model, before)))
+        self.assertEqual([(messages.AMAZE_COULD_NOT % (1, 3), "Basalt: ")], [
+            (text, details[:len("Basalt: ")]) for text, details in self.said])
+        before, self.rendered[:] = test_support.asset_ids(self.model), []
+        self.pane.online_import.import_records([measured("c", "Slate"), measured(
+            "esc", "Onyx"), measured("d", "Chalk")])
+        saved = test_support.arrived(self.model, before)
+        self.assertEqual((["Slate"], [str(made.mat_id) for made in saved]), (
+            [made.name for made in saved], self.rendered), "after Esc it is gone, or no picture")
+
+    def test_on27_generate_builds_one_material_in_one_undo_step_and_adds_nothing(self):
+        library = test_support.library_state(self.pane.prefs.dir)
+        builders = {node.path() for node in hou.node("/").allSubChildren() if node.comment()}
+        undos = hou.undos.undoLabels()
+        self.pane.loading.generate_random_material()
+        made = [node for node in hou.node("/").allSubChildren()
+                if node.comment() and node.path() not in builders]
+        for node in made:
+            self.addCleanup(test_support.drop_node, node)
+        self.assertEqual(1, len(made), [node.path() for node in made])
+        self.assertTrue(made[0].comment().startswith("Generated from "), made[0].comment())
+        self.assertEqual(("Amaze Generate Material",), hou.undos.undoLabels()[:len(
+            hou.undos.undoLabels()) - len(undos)])
+        self.assertEqual(library, test_support.library_state(self.pane.prefs.dir))
 
 if __name__ == "__main__":
     unittest.main()

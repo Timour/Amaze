@@ -153,6 +153,28 @@ class _Marks:
         return QtGui.QPixmap()
 
 
+class _Editor:
+    """A network editor whose drop radius holds `found()`: (item, connector name, index) each."""
+
+    def __init__(self, found) -> None:
+        self.found = found
+
+    @staticmethod
+    def posToScreen(position):
+        return position
+
+    @staticmethod
+    def lengthToScreen(length):
+        return length
+
+    def networkItemsInBox(self, low, high, for_drop=False):
+        return self.found()
+
+    @staticmethod
+    def itemRect(item, adjusted=True):
+        return types.SimpleNamespace(contains=lambda position: False)
+
+
 @unittest.skipUnless(hou, "Houdini is not loaded")
 class _Drops(unittest.TestCase):
     """The pane's drop placement over a stub pane, what is refused recorded, a geo and a LOP network."""
@@ -482,6 +504,30 @@ class WhereADropGoesTest(_Drops):
         self.assertFalse(self.release(network=hou.node("/obj")), "a network that holds no wrangle")
         self.assertFalse(self.release(), "a release over nothing")
         self.assertEqual(objects, self.names(hou.node("/obj")))
+
+    def released_by(self, found) -> bool:
+        """The snippet released into network space where the editor's drop radius holds `found()`."""
+        editor = _Editor(found)
+        with mock.patch.object(self.placement, "node_under_cursor", return_value=None), \
+                mock.patch.object(self.placement, "network_under_release", return_value=self.geo), \
+                mock.patch.object(self.placement, "release_position_in",
+                                  return_value=hou.Vector2(0, -3)), \
+                mock.patch.dict(sys.modules, {"nodegraphutils": _nodegraph(_host_insert)}):
+            return self.placement.release("code", "s1", editor, hou.paneTabType.NetworkEditor)
+
+    def test_dd21_on_a_wire_or_by_a_free_connector_the_new_nodes_are_wired_never_to_themselves(self):
+        upstream, downstream = self.geo.createNode("box"), self.geo.createNode("null")
+        downstream.setInput(0, upstream)
+        wire = downstream.inputConnections()[0]
+        self.assertTrue(self.released_by(lambda: [(wire, "", 0)]))
+        made, = helpers.placed_nodes()
+        self.assertEqual(([upstream], [made]), (list(made.inputs()), list(downstream.inputs())))
+        free = self.geo.createNode("null", "free")
+        self.assertTrue(self.released_by(lambda: [(helpers.placed_nodes()[0], "output", 0),
+                                                  (free, "input", 0)]))    # its own connector first
+        made, = helpers.placed_nodes()
+        self.assertEqual(([made], []), (list(free.inputs()), [
+            node for node in made.inputs() if node is not None]))
 
     def test_dd22_a_file_dropped_on_a_node_sets_its_first_file_parameter(self):
         pane = types.SimpleNamespace(file_files_model=file_section.file_library.FileFiles,

@@ -364,6 +364,32 @@ class SavingTest(unittest.TestCase):
         asset._mat_id = "../../outside"    # an id read from a database another program wrote
         refused("its id")
 
+    def test_sl27_an_import_goes_into_the_network_the_editor_shows_one_reused_each_time(self):
+        self.add()
+        asset_id, row, _files = self.saved()
+        with hou.undos.disabler():
+            library_node = hou.node("/stage").createNode("materiallibrary", "sl_library")
+            geometry = hou.node("/obj").createNode("geo", "sl_geometry")
+            network = hou.node("/obj").createNode("matnet", "sl_network")
+        for made in (library_node, geometry, network):
+            self.addCleanup(test_support.drop_node, made)
+        placed = {}
+        for shown in (library_node, geometry, network):
+            editor = types.SimpleNamespace(pwd=lambda shown=shown: shown)
+            with mock.patch.object(nodes.NodeHandler, "get_active_network_editor",
+                                   lambda handler, editor=editor: editor):
+                for _time in range(2):
+                    ok, reason, _created = material_actions.import_asset_to_scene(
+                        self.model, self.model.index(row, 0))
+                    self.assertTrue(ok, reason)
+            placed[shown.path()] = sorted({node.parent().path() for node in shown.allSubChildren()
+                                           if node.userData("assetlib_id") == asset_id})
+        made = [child for child in geometry.children() if child.type().name() == "matnet"]
+        self.assertEqual(1, len(made), "not one material network reused in the geometry")
+        self.assertEqual({library_node.path(): [library_node.path()],
+                          geometry.path(): [made[0].path()],
+                          network.path(): [network.path()]}, placed)
+
     def test_sl26_a_picture_that_fails_to_render_costs_only_the_picture(self):
         self.prefs.render_on_import = 1
         with mock.patch.object(thumbs.ThumbNailRenderer, "create_thumb",

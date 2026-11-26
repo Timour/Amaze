@@ -60,7 +60,7 @@ LAYER_BREAKS = {    # accepted on purpose; the list only shrinks
     "core/texstore.py uses hou",
     "core/tile_icons.py imports helpers/ui_helpers.py",
     "render/nodes.py talks displayMessage x5",
-    "render/thumbs.py talks displayMessage x3",
+    "render/thumbs.py talks displayMessage x2",
 }
 HOUDINI = {"hou", "husd", "hutil", "toolutils", "loputils", "voptoolutils", "nodegraphutils",
            "hdefereval", "stateutils", "viewerstate", "soptoolutils", "objecttoolutils"}

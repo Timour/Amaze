@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import types
 import uuid
 
 from amaze.core import debug, guard, library_db, library_files, material, texstore
@@ -69,10 +68,7 @@ def _same_item(old: dict, new: dict) -> bool:
     return all(old.get(field) == new.get(field) for field in ("t", "text", "label", "src"))
 
 
-def _document(preferences, database: str, library: str = ""):
-    if library:
-        preferences = types.SimpleNamespace(
-            dir=library, library_user=getattr(preferences, "library_user", ""))
+def _document(preferences, database: str):
     return library_db.document(preferences, database)
 
 
@@ -133,12 +129,12 @@ def _stage(held, ident: str, items) -> bool:
     return True
 
 
-def set_note(preferences, key: str, items: list, library: str = "") -> bool:
+def set_note(preferences, key: str, items: list) -> bool:
     """Store one page; an empty page removes it. Whether the database accepted it."""
     database, ident = _split(key)
     if not database:
         return False
-    return _stage(_document(preferences, database, library), ident, items)
+    return _stage(_document(preferences, database), ident, items)
 
 
 def set_notes(preferences, pages: dict) -> bool:

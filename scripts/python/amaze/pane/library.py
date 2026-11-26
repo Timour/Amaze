@@ -43,6 +43,7 @@ class Library:
         self.models_dir = None    # the library the models use, for closing Preferences and for a Cancel
         self.models_user = ""    # the user they show the stars and locations of
         self._conversion_for = ("", "")    # the folder and user the waiting conversion offer is for
+        self._update_for = ""    # the folder the waiting Update Amaze offer is for
         self._save_timer = None
 
     def start(self) -> bool:
@@ -51,7 +52,8 @@ class Library:
         if not self.pane.prefs_loaded:
             self._open_libraryless()
             return False
-        if (library_actions.index_unreadable(prefs.dir)
+        if (any(library_actions.index_unreadable(prefs.dir, name)
+                for name in library_files.ASSET_SECTIONS)
                 or library_actions.folder_not_empty_without_library(prefs.dir)):
             self._open_later()    # a dialog opened during the build blocks the pane
             opened = False    # the pane opens without a library; its dialog comes later
@@ -93,18 +95,21 @@ class Library:
                 and hostos.comparable_path(str(self.models_dir or ""))
                 == hostos.comparable_path(str(folder or "")))
 
-    def _repaired(self, folder: str) -> bool:
-        """Offer a repair of `folder`'s unreadable index; True once the chosen fix makes it read."""
+    def _repaired(self, folder: str, name: str = library_files.MATERIALS) -> bool:
+        """Offer a repair of `folder`'s unreadable database `name`; True once the fix makes it read."""
         from amaze.dialogs import check_dialog
         switching = getattr(self.pane, "material_model", None) is not None    # a library is open
-        debug.event("session", "library index unreadable", dir=folder, switching=switching)
+        debug.event("session", "library index unreadable", dir=folder, switching=switching,
+                    database=name)
         ui = getattr(hou, "ui", None)
         if ui is None:
             return False
+        label = library_files.section_label(name)
+        blocks = name == library_files.MATERIALS    # without Nodes the library still opens
         choice = ui.displayMessage(
-            messages.LIBRARY_INDEX_UNREADABLE_SWITCHING if switching
-            else messages.LIBRARY_INDEX_UNREADABLE,
-            buttons=messages.BUTTONS_REPAIR_OR_CANCEL if switching
+            messages.LIBRARY_INDEX_UNREADABLE_SWITCHING % label if switching
+            else messages.LIBRARY_INDEX_UNREADABLE % label,
+            buttons=messages.BUTTONS_REPAIR_OR_CANCEL if switching or not blocks
             else messages.BUTTONS_REPAIR_OR_OPEN_WITHOUT,
             severity=hou.severityType.Warning,
             default_choice=0, close_choice=1,
@@ -113,10 +118,10 @@ class Library:
             debug.event("session", "index repair declined")
             return False
         check_dialog.repair_failed(folder, self.pane.prefs)    # the user picks the fix there
-        if library_actions.index_unreadable(folder):
+        if library_actions.index_unreadable(folder, name):
             debug.event("session", "index still unreadable after Check Library", dir=folder)
-            ui.displayMessage(messages.DATABASE_STILL_UNREADABLE_SWITCHING if switching
-                              else messages.DATABASE_STILL_UNREADABLE,
+            ui.displayMessage(messages.DATABASE_STILL_UNREADABLE_SWITCHING % label if switching
+                              else messages.DATABASE_STILL_UNREADABLE % label,
                               severity=hou.severityType.Warning, title=messages.TITLE_AMAZE)
             return False
         debug.event("session", "index repaired", dir=folder)
@@ -162,6 +167,8 @@ class Library:
         if (library_actions.index_unreadable(prefs.dir)
                 and not self._repaired(prefs.dir)):
             return self._stay_closed()
+        if library_actions.index_unreadable(prefs.dir, library_files.NODES):
+            self._repaired(prefs.dir, library_files.NODES)    # declined, Nodes opens read-only
         library_actions.prepare(prefs)
         if not library_actions.index_present(prefs.dir):    # prepare could not set one up
             return self._stay_closed()
@@ -285,6 +292,7 @@ class Library:
             return False
         debug.event("session", "library is newer than this Amaze - not opened",
                     found=found, known=library_policy.LIBRARY_VERSION)
+        self._update_for = str(self.pane.prefs.dir)    # `_stay_closed` resets prefs
         timer = getattr(self, "_update_offer_timer", None)
         if timer is None:    # owned, so it is deleted with the pane ▸r/model-parent
             timer = self._update_offer_timer = QtCore.QTimer(self.pane)
@@ -342,7 +350,7 @@ class Library:
         ui = getattr(hou, "ui", None)
         if ui is None:
             return
-        library_dir = str(self.pane.prefs.dir or "")
+        library_dir = self._update_for
         if ui.displayMessage(
                 messages.LIBRARY_NEEDS_NEWER_AMAZE % library_settings.version_label(
                     library_settings.library_formats(library_dir)),
