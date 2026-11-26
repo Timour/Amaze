@@ -267,7 +267,7 @@ class NothingIsLostTest(_Library):
         prefs = self.prefs()
         here = os.path.join(self.dir, "import")
         self.assertTrue(locations.register(prefs, here))
-        gone = os.path.join(here, "gone.png")
+        gone = hostos.canonical_path_key(os.path.join(here, "gone.png"))    # as the library keeps a path
         self.assertTrue(locations.set_favourite(prefs, gone, True))
         self.assertTrue(locations.set_favourite(prefs, "A1", True, MATERIALS))
         self.assertEqual([gone], check_library.survey(self.dir, prefs)["favorites_gone"])
@@ -277,7 +277,8 @@ class NothingIsLostTest(_Library):
 
     def test_cl14_a_location_not_here_is_set_aside_with_its_annotations(self):
         prefs = self.prefs()
-        folder, drive = os.path.join(self.dir, "import", "shots"), os.path.join(self.dir, "unplugged")
+        folder, drive = (hostos.canonical_path_key(self.at(*parts))    # as the library keeps a path
+                         for parts in (("import", "shots"), ("unplugged",)))
         os.makedirs(folder)
         for path in (folder, drive):
             self.assertTrue(locations.register(prefs, path))
