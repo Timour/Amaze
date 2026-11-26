@@ -541,15 +541,20 @@ class WhereADropGoesTest(_Drops):
         self.assertFalse(section.drop_file_path_on_node(index, self.geo.createNode("null", "plain")))
         self.assertEqual([messages.NODE_HAS_NO_FILE_PARM % ("plain", "rock.bgeo")], self.refused)
 
-    def test_dd23_geometry_becomes_a_loader_a_sop_create_or_a_geo_shown_current_and_selected(self):
-        for network, made_in, kind in ((self.geo, self.geo, "file"),
-                                       (self.lopnet, self.lopnet, "sopcreate"),
-                                       (hou.node("/obj"), hou.node("/obj"), "geo")):
+    def test_dd23_dropped_geometry_becomes_a_loader_a_sop_create_or_a_geo_shown_current_and_selected(self):
+        section = file_section.FileSection(types.SimpleNamespace(
+            file_files_model=file_section.file_library.FileFiles, drop_placement=self.placement))
+        index = types.SimpleNamespace(data=lambda role: CUBE)
+        for network, kind in ((self.geo, "file"), (self.lopnet, "sopcreate"), (hou.node("/obj"), "geo")):
             with self.subTest(kind):
-                made = self.placement.import_geo_in_context(CUBE, network)
-                self.addCleanup(test_support.drop_node, made)
-                self.assertEqual((made_in, kind), (made.parent(), made.type().name()))
-                self.assertTrue(made.isDisplayFlagSet() and made.isCurrent() and made.isSelected())
+                before = set(network.children())
+                with mock.patch.object(self.placement, "context_under_cursor", return_value=network), \
+                        mock.patch.object(self.placement, "release_position_in", return_value=None):
+                    self.assertTrue(section.drop_geo_at_release(index))    # released over `network`
+                made = [node for node in network.children() if node not in before]
+                self.addCleanup(lambda made=made: [test_support.drop_node(node) for node in made])
+                self.assertEqual([kind], [node.type().name() for node in made])
+                self.assertTrue(made[0].isDisplayFlagSet() and made[0].isCurrent() and made[0].isSelected())
         self.assertEqual([self.sphere], list(hou.node("/stage/dd_lop/cube").inputs()),
                          "the SOP Create is not chained to the display node")
         self.assertEqual("cube", hou.node("/obj/cube").name())

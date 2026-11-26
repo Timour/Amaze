@@ -198,7 +198,7 @@ class FolderSection(base.Section):
         return bool(path) and path == scene_captures.current_scene_path()
 
     def menu_import(self, indexes, current, payload=None) -> None:
-        """Import: geometry files all at once, an image as its double-click does."""
+        """Import: geometry files at once by their double-click's engine, an image as its double-click."""
         files = self._p(self.files_attr)
         if files is None:
             return
@@ -515,8 +515,7 @@ class FileSection(FolderSection):
         locations.KIND_GEO: base.DropRule(
             on_node="drop_file_path_on_node",
             resolve="drop_geo_at_release",
-            click_on_node="drop_file_path_on_node",
-            click_resolve="click_import_geo",
+            click_resolve="click_import_geo",    # a selected node is no target: Import's engine ▸r/houdini-geo-import
             native_drag="file_path_drag"),
         locations.KIND_HIP: base.DropRule(
             on_node="drop_file_path_on_node",
