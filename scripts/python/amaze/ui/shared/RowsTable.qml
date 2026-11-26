@@ -13,7 +13,6 @@ Item {
     property int sortColumn: -1    // the heading drawn sorted; -1 for none
     property bool descending: false
     property var ink: colour => colour    // a cell's own text colour as it is drawn
-    property bool wheelFix: false    // the wheel as Houdini's Context Options list takes it; off, Qt's
     property bool headings: true    // the heading row over the columns
     property bool ownKeys: false    // the arrow and page keys taken here, where no pane hands on hotkeys
     readonly property bool hotkeysFirst: true    // Amaze's hotkeys before its ScrollView's own arrow scrolling
@@ -84,7 +83,7 @@ Item {
             id: view
 
             clip: true
-            interactive: !(tap.pressed || drag.active)    // no flick takes a press, so a drag goes out
+            interactive: false    // no drag scrolling, as Houdini's Context Options list
             pointerNavigationEnabled: false    // Qt's own click only makes a row current: `rowClicked` selects
             keyNavigationEnabled: false    // keys are Amaze's hotkeys, landing through `step`
             Keys.enabled: root.ownKeys    // before the ScrollView round it, which scrolls on arrows
@@ -115,9 +114,8 @@ Item {
                 }
             }
 
-            WheelScroll {
+            WheelScroll {    // always: Qt's own wheel is off with its drag scrolling
                 view: view
-                enabled: root.wheelFix
             }
             RowStripes {
                 view: view

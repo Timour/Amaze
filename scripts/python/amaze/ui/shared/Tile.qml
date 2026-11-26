@@ -18,7 +18,6 @@ Item {
     signal doubleClicked()
     signal badgeClicked(string name)
     signal dragged(int modifiers)    // a press on the tile moved past the drag distance
-    readonly property bool held: tap.pressed || drag.active    // pressed here: the grid holds its flicking
 
     readonly property real side: width - 2 * root.drawn.pad    // the picture's side; the card is as wide
     readonly property real textTop: root.drawn.pad + root.side + root.drawn.img_text_gap

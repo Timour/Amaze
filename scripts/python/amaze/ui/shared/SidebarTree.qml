@@ -9,17 +9,15 @@ TreeView {
 
     property bool counts: true    // each row's count after its name; All always shows its total
     property var drawn: ({})    // `amazetheme.drawn_sidebar`: the colour bar's place, off G01
-    property bool wheelFix: false    // the wheel as Houdini's Context Options list takes it; off, Qt's
     property int dropRow: -1    // the row a dragged tile would drop on, lit as the selected rows are
     property int gapRow: -1    // the row a dragged row would go above, lined; the row count for the end
-    property Item holder: null    // the row under a press: no flick takes it, so it can be dragged
     signal stepped()    // a key that Qt's own navigation moves the current row by; no other key
     signal rowDragged(var index)    // a press on the row at `index` moved past the drag distance
     readonly property var steps: [Qt.Key_Up, Qt.Key_Down, Qt.Key_Left, Qt.Key_Right,
                                   Qt.Key_PageUp, Qt.Key_PageDown, Qt.Key_Home, Qt.Key_End]
 
     clip: true
-    interactive: holder === null    // as the grid holds its flicking for a tile's drag
+    interactive: false    // no drag scrolling, as Houdini's Context Options list: Qt acts on a click once ▸r/tableview-two-tap-paths
     selectionBehavior: TableView.SelectRows    // Qt's view alone takes a click: the pane follows its current row
     editTriggers: TableView.NoEditTriggers    // rename comes with the menus
     columnWidthProvider: column => column === 0 ? width : 0    // the name's column; the colour cell's is hidden
@@ -32,9 +30,8 @@ TreeView {
     RowStripes {
         view: root
     }
-    WheelScroll {
+    WheelScroll {    // always: Qt's own wheel is off with its drag scrolling
         view: root
-        enabled: root.wheelFix
     }
 
     function indexAt(x, y) {    // the row at (x, y) in the tree, an invalid index below the rows
@@ -64,8 +61,6 @@ TreeView {
         readonly property bool counted: (count !== undefined && count !== null
                                          && (root.counts || entry.model.key === ""))
         readonly property bool lit: entry.highlighted || entry.row === root.dropRow    // Houdini's selection
-        readonly property bool held: entry.pressed || move.active
-        onHeldChanged: if (held) root.holder = entry; else if (root.holder === entry) root.holder = null
 
         leftMargin: root.drawn.bar_x * 2 + root.drawn.bar    // Houdini's tree starts after the bar
         // Houdini's QML arrow takes this colour; its widget trees draw it in primary (parts.drawTreeBranch)

@@ -155,7 +155,6 @@ class PaneState(qmlviews.SharedState, asks.Asks):
     sidebarModel: QtCore.QAbstractItemModel = None    # the shown section's sidebar rows
     sidebarSelection: QtCore.QObject = None    # this pane's one selection of them, which the engine moves
     sidebarCounts: bool = True
-    wheelFix: bool = False    # Qt Mouse Scroll Wheel Fix: the views take the wheel as Houdini's list does
     sidebarShown: bool = True
     prefsOpen: bool = False    # the Preferences button shows its on state while the window is open
     sidebarWidth: float = 0.0    # in the pane's design px
@@ -351,7 +350,6 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         self.tileSize = self.pane.tile_size("grid")    # the list shows no pictures: no list size
         self.sidebarShown = bool(prefs.show_categories)
         self.sidebarCounts = bool(prefs.sidebar_counts)
-        self.wheelFix = bool(prefs.qt_wheel_fix)
         drawn = self.sidebar["width"]    # the last dragged width, never wider than drawn
         self.sidebarWidth = min(prefs.sidebar_width / self.uiScale, drawn) if prefs.sidebar_width else drawn
 

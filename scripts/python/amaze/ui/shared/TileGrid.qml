@@ -12,7 +12,6 @@ ScrollView {
     property var drawn: ({})    // `drawn_tile`
     property var badges: []    // `badge_rows`
     property var marks: []    // `mark_rows`
-    property bool wheelFix: false    // the wheel as Houdini's Context Options list takes it; off, Qt's
     readonly property bool hotkeysFirst: true    // Amaze's hotkeys before this ScrollView's own arrow scrolling
     signal tileClicked(int row, int modifiers)    // the user's click; row -1 is the grid's empty space
     signal tileDoubleClicked(int row)
@@ -38,13 +37,12 @@ ScrollView {
         id: view
 
         property int selectionChanges: 0    // counted, so every tile reads its selected state again
-        property Item holder: null    // the tile under a press: no flick takes it, so a drag goes out
         // each line in whole px, as QFontMetrics gives the widget tile its cell
         readonly property int nameHeight: Math.round(nameFont.ascent) + Math.round(nameFont.descent)
         readonly property int subtitleHeight: Math.round(subtitleFont.ascent) + Math.round(subtitleFont.descent)
 
         clip: true
-        interactive: holder === null    // Qt's documented way to hold flicking for a child's own gesture
+        interactive: false    // no drag scrolling, as Houdini's Context Options list
         cacheBuffer: 0    // tiles, and their pictures, only while on screen
         keyNavigationEnabled: false    // keys are Amaze's hotkeys, landing through `step`
         cellWidth: root.tileSize + root.drawn.width_extra
@@ -71,9 +69,8 @@ ScrollView {
                 view.positionViewAtIndex(row, GridView.Contain)
             }
         }
-        WheelScroll {
+        WheelScroll {    // always: Qt's own wheel is off with its drag scrolling
             view: view
-            enabled: root.wheelFix
         }
 
         Connections {
@@ -123,7 +120,6 @@ ScrollView {
                       && root.selectionModel.isSelected(view.model.index(index, 0))
             onClicked: modifiers => view.clickedOn(index, modifiers)
             onDoubleClicked: root.tileDoubleClicked(index)
-            onHeldChanged: if (held) view.holder = tile; else if (view.holder === tile) view.holder = null
             onDragged: modifiers => root.tileDragged(index, modifiers)
             onBadgeClicked: name => {
                 view.forceActiveFocus(Qt.MouseFocusReason)

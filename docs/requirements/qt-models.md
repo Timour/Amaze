@@ -12,3 +12,4 @@ The levels and the rules for tests are in the [README](README.md).
 - QM-13 Severe: A closed panel leaves nothing connected to the shared models, and nothing it scheduled runs after it is gone.
 - QM-14 Severe: A sort never moves a row's data to another row, even when the grid's row lists are out of step.
 - QM-15 Severe: The Amaze QML pane is built on Houdini's main thread, and closing it deletes the pane, its view, its state and its engine.
+- QM-16 Wrong output: Qt's tree acts once on a click on a sidebar row: no view of the QML pane scrolls by dragging.
