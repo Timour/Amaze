@@ -461,16 +461,6 @@ def hip_in_scratch(scope) -> str:
     return folder
 
 
-def clear_obj() -> None:
-    """Delete every node at object level, whatever a test built there."""
-    import hou
-    for child in hou.node("/obj").children():
-        try:
-            child.destroy()
-        except hou.OperationFailed:
-            pass
-
-
 def drop_node(node) -> None:
     """Destroy `node` off the undo stack; one the test already destroyed is fine."""
     import hou

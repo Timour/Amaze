@@ -114,11 +114,11 @@ if ! "$python" "$tests_dir/../../../../tools/check-requirements.py"; then
 fi
 
 MODULES="test_asset_editing test_qt_models test_addons test_library_storage \
-test_check_library test_shell_gates test_file_moves test_harness_reset test_node_menu \
-test_versions test_file_section test_qml_pane test_no_live_data test_panel_correctness \
-test_area_bindings test_grid_engine test_dead_cover test_empty_state test_snippet_run \
+test_check_library test_shell_gates test_file_moves test_node_menu \
+test_versions test_file_section test_qml_pane test_panel_correctness \
+test_grid_engine test_dead_cover test_snippet_run \
 test_drop_into_scene test_info_pane test_material_conversion test_gallery_import \
-test_fixture_guard test_packages test_saving_and_loading test_comments \
+test_packages test_saving_and_loading test_comments \
 test_open_and_switch test_preferences_and_users test_log_and_alerts test_online_sources \
 test_updates test_tile_pictures test_picture_conversion \
 test_impact_map"

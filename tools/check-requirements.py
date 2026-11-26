@@ -93,13 +93,15 @@ def main() -> int:
                 for name, kinds in sorted(files.items()) if kinds == {True, False}]
     untested = sorted(rid for rid, (level, _list) in listed.items()
                       if level != "Wrong output" and rid not in proved)
-    waiting = sum(1 for _name, _test, rid in every if not rid)
+    waiting = ["%s %s" % (name[:-3], test) for name, test, rid in every if not rid]
     for line in refused:
         print("requirements: REFUSED - " + line, file=sys.stderr)
+    for one in waiting if "--cut" in sys.argv[1:] else ():    # names each test proving none
+        print("requirements: no requirement - " + one)
     if untested:
         print("requirements: Catastrophe or Severe with no test: " + ", ".join(untested))
     print("requirements: %d listed, %d proved by a test, %d tests still without one (the cut)"
-          % (len(listed), len(proved), waiting))
+          % (len(listed), len(proved), len(waiting)))
     return 1 if refused else 0
 
 

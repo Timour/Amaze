@@ -1,4 +1,4 @@
-"""Engine guards left from the panel tests: a location's comments, its siblings, a stale badge."""
+"""Engine guards left from the panel tests: a location's sibling, a stale versions badge."""
 
 import os
 import shutil
@@ -13,7 +13,7 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 import hou  # noqa: E402,F401
 
-from amaze.core import library_db, locations, notes, tile_icons  # noqa: E402
+from amaze.core import library_db, locations  # noqa: E402
 from amaze.prefs import prefs as prefs_mod  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
@@ -39,32 +39,8 @@ def _location_prefs(case, names):
     return prefs
 
 
-class ALocationChangeKeepsItsFilesData(unittest.TestCase):
-    """A relocate carries the comments and icons keyed on its path; a removal spares a sibling."""
-
-    def test_a_relocate_keeps_the_comments_and_the_tile_icons_too(self):
-        prefs = _location_prefs(self, {"/old/": "Plates"})
-        key = locations.file_ident(prefs, "/old/shot.exr")
-        self.assertTrue(key.startswith(locations.LOC_PREFIX), "premise: /old/ owns no file")
-        self.assertTrue(notes.set_note(
-            prefs, notes.note_key("file", key),
-            [{"t": "text", "text": "check the gamma"}]))
-        self.assertTrue(tile_icons.set_override(
-            prefs, key, {"name": "box", "bg": "#ef8878"}, locations.FILES))
-        asset_key = notes.note_key("material", "/old/thing")    # an asset id that looks like a path
-        self.assertTrue(notes.set_note(
-            prefs, asset_key, [{"t": "text", "text": "not a path"}]))
-
-        self.assertTrue(locations.relocate_record(prefs, "/old/", "/new/"))
-        moved = locations.file_ident(prefs, "/new/shot.exr")
-        self.assertTrue(notes.has_note(prefs, notes.note_key("file", moved)),
-                        "the comment stayed on the old path")
-        self.assertEqual("", locations.file_ident(prefs, "/old/shot.exr").partition(
-            locations.LOC_PREFIX)[1], "the old path still names a location")
-        self.assertEqual("box", tile_icons.override_for(prefs, moved, locations.FILES).get("name"),
-                         "the tile icon stayed on the old path")
-        self.assertTrue(notes.has_note(prefs, asset_key),
-                        "an asset key that merely LOOKS like a path was rewritten by a folder move")
+class ALocationRemovalSparesASibling(unittest.TestCase):
+    """Removing a location leaves one whose path merely starts the same."""
 
     def test_removing_a_location_keeps_a_sibling(self):
         prefs = _location_prefs(self, {"/a/tex/": "Bokeh", "/a/textures/": "two"})

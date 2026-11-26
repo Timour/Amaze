@@ -546,11 +546,20 @@ def _starts_left_running(tree) -> list:
 
 
 def test_modules() -> list:
-    """Each test module arms the sandbox, builds the app offscreen, stops its patches, ends at main."""
+    """Each test module arms the sandbox, builds the app offscreen and no panel, stops its patches."""
     found = []
     for name in sorted(n for n in os.listdir(TESTS) if n.startswith("test_") and n.endswith(".py")):
         source = _text(TESTS, name)
         tree = ast.parse(source, name)
+        panel = re.search(r"AmazePanel\s*\(", source)
+        if name == "test_support.py":
+            found += [] if panel else [
+                "tests/test_support.py builds no AmazePanel(, so the scan for one finds nothing"]
+            found += [] if source.count("tempfile.mkdtemp(") == 1 else [
+                "tests/test_support.py makes a folder outside scratch_dir, which alone may make one"]
+        elif panel:
+            found.append("tests/%s builds a panel itself, which reads the user's settings and "
+                         "library; fixture_panel builds one on the fixture library" % name)
         built = re.search(r"\bQ(?:Gui)?Application\(", source)
         if built and not 0 <= source.find(OFFSCREEN) < built.start():
             found.append("tests/%s builds the app before it sets the offscreen platform" % name)
