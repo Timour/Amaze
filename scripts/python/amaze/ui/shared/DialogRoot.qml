@@ -18,6 +18,13 @@ Item {
     property bool extraEnabled: true
     property string extraTip: ""
     property real buttonWidth: 80    // each button's width, as the kind's frame draws it
+    property real okWidth: buttonWidth    // the primary button's, where its frame draws the buttons unalike
+    property real extraWidth: buttonWidth
+    property real cancelWidth: buttonWidth
+    property real buttonGap: 8    // between two buttons
+    property real marginTop: 8    // over the rows
+    property real rowsGap: 12    // between the rows and the buttons
+    property real marginBottom: 8    // under the buttons
 
     function accept() {    // OK, and Return
         if (root.okText !== "" && root.okEnabled)
@@ -42,9 +49,9 @@ Item {
             x: 8
             width: parent.width - 16
             height: root.fills ? parent.height : implicitHeight
-            topPadding: 8
-            bottomPadding: 8
-            spacing: 12
+            topPadding: root.marginTop
+            bottomPadding: root.marginBottom
+            spacing: root.rowsGap
 
             onHeightChanged: {
                 if (!root.fills)
@@ -61,7 +68,7 @@ Item {
             RowLayout {    // Houdini's order: Apply, the primary button, then Cancel, at the right
                 id: buttons
                 width: parent.width
-                spacing: 8
+                spacing: root.buttonGap
 
                 Item {
                     Layout.fillWidth: true
@@ -77,14 +84,14 @@ Item {
                     visible: root.okText !== ""
                     primary: true
                     enabled: root.okEnabled
-                    implicitWidth: root.buttonWidth
+                    implicitWidth: root.okWidth
                     onClicked: root.accept()
                 }
                 Button {
                     text: root.extraText
                     visible: root.extraText !== ""
                     enabled: root.extraEnabled
-                    implicitWidth: root.buttonWidth
+                    implicitWidth: root.extraWidth
                     ToolTip.text: root.extraTip
                     ToolTip.visible: hovered && root.extraTip !== ""
                     ToolTip.delay: Config.toolTipDelay
@@ -92,7 +99,7 @@ Item {
                 }
                 Button {
                     text: "Cancel"
-                    implicitWidth: root.buttonWidth
+                    implicitWidth: root.cancelWidth
                     onClicked: root.reject()
                 }
             }

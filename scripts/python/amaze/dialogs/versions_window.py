@@ -28,8 +28,7 @@ class VersionsState(dialog_window.DialogState):
     deletable: bool = False    # Delete is on: more than one version is left
     table: dict = {}    # L01's figures, as every table has them
     listHeight: int = LIST["view"][1]
-    buttonWidth: int = max(node[3] for node in amazetheme.DIALOG_LAYOUT[FRAME]["nodes"]
-                           if node[0] == "QPushButton")
+    frame: dict = {}    # the frame's own figures: the space around the list and its buttons, their widths
     tip: str = tooltips.PANEL_VERSION_ROW
     selectText: str = amazetheme.BTN_SELECT
     deleteText: str = messages.BUTTONS_DELETE[0]
@@ -42,6 +41,9 @@ class VersionsState(dialog_window.DialogState):
         self.selection = QtCore.QItemSelectionModel(self.rows, self)
         self.selection.selectionChanged.connect(self._follow_pick)
         self.table = amazetheme.drawn_list()
+        self.frame = {"top": LIST["margins"][1], "bottom": LIST["margins"][3],
+                      "over": LIST["button_top"], "between": LIST["button_gap"],
+                      "widths": LIST["button_widths"]}
         self.reasked(self.question)
 
     def reasked(self, question: dict) -> None:

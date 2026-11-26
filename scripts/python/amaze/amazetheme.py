@@ -1416,6 +1416,7 @@ def drawn_list_rows(frame_key: str = "D15") -> dict:
         "view": (view[3], view[4]),
         "button_top": buttons[0][2] - (view[2] + view[4]),    # the list's bottom to the buttons
         "button_gap": buttons[1][1] - (buttons[0][1] + buttons[0][3]),
+        "button_widths": [n[3] for n in buttons],    # left to right
         "second_x": min(n[1] for n in paths) - view[1],    # the name column's width
     }
 

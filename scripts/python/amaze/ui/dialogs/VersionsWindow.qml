@@ -14,7 +14,13 @@ DialogRoot {
     extraEnabled: SharedState.picked >= 0 && SharedState.deletable
     extraAnswer: ({"delete": SharedState.picked})
     extraTip: SharedState.deleteTip
-    buttonWidth: SharedState.buttonWidth
+    okWidth: SharedState.frame.widths[0]
+    extraWidth: SharedState.frame.widths[1]
+    cancelWidth: SharedState.frame.widths[2]
+    buttonGap: SharedState.frame.between
+    marginTop: SharedState.frame.top
+    rowsGap: SharedState.frame.over
+    marginBottom: SharedState.frame.bottom
 
     TextMetrics {    // a day as the list draws it: the date column is as wide as one, the name the rest
         id: day
