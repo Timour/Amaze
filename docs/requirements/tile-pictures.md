@@ -33,3 +33,4 @@ levels and the rules for tests are in the [README](README.md).
 - TP-27 Wrong output: Two libraries never show each other's picture for the same asset id.
 - TP-28 Wrong output: Scrolling the grid never waits on the disk: a tile's picture path is worked out without touching it, and the picture loads in the background.
 - TP-29 Wrong output: A file's generated preview (geometry, image) is kept in the user's cache, never in the library; a file that cannot be read is not tried again until it changes or the user asks Render Image.
+- TP-30 Wrong output: A colour's picture runs top to bottom, the first colour at the top, for every interpolation.

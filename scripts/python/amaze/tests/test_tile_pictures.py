@@ -707,6 +707,21 @@ class PicturesTest(_Library):
         test_support.put(self.dir, "user/broken.exr", b"a file that changed since")
         self.assertFalse(cache.known_failure(broken), "a changed file is not tried again")
 
+    def test_tp30_a_colours_picture_runs_top_to_bottom_for_every_interpolation(self):
+        from amaze.core import gradient_library
+        colours = [{"hex": "#ff0000"}, {"hex": "#00ff00"}, {"hex": "#0000ff"}]
+        stored = gradient_library._palette_ramp_data(colours)
+        curved = dict(stored, bases=["Linear"] * len(colours))
+        last = gradient_library.THUMB_SIZE - 2
+
+        def nearest(pixel) -> int:
+            return max(range(3), key=lambda channel: (pixel.red(), pixel.green(), pixel.blue())[channel])
+        for name, colors, ramp in (("a palette", colours, {}), ("a palette with a curve", colours, curved),
+                                   ("a saved ramp", [], curved), ("a saved ramp of steps", [], stored)):
+            image = gradient_library.paint_swatch(colors, ramp)
+            found = [[nearest(image.pixelColor(x, y)) for x in (1, last)] for y in (1, last)]
+            self.assertEqual([[0, 0], [2, 2]], found, "%s: the first colour is not along the top" % name)
+
 
 if __name__ == "__main__":
     unittest.main()

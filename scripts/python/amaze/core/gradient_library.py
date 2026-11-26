@@ -271,7 +271,7 @@ class GradientLibrary(library.AssetLibrary):
 
     @staticmethod
     def _paint_ramp(painter: QtGui.QPainter, ramp_data: dict) -> None:
-        """A saved ramp left to right: hard bands when all constant-basis, else a linear gradient."""
+        """A saved ramp top to bottom: hard bands when all constant-basis, else a blend."""
         keys = list(ramp_data.get("keys") or [])
         values = list(ramp_data.get("values") or [])
         bases = ramp_data.get("bases", [])
@@ -286,16 +286,16 @@ class GradientLibrary(library.AssetLibrary):
             for i, value in enumerate(values):
                 if not _has_rgb(value):
                     continue
-                x0 = max(0.0, min(1.0, edges[i])) * THUMB_SIZE
-                x1 = max(0.0, min(1.0, edges[i + 1])) * THUMB_SIZE
+                y0 = max(0.0, min(1.0, edges[i])) * THUMB_SIZE
+                y1 = max(0.0, min(1.0, edges[i + 1])) * THUMB_SIZE
                 color = QtGui.QColor.fromRgbF(*value[:3])
                 painter.fillRect(
-                    QtCore.QRectF(x0, 0, x1 - x0 + 1, THUMB_SIZE), color)
+                    QtCore.QRectF(0, y0, THUMB_SIZE, y1 - y0 + 1), color)
             return
         stops = [(key, value) for key, value in zip(keys, values) if _has_rgb(value)]
         if not stops:
             return
-        gradient = QtGui.QLinearGradient(0, 0, THUMB_SIZE, 0)
+        gradient = QtGui.QLinearGradient(0, 0, 0, THUMB_SIZE)
         for key, value in stops:
             gradient.setColorAt(
                 max(0.0, min(1.0, key)), QtGui.QColor.fromRgbF(*value[:3])
