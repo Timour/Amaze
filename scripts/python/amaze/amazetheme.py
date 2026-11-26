@@ -705,6 +705,82 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("renderer icon ▸ renderer_octane", 112, 156, 16, 16, None),
         ),
     },
+    "QML T08": {   # the QML tile's frames from here; T01-T26 above go with the old panel. A scene, open
+        "frame": (138, 177),
+        "nodes": (
+            ("tile card", 4, 4, 130, 173, None),
+            ("CheckCircle", 113, 155, 16, 16, None),
+            ("thumbnail", 4, 4, 130, 130, None),
+            ("face ▸ icon_hip.svg", 4, 4, 130, 130, None),
+            ("tile name", 9, 139, 47, 15, "shot_010"),
+            ("tile subtitle", 9, 157, 18, 15, "HIP"),
+        ),
+    },
+    "QML T08b": {   # the same tile, the scene not open: the check circle in dark grey
+        "frame": (138, 177),
+        "nodes": (
+            ("tile card", 4, 4, 130, 173, None),
+            ("CheckCircle", 113, 155, 16, 16, None),
+            ("thumbnail", 4, 4, 130, 130, None),
+            ("face ▸ icon_hip.svg", 4, 4, 130, 130, None),
+            ("tile name", 9, 139, 47, 15, "shot_010"),
+            ("tile subtitle", 9, 157, 18, 15, "HIP"),
+        ),
+    },
+    "QML T20": {   # the buttons on the picture at rest: Favorite in its corner, Run in the middle
+        "frame": (138, 177),
+        "nodes": (
+            ("tile card", 4, 4, 130, 173, None),
+            ("thumbnail", 4, 4, 130, 130, None),
+            ("badge favourite (top-right) ▸ badge_favourite", 95, 4, 39, 36, None),
+            ("tile name", 9, 139, 38, 15, "Badges"),
+            ("tile subtitle", 9, 157, 20, 15, "rest"),
+            ("badge execute (lower-right) ▸ badge_execute", 43, 42, 52, 52, None),
+            ("category strip (example colour)", 4, 134, 130, 4, None),
+        ),
+    },
+    "QML T23": {   # a favourite, and the comment mark left of the renderer icon
+        "frame": (138, 177),
+        "nodes": (
+            ("tile card", 4, 4, 130, 173, None),
+            ("thumbnail", 4, 4, 130, 130, None),
+            ("tile name", 9, 139, 38, 15, "Badges"),
+            ("tile subtitle", 9, 157, 14, 15, "on"),
+            ("icon ▸ filter_materialx.svg", 109, 159, 19, 13, None),
+            ("message-circle", 90, 160, 11, 11, None),
+            ("badge favourite (top-right) ▸ badge_favourite", 95, 4, 39, 36, None),
+        ),
+    },
+    "QML T24": {   # the MaterialX icon at the subtitle's right end
+        "frame": (138, 177),
+        "nodes": (
+            ("tile card", 4, 4, 130, 173, None),
+            ("thumbnail", 4, 4, 130, 130, None),
+            ("tile name", 9, 139, 120, 15, "Badges, long name te..."),
+            ("tile subtitle", 9, 157, 49, 15, "MaterialX"),
+            ("icon ▸ filter_materialx.svg", 109, 159, 19, 13, None),
+        ),
+    },
+    "QML T25": {   # the Redshift icon
+        "frame": (138, 177),
+        "nodes": (
+            ("tile card", 4, 4, 130, 173, None),
+            ("thumbnail", 4, 4, 130, 130, None),
+            ("tile name", 9, 139, 120, 15, "Badges, long name te..."),
+            ("tile subtitle", 9, 157, 43, 15, "Redshift"),
+            ("icon ▸ filter_redshift.svg", 113, 155, 15, 17, None),
+        ),
+    },
+    "QML T26": {   # the Octane icon
+        "frame": (138, 177),
+        "nodes": (
+            ("tile card", 4, 4, 130, 173, None),
+            ("thumbnail", 4, 4, 130, 130, None),
+            ("tile name", 9, 139, 120, 15, "Badges, long name te..."),
+            ("tile subtitle", 9, 157, 37, 15, "Octane"),
+            ("renderer icon ▸ renderer_octane", 112, 156, 16, 16, None),
+        ),
+    },
     "L01": {   # the list table from the live panel - its header, widths and ticks are read
         "frame": (1542, 96),
         "nodes": (
@@ -1123,7 +1199,7 @@ def drawn_renderer_icons() -> dict:
     """{art name: `drawn_renderer_icon` of its frame} for every frame that draws a renderer icon."""
     return {drawn_name(node)[1]: drawn_renderer_icon(key)
             for key, layout in DIALOG_LAYOUT.items() for node in layout["nodes"]
-            if drawn_name(node)[0] == "renderer icon"}
+            if drawn_name(node)[0] == "renderer icon" and not key.startswith(QML_FRAME)}
 
 
 def drawn_badges() -> dict:
@@ -1153,6 +1229,46 @@ def _badge_edge(at, size, start, span):
     if at + size / 2 > middle:
         return "end", start + span - at - size
     return "start", at - start
+
+
+QML_FRAME = "QML "    # what starts the key of a frame drawn in UI Design QML
+
+
+def drawn_qml_buttons(frame_keys=("QML T20", "QML T23")) -> dict:
+    """{button: place} on the QML tile's picture, each axis as `_badge_edge`; repeats must match."""
+    out = {}
+    for key in frame_keys:
+        thumb = drawn_node(key, "thumbnail")
+        for node in DIALOG_LAYOUT[key]["nodes"]:
+            kind, x, y, w, h = drawn_name(node)[0], node[1], node[2], node[3], node[4]
+            if not kind.startswith("badge "):
+                continue
+            (edge_x, inset_x), (edge_y, inset_y) = (_badge_edge(x, w, thumb[1], thumb[3]),
+                                                    _badge_edge(y, h, thumb[2], thumb[4]))
+            place = {"edgeX": edge_x, "insetX": inset_x, "edgeY": edge_y, "insetY": inset_y,
+                     "width": w, "height": h, "picture": thumb[3]}
+            if out.setdefault(kind[len("badge "):], place) != place:
+                raise ValueError("button %s is drawn in two places" % kind)
+    return out
+
+
+def drawn_line_mark(frame_keys, kind) -> dict:
+    """A mark on the QML tile's second line: its size, inset from the card's right edge and drop."""
+    places = []
+    for key in frame_keys:
+        card, sub, mark = (drawn_node(key, part) for part in ("tile card", "tile subtitle", kind))
+        places.append({"width": mark[3], "height": mark[4],
+                       "inset": card[1] + card[3] - (mark[1] + mark[3]),
+                       "below": mark[2] + mark[4] - (sub[2] + sub[4])})    # its bottom under the subtitle's
+    if any(place != places[0] for place in places):
+        raise ValueError("%s is drawn in two places" % kind)
+    return places[0]
+
+
+def drawn_mark_gap(frame_key: str, left: str, right: str):
+    """The drawn gap between two marks side by side on the QML tile's second line."""
+    first, second = drawn_node(frame_key, left), drawn_node(frame_key, right)
+    return second[1] - (first[1] + first[3])
 
 
 def drawn_list(frame_key: str = "L01") -> dict:

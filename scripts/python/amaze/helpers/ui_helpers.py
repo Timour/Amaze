@@ -148,11 +148,6 @@ def svg_image(name: str, side: int = 512):
     return cached or None
 
 
-def svg_size(name: str) -> QtCore.QSize:
-    """The size a ui/ SVG is drawn at, its own width and height; empty when it is unreadable."""
-    return QtSvg.QSvgRenderer(amaze.package_file("ui", name)).defaultSize()
-
-
 def forget_svg_images() -> None:
     """Clear the rendered-SVG cache, for test isolation."""
     _svg_image_cache.clear()

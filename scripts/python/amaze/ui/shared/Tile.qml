@@ -1,4 +1,4 @@
-// A tile as T01 and T20 draw it, no tooltip: picture, name, subtitle, strip, renderer icon, badges.
+// A tile as T01 and QML T20-T26 draw it, no tooltip: picture, name, subtitle, strip, buttons, marks.
 import QtQuick
 import houdini.pluto
 import houdini.ui
@@ -7,13 +7,14 @@ Item {
     id: root
 
     required property int index
-    required property var model    // the row's roles by name: display, tileSubtitle, picture and the badges'
+    required property var model    // the row's roles by name: display, tileSubtitle, picture, the buttons' and marks'
     property bool selected: false
-    property var drawn: ({})    // `drawn_tile`: T01's spacing, T20's strip, the badge rules, the renderer icons
-    property var badges: []    // `badge_rows`: the section's badges in paint order
+    property var drawn: ({})    // `drawn_tile`: T01's spacing, the strip, the mark gap, the renderer icons
+    property var badges: []    // `badge_rows`: the section's buttons on the picture
+    property var marks: []    // `mark_rows`: the section's marks on the second line, right to left
     property real nameHeight: 15    // the two lines' heights, by the font, as the cell reserves them
     property real subtitleHeight: 15
-    signal clicked(int modifiers)    // the user's click on the tile, away from a badge that takes clicks
+    signal clicked(int modifiers)    // the user's click on the tile, away from a button
     signal doubleClicked()
     signal badgeClicked(string name)
     signal dragged(int modifiers)    // a press on the tile moved past the drag distance
@@ -21,26 +22,30 @@ Item {
 
     readonly property real side: width - 2 * root.drawn.pad    // the picture's side; the card is as wide
     readonly property real textTop: root.drawn.pad + root.side + root.drawn.img_text_gap
+    readonly property real lineBottom: root.textTop + root.nameHeight + root.drawn.line_gap + root.subtitleHeight
     readonly property var picture: root.model.picture || ({})
     readonly property string subtitle: root.model.tileSubtitle || ""
-    readonly property var mark: root.drawn.renderers[root.model.rendererIcon || ""]    // Material's alone
-    readonly property real markX: root.drawn.pad + root.side - (root.mark ? root.mark.inset + root.mark.width : 0)
-
-    function badgeShown(badge) {    // "on", "off" or "", as the widget tile works it out
-        if (!badge.role)
-            return "on"
-        const value = root.model[badge.role]
-        if (value)
-            return badge.minimum ? (Number(value) >= badge.minimum ? "on" : "")
-                                 : (!badge.equals || value === badge.equals ? "on" : "")
-        return badge.off ? "off" : ""
+    readonly property var lineMarks: {    // the marks shown on the second line, right to left, each with its x
+        const shown = []
+        const icon = (root.drawn.renderers || {})[root.model.rendererIcon || ""]    // Material's alone
+        if (icon)
+            shown.push(Object.assign({file: icon.art}, icon))
+        for (const mark of root.marks) {
+            const value = root.model[mark.role]
+            if (mark.kindRole ? root.model[mark.kindRole] === mark.kind : !!value)
+                shown.push(Object.assign({file: value ? mark.art : mark.off}, mark))
+        }
+        let left = root.drawn.pad + root.side
+        for (let at = 0; at < shown.length; at++) {
+            shown[at].x = at === 0 ? left - shown[at].inset - shown[at].width
+                                   : left - root.drawn.markGap - shown[at].width
+            left = shown[at].x
+        }
+        return shown
     }
-    function badgeArt(badge, shown, over, down) {    // each state's own art, its opacities as drawn
-        if (shown === "off")
-            return over && badge.offHover ? badge.offHover : badge.off
-        if (badge.press && down)
-            return badge.press
-        return badge.hover && over ? badge.hover : badge.art
+
+    function place(edge, inset, size) {    // a button's offset in the picture: from its edge, or from the middle
+        return edge === "end" ? root.side - size - inset : edge === "centre" ? (root.side - size) / 2 + inset : inset
     }
 
     HoverHandler {
@@ -118,21 +123,24 @@ Item {
         }
     }
 
-    Repeater {    // the badges, only under the pointer but for a heart that is on
+    Repeater {    // the buttons, under the pointer; one that is on stays
         model: root.badges
         AmazeIcon {
             id: badge
             required property var modelData
-            readonly property string shown: root.badgeShown(modelData)
-            readonly property bool over: modelData.button && overBadge.hovered
-            readonly property real edge: Math.max(root.drawn.least,
-                                                  Math.min(Math.floor(root.side / root.drawn.part), modelData.side))
-            visible: shown !== "" && (hover.hovered || (modelData.pinned && shown === "on"))
-            x: root.drawn.pad + (modelData.endX ? root.side - edge - modelData.insetX : modelData.insetX)
-            y: root.drawn.pad + (modelData.endY ? root.side - edge - modelData.insetY : modelData.insetY)
-            width: edge
-            height: edge
-            file: root.badgeArt(modelData, shown, over, press.pressed) + ".svg"
+            readonly property var value: root.model[modelData.role]
+            readonly property bool on: modelData.on !== "" && !!value
+            readonly property bool offered: !modelData.equals || value === modelData.equals    // Run: Python alone
+            // the drawn size from the drawn picture up, in proportion below it, never under the least
+            readonly property real fit: Math.max(Math.min(1, root.side / modelData.picture),
+                                                 root.drawn.least / Math.min(modelData.width, modelData.height))
+            visible: offered && (on || (modelData.button && hover.hovered))
+            width: modelData.width * fit
+            height: modelData.height * fit
+            x: root.drawn.pad + root.place(modelData.edgeX, modelData.insetX, width)
+            y: root.drawn.pad + root.place(modelData.edgeY, modelData.insetY, height)
+            file: (modelData.button && press.pressed ? modelData.press
+                   : on ? modelData.on : overBadge.hovered ? modelData.hover : modelData.art) + ".svg"
 
             HoverHandler {
                 id: overBadge
@@ -140,21 +148,23 @@ Item {
             }
             TapHandler {
                 id: press
-                enabled: badge.modelData.wired
+                enabled: badge.modelData.button
                 gesturePolicy: TapHandler.WithinBounds
                 onTapped: root.badgeClicked(badge.modelData.name)
             }
         }
     }
 
-    AmazeIcon {    // the renderer's icon at the subtitle's right end, as T24-T26 draw it
-        visible: root.mark !== undefined
-        x: root.markX
-        y: root.textTop + root.nameHeight + root.drawn.line_gap + root.subtitleHeight
-           + (root.mark ? root.mark.below : 0) - height
-        width: root.mark ? root.mark.width : 0
-        height: root.mark ? root.mark.height : 0
-        file: root.mark ? root.model.rendererIcon + ".svg" : ""
+    Repeater {    // the marks on the second line at their drawn size: the renderer, the open scene, a comment
+        model: root.lineMarks
+        AmazeIcon {
+            required property var modelData
+            x: modelData.x
+            y: root.lineBottom + modelData.below - height
+            width: modelData.width
+            height: modelData.height
+            file: modelData.file + ".svg"
+        }
     }
     Text {    // the name, bold; alone, it sits in the middle of the two lines' room
         x: root.drawn.pad + root.drawn.text_inset
@@ -167,10 +177,11 @@ Item {
         color: root.selected ? Theme.highlightSurfaceFg : Theme.secondarySurfaceFg
         text: root.model.display || ""
     }
-    Text {    // the subtitle, ending a text inset before the renderer icon
+    Text {    // the subtitle, eliding a text inset before the left-most mark
         x: root.drawn.pad + root.drawn.text_inset
         y: root.textTop + root.nameHeight + root.drawn.line_gap
-        width: Math.max((root.mark ? root.markX - root.drawn.text_inset : root.drawn.pad + root.side) - x, 1)
+        width: Math.max((root.lineMarks.length ? root.lineMarks[root.lineMarks.length - 1].x - root.drawn.text_inset
+                                               : root.drawn.pad + root.side) - x, 1)
         height: root.subtitleHeight
         visible: root.subtitle !== ""
         verticalAlignment: Text.AlignVCenter

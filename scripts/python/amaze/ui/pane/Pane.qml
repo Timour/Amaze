@@ -168,6 +168,7 @@ PaneRoot {
                         wheelFix: SharedState.wheelFix
                         drawn: SharedState.tile
                         badges: SharedState.badges
+                        marks: SharedState.marks
                         onTileClicked: (row, modifiers) => SharedState.clickTile(row, modifiers)
                         onTileDoubleClicked: row => SharedState.doubleClickTile(row)
                         onTileKeyed: (row, modifiers) => SharedState.keyTile(row, modifiers)

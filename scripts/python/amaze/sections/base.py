@@ -42,6 +42,7 @@ MenuEntry = collections.namedtuple(    # opens: the asks.Asks window the row ope
 
 
 SEPARATOR = MenuEntry("")  # the empty label is what makes it a divider
+VERSIONS_TO_PICK = 2    # the fewest versions the Versions row opens on
 
 
 GRID_MENU_TAIL = (    # the tile's picture rows, Render Image only where one renders, as in C01
@@ -51,6 +52,8 @@ GRID_MENU_TAIL = (    # the tile's picture rows, Render Image only where one ren
               glyph="rectangle_dashed"),
     MenuEntry("Customize", handler="menu_customize", opens="open_customize", glyph="toggle_left"),
     SEPARATOR,
+    MenuEntry("Versions", handler="menu_versions", needs="menu_versions_enabled",
+              shown="menu_offers_versions", glyph="stack"),
     MenuEntry("Favorite", handler="menu_favourite", glyph="heart"),
     MenuEntry("Delete", handler="menu_delete", shown="deletes_rows", glyph="trash"),
 )
@@ -399,6 +402,16 @@ class Section:
     def menu_versions(self, indexes, current, payload=None) -> None:
         self.pane.assets.open_versions(current, self._p(self.proxy_attr),
                                        self._p(self.model_attr))
+
+    def menu_offers_versions(self, indexes, current) -> bool:
+        """Whether this section's assets keep versions: its model's own `KEEPS_VERSIONS`."""
+        return bool(getattr(self._p(getattr(self, "model_attr", "")), "KEEPS_VERSIONS", False))
+
+    def menu_versions_enabled(self, indexes, current) -> bool:
+        """One tile, whose asset has two versions or more: one version alone has nothing to pick."""
+        model = self._p(getattr(self, "model_attr", ""))
+        return (len(indexes) == 1 and current is not None and model is not None
+                and int(current.data(model.VersionsRole) or 0) >= VERSIONS_TO_PICK)
 
     def menu_comments(self, indexes, current, payload=None) -> None:
         self.pane.ui.show_comments()    # as the toolbar Comments button does, so the two never differ

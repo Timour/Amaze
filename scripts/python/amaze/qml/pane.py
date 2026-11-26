@@ -5,7 +5,7 @@ import shiboken6
 
 import amaze
 from amaze import amazetheme, tooltips
-from amaze.core import debug, grid_columns, grid_engine
+from amaze.core import debug, grid_columns, grid_engine, locations
 from amaze.dialogs import code_window, name_window, save_window, versions_window
 from amaze.helpers import ui_helpers
 from amaze.pane import asks, drag_session, menus, node_drop, pane as pane_mod, sidebar as pane_sidebar
@@ -16,8 +16,25 @@ from hutil.qt.common import qmlviews    # Houdini's own QML panels' base ▸r/ho
 
 PANE_QML = amaze.package_file("ui", "pane", "Pane.qml")
 SIZE_SAVE_MS = 500    # the slider's pause before its tile size is saved, as in the widget panel
-WIRED_BADGES = ("favourite", "versions", "execute")    # the badges whose click works here; comments later
-PINNED_BADGES = ("favourite",)    # shown while on; every other badge shows only under the pointer
+TILE_BUTTONS = (    # the tile's buttons on its picture, by `tile_badges` ID; art in ui/tile/, "" for none
+    {"name": "favourite", "role": "FavoriteRole", "equals": "", "handler": "menu_favourite",
+     "art": "tile/favourite", "hover": "tile/favourite_hover", "press": "tile/favourite_on",
+     "on": "tile/favourite_on"},    # pressed is drawn as on
+    {"name": "execute", "role": "RendererRole", "equals": "Python", "handler": "menu_run",
+     "art": "tile/run", "hover": "tile/run_hover", "press": "tile/run_press", "on": ""},
+)
+TILE_MARKS = (    # the marks on the tile's second line left of a renderer icon, right to left
+    {"name": "open", "frames": ("QML T08", "QML T08b"), "layer": "CheckCircle", "alone": None,
+     "role": "OpenSceneRole", "art": "tile/open", "off": "tile/open_off",
+     "kindRole": "KindRole", "kind": locations.KIND_HIP},    # on every scene file, grey while not open
+    {"name": "comment", "frames": ("QML T23",), "layer": "message-circle", "alone": ("QML T24", "icon"),
+     "role": "NotesRole", "art": "tile/comment", "off": "", "kindRole": "", "kind": ""},
+)    # alone: the frame and layer whose right edge a mark keeps when nothing is right of it
+RENDERER_MARKS = {    # a material's renderer icon on that line, by the art its model names
+    "renderer_materialx": ("QML T24", "icon", "tile/materialx"),
+    "renderer_redshift": ("QML T25", "icon", "tile/redshift"),
+    "renderer_octane": ("QML T26", "renderer icon", "tile/octane"),
+}
 
 
 class TilePictures(QtQuick.QQuickImageProvider):
@@ -49,23 +66,31 @@ class TilePictures(QtQuick.QQuickImageProvider):
 
 
 def badge_rows(section) -> list:
-    """The section's tile badges in paint order: the role each reads, its arts and rules, its corner."""
-    places = amazetheme.drawn_badges()
+    """The section's buttons on the tile's picture: the role each reads, its arts, its place."""
+    places = amazetheme.drawn_qml_buttons()
     rows = []
-    for badge in delegates.BADGES:
-        if badge.name not in section.tile_badges:
+    for button in TILE_BUTTONS:
+        if button["name"] not in section.tile_badges:
             continue
-        edge_x, inset_x, edge_y, inset_y, side = places[badge.name]
-        button = bool(section.tile_badge_clicks and badge.handler)
-        rows.append({
-            "name": badge.name, "role": grid_engine.role_name(badge.role) if badge.role else "",
-            "minimum": badge.minimum, "equals": badge.equals,
-            "art": badge.svg, "hover": badge.hover_svg, "press": badge.press_svg,
-            "off": badge.off_svg if button else "", "offHover": badge.off_hover_svg,    # a button at rest
-            "button": button, "wired": button and badge.name in WIRED_BADGES,
-            "pinned": badge.name in PINNED_BADGES,
-            "endX": edge_x == "end", "insetX": inset_x, "endY": edge_y == "end", "insetY": inset_y,
-            "side": side})
+        clicks = bool(section.tile_badge_clicks)    # where False, a state shown, no hover and no click
+        rows.append(dict(places[button["name"]], name=button["name"],
+                         role=grid_engine.role_name(button["role"]), equals=button["equals"],
+                         art=button["art"] if clicks else "", hover=button["hover"] if clicks else "",
+                         press=button["press"] if clicks else "", on=button["on"], button=clicks))
+    return rows
+
+
+def mark_rows(section) -> list:
+    """The section's marks on the tile's second line, right to left, each with its drawn box."""
+    rows = []
+    for mark in TILE_MARKS:
+        if mark["name"] not in section.tile_badges:
+            continue
+        drawn = amazetheme.drawn_line_mark(mark["frames"], mark["layer"])
+        alone = amazetheme.drawn_line_mark(mark["alone"][:1], mark["alone"][1]) if mark["alone"] else drawn
+        rows.append(dict(drawn, inset=alone["inset"], role=grid_engine.role_name(mark["role"]),
+                         art=mark["art"], off=mark["off"], kind=mark["kind"],
+                         kindRole=grid_engine.role_name(mark["kindRole"]) if mark["kindRole"] else ""))
     return rows
 
 
@@ -86,14 +111,12 @@ def network_background() -> str:
 
 
 def drawn_tile() -> dict:
-    """For `Tile`: the spacing of T01, the strip of T20, the badge sizes and each renderer icon box."""
-    marks = {}
-    for art, drawn in amazetheme.drawn_renderer_icons().items():
-        box = ui_helpers.svg_size(art + ".svg")    # its own width
-        marks[art] = dict(drawn, width=round(drawn["height"] * box.width() / max(box.height(), 1)))
-    return dict(amazetheme.drawn_tile(), strip=amazetheme.drawn_category_strip(),
-                card=amazetheme.TILE_GROUND, back=network_background(),
-                least=amazetheme.BADGE_LEAST, part=amazetheme.BADGE_PART, renderers=marks)
+    """For `Tile`: the spacing of T01, the strip of QML T20, the gap between marks, each renderer icon."""
+    marks = {model_art: dict(amazetheme.drawn_line_mark((frame,), layer), art=art)
+             for model_art, (frame, layer, art) in RENDERER_MARKS.items()}
+    return dict(amazetheme.drawn_tile(), strip=amazetheme.drawn_category_strip("QML T20"),
+                card=amazetheme.TILE_GROUND, back=network_background(), least=amazetheme.BADGE_LEAST,
+                markGap=amazetheme.drawn_mark_gap("QML T23", "message-circle", "icon"), renderers=marks)
 
 
 class PaneState(qmlviews.SharedState, asks.Asks):
@@ -135,6 +158,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
     gridSelection: QtCore.QObject = None    # the section's own selection of them, the engine's
     tile: dict = {}    # `drawn_tile`
     badges: list = []    # `badge_rows` of the shown section
+    marks: list = []    # `mark_rows` of the shown section
     table: dict = {}    # frame L01's figures: the header's height, the text's inset, the tick's box
     listColumns: list = []    # `list_columns` of the shown section
     sortColumn: int = -1    # the column the shown rows are sorted by, the model's own sort
@@ -238,6 +262,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         proxy = getattr(self.pane, section.proxy_attr, None) if section.proxy_attr else None
         self._grid_anchor = QtCore.QPersistentModelIndex()
         self.badges = badge_rows(section)
+        self.marks = mark_rows(section)
         self.listColumns = list_columns(section)
         self._show_rows("grid", proxy, section.grid_selection_model() if proxy is not None else None)
         self._show_sort()
@@ -534,9 +559,9 @@ class PaneState(qmlviews.SharedState, asks.Asks):
     @QtCore.Slot(int, str)
     def clickBadge(self, row: int, name: str) -> None:
         """The user's click on a tile's badge: the section's handler for it, by the engine's rule."""
-        badge = delegates.BADGE.get(name)
-        if badge is not None and name in WIRED_BADGES and self.gridModel is not None:
-            self.pane.assets.click_badge(badge.handler, self.gridModel.index(row, 0))
+        handler = next((button["handler"] for button in TILE_BUTTONS if button["name"] == name), "")
+        if handler and self.gridModel is not None:
+            self.pane.assets.click_badge(handler, self.gridModel.index(row, 0))
 
     @QtCore.Slot(bool)
     def showSidebar(self, on: bool) -> None:
