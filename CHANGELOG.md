@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.1
+
+- Versions window: a Select or a Delete that could not be done shows a message naming the version.
+- Amaze (QML): the Versions window's Select and Delete buttons are narrower, with more room around the list.
+- With two panes open, saving in one keeps the settings the other changed.
+
 ## 2.0.0
 
 - Library format 3.3: each material, node setup, snippet and color keeps everything it owns in one folder named after it: its network, record, picture, textures, versions and the pictures pasted into its comments. Renaming an asset renames its folder, and deleting it moves the folder to the library's trash.
