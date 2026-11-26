@@ -103,6 +103,10 @@ class SettingsFile:
     def whole_document(self) -> dict:
         return copy.deepcopy(self._table)
 
+    def compare_with(self, document: dict) -> None:
+        """`document` is what its Prefs writes with nothing changed: the base of the next save's merge."""
+        self._base = copy.deepcopy({str(key): value for key, value in document.items()})
+
     def _changed_on_disk(self):
         """What another save left on disk since our read: None for nothing, False if unreadable."""
         try:

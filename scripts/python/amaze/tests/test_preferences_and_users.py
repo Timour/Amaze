@@ -92,7 +92,7 @@ class SettingsFileTest(_Settings):
 
     def test_pr20_every_setting_saved_reads_back_the_same(self):
         p = self.prefs()
-        p.library_user, p.cache_dir = ANNA, self.home
+        p.library_user, p.cache_dir = ANNA, hostos.canonical_path_key(self.home)    # as the file keeps a path
         table = dict(persistence.SHARED_KEYS, **persistence.USER_KEYS)
         for stored, (prop, _attr, default) in table.items():
             if prop is None:
@@ -119,17 +119,21 @@ class SettingsFileTest(_Settings):
         self.assertEqual("Karma", again.section_filter("material"))
 
     def test_pr21_two_panes_saving_settings_keep_each_others_changes(self):
-        self.write({"directory": self.home + "/old/", "library_user": ANNA, "users": {ANNA: {}}})
+        home = hostos.canonical_path_key(self.home)
+        self.write({"directory": home + "/old", "cache_dir": home + "//cache",    # not as Amaze spells them
+                    "library_user": ANNA, "users": {ANNA: {}}})
         one, two = self.prefs(), self.prefs()
-        one.dir = self.home + "/new/"
+        one.dir, one.cache_dir, one.show_info = home + "/new/", home + "/moved", True
         one.save()
         two.view_mode = "list"
         with test_support.refused_at_open(self.settings):    # held by another program a moment
             two.save()
         two.save()
         saved = self.stored()
-        self.assertEqual((one.dir, "list"), (persistence._decode_path(saved["directory"]),
-                                             saved["users"][ANNA]["view_mode"]))
+        block = saved["users"][ANNA]
+        self.assertEqual((one.dir, one.cache_dir, True, "list"), (
+            persistence._decode_path(saved["directory"]), persistence._decode_path(saved["cache_dir"]),
+            block["show_info"], block["view_mode"]))
         rival, real_write, racing = settings_store.SettingsFile(self.settings), \
             hostos.write_json_atomic, []
 

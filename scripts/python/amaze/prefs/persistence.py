@@ -405,6 +405,13 @@ class _Persistence:
     def load(self) -> bool:
         """Load the preferences from disk; False when nothing is usable, and it never raises."""
         store = self._settings_store(reread=True)  # re-read, so the result matches the disk now
+        loaded = self._take_document(store)
+        if store.writable:
+            store.compare_with(self.refresh_data())    # a value spelled or filled in here is not this pane's change
+        return loaded
+
+    def _take_document(self, store) -> bool:
+        """The attributes set from the store's document; False when it holds nothing usable."""
         if store.state == settings_store.FRESH:
             debug.event("prefs", "no settings.json yet - opening "
                         "unconfigured", path=self.path)
