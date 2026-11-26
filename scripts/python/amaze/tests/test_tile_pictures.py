@@ -395,12 +395,12 @@ class PicturesTest(_Library):
             self.assertTrue(ok, report)
             mats += test_support.arrived(model, held)
         jobs, samples, write = [], {}, preview.write_batch
-        names = ("samplesperpixel", "redshiftglobalUnifiedMaxSamples",
-                 "xn__octaneglobalmaxsamples4_jebg")
+        names = {"Karma": "samplesperpixel", "Redshift": "redshiftglobalUnifiedMaxSamples",
+                 "Octane": "xn__octaneglobalmaxsamples4_jebg"}
 
-        def written(scaffold, items, out_dir):    # the stage as it is written, its samples read
-            samples[scaffold["renderer"]] = [node.parm(name).eval() for node in scaffold[
-                "net"].allSubChildren() for name in names if node.parm(name) is not None]
+        def written(scaffold, items, out_dir):    # the settings node the stage is written with
+            samples[scaffold["renderer"]] = [scaffold["render_props"].parm(
+                names[scaffold["renderer"]]).eval()]    # Octane's mirrors it on a node inside
             return write(scaffold, items, out_dir)
 
         viewer = {"display": "sRGB", "view": "Raw", "space": "ACEScg"}
