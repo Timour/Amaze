@@ -18,6 +18,7 @@ from PySide6 import QtWidgets  # noqa: E402
 from amaze import messages  # noqa: E402
 from amaze.core import asset_record, check_library, guard, library_db, library_files  # noqa: E402
 from amaze.core import library_policy, locations, users  # noqa: E402
+from amaze.helpers import hostos  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
 try:
@@ -34,6 +35,8 @@ USER = test_support.FIXTURE_USER
 WALLS, RIGS, EXAMPLES = ("c-walls", "Walls"), ("c-rigs", "Rigs"), ("c-examples", "Examples")
 WOOD, METAL = ("c-wood-oak", "Wood, Oak"), ("c-metal", "Metal")    # categories by (id, name)
 AUDIT = os.path.join(os.path.dirname(__file__), *[os.pardir] * 4, "tools", "library-audit.py")
+FOLDER_ICONS = ["materials/" + hostos.WINDOWS_FOLDER_ICON] + (    # Windows takes no file named `Icon\r`
+    [] if os.name == "nt" else ["materials/" + hostos.FOLDER_ICON_FILE])
 
 
 def record(name: str, *categories) -> bytes:
@@ -77,7 +80,8 @@ def lay_out(folder: str) -> None:
     put(folder, "materials/Brick__A1/comments/%s.png" % ("a" * 32), b"pasted")
     put(folder, "files/comments/%s.png" % ("b" * 32), b"pasted")
     put(folder, "colors/Old__K9/K9.png", b"picture")    # a color's folder no database lists
-    put(folder, "materials/Icon\r", b"")
+    for icon in FOLDER_ICONS:
+        put(folder, icon, b"")
     put(folder, "materials/Brick__A1/versions/versions.json", json.dumps({"versions": [{"n": 1}]}))
     put(folder, "materials/Brick__A1/versions/A1_1.mat", b"first")
     put(folder, "materials/Brick__A1/versions/A1_9.mat", b"no ledger row")
@@ -293,10 +297,10 @@ class NothingIsLostTest(_Library):
     def test_cl15_the_users_and_amazes_own_kept_files_are_never_leftovers_or_unknown(self):
         found = check_library.survey(self.dir)
         flagged = set(found["leftovers"]) | set(found["unknown"]) | set(found["orphans"])
-        for kept in ("import/yarn.lock", "materials/Brick__A1/comments/%s.png" % ("a" * 32),
+        for kept in ["import/yarn.lock", "materials/Brick__A1/comments/%s.png" % ("a" * 32),
                      "files/comments/%s.png" % ("b" * 32),
-                     "materials/Brick__A1/versions/A1_1.mat", "materials/Brick__A1/versions/versions.json",
-                     "materials/Icon\r"):
+                     "materials/Brick__A1/versions/A1_1.mat",
+                     "materials/Brick__A1/versions/versions.json"] + FOLDER_ICONS:
             self.assertNotIn(kept, flagged)
 
     def test_cl16_code_and_colors_rows_are_never_checked_or_changed(self):
