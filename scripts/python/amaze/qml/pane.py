@@ -537,7 +537,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         name_window.ask(self, title, default, then)
 
     def open_versions(self, name: str, listed: list, active: int, then) -> None:
-        """The Versions window, not modal: `then` gets the version picked on Select, None for Cancel."""
+        """The Versions window, not modal: `then` gets the version picked on Select or Delete."""
         versions_window.ask(self, name, listed, active, then)
 
     def open_save(self, question, then) -> None:

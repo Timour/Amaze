@@ -38,7 +38,7 @@ def _ledger_path(preferences, mat_id: str) -> str:
 
 
 def read_ledger(preferences, mat_id: str) -> dict:
-    """The ledger, or an empty one; an unreadable one reads as empty and create and switch fail."""
+    """The ledger, or an empty one; an unreadable one reads as empty and every change refuses."""
     return ledger_in(_ledger_path(preferences, mat_id), mat_id)
 
 
@@ -63,8 +63,8 @@ def _ledger_bytes(ledger: dict) -> bytes:
     return json.dumps(ledger, indent=1).encode("utf-8")
 
 
-def _commit_files(preferences, writes: dict, removals=(), why: str = "") -> bool:
-    """{path: bytes} written and `removals` removed as ONE commit via guard.py; whether it succeeded."""
+def _commit_files(preferences, writes: dict, removals=(), why: str = "", trashed=()) -> bool:
+    """{path: bytes} written, `removals` removed and `trashed` trashed as ONE commit via guard.py."""
     from amaze.core import guard, library_db
     held = library_db.guard_of(preferences)
     change = held.change(library_db.user(preferences))
@@ -77,6 +77,8 @@ def _commit_files(preferences, writes: dict, removals=(), why: str = "") -> bool
             change.put_file(relative, data)
         for path in removals:
             change.remove(held.inside(path))
+        for path in trashed:
+            change.trash(held.inside(path))
         change.commit()
     except (OSError, guard.Refused) as exc:
         debug.event("versions", "not written - nothing changed", why=why, error=str(exc))
@@ -162,6 +164,12 @@ def _row_for(ledger: dict, number: int) -> dict | None:
     return None
 
 
+def _highest(ledger: dict) -> int:
+    """The highest number ever given out: the stored `highest`, else the largest row's."""
+    return max([int(row.get("n", 0)) for row in ledger.get("versions", [])]
+               + [int(ledger.get("highest", 0) or 0)])
+
+
 def _archive_paths(preferences, mat_id: str, number: int) -> dict:
     """Version `number`'s file set by suffix, each named by `file_stem`."""
     folder = versions_dir(preferences, mat_id)
@@ -201,7 +209,7 @@ def create_version(preferences, mat_id: str, name: str = "", source_paths: dict 
         debug.event("versions", "version not created - ledger unreadable",
                     mat_id=str(mat_id))
         return 0
-    number = max([int(v.get("n", 0)) for v in ledger["versions"]] or [0]) + 1
+    number = _highest(ledger) + 1
     sources = source_paths or _base_paths(preferences, mat_id)
     while any(os.path.exists(path)    # a leftover file is never overwritten
               for path in _archive_paths(preferences, mat_id, number).values()):
@@ -221,7 +229,7 @@ def create_version(preferences, mat_id: str, name: str = "", source_paths: dict 
         "author": author,
         "date": time.strftime("%Y-%m-%d %H:%M"),
     })
-    ledger["active"] = number
+    ledger["active"] = ledger["highest"] = number
     with _staged_record(sources, _archive_document(sources)) as staged:
         copied = _copy_set(preferences, staged, _archive_paths(preferences, mat_id, number),
                            ledger=(_ledger_path(preferences, mat_id), ledger))
@@ -375,6 +383,24 @@ def rename_version(preferences, mat_id: str, number: int, name: str) -> bool:
         return False
     row["name"] = name
     return _write_ledger(preferences, mat_id, ledger)
+
+
+def delete_version(preferences, mat_id: str, number: int) -> bool:
+    """Trash version `number`'s files and take out its row as one commit; never the active one."""
+    ledger = read_ledger(preferences, mat_id)
+    row = _row_for(ledger, number)
+    if row is None or int(number) == int(ledger.get("active", 0) or 0):    # an unreadable one has no row
+        debug.event("versions", "version not deleted", mat_id=str(mat_id), n=number)
+        return False
+    ledger["highest"] = _highest(ledger)    # a deleted number is never given out again
+    ledger["versions"].remove(row)
+    files = [path for path in _archive_paths(preferences, mat_id, number).values()
+             if os.path.exists(path)]
+    if not _commit_files(preferences, {_ledger_path(preferences, mat_id): _ledger_bytes(ledger)},
+                         why="delete version", trashed=files):
+        return False
+    debug.event("versions", "version deleted", mat_id=str(mat_id), n=number)
+    return True
 
 
 def version_file(preferences, mat_id: str, number: int) -> str:

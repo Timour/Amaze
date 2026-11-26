@@ -22,6 +22,10 @@ class DialogState(qmlviews.SharedState):
         """Whether the kind refuses `answer`, having said why; the window then stays as it is."""
         return False
 
+    def reasked(self, question: dict) -> None:
+        """The asker's reply to an Apply, a new `question` the kind then shows."""
+        self.question = question
+
     @QtCore.Slot("QVariant")
     def accept(self, answer) -> None:
         """OK: the window closes, then its asker gets `answer`, a JavaScript object as a dict."""
@@ -93,8 +97,9 @@ class DialogWindow(qmlviews.BaseQmlView):
 
     @debug.guarded("DialogWindow.apply")
     def _apply(self, answer) -> None:
-        if self._then is not None:
-            self._then(answer)
+        reply = self._then(answer) if self._then is not None else None
+        if reply is not None:    # the asker's new question: the window stays open on it
+            self.sharedState().reasked(reply)
 
     def closeEvent(self, event) -> None:
         super().closeEvent(event)

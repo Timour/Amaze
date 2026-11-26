@@ -28,6 +28,12 @@ class RowsModel(QtCore.QAbstractTableModel):
             self.rows = rows
             self.endInsertRows()
 
+    def remove(self, row: int) -> None:
+        """Row `row` taken out as a row, the others and the selection's hold on them kept."""
+        self.beginRemoveRows(QtCore.QModelIndex(), row, row)
+        del self.rows[row]
+        self.endRemoveRows()
+
     def selectable(self, row: dict) -> bool:
         """Whether `row` can be chosen; a row that cannot is only shown."""
         return True

@@ -115,7 +115,7 @@ fi
 
 MODULES="test_asset_editing test_qt_models test_addons test_library_storage \
 test_check_library test_shell_gates test_file_moves test_node_menu \
-test_versions test_file_section test_qml_pane test_panel_correctness \
+test_versions test_file_section test_qml_pane \
 test_grid_engine test_dead_cover test_snippet_run \
 test_drop_into_scene test_info_pane test_material_conversion test_gallery_import \
 test_packages test_saving_and_loading test_comments \

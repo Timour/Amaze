@@ -7,12 +7,15 @@ import unittest
 from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")    # the first app picks the platform ▸p/first-app-picks-the-platform
-from PySide6 import QtWidgets  # noqa: E402
+from PySide6 import QtCore, QtWidgets  # noqa: E402
+import hou  # noqa: E402
 
 from amaze import messages
 from amaze.actions import materials as material_actions
-from amaze.core import asset_files, asset_record, library, library_db, library_files
+from amaze.core import asset_files, asset_record, guard, library, library_db, library_files
 from amaze.core import library_settings, notes, versions
+from amaze.dialogs import versions_window
+from amaze.pane import assets
 from amaze.tests import faults, test_support
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
@@ -129,6 +132,7 @@ class StoreTest(unittest.TestCase):
         self.assertFalse(versions.keep_base(self.prefs, GOLD))
         self.assertFalse(versions.switch_active(self.prefs, GOLD, 1))
         self.assertFalse(versions.rename_version(self.prefs, GOLD, 1, "Hero"))
+        self.assertFalse(versions.delete_version(self.prefs, GOLD, 1))
         self.assertEqual(before, self.kept())
 
     def test_vs05_losing_the_versions_never_touches_the_material(self):
@@ -148,6 +152,53 @@ class StoreTest(unittest.TestCase):
             self.addCleanup(test_support.drop_node, node)
         self.assertTrue(ok, reason)
 
+    def test_vs06_deleting_a_version_takes_its_files_and_line_and_nothing_else(self):
+        ledger = os.path.relpath(self.ledger(), self.prefs.dir).replace(os.sep, "/")
+        before = test_support.library_state(self.prefs.dir)
+        gone = {path for path in before if "/%s." % versions.file_stem(GOLD, 1) in path}
+        self.assertEqual(3, len(gone), "premise: version 1 has its network, builder and picture")
+        self.assertTrue(versions.delete_version(self.prefs, GOLD, 1))
+        after = test_support.library_state(self.prefs.dir)
+        trashed = {path for path in after if path.startswith(guard.TRASH_DIR + "/")}
+        self.assertEqual([2], [row["n"] for row in versions.list_versions(self.prefs, GOLD)])
+        self.assertEqual({path: data for path, data in before.items() if path not in gone | {ledger}},
+                         {path: data for path, data in after.items()
+                          if path not in trashed | {ledger}})
+        self.assertEqual(sorted(before[path] for path in gone),
+                         sorted(after[path] for path in trashed))
+
+    def listed_in_place(self) -> bool:
+        """Whether every version the list names has all of its files in its folder."""
+        return all(os.path.exists(self.archive(row["n"], suffix))
+                   for row in versions.list_versions(self.prefs, GOLD)
+                   for suffix in library_files.VERSION_SUFFIXES)
+
+    def test_vs07_deleting_a_version_is_applied_whole_or_not_at_all(self):
+        def act(prefs):
+            return versions.delete_version(prefs, GOLD, 1)
+        before = test_support.library_state(self.library().dir)
+        counting = faults.FaultDisk()
+        after = self.cut(act, counting)
+        self.assertNotEqual(before, after)
+        for torn in (False, True):
+            for step in range(1, counting.steps + 1):
+                found = self.cut(act, faults.FaultDisk(cut_at=step, torn=torn))
+                self.assertIn(found, (before, after), "cut at step %d" % step)
+                self.assertTrue(self.listed_in_place(), "cut at step %d" % step)
+        for full_from in range(1, counting.writes + 1):    # the disk full from each write on
+            self.assertEqual(before, self.cut(act, faults.FaultDisk(full_from=full_from)))
+            self.assertTrue(self.listed_in_place())
+        for busy in [versions.file_stem(GOLD, 1) + suffix
+                     for suffix in library_files.VERSION_SUFFIXES] + [library_files.LEDGER]:
+            self.prefs = self.library()
+            held = faults.FaultDisk(busy=busy)
+            library_db.guard_of(self.prefs).disk = held
+            self.assertTrue(act(self.prefs), "kept, waiting on %s" % busy)
+            held.free = True
+            library_db.guard_of(self.prefs).recover()
+            self.assertEqual(after, test_support.library_state(self.prefs.dir), busy)
+            self.assertTrue(self.listed_in_place(), "%s held" % busy)
+
     def test_vs11_a_switch_keeps_the_materials_name_category_tags_and_comments(self):
         held = library_db.document(self.prefs, MATERIALS)
         held.edit("assets", GOLD, name="Current", categories=["Metal"], tags=["shiny"])
@@ -163,6 +214,23 @@ class StoreTest(unittest.TestCase):
                                                    asset_record.read(self.files["json"])["metadata"]))
         self.assertEqual(row, library_db.document(self.prefs, MATERIALS).get("assets", GOLD))
         self.assertEqual("keep me", notes.note_for(self.prefs, key)["items"][0]["text"])
+
+    def test_vs12_deleting_the_version_in_use_first_selects_the_newest_left(self):
+        model = library.MaterialLibrary(preferences=self.prefs)
+        row = model.find_asset_row_by_id(GOLD)
+        network = read(self.archive(1, ".mat"))
+        os.remove(self.archive(1, ".mat"))    # version 1 cannot be put on the material
+        before = test_support.library_state(self.prefs.dir)
+        self.assertFalse(model.delete_version(row, 2))
+        self.assertEqual(before, test_support.library_state(self.prefs.dir))
+        with open(self.archive(1, ".mat"), "wb") as handle:
+            handle.write(network)
+        with mock.patch.object(model, "switch_version", wraps=model.switch_version) as select:
+            self.assertTrue(model.delete_version(row, 2))
+        select.assert_called_once_with(row, 1)
+        self.assertEqual((b"network 1", [1], 1), (
+            read(self.files["mat"]), [entry["n"] for entry in versions.list_versions(self.prefs, GOLD)],
+            versions.active_version(self.prefs, GOLD)))
 
     def test_vs20_select_puts_the_whole_version_on_the_material(self):
         os.remove(self.files["thumbnail"])
@@ -202,6 +270,52 @@ class StoreTest(unittest.TestCase):
             handle.write(b"its render")
         self.assertFalse(versions.record_render(self.prefs, GOLD))
         self.assertEqual(b"a fresh render", read(self.archive(1, ".png")))
+
+    def delete_answered(self, model, number: int, answer: int) -> tuple:
+        """(the questions asked, the question the window shows next) for Delete on `number`."""
+        asked = []
+
+        def message(text, **how):
+            asked.append((text, how["help"], how["buttons"]))
+            return answer
+        with mock.patch.object(hou, "ui", types.SimpleNamespace(displayMessage=message),
+                               create=True):
+            shown = assets.Assets(None).delete_version(model, model.find_asset_row_by_id(GOLD),
+                                                       number)
+        return asked, shown
+
+    def test_vs28_delete_asks_first_and_names_the_version(self):
+        model = library.MaterialLibrary(preferences=self.prefs)
+        self.assertTrue(model.rename_version(model.find_asset_row_by_id(GOLD), 1, "Hero"))
+        asked, shown = self.delete_answered(model, 1, 1)
+        self.assertEqual([(messages.VERSION_DELETE_CONFIRM % "Hero",
+                           messages.HELP_DELETE_VERSION % guard.TRASH_DAYS,
+                           messages.BUTTONS_DELETE)], asked)
+        self.assertEqual([1, 2], [entry["n"] for entry in shown["listed"]])
+        self.assertEqual([1, 2], [row["n"] for row in versions.list_versions(self.prefs, GOLD)])
+
+    def test_vs29_after_a_delete_the_versions_left_are_listed_and_no_number_is_given_again(self):
+        self.assertEqual(3, versions.create_version(self.prefs, GOLD))
+        model = library.MaterialLibrary(preferences=self.prefs)
+        state = versions_window.VersionsState(question={
+            "listed": versions.list_versions(self.prefs, GOLD), "active": 3})
+        self.addCleanup(state.deleteLater)
+        changes = []
+        state.rows.rowsRemoved.connect(lambda _parent, first, last: changes.append(("-", first, last)))
+        state.rows.rowsInserted.connect(lambda _parent, first, last: changes.append(("+", first, last)))
+        _asked, shown = self.delete_answered(model, 3, 0)
+        state.reasked(shown)
+        self.assertEqual((["Version 2", "Version 1"], 2, [("-", 0, 0)]), (
+            [row["name"] for row in state.rows.rows], state.picked, changes))
+        self.assertEqual(4, versions.create_version(self.prefs, GOLD), "deleted version 3's number")
+
+    def test_vs30_delete_is_off_while_one_version_is_left(self):
+        listed = versions.list_versions(self.prefs, GOLD)
+        state = versions_window.VersionsState(question={"listed": listed, "active": 2})
+        self.addCleanup(state.deleteLater)
+        self.assertTrue(state.deletable)
+        state.reasked({"listed": listed[1:], "active": 2})
+        self.assertFalse(state.deletable)
 
 
 class SavedOverTest(unittest.TestCase):
@@ -275,6 +389,26 @@ class SavedOverTest(unittest.TestCase):
         self.assertNotEqual(old, read(self.mat))
         self.assertEqual(kept, {path: data for path, data in test_support.library_state(
             self.prefs.dir).items() if "/versions/" in path})
+
+
+class WindowTest(unittest.TestCase):
+    """The Versions window opened from the pane over the fixture library."""
+
+    def test_vs27_a_row_that_is_gone_opens_no_versions_window(self):
+        from amaze.dialogs import versions_dialog
+        panel = test_support.fixture_panel(self)
+        model, opened = panel.pane.material_model, []
+        self.assertTrue(model.assets, "premise: the fixture library holds materials")
+
+        def dialog(name, *_args, **_kwargs):
+            opened.append(name)
+            return mock.Mock(exec=lambda: QtWidgets.QDialog.DialogCode.Rejected)
+
+        with mock.patch.object(versions_dialog, "VersionsDialog", dialog), \
+                mock.patch.object(model, "version_list", lambda row: (["v1", "v2"], "v1")):
+            panel.pane.assets.open_versions(QtCore.QModelIndex(), panel.pane.material_sorted_model,
+                                            model)
+        self.assertEqual([], opened, "a row that is gone opened another material's versions")
 
 
 if __name__ == "__main__":

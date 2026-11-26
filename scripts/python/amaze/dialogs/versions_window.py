@@ -3,12 +3,14 @@
 from PySide6 import QtCore
 
 import amaze
-from amaze import amazetheme, tooltips
-from amaze.core import versions
+from amaze import amazetheme, messages, tooltips
+from amaze.core import guard, versions
 from amaze.qml import dialog_window, rows_model
 
 VERSIONS_QML = amaze.package_file("ui", "dialogs", "VersionsWindow.qml")
-LIST = amazetheme.drawn_list_rows("D01")    # the list's size as D01 draws it
+FRAME = "QML D01"    # the window as UI Design QML draws it
+LIST = amazetheme.drawn_list_rows(FRAME)    # the list's size as that frame draws it
+WIDTH = amazetheme.DIALOG_LAYOUT[FRAME]["frame"][0]
 
 
 class VersionRows(rows_model.RowsModel):
@@ -23,23 +25,42 @@ class VersionsState(dialog_window.DialogState):
     rows: QtCore.QObject = None    # a `VersionRows`
     selection: QtCore.QObject = None    # its one picked row, at first the active version's
     picked: int = -1    # the picked row's version number, -1 for none
+    deletable: bool = False    # Delete is on: more than one version is left
     table: dict = {}    # L01's figures, as every table has them
     listHeight: int = LIST["view"][1]
+    buttonWidth: int = max(node[3] for node in amazetheme.DIALOG_LAYOUT[FRAME]["nodes"]
+                           if node[0] == "QPushButton")
     tip: str = tooltips.PANEL_VERSION_ROW
     selectText: str = amazetheme.BTN_SELECT
+    deleteText: str = messages.BUTTONS_DELETE[0]
+    deleteTip: str = messages.HELP_DELETE_VERSION % guard.TRASH_DAYS
 
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
-        newest = list(reversed(self.question.get("listed", [])))    # the ledger lists oldest first
-        self._numbers = [int(entry.get("n", 0)) for entry in newest]
+        self._numbers = []
         self.rows = VersionRows(self)
-        self.rows.fill([{"name": versions.version_label(entry),
-                         "date": str(entry.get("date") or "").split(" ")[0]} for entry in newest])
         self.selection = QtCore.QItemSelectionModel(self.rows, self)
         self.selection.selectionChanged.connect(self._follow_pick)
         self.table = amazetheme.drawn_list()
-        active = self.question.get("active")
-        self.pick(self._numbers.index(active) if active in self._numbers else -1)
+        self.reasked(self.question)
+
+    def reasked(self, question: dict) -> None:
+        """The versions in `question` shown: a row gone is removed as a row, the active one picked."""
+        super().reasked(question)
+        newest = list(reversed(question.get("listed", [])))    # the ledger lists oldest first
+        numbers = [int(entry.get("n", 0)) for entry in newest]
+        for row in reversed(range(len(self._numbers))):
+            if self._numbers[row] not in numbers:
+                del self._numbers[row]
+                self.rows.remove(row)
+        if self._numbers != numbers:
+            self._numbers = numbers
+            self.rows.fill([{"name": versions.version_label(entry),
+                             "date": str(entry.get("date") or "").split(" ")[0]}
+                            for entry in newest])
+        self.deletable = len(numbers) > 1
+        active = question.get("active")
+        self.pick(numbers.index(active) if active in numbers else -1)
 
     @QtCore.Slot(int)
     def pick(self, row: int) -> None:
@@ -56,14 +77,14 @@ class VersionsState(dialog_window.DialogState):
 
 
 class VersionsWindow(dialog_window.DialogWindow):
-    """The Versions window: the versions as a list, then Select and Cancel."""
+    """The Versions window: the versions as a list, then Select, Delete and Cancel."""
 
     STATE = VersionsState
     SOURCE_URL = QtCore.QUrl.fromLocalFile(VERSIONS_QML).toString()
-    DEFAULT_SIZE = QtCore.QSize(amazetheme.D01_FRAME[0], 0)    # D01's width; as tall as its content
-    MINIMUM_SIZE = QtCore.QSize(amazetheme.D01_FRAME[0], 0)
+    DEFAULT_SIZE = QtCore.QSize(WIDTH, 0)    # the frame's width; as tall as its content
+    MINIMUM_SIZE = QtCore.QSize(WIDTH, 0)
 
 
 def ask(owner, name: str, listed: list, active: int, then) -> VersionsWindow:
-    """The versions of material `name`: `then(number)` once, the version picked; None for Cancel."""
+    """`then(number)` at the close, None at Cancel; at Delete `then({delete: n})` returns the next."""
     return VersionsWindow.ask(owner, name, {"listed": listed, "active": active}, then)
