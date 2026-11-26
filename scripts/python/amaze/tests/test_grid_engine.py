@@ -38,7 +38,7 @@ class Names(grid_engine.GridEngine, QtCore.QAbstractTableModel):
 
 class TheOrderHoldsHoweverRowsChange(unittest.TestCase):
 
-    def test_a_row_list_out_of_step_is_never_moved(self):
+    def test_qm14_a_row_list_out_of_step_is_never_moved(self):
         model = Names(["b", "a"])
         proxy = multifilterproxy_model.MultiFilterProxyModel()
         proxy.setSourceModel(model)

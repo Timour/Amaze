@@ -27,3 +27,4 @@ are in the [README](README.md).
 - FI-25 Wrong output: A path written into the scene, and Copy Path's text, are spelled as Write Paths As says, one path per line.
 - FI-26 Wrong output: The `$HIP` row shows the open scene's folder and follows Save, Open and New.
 - FI-27 Wrong output: New Folder and Save Scene act on the folder shown and are off while All is shown; the scene's extension follows the licence.
+- FI-28 Wrong output: Removing a location leaves every other location, one whose path starts the same included.

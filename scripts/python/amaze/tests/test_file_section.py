@@ -150,6 +150,16 @@ class TheOpenSceneIsSafeTest(_Folders):
 
 class LocationsTest(_Folders):
 
+    def test_fi28_removing_a_location_leaves_one_whose_path_starts_the_same(self):
+        near = self.at("a2")
+        os.makedirs(near)
+        a, a2 = self.key(self.a), self.key(near)
+        for path, name in ((a, "one"), (a2, "two")):
+            self.assertTrue(locations.set_record(self.prefs, path, {"registered": True, "name": name}))
+        locations.retire_prefix(self.prefs, a)
+        self.assertEqual(({}, "two"), (locations.record(self.prefs, a),
+                                       locations.record(self.prefs, a2).get("name")))
+
     def test_fi20_a_location_lists_its_own_files_but_hidden_ones_by_their_kind(self):
         grid = file_library.FileFiles(self.prefs)
         grid.set_folder(self.a)

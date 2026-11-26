@@ -15,7 +15,7 @@ from amaze.tests import test_support  # noqa: E402
 
 class TheQmlPaneOpensAndCloses(unittest.TestCase):
 
-    def test_qt_deletes_the_pane_and_its_engine_on_the_main_thread(self):
+    def test_qm15_qt_deletes_the_pane_and_its_engine_on_the_main_thread(self):
         widget_panel = test_support.fixture_panel(self)    # the fixture library, and a second pane on it
         panel = qml_pane.QmlPanel()
         self.addCleanup(test_support.stop_panel_workers, panel)

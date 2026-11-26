@@ -10,3 +10,5 @@ The levels and the rules for tests are in the [README](README.md).
 - QM-11 Severe: A change that replaces every row (a switch, a reload, a sort) is one model reset, closed even when the change fails.
 - QM-12 Severe: No view uses an index from a model that has since been reset or replaced.
 - QM-13 Severe: A closed panel leaves nothing connected to the shared models, and nothing it scheduled runs after it is gone.
+- QM-14 Severe: A sort never moves a row's data to another row, even when the grid's row lists are out of step.
+- QM-15 Severe: The Amaze QML pane is built on Houdini's main thread, and closing it deletes the pane, its view, its state and its engine.
