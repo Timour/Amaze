@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.6
+
+- A library saved by a newer Amaze stays closed until Amaze is updated, whichever of its three format numbers is newer.
+- Online: an import names the textures that were not downloaded.
+- Packages: an asset package exported by this Amaze is format 5. An older Amaze refuses it and says to update.
+
 ## 2.0.5
 
 - Amaze (QML): the tab bar has no outline.
