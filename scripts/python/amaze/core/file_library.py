@@ -330,6 +330,11 @@ class FileFiles(grid_engine.GridEngine,
             if spec[0] is not None:
                 self._key_rows.setdefault(spec[0], []).append(row)
 
+    def open_scene_changed(self) -> None:
+        """Houdini opened, saved or cleared a scene: every row's open-scene mark is read again."""
+        if self.rowCount():
+            self._repaint_rows(0, self.rowCount() - 1, [self.OpenSceneRole])
+
     def set_folder(self, path: str) -> None:
         self._all_folders_mode = False
         self._folder = path

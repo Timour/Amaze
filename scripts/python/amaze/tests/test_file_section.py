@@ -322,7 +322,8 @@ class IntoTheSceneTest(_Folders):
     def test_fi26_the_hip_row_follows_save_open_and_new(self):
         self.addCleanup(hou.hipFile.clear, suppress_save_prompt=True)
         shown = []
-        watch = files_actions.watch_scene(types.SimpleNamespace(set_scene_folder=shown.append))
+        watch = files_actions.watch_scene(types.SimpleNamespace(set_scene_folder=shown.append),
+                                          types.SimpleNamespace(open_scene_changed=lambda: None))
         self.addCleanup(files_actions.unwatch_scene, watch)
         path = os.path.join(self.c, "shot.hip")
         for step, folder in ((lambda: hou.hipFile.save(path, save_to_recent_files=False), self.c),

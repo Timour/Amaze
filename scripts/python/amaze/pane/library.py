@@ -433,7 +433,8 @@ class Library:
         files_actions.connect(pane.file_files_model, pane.file_folders_model,
                               os_icon=pane.ui.os_file_icon)
         if pane.files.scene_watch is None:    # one callback per pane, however often setup runs
-            pane.files.scene_watch = files_actions.watch_scene(pane.file_folders_model)
+            pane.files.scene_watch = files_actions.watch_scene(pane.file_folders_model,
+                                                               pane.file_files_model)
             pane.destroyed.connect(    # holds the callback, never the pane
                 functools.partial(files_actions.unwatch_scene, pane.files.scene_watch))
         material_actions.connect(pane.material_model)

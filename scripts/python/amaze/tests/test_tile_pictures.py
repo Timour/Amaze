@@ -328,7 +328,7 @@ class PicturesTest(_Library):
         self.addCleanup(hou.hipFile.clear, suppress_save_prompt=True)
         patcher, calls = capturing(write(NEW))
         folders = types.SimpleNamespace(set_scene_folder=lambda folder: None)
-        watch = files_actions.watch_scene(folders)
+        watch = files_actions.watch_scene(folders, types.SimpleNamespace(open_scene_changed=lambda: None))
         self.addCleanup(files_actions.unwatch_scene, watch)
         section = file_section.FileSection.__new__(file_section.FileSection)
         files = types.SimpleNamespace(hip_path_for=lambda index: scene)

@@ -64,8 +64,8 @@ def scene_folder() -> str:
     return hip if hip.endswith("/") else hip + "/"
 
 
-def watch_scene(folders_model):
-    """Update the sidebar's scene row on Save, Open and New; returns the callback to remove."""
+def watch_scene(folders_model, files_model):
+    """On Save, Open and New: the sidebar's scene row and the open-scene marks; returns the callback."""
     folders_model.set_scene_folder(scene_folder())
     moves = (hou.hipFileEventType.AfterSave, hou.hipFileEventType.AfterLoad,
              hou.hipFileEventType.AfterClear)    # the three events that change $HIP ▸r/hip-and-scene-events
@@ -74,6 +74,7 @@ def watch_scene(folders_model):
     def on_scene_event(event_type, **_kwargs):
         if event_type in moves:
             folders_model.set_scene_folder(scene_folder())
+            files_model.open_scene_changed()
     hou.hipFile.addEventCallback(on_scene_event)
     return on_scene_event
 
