@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.0.5
+
+- Amaze (QML): the tab bar has no outline.
+
 ## 2.0.4
 
 - Amaze (QML): a menu opened near the bottom of the screen moves up and shows every row.
