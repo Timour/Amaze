@@ -121,19 +121,22 @@ class SettingsFileTest(_Settings):
     def test_pr21_two_panes_saving_settings_keep_each_others_changes(self):
         home = hostos.canonical_path_key(self.home)
         self.write({"directory": home + "/old", "cache_dir": home + "//cache",    # not as Amaze spells them
-                    "library_user": ANNA, "users": {ANNA: {}}})
+                    "library_user": ANNA, "users": {ANNA: {"file_folders": [home + "//a", home + "//b"]}}})
         one, two = self.prefs(), self.prefs()
         one.dir, one.cache_dir, one.show_info = home + "/new/", home + "/moved", True
         one.save()
         two.view_mode = "list"
+        two.stage_folder_order([home + "/a"])
         with test_support.refused_at_open(self.settings):    # held by another program a moment
             two.save()
-        two.save()
-        saved = self.stored()
-        block = saved["users"][ANNA]
-        self.assertEqual((one.dir, one.cache_dir, True, "list"), (
-            persistence._decode_path(saved["directory"]), persistence._decode_path(saved["cache_dir"]),
-            block["show_info"], block["view_mode"]))
+        for save in ("first", "second"):    # the second finds the file as its first left it
+            two.save()
+            saved = self.stored()
+            block = saved["users"][ANNA]
+            self.assertEqual((one.dir, one.cache_dir, True, "list", [home + "/a"]), (
+                persistence._decode_path(saved["directory"]), persistence._decode_path(saved["cache_dir"]),
+                block["show_info"], block["view_mode"], block["file_folders"]),
+                "after pane two's %s save" % save)
         rival, real_write, racing = settings_store.SettingsFile(self.settings), \
             hostos.write_json_atomic, []
 
@@ -170,6 +173,10 @@ class SettingsFileTest(_Settings):
         p.save()
         saved = self.stored()
         self.assertEqual(({"kept": 1}, 2), (saved["later"], saved["users"][ANNA]["later_field"]))
+        self.write({"directory": 5, "later": 1})
+        with test_support.captured_log():
+            self.prefs().save()
+        self.assertEqual(("", 1), (self.stored()["directory"], self.stored()["later"]), "the next start")
 
     def test_pr23_view_state_is_per_user_and_none_is_saved_without_one(self):
         self.write({"library_user": ANNA, "users": {ANNA: {"view_mode": "list"},
@@ -265,10 +272,14 @@ class UsersTest(_Settings):
                 users.set_current_user(one, uid)    # each switch saves the user left
         stranger = {"view_mode": "list", "library": "~/another_library/"}
         there._users_blocks["c" * 32] = stranger
+        unmarked = self.stored()
+        del unmarked["users"][anna]["library"]    # a block saved without its library
+        self.write(unmarked)
         pane = self.prefs()    # a second pane here, read before the delete
         self.assertTrue(users.delete(p, erik))
         pane.save()
         self.assertNotIn(erik, self.stored()["users"], "the view state stayed or came back")
+        self.assertIn("library", self.stored()["users"][anna], "a user's library is saved with nothing else changed")
         with open(os.path.join(p.dir, guard.MASTER), "rb") as handle:
             roster = handle.read()
         test_support.put(p.dir, guard.MASTER, b'{"users": {"')

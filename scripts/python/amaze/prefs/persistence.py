@@ -194,6 +194,7 @@ class _Persistence:
         composed = self.data    # the commit may merge another pane's values over it
         if store.replace(composed, before_write=self._drop_removed_users_from_merge):
             self._apply_saved_document(store, composed)
+            store.compare_with(self.refresh_data(follow_library=False))    # its changes are counted from here
 
     def _apply_saved_document(self, store, composed=None) -> None:
         """Copy the committed document back into the attributes the panel draws from."""
@@ -382,8 +383,8 @@ class _Persistence:
             document["users"] = {uid: block for uid, block in blocks.items()
                                  if uid not in removed}
 
-    def refresh_data(self) -> dict:
-        """Rebuild self.data as the exact dict save() serializes, and return it."""
+    def refresh_data(self, follow_library: bool = True) -> dict:
+        """Rebuild self.data as the exact dict save() serializes, and return it; the roster is optional."""
         self._directory = _normalised_dir(self._directory)
         self.data["directory"] = _encode_path(self._directory)
         self.data["libraries"] = _encode_paths(self.libraries)
@@ -396,7 +397,8 @@ class _Persistence:
             block = dict(self._users_blocks.get(self._library_user, {}))
             block.update(self._user_state_document())
             self._users_blocks[self._library_user] = block
-        self._update_user_blocks()
+        if follow_library:
+            self._update_user_blocks()
         self.data["users"] = {
             uid: dict(block) for uid, block in self._users_blocks.items()}
         return self.data
@@ -404,10 +406,15 @@ class _Persistence:
     def load(self) -> bool:
         """Load the preferences from disk; False when nothing is usable, and it never raises."""
         store = self._settings_store(reread=True)  # re-read, so the result matches the disk now
-        loaded = self._take_document(store)
-        if store.writable:
-            store.compare_with(self.refresh_data())    # a value spelled or filled in here is not this pane's change
-        return loaded
+        taken = self._take_document(store)
+        if taken or store.state == settings_store.FRESH:    # before the library's values: those are changes
+            store.compare_with(self.refresh_data(follow_library=False))
+        if not taken:
+            return False
+        self._update_user_blocks()
+        self._apply_shared_settings()  # a pure read: load() never writes the library
+        library = self.dir
+        return bool(library and os.path.exists(library))
 
     def _take_document(self, store) -> bool:
         """The attributes set from the store's document; False when it holds nothing usable."""
@@ -444,9 +451,4 @@ class _Persistence:
         self._cache_dir = _decode_path(data.get("cache_dir", ""))
         self._libraries = _listed_libraries(data.get("libraries"))
         self._directory = _normalised_dir(self._directory)    # a folder saved without its slash runs into the file names joined to it
-        self._update_user_blocks()
-        self._apply_shared_settings()  # a pure read: load() never writes the library
-        library = self.dir
-        if library and os.path.exists(library):
-            return True
-        return False
+        return True

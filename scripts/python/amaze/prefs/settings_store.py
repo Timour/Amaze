@@ -43,26 +43,26 @@ def _deeper(path: tuple) -> bool:
                for parts in (pattern.split("/") for pattern in RULES))
 
 
-def _merged(ours, theirs, base, path: tuple = ()):
-    """Ours with what another save changed since `base` merged in, by the rule for `path`."""
-    if theirs == base or ours == theirs:
-        return ours
-    if ours == base or ours is _GONE:
-        return theirs    # only the other save changed it, or its edit is kept over our removal
-    if theirs is _GONE:
-        return ours
+def _merged(ours, theirs, base, read, path: tuple = ()):
+    """The file's value, or ours where this pane changed it since `base`; changed in both: the rule."""
+    if ours == base or ours == theirs:
+        return theirs    # not changed here: the file keeps its value, spelled as it is there
     rule = _rule(path) or (FIELDS if _deeper(path) else "")
-    if rule == COMBINE and isinstance(ours, list) and isinstance(theirs, list):
-        return ours + [value for value in theirs if value not in ours]
     if rule == FIELDS and isinstance(ours, dict) and isinstance(theirs, dict):
-        base = base if isinstance(base, dict) else {}
+        base, read = (table if isinstance(table, dict) else {} for table in (base, read))
         out = {}
         for key in list(ours) + [key for key in theirs if key not in ours]:
-            value = _merged(ours.get(key, _GONE), theirs.get(key, _GONE), base.get(key, _GONE),
+            value = _merged(*(table.get(key, _GONE) for table in (ours, theirs, base, read)),
                             path + (str(key),))
             if value is not _GONE:
                 out[key] = value
         return out
+    if theirs == read or theirs is _GONE:
+        return ours    # no other save changed it since this pane read or wrote the file
+    if ours is _GONE:
+        return theirs    # the other save's edit is kept over our removal
+    if rule == COMBINE and isinstance(ours, list) and isinstance(theirs, list):
+        return ours + [value for value in theirs if value not in ours]
     return ours    # both changed it: ours is kept
 
 
@@ -107,8 +107,8 @@ class SettingsFile:
         """`document` is what its Prefs writes with nothing changed: the base of the next save's merge."""
         self._base = copy.deepcopy({str(key): value for key, value in document.items()})
 
-    def _changed_on_disk(self):
-        """What another save left on disk since our read: None for nothing, False if unreadable."""
+    def _on_disk(self):
+        """The file's document now, another save's or our last one: None for no file, False if unreadable."""
         try:
             with open(self.path, "rb") as handle:
                 raw = handle.read()
@@ -117,7 +117,7 @@ class SettingsFile:
         except OSError as exc:
             raise _NotRead(exc) from exc    # held a moment: a write now drops its changes
         if raw == self._raw:
-            return None
+            return copy.deepcopy(self._table)
         try:
             loaded = json.loads(raw.decode("utf-8-sig"))
         except ValueError:
@@ -125,7 +125,7 @@ class SettingsFile:
         return loaded if isinstance(loaded, dict) else False
 
     def _merge(self, staged: dict, theirs: dict) -> None:
-        merged = _merged(dict(staged), theirs, self._base)
+        merged = _merged(dict(staged), theirs, self._base, self._table)
         staged.clear()
         staged.update(merged)
 
@@ -139,7 +139,7 @@ class SettingsFile:
     def _replace_locked(self, document: dict, before_write) -> bool:
         staged = {str(key): value for key, value in document.items()}
         try:
-            theirs = self._changed_on_disk()
+            theirs = self._on_disk()    # merged every time: a save writes this pane's changes onto the file as it is
         except _NotRead as exc:
             debug.event("prefs", "settings.json not saved - it could not be read to merge",
                         path=self.path, error=str(exc))
