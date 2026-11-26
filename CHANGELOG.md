@@ -2,14 +2,36 @@
 
 ## 2.0.0
 
-- Library format 3.0: each material, node setup, snippet and color keeps everything it owns in one folder named after it: its network, record, picture, textures, versions and the pictures pasted into its comments. Renaming an asset renames its folder, and deleting it moves the folder to the library's trash.
-- Opening a 2.0 library asks once to convert it to 3.0. Until then this Amaze does not open or change it. An older Amaze cannot open a 3.0 library.
+- Library format 3.3: each material, node setup, snippet and color keeps everything it owns in one folder named after it: its network, record, picture, textures, versions and the pictures pasted into its comments. Renaming an asset renames its folder, and deleting it moves the folder to the library's trash.
+- Opening a 2.0 library asks once to convert it to 3.3. Until then this Amaze does not open or change it. An older Amaze cannot open a 3.3 library.
 - Each material keeps its own copy of every texture it uses, in its folder.
 - Versions are for materials only. In the code editor, Apply saves the snippet.
 - Check Library: one report, then Fix Safe or Fix All. Fix Safe changes nothing that could be lost. Fix All also moves the files it names to the library's trash.
 - Info: Size counts every file in the asset's folder.
 - Convert to keeps the material's licence.
 - A save that fails or is stopped leaves no files behind, and an asset's record that cannot be read is never written over.
+- A library opens only with a user selected.
+- Categories are stored by id. A rename changes the name in one place, and every asset in the category follows.
+- An imported package puts each asset in the category the package names.
+- Saving over a material keeps the state it had as a version. With Versions off, the save replaces the material and makes no version.
+- Versions is a row in the right-click menu of a material with two or more versions.
+- Tile menus: Import replaces Load Asset, and the rows have icons.
+- Material menu: Swap Material puts the material on the one object or prim selected in the scene viewer, in one undo step.
+- Color menu: Interpolation sets every key of a palette to the curve picked.
+- A material dragged into a Solaris viewer opens Houdini's own menu where it is dropped, and the row picked imports and assigns it.
+- Geometry: a double-click or Import does what Houdini's File ▸ Import ▸ Geometry does.
+- File: the open scene's tile follows Save, Open and New.
+- File: a location is the same location for every user of the library, and each user keeps their own name for it.
+- Comments are saved at once, and they follow their files when a location changes.
+- Online: a downloaded material's files are kept in the material's own folder. Import to Scene downloads into $HIP/tex.
+- Check Library: a database that cannot be read is offered Repair when the library opens. In Preferences ▸ Library the light is red with Repair, yellow with Fix and green with Check.
+- One message names every material whose renderer is not loaded. Online Materials names each site it could not reach, and an export names each texture it could not find.
+- Preferences ▸ UI: Qt Mouse Scroll Wheel Fix, off by default. Scroll Speed and MB of RAM Cache are removed.
+- A renderer switched off in Preferences hides its materials under All too. Hide Empty Categories hides them under the Filter's All too.
+- New pictures for RAT files and for a drop that misses.
+- Amaze (QML): a second pane, with the interface rebuilt on Houdini's QML controls. It has the toolbar, the section tabs, the sidebar, the grid and list, the menus and the Name, Versions, Save and Code windows. Info, Comments and Customize are in the Amaze pane only.
+- Amaze (QML): Favorite sits in the tile's corner, and Run in the middle of a Python snippet's tile. A comment, the open scene and a running snippet show as marks on the tile's second line.
+- Amaze (QML): the Versions window has Delete. It moves the version to the library's trash, where it is deleted after 30 days.
 
 ## 1.48.3
 
