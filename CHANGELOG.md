@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.0.3
+
+- With two panes open, a pane that saves twice keeps the settings the other changed.
+
 ## 2.0.2
 
 - Color: every tile runs top to bottom, whatever its interpolation.
