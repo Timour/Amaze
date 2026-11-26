@@ -26,9 +26,9 @@ MATERIAL_VERSIONS_TURN_ON_CONFIRM = "Turn on Material Versions for this library?
 LIBRARY_SETTING_NOT_WRITTEN = "The setting could not be written to the library folder, so it was not changed."
 PICTURE_NOT_COPIED_TO_LIBRARY = "That picture could not be copied into the library, so it was not added."
 PICTURE_COPIED_BUT_UNREADABLE = "That file was copied but couldn't be read as a picture, so it was not added."
-LIBRARY_INDEX_UNREADABLE = "The library's %s database is corrupt/unreadable."
-DATABASE_STILL_UNREADABLE = "The %s database cannot be read. Create a new Library or use Check Library on the Amaze shelf to restore a backup or rebuild it."
-LIBRARY_INDEX_UNREADABLE_SWITCHING = "The library's %s database is corrupt/unreadable."
+LIBRARY_INDEX_UNREADABLE = "The %s database in this library cannot be read."
+DATABASE_STILL_UNREADABLE = "The %s database cannot be read. Check Library on the Amaze shelf can restore a backup or rebuild it."
+LIBRARY_INDEX_UNREADABLE_SWITCHING = "The %s database in this library cannot be read."
 DATABASE_STILL_UNREADABLE_SWITCHING = "The %s database cannot be read."
 LIBRARY_INDEX_READ_NOT_PERMITTED = 'this account is not allowed to read it:\n%s\n\nThe permissions on the file, or on a folder above it, have to let this account read it.'
 
@@ -50,7 +50,7 @@ PACKAGE_EXPORTED = "Exported %d items to %s."
 PACKAGE_EXPORTED_ONE = "Exported 1 item to %s."
 PACKAGE_EXPORT_EMPTY = "Nothing to export. This category is empty."
 PACKAGE_NOT_SAVED = "The package could not be saved: %s"
-PACKAGE_TEXTURES_NOT_FOUND = "Exported without these textures, which were not found: %s."
+PACKAGE_TEXTURES_NOT_FOUND = "These textures were not found and are not in the package: %s."
 PACKAGE_NOT_READABLE ='"%s" is not a package Amaze can read.'
 PACKAGE_TOO_LARGE = "This package unpacks to %s, more than the %s Amaze imports at once."
 DOWNLOAD_TOO_LARGE = "This download is larger than the %s Amaze imports at once."
@@ -247,8 +247,7 @@ ONLINE_SOURCE_UNKNOWN = 'Unknown source'
 
 ONLINE_SOURCE_UNKNOWN_NAMED = 'Unknown source %s'
 
-ONLINE_SOURCES_NOT_REACHED = ("Could not reach %s. What loaded is shown, and reopening Online "
-                              "Materials tries again.")
+ONLINE_SOURCES_NOT_REACHED = "Could not connect to %s. Reopen Online Materials to try again."
 
 ONLINE_IMPORT_FAILED = 'Import failed.'
 
