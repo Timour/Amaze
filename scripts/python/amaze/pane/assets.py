@@ -118,10 +118,18 @@ class Assets:
             if isinstance(picked, dict):    # Delete in the QML window: the question to show next
                 return self.delete_version(model, row, int(picked["delete"]))
             if picked is not None and picked != model.version_list(row)[1]:
-                model.switch_version(row, picked)
+                self.select_version(model, row, picked)
             return None
 
         self.pane.ui.open_versions(mat.name, listed, active, chosen)
+
+    def select_version(self, model, row: int, number: int) -> None:
+        """Version `number` put on `row`; when that could not be done, a message names the version."""
+        listed = model.version_list(row)[0]
+        entry = next((entry for entry in listed if int(entry.get("n", 0)) == number), {"n": number})
+        if not model.switch_version(row, number):
+            hou.ui.displayMessage(messages.VERSION_NOT_SELECTED % versions.version_label(entry),
+                                  title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
 
     def delete_version(self, model, row: int, number: int) -> dict:
         """Version `number` of `row` deleted once the question is answered Delete; the versions left."""
@@ -132,7 +140,9 @@ class Assets:
                 help=messages.HELP_DELETE_VERSION % guard.TRASH_DAYS,
                 buttons=messages.BUTTONS_DELETE, default_choice=1, close_choice=1,
                 title=messages.TITLE_AMAZE, severity=hou.severityType.Warning) == 0:
-            model.delete_version(row, number)
+            if not model.delete_version(row, number):
+                hou.ui.displayMessage(messages.VERSION_NOT_DELETED % versions.version_label(entry),
+                                      title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
         listed, active = model.version_list(row)
         return {"listed": listed, "active": active}
 

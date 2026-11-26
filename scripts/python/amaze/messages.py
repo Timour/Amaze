@@ -21,6 +21,8 @@ LIBRARY_CHANGED_SINCE_CHECK = "Something changed in the library since the check.
 
 USER_DELETE_CONFIRM = "Delete user \"%s\" from this library?"
 VERSION_DELETE_CONFIRM = 'Delete the version "%s"?'
+VERSION_NOT_SELECTED = 'The version "%s" could not be selected.'
+VERSION_NOT_DELETED = 'The version "%s" could not be deleted.'
 USER_NAME_TAKEN = "A user named \"%s\" already exists in this library. Choose another name."
 NO_USER_PICKED = "No user is picked for this library. Open Preferences, pick or create your user, and press Apply."
 MATERIAL_VERSIONS_TURN_ON_CONFIRM = "Turn on Material Versions for this library?"

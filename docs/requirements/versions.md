@@ -33,3 +33,5 @@ for tests are in the [README](README.md).
 - VS-28 Wrong output: Delete in the Versions window asks first and names the version; Cancel there deletes nothing.
 - VS-29 Wrong output: After a delete the window lists the versions left with the one in use picked, and a later version never gets a deleted version's number.
 - VS-30 Wrong output: Delete is off while one version is left.
+- VS-31 Wrong output: A Select that could not be done says so in a message that names the version.
+- VS-32 Wrong output: A Delete that could not be done says so in a message that names the version, and the window lists the versions as they are.

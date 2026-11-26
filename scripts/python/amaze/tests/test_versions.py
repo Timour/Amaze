@@ -317,6 +317,36 @@ class StoreTest(unittest.TestCase):
         state.reasked({"listed": listed[1:], "active": 2})
         self.assertFalse(state.deletable)
 
+    def said_on_a_full_disk(self, act) -> list:
+        """The messages shown by `act(the pane's assets, the model, GOLD's row)` once the disk is full."""
+        model = library.MaterialLibrary(preferences=self.prefs)
+        row = model.find_asset_row_by_id(GOLD)
+        self.assertTrue(model.rename_version(row, 1, "Hero"))
+        said = []
+
+        def message(text, **_how):
+            said.append(text)
+            return 0
+        with mock.patch.object(hou, "ui", types.SimpleNamespace(displayMessage=message),
+                               create=True):
+            library_db.guard_of(self.prefs).disk = faults.FaultDisk(full_from=1)
+            act(assets.Assets(None), model, row)
+        return said
+
+    def test_vs31_a_select_that_could_not_be_done_says_so_and_names_the_version(self):
+        said = self.said_on_a_full_disk(lambda pane, model, row: pane.select_version(model, row, 1))
+        self.assertEqual([messages.VERSION_NOT_SELECTED % "Hero"], said)
+        self.assertEqual(2, versions.active_version(self.prefs, GOLD))
+
+    def test_vs32_a_delete_that_could_not_be_done_says_so_and_lists_the_versions_as_they_are(self):
+        shown = []
+        said = self.said_on_a_full_disk(
+            lambda pane, model, row: shown.append(pane.delete_version(model, row, 1)))
+        self.assertEqual([messages.VERSION_DELETE_CONFIRM % "Hero",
+                          messages.VERSION_NOT_DELETED % "Hero"], said)
+        self.assertEqual(([1, 2], 2), ([entry["n"] for entry in shown[0]["listed"]],
+                                       shown[0]["active"]))
+
 
 class SavedOverTest(unittest.TestCase):
     """GOLD loaded into the scene, changed and saved over, as Update Existing does."""
