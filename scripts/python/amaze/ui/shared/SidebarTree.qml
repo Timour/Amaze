@@ -33,6 +33,26 @@ TreeView {
     WheelScroll {    // always: Qt's own wheel is off with its drag scrolling
         view: root
     }
+    Rectangle {    // Houdini's insert line, as its Context Options rows draw it: a dragged row goes here
+        readonly property bool end: root.gapRow === root.rows    // below the last row
+        readonly property Item edge: root.gapRow < 0 ? null    // the row whose top it lies on, or the last row's foot
+                                     : root.itemAtCell(Qt.point(0, end ? root.rows - 1 : root.gapRow))
+        visible: edge !== null
+        x: 8
+        y: edge ? (end ? edge.y + edge.height : edge.y) - height / 2 : 0
+        z: 10    // over every row: a child of the view's content, not of one row
+        width: root.width - 16
+        height: 3
+        radius: 1.5
+        color: Theme.highlight
+        Rectangle {    // its dot at the left end
+            anchors.verticalCenter: parent.verticalCenter
+            width: 7
+            height: 7
+            radius: 3.5
+            color: Theme.highlight
+        }
+    }
 
     function indexAt(x, y) {    // the row at (x, y) in the tree, an invalid index below the rows
         const at = root.mapToItem(root.contentItem, x, y)
@@ -82,24 +102,6 @@ TreeView {
         DragOut {    // a row dragged between rows moves; dropped on a row it does nothing
             id: move
             onStarted: root.rowDragged(root.index(entry.row, 0))
-        }
-        Rectangle {    // Houdini's insert line, as its Context Options rows draw it: a dragged row goes here
-            readonly property bool above: entry.row === root.gapRow
-            visible: above || (entry.row === root.rows - 1 && root.gapRow === root.rows)    // or below the last
-            x: 8
-            y: above ? -height / 2 : entry.height - height / 2
-            z: 10
-            width: entry.width - 16
-            height: 3
-            radius: 1.5
-            color: Theme.highlight
-            Rectangle {    // its dot at the left end
-                anchors.verticalCenter: parent.verticalCenter
-                width: 7
-                height: 7
-                radius: 3.5
-                color: Theme.highlight
-            }
         }
         Rectangle {    // the row's colour bar, where G01 draws it
             x: root.drawn.bar_x
