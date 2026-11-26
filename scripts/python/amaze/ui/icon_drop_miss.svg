@@ -1,1 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-x"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+<svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M10.5 1H11.5V4H10.5V1Z" fill="#FF5757"/>
+<path d="M17.7175 3.57521L18.4246 4.28232L16.3032 6.40364L15.5961 5.69653L17.7175 3.57521Z" fill="#FF5757"/>
+<path d="M21 10.5V11.5H18V10.5H21Z" fill="#FF5757"/>
+<path d="M18.4245 17.7175L17.7174 18.4246L15.5961 16.3033L16.3032 15.5962L18.4245 17.7175Z" fill="#FF5757"/>
+<path d="M11.5 21H10.5V18H11.5V21Z" fill="#FF5757"/>
+<path d="M4.28243 18.4248L3.57532 17.7177L5.69664 15.5964L6.40375 16.3035L4.28243 18.4248Z" fill="#FF5757"/>
+<path d="M1 11.5V10.5H4V11.5H1Z" fill="#FF5757"/>
+<path d="M3.5754 4.28249L4.2825 3.57538L6.40382 5.6967L5.69672 6.40381L3.5754 4.28249Z" fill="#FF5757"/>
+</svg>

@@ -225,19 +225,11 @@ Item {
                 }
             }
         }
-        Item {    // the room left, never less than end_gap; the right-end buttons follow it
+        Item {    // the room left, never less than end_gap; the right-end button follows it
             Layout.leftMargin: root.drawn.end_gap
             Layout.fillWidth: true
         }
         IconButton {
-            node: "btn_hip_capture"
-            art: "icon_screenshot.svg"
-            tip: SharedState.tips.capture
-            enabled: SharedState.takesCapture
-            onClicked: SharedState.capture()
-        }
-        IconButton {
-            Layout.leftMargin: root.drawn.right_gap
             node: "btn_prefs"
             art: "icon_library.svg"
             tip: SharedState.tips.prefs

@@ -128,7 +128,7 @@ class _MenuHost:
 
 
 class _Marks:
-    """The name tag and the red X a drag shows, with no widgets: the red X is counted."""
+    """The name tag and the miss mark a drag shows, with no widgets: the miss mark is counted."""
 
     def __init__(self):
         self.misses = 0
@@ -240,7 +240,7 @@ class _Drops(unittest.TestCase):
             yield
 
     def drag(self, viewer, host=None) -> int:
-        """The material row dragged over `viewer` and released there: the red Xs shown."""
+        """The material row dragged over `viewer` and released there: the miss marks shown."""
         self.pane.ui = host
         marks, kind = _Marks(), hou.paneTabType.SceneViewer
         session = drag_session.DragSession(QtWidgets.QWidget(), marks)
@@ -568,7 +568,7 @@ class WhereADropGoesTest(_Drops):
                 sphere.parm("primpath").set("/world/ball")
                 sphere.setDisplayFlag(True)
                 viewer, host = _Viewer(lopnet, "/world/ball"), _MenuHost("Set as Material on ../world", at_once)
-                self.assertEqual(0, self.drag(viewer, host), "a red X")
+                self.assertEqual(0, self.drag(viewer, host), "a miss mark")
                 self.assertEqual([["/world/ball"], []], viewer.lit, "the prim not lit while dragging, then off")
                 self.assertEqual(["Set as Material on ball", "Set as Material on ../world"], host.offered)
                 if not at_once:
@@ -605,7 +605,7 @@ class WhereADropGoesTest(_Drops):
                             (_Viewer(hou.node("/obj")), "empty space took it"),
                             (_Viewer(hou.node("/obj"), camera), "an object with no material parameter took it")):
             self.assertEqual((1, []), (self.drag(viewer), imported), why)
-        self.assertEqual(0, self.drag(_Viewer(hou.node("/obj"), self.geo)), "a red X")
+        self.assertEqual(0, self.drag(_Viewer(hou.node("/obj"), self.geo)), "a miss mark")
         self.assertEqual([("dd25_a", "mat"), ("dd25_b", "mat")], imported)
         self.assertEqual("/mat/dd25_a", self.geo.parm("shop_materialpath").eval())
 

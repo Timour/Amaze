@@ -53,10 +53,10 @@ def cursor_overlay(text: str = "") -> QtWidgets.QLabel:
 
 
 class DragMarks:
-    """What a drag shows at the cursor, for both panes: its name tag, and a miss's red X."""
+    """What a drag shows at the cursor, for both panes: its name tag, and a miss's mark."""
 
-    MISS_MS = 167    #: how long the red X stays on screen (ms) ▸r/qt-windows-macos
-    MISS_ICON, MISS_COLOUR = "icon_drop_miss.svg", "#ff3319"
+    MISS_MS = 167    #: how long the miss mark stays on screen (ms) ▸r/qt-windows-macos
+    MISS_ICON = "icon_drop_miss.svg"    # frame X01b's mark, in the red it is drawn in
 
     def __init__(self) -> None:
         self._tag = None
@@ -91,10 +91,9 @@ class DragMarks:
             tag.deleteLater()
 
     def show_miss(self) -> None:
-        """The red X at the cursor for MISS_MS."""
+        """The miss mark at the cursor for MISS_MS."""
         size = theme.ui_px(22)
-        pixmap = render_svg_pixmap(amaze.package_file("ui", self.MISS_ICON), size,
-                                   {"currentColor": self.MISS_COLOUR})
+        pixmap = render_svg_pixmap(amaze.package_file("ui", self.MISS_ICON), size)
         if pixmap.isNull():
             return
         label = self._miss

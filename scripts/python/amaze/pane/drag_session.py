@@ -21,7 +21,7 @@ class DragSession:
 
     def __init__(self, source, marks) -> None:
         self.source = source    # the view: it holds the keyboard for Esc, and a real QDrag starts from it
-        self.marks = marks    # `ui_helpers.DragMarks`: the tag and the red X, the widgets the engine has none of
+        self.marks = marks    # `ui_helpers.DragMarks`: the tag and the miss mark, the widgets the engine has none of
         self.running = False
         self.pane = None
         self.section = ""
@@ -49,7 +49,7 @@ class DragSession:
             raise
 
     def release(self) -> None:
-        """The left button let go: the drop, one undo step; a miss or a refusal shows the red X."""
+        """The left button let go: the drop, one undo step; a miss or a refusal shows the miss mark."""
         if not self.running:
             return
         self._end()    # before any drop work: the tag and every highlight are gone
@@ -66,7 +66,7 @@ class DragSession:
                 self.marks.show_miss()
 
     def cancel(self, miss: bool = False) -> None:
-        """End with no drop: Esc and a hidden view quietly, another button or an error with the red X."""
+        """End with no drop: Esc and a hidden view quietly, another button or an error with the miss mark."""
         if self.running:
             self._end(miss)
 

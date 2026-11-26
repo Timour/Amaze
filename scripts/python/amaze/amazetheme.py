@@ -804,7 +804,6 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("label ▸ filter_label", 469, 0, 40, 30, None),
             ("text ▸ filter_label", 471, 7, 35, 15, "Search"),
             ("field ▸ line_filter", 521, 5, 200, 20, None),
-            ("button ▸ btn_hip_capture", 790, 3, 24, 24, None),
             ("button ▸ btn_prefs", 814, 3, 24, 24, None),
             ("icon ▸ btn_categories ▸ icon_categories.svg", 6, 7, 16, 16, None),
             ("icon ▸ btn_menu_view ▸ icon_renderer.svg", 31, 6, 18, 18, None),
@@ -816,7 +815,6 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("icon ▸ cb_viewmode ▸ list.svg", 188, 7, 16, 16, None),
             ("icon ▸ cb_viewmode ▸ grid.svg", 214, 7, 16, 16, None),
             ("icon ▸ line_filter ▸ icon_search.svg", 525, 8, 13, 13, None),
-            ("icon ▸ btn_hip_capture ▸ icon_screenshot.svg", 793, 6, 18, 18, None),
             ("icon ▸ btn_prefs ▸ icon_library.svg", 817, 6, 18, 18, None),
         ),
     },
@@ -1284,7 +1282,6 @@ def drawn_toolbar(frame_key: str = "B01") -> dict:
         "edge": first[1],
         "right_edge": layout["frame"][0] - right(right_end[-1][1]),
         "gap": second[1] - right(first),
-        "right_gap": right_end[1][1][1] - right(right_end[0][1]) if len(right_end) > 1 else 0,
         "segment": segments[0][3],    # each segment of the grid and list switch
         "segment_gap": segments[1][1] - right(segments[0]),
         "slider_gap": slider[1] - right(left[-1][1]),

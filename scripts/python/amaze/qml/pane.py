@@ -111,7 +111,6 @@ class PaneState(qmlviews.SharedState, asks.Asks):
     viewMode: str = "grid"
     favouritesOnly: bool = False
     takesFavourites: bool = True
-    takesCapture: bool = True
     filterOffered: bool = False    # the Filter button has a menu here
     filterTip: str = ""    # what the Filter button narrows by, per section; online, the kind
     tileSizes: list = list(amazetheme.TILE_SIZES)
@@ -182,7 +181,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         self.strip = {"height": tabs["height"], "left": tabs["left"]}
         self.tips = {"online": tooltips.PANEL_ONLINE, "favourites": tooltips.PANEL_FAVORITES,
                      "viewMode": tooltips.PANEL_VIEW_MODE, "viewMenu": tooltips.PANEL_VIEW_MENU,
-                     "prefs": tooltips.PANEL_PREFERENCES, "capture": tooltips.PANEL_CAPTURE,
+                     "prefs": tooltips.PANEL_PREFERENCES,
                      "tileSize": tooltips.PANEL_TILE_SIZE, "tileSizeList": tooltips.PANEL_TILE_SIZE_LIST,
                      "search": tooltips.PANEL_SEARCH, "sidebar": tooltips.PANEL_CATEGORIES}
         self.words = {"cancel": amazetheme.BTN_CANCEL, "search": "Search"}
@@ -292,7 +291,6 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         """The shown context's tab and what its toolbar offers."""
         self.currentTab = self._tab_keys.index(self.pane.current_tab())
         self.takesFavourites = bool(getattr(context, "takes_favourites", True))
-        self.takesCapture = bool(getattr(context, "takes_capture", True))
         self.searchHint = getattr(context, "search_hint", "")
         self._show_filter()
 
@@ -596,10 +594,6 @@ class PaneState(qmlviews.SharedState, asks.Asks):
     @QtCore.Slot()
     def showPrefs(self) -> None:
         self.show_prefs()
-
-    @QtCore.Slot()
-    def capture(self) -> None:
-        self.pane.tile_capture.from_toolbar()
 
     @QtCore.Slot()
     def cancelWork(self) -> None:
