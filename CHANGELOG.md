@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.0.11
+
+- The code of the old widget panel is removed.
+
 ## 2.0.10
 
 - The Amaze pane is the QML pane. The pane type Amaze (QML) is gone, and a desktop saved with it has to be saved again.
