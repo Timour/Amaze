@@ -161,6 +161,8 @@ _reload(online_section)
 _reload(sections)    # the registry, after the sections it lists
 _reload(empty_state)    # after grid: it shows its page in the grid pane
 _reload(side_pane)
+_reload_loaded("amaze.pane.comment_document")    # before notes_panel, which builds on it
+_reload_loaded("amaze.pane.comments")
 _reload(notes_panel)
 _reload(info_panel)
 _reload(multifilterproxy_model)
@@ -253,7 +255,6 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
         pane = self.pane
         pane.models_built.connect(self._on_models_built)
         pane.library_shown.connect(self._on_library_shown)
-        pane.library_switching.connect(self._on_library_switching)
         pane.library_switched.connect(self._on_library_switched)
         pane.library_updated.connect(self._refresh_open_prefs)
         pane.context_leaving.connect(self._on_context_leaving)
@@ -337,14 +338,6 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
         self._sync_notes_button_pixmaps()
         self._sync_info_button_pixmaps()
         self.sidebar_delegate.show_counts = pane.prefs.sidebar_counts
-        for selection in (    # keyboard selection changes update the side panes too
-            pane.material_selection_model,
-            pane.cop_selection_model,
-            pane.code_selection_model,
-            pane.file_selection_model,
-            pane.gradient_selection_model,
-        ):
-            selection.selectionChanged.connect(self._refresh_notes_subject)
 
     def _on_library_shown(self) -> None:
         """A newly opened library's first section shows: the tile size, view mode and colours."""
@@ -352,12 +345,6 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
         self.slide()
         self.apply_view_state()
         self._apply_theme_colours()
-
-    def _on_library_switching(self) -> None:
-        """Another library is about to be read: a pending comment is saved to its own library."""
-        pane = getattr(self, "notes_panel", None)
-        if pane is not None:
-            pane.clear_subject()    # the switch selects nothing
 
     def _on_library_switched(self) -> None:
         self.click_slider.setValue(self.pane.tile_size())
@@ -390,7 +377,6 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
         if scroll:
             QtCore.QTimer.singleShot(    # after the relayout, which would clamp it
                 0, lambda: grid.visible_view(self).verticalScrollBar().setValue(scroll))
-        self._refresh_notes_subject()
 
     def _on_online_changed(self) -> None:
         """The Online chip follows the pane; out of online, Material Library is the checked source."""
@@ -657,9 +643,7 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
         if event.type() == QtCore.QEvent.Type.ApplicationPaletteChange:    # Houdini set a new theme's palette
             self._apply_theme_colours()
         if event.type() == QtCore.QEvent.Type.DeferredDelete:    # children get no hide
-            pane = getattr(self, "notes_panel", None)
-            if pane is not None:
-                pane.flush()
+            self.pane.comments.flush()
             self.pane.info.stop_reading()
             timer = getattr(self, "_thumbsize_save_timer", None)
             if timer is not None and timer.isActive():    # the debounce timer is deleted with the panel, so save now
@@ -929,18 +913,17 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
         cat_index = -1
         if isinstance(splitter, QtWidgets.QSplitter):
             cat_index = splitter.indexOf(self.cat_list)
-            if self.pane.prefs.show_notes and self.pane.prefs.show_info:
-                self.pane.prefs.show_info = False    # one side pane at a time: the comments pane stays
+            self.pane.one_side_pane()
             self.side_pane = side_pane.Pane(    # the splitter's rightmost pane: sidebar | grid | side pane
                 self.pane.prefs, "notes_panel_width", theme.ui_px(amazetheme.drawn_comments()["width"]))
             self.side_pane.setMinimumWidth(theme.ui_px(side_pane.MIN_WIDTH))
             self.side_pane.hide()
             splitter.addWidget(self.side_pane)
             splitter.splitterMoved.connect(self._on_splitter_moved)
-            self.notes_panel = notes_panel.NotesPanel(self.pane.prefs)    # its two pages: one shows at a time
+            self.notes_panel = notes_panel.NotesPanel(self.pane.comments)    # its two pages: one shows at a time
             self.side_pane.add_page(self.notes_panel)
             self.notes_panel.copy_font_and_text_color(self.cat_list)
-            self.notes_panel.changed.connect(self._on_note_saved)
+            self.pane.comments.saved.connect(self._on_note_saved)
             self.info_panel = info_panel.InfoPanel(self.pane.info)
             self.side_pane.add_page(self.info_panel)
             self.info_panel.copy_font(self.cat_list)
@@ -1055,7 +1038,7 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
         self.thumblist.viewport().setMouseTracking(True)    # mouse moves with no button down highlight the badges
         self.thumblist.viewport().installEventFilter(self)
         self.thumblist.doubleClicked.connect(self.import_asset_auto)
-        self.thumblist.clicked.connect(self._refresh_notes_subject)    # idempotent
+        self.thumblist.clicked.connect(self.pane.comments.refresh)    # idempotent
         self.thumblist.clicked.connect(self.pane.info.refresh)
 
         self.texture_progress = ui_helpers.ThinProgressBar()    # the thin bar above thumbview, hidden until there is work
@@ -1398,7 +1381,6 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
         self.pane.prefs.save()
         if checked:
             self._close_other_pane("btn_info")
-            self._refresh_notes_subject()
 
     def toggle_info_panel(self) -> None:
         """Toggle the info pane through its toolbar button, so the two always match."""
@@ -1454,28 +1436,6 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
     def _on_note_saved(self, _key: str) -> None:
         """A note was saved: repaint the grid so the tile's note badge appears or disappears."""
         grid.visible_view(self).viewport().update()    # `NotesRole` emits no `dataChanged`
-
-    def _notes_subject(self):
-        """What the Comments pane points at, or None; the section returns its selected tile's."""
-        context = self.pane.active_section()
-        if context is None or not context.takes_comments:    # the context decides
-            return None
-        index = grid.selected_current_in(    # a SELECTED row: Qt keeps the current one after a deselect
-            self.thumblist, context.grid_selection_model())
-        if index is None:
-            return None
-        return context.comment_subject(index)
-
-    def _refresh_notes_subject(self, *_args) -> None:
-        """Point the Notes pane at the current selection; returns at once while it is hidden."""
-        panel = getattr(self, "notes_panel", None)
-        if panel is None or panel.isHidden():
-            return
-        subject = self._notes_subject()
-        if subject is None:
-            panel.clear_subject()
-        else:
-            panel.set_subject(subject)
 
     def set_conversion_bar_visible(self, visible: bool) -> None:
         """The only setter of the conversion bar's visibility, and the Cancel button's with it."""

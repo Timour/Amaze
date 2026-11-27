@@ -95,28 +95,11 @@ def open_catlist_menu(panel, context) -> None:
     context.reselect_sidebar_row()    # the right-click moved only the highlight; restore it, picked or not
 
 
-def selected_current(view, indexes):
-    """The row a menu acts on: the current one while selected, else the first, else None."""
-    current = grid_columns.live_current_index(view)
-    if current is None or not current.isValid() or current not in indexes:
-        current = indexes[0] if indexes else None    # Qt keeps a current row OUTSIDE the selection
-    return current
-
-
-def selected_current_in(view, selection):
-    """`selected_current` from the selection model: tests one row; builds the list if needed."""
-    current = grid_columns.live_current_index(view)
-    if current is not None and selection is not None \
-            and selection.isSelected(current):
-        return current
-    return selected_current(view, grid_columns.selected_rows(selection))
-
-
 def _open(panel, context, entries, indexes, view) -> None:
     """Build a menu, show it and run what was picked; the selection is read once, here."""
     if not entries or view is None:
         return
-    current = selected_current(view, indexes)    # the row the menu is about is ALWAYS a selected row
+    current = grid_columns.selected_current(view, indexes)    # the row the menu is about is ALWAYS a selected row
     engine = menus.Menu(context, entries, indexes, current, host=panel)    # it keeps the rows across Qt's loop
     run_menu(panel, engine, engine.rows)
 

@@ -1,25 +1,18 @@
-"""The Notes panel: one flowing document of plain and to-do blocks. ▸r/qt-text-checklists"""
+"""The Comments page: plain, to-do and picture blocks in one document. ▸r/qt-text-checklists"""
 
 from __future__ import annotations
-
-import os
-import types
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from amaze import amazetheme
-from amaze.core import debug, notes
 from amaze.helpers import theme, ui_helpers
+from amaze.pane import comment_document, comments as pane_comments
 from amaze.panel import side_pane
-from amaze import messages
 from amaze import tooltips
 
 COMMENT_ICON_COLOR = amazetheme.COMMENT_ICON_COLOR    # defined once, in amazetheme ▸p/one-design-document
 
-SAVE_DELAY_MS = 600       # a crash loses a sentence at most, and typing is not a write per key
-
-
-_DRAWN = amazetheme.drawn_comments()    # every size and spacing below is from the N01 design frame ▸r/comments-from-frame
+_DRAWN = comment_document.DRAWN    # every size and spacing below is from the N01 design frame ▸r/comments-from-frame
 
 
 class _AddButton(QtWidgets.QToolButton):
@@ -55,24 +48,8 @@ def _feather_icon(name: str, side: int, color: str, widget=None) -> QtGui.QPixma
     return pixmap
 
 
-STATE_TODO = 1   # each block's userState; not inherited across Enter ▸r/qt-text-checklists
-STATE_DONE = 2
-STATE_IMAGE = 3   # a picture block: ONE image fragment, no text of its own ▸p/comment-images
-STATE_UNLOADED = 4    # a picture whose file did not load: text replaces it, `src` is stored on the block
-_UNLOADED_SRC = QtGui.QTextFormat.Property.UserProperty.value + 1
-_UNLOADED_TEXT = QtGui.QTextFormat.Property.UserProperty.value + 2
-
-ADD_ITEMS = (    # the + menu's entries, in order; a new item type is added with ONE line here ▸p/comment-images
-    ("Bullet point", "_add_todo"),
-    ("Image", "_add_image"),
-)
-
-
 class _NoteEdit(QtWidgets.QTextEdit):
-    """The flowing document: plain paragraphs and to-do blocks interleave freely."""
-
-    GLYPH_SPACE = _DRAWN["todo_indent"]   # left margin reserved on to-do blocks, where the icon is painted
-    GLYPH_SIDE = _DRAWN["glyph"]
+    """The editor of the document engine `engine`: it paints the glyphs and hands keys to it."""
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -81,247 +58,54 @@ class _NoteEdit(QtWidgets.QTextEdit):
         palette.setColor(QtGui.QPalette.ColorRole.Base,
                          QtGui.QColor(0, 0, 0, 0))
         self.setPalette(palette)
-        self.setAcceptRichText(False)    # PASTING only - a programmatic insertImage still works ▸r/qtextdocument-images
-        self.library_dir = ""            # set by the panel; what an image's relative `src` resolves against
-        self.note_key = ""               # set by the panel; whose folder a `$AMAZEASSET/` picture is in
-        self.setPlaceholderText("Write a comment...")
+        self.setAcceptRichText(False)    # a paste or drop of text only; the engine inserts it
+        self.setPlaceholderText(amazetheme.COMMENT_PLACEHOLDER)
         self.viewport().setMouseTracking(True)   # the hover cursor swap needs move events with no button held
+        self.engine = comment_document.CommentDocument(
+            self.document(), theme.ui_px, lambda: self.viewport().width())
+        self.engine.states_changed.connect(self.viewport().update)    # the glyphs are in the margin
 
-    @staticmethod
-    def is_todo_block(block) -> bool:
-        return block.userState() in (STATE_TODO, STATE_DONE)
-
-    @staticmethod
-    def is_image_block(block) -> bool:
-        return block.userState() == STATE_IMAGE
-
-    @staticmethod
-    def unloaded_picture(block):
-        """The picture item an unloaded block replaces; None once its text has been edited out."""
-        if block.userState() != STATE_UNLOADED:
-            return None
-        block_format = block.blockFormat()
-        shown = str(block_format.property(_UNLOADED_TEXT) or "")
-        if not shown or shown not in block.text():
-            return None
-        return {"t": "image", "src": str(block_format.property(_UNLOADED_SRC) or ""), "text": shown}
-
-    def _insert_unloaded_image_text(self, cursor, src: str, shown: str) -> None:
-        """Insert `shown` in the cursor's block, storing `src` so `serialize` saves the picture."""
-        block = cursor.block()
-        block.setUserState(STATE_UNLOADED)
-        self._restyle_block(block, False, False)
-        block_format = QtGui.QTextBlockFormat()
-        block_format.setProperty(_UNLOADED_SRC, src)
-        block_format.setProperty(_UNLOADED_TEXT, shown)
-        cursor.mergeBlockFormat(block_format)
-        cursor.insertText(shown, self._label_format(False))
-
-    @staticmethod
-    def image_src(block) -> str:
-        """The library-relative path an image block draws, or "", read off the fragment. ▸p/comment-images"""
-        iterator = block.begin()
-        while not iterator.atEnd():
-            char_format = iterator.fragment().charFormat()
-            if char_format.isImageFormat():
-                return char_format.toImageFormat().name()
-            iterator += 1
-        return ""
-
-    def make_image_here(self, cursor, src: str) -> bool:
-        """Turn the cursor's block into a picture of `src`; False when it will not load. ▸p/comment-images"""
-        image = QtGui.QImage(self.resolve_image(src))
-        if image.isNull():
-            return False
-        self.document().addResource(
-            QtGui.QTextDocument.ResourceType.ImageResource,
-            QtCore.QUrl(src), image)    # keyed by the RELATIVE path, so the same key works on every machine ▸r/qtextdocument-images
-        block = cursor.block()
-        block.setUserState(STATE_IMAGE)
-        self._restyle_block(block, False, False)
-        image_format = QtGui.QTextImageFormat()
-        image_format.setName(src)
-        width = self._image_width(image)
-        image_format.setWidth(width)
-        image_format.setHeight(image.height() * width / max(image.width(), 1))
-        cursor.insertImage(image_format)
-        self.setTextCursor(cursor)
-        return True
-
-    def insert_image(self, src: str) -> bool:
-        """A picture at the cursor: an empty plain block becomes it, else a new block below."""
+    def go_to(self, position: int) -> None:
+        """Put the text cursor at `position`, an engine's answer; -1 leaves it."""
+        if position < 0:
+            return
         cursor = self.textCursor()
-        block = cursor.block()
-        if self.is_todo_block(block) or self.is_image_block(block) \
-                or block.text().strip():
-            cursor.movePosition(QtGui.QTextCursor.MoveOperation.EndOfBlock)
-            cursor.insertBlock(self._plain_format())
-        if not self.make_image_here(cursor, src):
-            return False
-        cursor = self.textCursor()    # leave the cursor below the picture, out of its block ▸p/comment-images
-        cursor.insertBlock(self._plain_format())
-        cursor.block().setUserState(-1)
-        cursor.setCharFormat(self._label_format(False))
+        cursor.setPosition(position)
         self.setTextCursor(cursor)
-        return True
-
-    def _image_width(self, image) -> float:
-        """Never wider than the pane, never upscaled."""
-        room = max(self.viewport().width() - theme.ui_px(24), theme.ui_px(80))
-        return float(min(image.width(), room))
-
-    def resolve_image(self, src: str) -> str:
-        """A stored `src` as an absolute path; the stored form stays relative. ▸p/comment-images"""
-        return notes.image_path(self.library_dir, self.note_key, src)
-
-    @staticmethod
-    def block_done(block) -> bool:
-        return block.userState() == STATE_DONE
-
-    @staticmethod
-    def block_label(block) -> str:
-        return block.text().strip()
-
-    def _todo_format(self) -> QtGui.QTextBlockFormat:
-        fmt = QtGui.QTextBlockFormat()   # no background; padding 10px each side plus the glyph margin
-        fmt.setBackground(QtGui.QBrush(QtCore.Qt.BrushStyle.NoBrush))
-        fmt.setTopMargin(theme.ui_px(_DRAWN["todo_pad"]))
-        fmt.setBottomMargin(theme.ui_px(_DRAWN["todo_pad"]))
-        fmt.setLeftMargin(theme.ui_px(self.GLYPH_SPACE))
-        return fmt
-
-    def _plain_format(self) -> QtGui.QTextBlockFormat:
-        fmt = QtGui.QTextBlockFormat()
-        fmt.setBackground(QtGui.QBrush(QtCore.Qt.BrushStyle.NoBrush))
-        fmt.setTopMargin(0)
-        fmt.setBottomMargin(0)
-        fmt.setLeftMargin(0)
-        return fmt
-
-    @staticmethod
-    def _label_format(done: bool) -> QtGui.QTextCharFormat:
-        fmt = QtGui.QTextCharFormat()   # strike-through only; colour from the category list's palette, via copy_font_and_text_color()
-        fmt.setFontStrikeOut(bool(done))
-        return fmt
-
-    def _restyle_block(self, block, todo: bool, done: bool) -> None:
-        cursor = QtGui.QTextCursor(block)
-        cursor.mergeBlockFormat(
-            self._todo_format() if todo else self._plain_format())
-        cursor.select(QtGui.QTextCursor.SelectionType.BlockUnderCursor)
-        cursor.mergeCharFormat(self._label_format(todo and done))
-
-    def _set_todo(self, block, done: bool) -> None:
-        """Make `block` a to-do, done or open: its state, its look and the glyph's repaint."""
-        block.setUserState(STATE_DONE if done else STATE_TODO)
-        self._restyle_block(block, True, done)
-        self.viewport().update()
-
-    def make_todo_here(self, cursor, done: bool = False) -> None:
-        """Turn the cursor's block into a to-do block."""
-        self._set_todo(cursor.block(), done)
-        cursor.setCharFormat(self._label_format(done))
-        self.setTextCursor(cursor)
-
-    def make_plain_here(self, cursor) -> None:
-        """Turn the cursor's block back into plain text; the label is kept as text."""
-        block = cursor.block()
-        block.setUserState(-1)
-        self._restyle_block(block, False, False)
-        cursor.setCharFormat(self._label_format(False))
-        self.setTextCursor(cursor)
-        self.viewport().update()
-
-    def insert_todo(self) -> None:
-        """A to-do at the cursor: an empty plain block converts in place, else a new one below."""
-        cursor = self.textCursor()
-        block = cursor.block()
-        if self.is_todo_block(block) or block.text().strip():
-            cursor.movePosition(
-                QtGui.QTextCursor.MoveOperation.EndOfBlock)
-            cursor.insertBlock()
-        self.make_todo_here(cursor, False)
-        self.setFocus()
-
-    def toggle_block(self, block) -> bool:
-        """Flip one to-do's done state. Returns whether it was one."""
-        if not self.is_todo_block(block):
-            return False
-        self._set_todo(block, not self.block_done(block))
-        return True
-
-
-    def _merge_keeping(self, keeper, event) -> None:
-        """Merge across a block separator, keeping the keeper's to-do state. ▸r/qt-text-checklists"""
-        done = self.block_done(keeper)
-        super().keyPressEvent(event)
-        self._set_todo(self.textCursor().block(), done)
 
     def keyPressEvent(self, event) -> None:
-        if event.key() == QtCore.Qt.Key.Key_Backspace:
-            cursor = self.textCursor()
-            block = cursor.block()
-            if (self.is_todo_block(block)
-                    and not cursor.hasSelection()
-                    and (cursor.atBlockStart()
-                         or not self.block_label(block))):
-                self.make_plain_here(cursor)   # Backspace at a to-do's start turns it back into plain text
-                return
-            if (not cursor.hasSelection() and cursor.atBlockStart()
-                    and self.is_todo_block(block.previous())):
-                self._merge_keeping(block.previous(), event)   # backspacing up into a to-do keeps its checkbox
-                return
-        if (event.key() == QtCore.Qt.Key.Key_Delete
-                and not self.textCursor().hasSelection()):
-            cursor = self.textCursor()
-            block = cursor.block()
-            if (self.is_todo_block(block) and cursor.atBlockEnd()
-                    and block.next().isValid()):
-                self._merge_keeping(block, event)   # forward Delete at a to-do's end joins the next line, keeping the to-do state
-                return
-        if event.key() in (QtCore.Qt.Key.Key_Return,
-                           QtCore.Qt.Key.Key_Enter):
-            cursor = self.textCursor()
-            block = cursor.block()
-            if self.is_todo_block(block):
-                if not self.block_label(block):
-                    self.make_plain_here(cursor)   # Enter on an EMPTY to-do turns it back into plain text
-                    return
-                super().keyPressEvent(event)
-                self.make_todo_here(self.textCursor(), False)   # a new to-do: userState is not inherited, so the block above keeps its checkbox
-                return
-        super().keyPressEvent(event)
+        cursor = self.textCursor()
+        at = self.engine.key(event.key(), cursor.position(), cursor.anchor())
+        if at < 0:
+            super().keyPressEvent(event)
+            return
+        self.go_to(at)
 
-    def _glyph_zone_block(self, pos):
-        """The to-do block whose checkbox zone contains pos, or None; shared by click and hover."""
-        cursor = self.cursorForPosition(pos)
-        block = cursor.block()
-        if not self.is_todo_block(block):
-            return None
-        start = QtGui.QTextCursor(block)
-        start.setPosition(block.position())
-        if pos.x() < self.cursorRect(start).left():
-            return block
-        return None
+    def insertFromMimeData(self, source) -> None:
+        """A paste or a drop: its text, plain, through the engine."""
+        cursor = self.textCursor()
+        self.go_to(self.engine.insert_text(cursor.position(), cursor.anchor(), source.text()))
+        self.ensureCursorVisible()
+
+    def _todo_at(self, pos) -> int:
+        """The to-do whose glyph zone is under `pos` in the viewport, or -1; for click and hover."""
+        return self.engine.todo_at(pos.x() + self.horizontalScrollBar().value(),
+                                   pos.y() + self.verticalScrollBar().value())
 
     def mousePressEvent(self, event) -> None:
         if event.button() == QtCore.Qt.MouseButton.LeftButton:    # only the left button toggles
-            block = self._glyph_zone_block(event.position().toPoint())
-            if block is not None and self.toggle_block(block):
-                self.textChanged.emit()
+            if self.engine.toggle(self._todo_at(event.position().toPoint())):
                 return
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:
         if not event.buttons():   # a pointing hand over the glyph zone, I-beam elsewhere; only with no button down
-            over = self._glyph_zone_block(
-                event.position().toPoint()) is not None
+            over = self._todo_at(event.position().toPoint()) >= 0
             wanted = (QtCore.Qt.CursorShape.PointingHandCursor if over
                       else QtCore.Qt.CursorShape.IBeamCursor)
             if self.viewport().cursor().shape() != wanted:
                 self.viewport().setCursor(wanted)
         super().mouseMoveEvent(event)
-
 
     def paintEvent(self, event) -> None:
         super().paintEvent(event)
@@ -333,115 +117,17 @@ class _NoteEdit(QtWidgets.QTextEdit):
 
     def _paint_todo_glyphs(self, painter) -> None:
         """One glyph per to-do block in its reserved margin: Feather circle or check-circle."""
-        layout = self.document().documentLayout()
         x_scroll = self.horizontalScrollBar().value()
         y_scroll = self.verticalScrollBar().value()
-        side = theme.ui_px(self.GLYPH_SIDE)
         visible = self.viewport().rect()
-        block = self.document().begin()
-        while block.isValid():
-            if self.is_todo_block(block):
-                rect = layout.blockBoundingRect(block)
-                top = rect.top() - y_scroll
-                if top > visible.bottom():
-                    break
-                if rect.bottom() - y_scroll >= visible.top():
-                    tlayout = block.layout()   # lineAt() on an un-laid-out block crashes hython natively
-                    if tlayout is not None and tlayout.lineCount() > 0:
-                        line = tlayout.lineAt(0)
-                        done = self.block_done(block)
-                        pixmap = _feather_icon(
-                            "check-circle" if done else "circle", side,
-                            amazetheme.COMMENT_DONE_COLOR if done
-                            else amazetheme.COMMENT_OPEN_COLOR, self)
-                        y = (tlayout.position().y() + line.y()
-                             + (line.height() - side) / 2.0 - y_scroll)
-                        painter.drawPixmap(
-                            int(rect.left() - x_scroll + theme.ui_px(_DRAWN["glyph_inset"])),
-                            int(y),
-                            pixmap)
-            block = block.next()
-
-
-    def load_items(self, items: list) -> None:
-        self.clear()
-        cursor = self.textCursor()
-        first = True
-        for item in items or []:
-            if item.get("t") == "image":
-                src = str(item.get("src", ""))
-                if not first:
-                    cursor.insertBlock(self._plain_format())
-                if self.make_image_here(cursor, src):
-                    cursor = self.textCursor()
-                else:    # file not synced yet, or deleted: the item's fallback text, never a blank ▸p/comment-images
-                    self._insert_unloaded_image_text(cursor, src,
-                                                     item.get("text") or "[image: %s]" % os.path.basename(src))
-                first = False
+        for glyph in self.engine.glyphs(y_scroll + visible.bottom()):
+            if glyph["zone"].bottom() - y_scroll < visible.top():
                 continue
-            if item.get("t") == "todo":
-                done = bool(item.get("done"))
-                if not first:
-                    cursor.insertBlock()
-                self.make_todo_here(cursor, done)
-                cursor = self.textCursor()
-                cursor.insertText(item.get("label", ""),
-                                  self._label_format(done))
-            else:
-                for line in str(item.get("text", "")).split("\n"):
-                    if not first:
-                        cursor.insertBlock()
-                    cursor.block().setUserState(-1)
-                    self._restyle_block(cursor.block(), False, False)
-                    cursor.insertText(line, self._label_format(False))
-                    first = False
-                continue
-            first = False
-        cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
-        self.setTextCursor(cursor)
-        self.document().clearUndoRedoStacks()    # the load is not an edit ▸r/programmatic-load-is-undoable
-
-    def serialize(self) -> list:
-        """The document as the store's item list; adjacent plain lines join into one text item."""
-        items = []
-        text_lines = []
-
-        def flush_text():
-            if text_lines and any(l.strip() for l in text_lines):
-                items.append({"t": "text",
-                              "text": "\n".join(text_lines).strip("\n")})
-            text_lines.clear()
-
-        block = self.document().begin()
-        while block.isValid():
-            picture = self.unloaded_picture(block)
-            if picture is not None:    # its file may appear later: the item is saved unchanged
-                flush_text()
-                items.append(picture)
-                typed = block.text().replace(picture["text"], "", 1)
-                if typed.strip():
-                    text_lines.append(typed)
-            elif self.is_image_block(block):
-                flush_text()
-                src = self.image_src(block)
-                if src:
-                    items.append({"t": "image", "src": src,
-                                  "text": "[image: %s]"    # what a build with no image support shows instead of a blank line ▸p/comment-images
-                                          % os.path.basename(src)})
-                typed = block.text().replace("￼", "")    # text typed in a picture's block is content; the image is U+FFFC in the text
-                if typed.strip():
-                    text_lines.append(typed)
-            elif self.is_todo_block(block):
-                flush_text()
-                label = self.block_label(block)
-                if label:
-                    items.append({"t": "todo", "label": label,
-                                  "done": self.block_done(block)})
-            else:
-                text_lines.append(block.text())
-            block = block.next()
-        flush_text()
-        return items
+            done = glyph["done"]
+            pixmap = _feather_icon(
+                "check-circle" if done else "circle", glyph["side"],
+                amazetheme.COMMENT_DONE_COLOR if done else amazetheme.COMMENT_OPEN_COLOR, self)
+            painter.drawPixmap(int(glyph["x"] - x_scroll), int(glyph["y"] - y_scroll), pixmap)
 
 
 def _text_field():
@@ -459,41 +145,30 @@ DESCRIPTION = side_pane.Page(    # what the page is made of; the engine builds i
 
 
 class NotesPanel(side_pane.SidePage):
-    """The side pane's page for one asset's notes; saves emit `changed`."""
+    """The side pane's page showing the pane engine's `comments`; it is open only while shown."""
 
-    changed = QtCore.Signal(str)
-
-    def __init__(self, preferences, parent=None) -> None:
+    def __init__(self, comments, parent=None) -> None:
         super().__init__(DESCRIPTION, parent)
-        self.preferences = preferences
-        self._key = None
-        self._library = ""    # the library the page was read from, and so the one its saves write to
-        self._typed_in = None    # the library and user of the typing waiting to be saved
-        self._loading = False
-        self._save_timer = QtCore.QTimer(self)
-        self._save_timer.setSingleShot(True)
-        self._save_timer.setInterval(SAVE_DELAY_MS)
-        self._save_timer.timeout.connect(self._save_now)
-        # Houdini quitting reaches no widget event of ours, so the pending 600ms of typing needs aboutToQuit
-        app = QtCore.QCoreApplication.instance()
-        if app is not None:
-            app.aboutToQuit.connect(self.flush)
-
+        self._comments = comments
         self.add_button.setAutoRaise(True)
         self.add_button.setToolTip(tooltips.NOTES_ADD_TODO)
         self.add_button.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         self._build_add_menu()    # the + opens a menu; InstantPopup never fires `clicked` ▸p/comment-images
-        self.text_edit.textChanged.connect(self._something_changed)
-        self._show_no_selection()
+        comments.changed.connect(self._show)
+        comments.use_document(self.text_edit.engine)
+        self._show()
 
-    def _paint_accents(self) -> None:
+    def _show(self) -> None:
+        """The engine's header; nothing selected (N01B) is the same page dimmed."""
         import amaze
-        dpr = theme.screen_ratio(self)
-        plus_side = theme.ui_px(_DRAWN["plus"])
-        dimmed = self._dimmed    # nothing selected: labels and icons dimmed as in N01B
+        self._dimmed = dimmed = self._comments.dimmed()
+        self.set_header(self._comments.name(), self._comments.type())
+        self.text_edit.setEnabled(not dimmed)
+        self.add_button.setEnabled(not dimmed)
         self.paint_header()
+        plus_side = theme.ui_px(_DRAWN["plus"])
         self.add_button.setIcon(QtGui.QIcon(ui_helpers.device_pixmap(
-            amaze.package_file("ui", "icon_comments_add.svg"), plus_side, dpr,
+            amaze.package_file("ui", "icon_comments_add.svg"), plus_side, theme.screen_ratio(self),
             {amazetheme.COMMENT_ADD_COLOR: amazetheme.COMMENT_DIM_ADD_COLOR} if dimmed else None)))
         self.add_button.setIconSize(QtCore.QSize(plus_side, plus_side))
 
@@ -507,123 +182,32 @@ class NotesPanel(side_pane.SidePage):
         self.text_edit.setPalette(palette)
         self.copy_header_font(source)
 
-
-    def set_subject(self, subject) -> None:
-        """Point the page at a `sections.CommentSubject`, flushing the previous one's pending edit."""
-        key = subject.key
-        library = str(getattr(self.preferences, "dir", "") or "")
-        if (key, library) == (self._key, self._library):    # a rename: a reload would lose the typing
-            self.set_header(subject.name, subject.type)
-            return
-        self.flush()
-        self._key = key
-        self._library = library
-        self._loading = True
-        try:
-            self.set_header(subject.name, subject.type)
-            note = notes.note_for(self.preferences, key)
-            self.text_edit.library_dir = library    # what an image's relative src resolves against ▸p/comment-images
-            self.text_edit.note_key = key
-            self.text_edit.load_items(notes.normalise_items(note.get("items")))    # the save keeps the rest
-        finally:
-            self._loading = False
-        self._dimmed = False
-        self.text_edit.setEnabled(True)
-        self.add_button.setEnabled(True)
-        self._paint_accents()
-
-    def clear_subject(self) -> None:
-        self.flush()
-        self._key = None
-        self._library = ""
-        self._show_no_selection()
-
-    def _show_no_selection(self) -> None:
-        """The no-selection look (N01B): the SAME window dimmed, never a different layout."""
-        self._dimmed = True
-        self._loading = True
-        try:
-            self.set_header(amazetheme.COMMENT_DIM_NAME, amazetheme.COMMENT_DIM_TYPE)
-            self.text_edit.clear()
-        finally:
-            self._loading = False
-        self.text_edit.setEnabled(False)
-        self.add_button.setEnabled(False)
-        self._paint_accents()
-
-
     def _build_add_menu(self) -> None:
         """The + menu, set up ONCE: opens on press; a corner triangle marks it. ▸p/comment-images"""
-        menu = QtWidgets.QMenu(self.add_button)    # a CHILD of the button: one menu for the session, not a new one per click ▸r/menu-lifetime
-        for label, handler in ADD_ITEMS:
-            menu.addAction(label).triggered.connect(    # addAction(str) returns the QAction despite the stub ▸r/menu-lifetime
-                getattr(self, handler))
+        menu = QtWidgets.QMenu(self.add_button)    # a CHILD of the button: one menu for the session ▸r/menu-lifetime
+        for key, text in pane_comments.ADD_ITEMS:
+            menu.addAction(text).triggered.connect(    # addAction(str) returns the QAction ▸r/menu-lifetime
+                lambda _checked=False, key=key: self._add(key))
         self.add_button.setMenu(menu)
         self.add_button.setPopupMode(
             QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
 
-    def _add_todo(self) -> None:
-        if self._key is None:
-            return
-        self.text_edit.insert_todo()
+    def _add(self, key: str) -> None:
+        """The add menu's row `key` at the text cursor; the editor takes the keys after it."""
+        at = self._comments.add(key, self.text_edit.textCursor().position())
+        if at >= 0:
+            self.text_edit.go_to(at)
+            self.text_edit.setFocus()
 
-    def _add_image(self) -> None:
-        """Pick a picture, copy it into the library, and put it at the cursor. ▸p/comment-images"""
-        import hou
-
-        ui = getattr(hou, "ui", None)    # absent headless, so every use of it is guarded ▸p/refuse-vs-alert
-        if ui is None:
-            return
-        chosen = ui.selectFile(
-            title="Add a picture to this comment",
-            pattern="*.png *.jpg *.jpeg *.gif *.bmp *.tif *.tiff",
-            chooser_mode=hou.fileChooserMode.Read)    # NOT the ReadAndWrite default, which offers to create a file that is not there ▸r/select-file-write
-        chosen = hou.text.expandString(chosen or "").strip()
-        if not chosen:
-            return
-        src = notes.copy_image_into_library(self.preferences, chosen, self._key)
-        if not src:
-            ui.displayMessage(
-                messages.PICTURE_NOT_COPIED_TO_LIBRARY,
-                title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
-            return
-        if not self.text_edit.insert_image(src):
-            ui.displayMessage(
-                messages.PICTURE_COPIED_BUT_UNREADABLE,
-                title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
-            return
-        self.text_edit.setFocus()    # the insert fires textChanged, which schedules the debounced save
-
-    def _something_changed(self) -> None:
-        if self._loading or self._key is None:
-            return
-        if not self._save_timer.isActive():    # a switch then names another library and its user
-            self._typed_in = types.SimpleNamespace(
-                dir=self._library, library_user=self.preferences.library_user)
-        self._save_timer.start()
-
-    def flush(self) -> None:
-        """Write any pending edit now; subject switches, hides and session ends call it."""
-        if self._save_timer.isActive():
-            self._save_timer.stop()
-            self._save_now()
-
-    def _save_now(self) -> None:
-        if self._key is None:
-            return
-        written = notes.set_notes(    # written now: at quit no save timer fires again
-            self._typed_in, {self._key: self.text_edit.serialize()})
-        if written:
-            self.changed.emit(self._key)
-        else:
-            debug.event("notes", "comment not saved",
-                        key=str(self._key))
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self._comments.set_open(True)
 
     def hideEvent(self, event) -> None:
-        self.flush()
+        self._comments.set_open(False)
         super().hideEvent(event)
 
     def closeEvent(self, event) -> None:
-        """Flush on close; a pane never shown delivers no hide event."""
-        self.flush()
+        """Save on close; a pane never shown delivers no hide event."""
+        self._comments.flush()
         super().closeEvent(event)

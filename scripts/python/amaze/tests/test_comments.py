@@ -157,29 +157,25 @@ class CommentsTest(unittest.TestCase):
             read(self.shot), os.stat(self.shot).st_mtime_ns))
 
     def test_cm24_a_picture_not_here_shows_its_fallback_then_itself_once_it_arrives(self):
-        from amaze.panel import notes_panel
-        from amaze.sections import base
+        from amaze.pane import comment_document, comments
         coming = {"t": "image", "src": texstore.OWN_PREFIX + "comments/" + "f" * 32 + ".png",
                   "text": "[image: still syncing]"}
         self.assertTrue(self.page(self.key, text("gold"), coming))
-        shown = notes_panel.NotesPanel(self.prefs)
-        self.addCleanup(shown.deleteLater)
-        subject, edit = base.CommentSubject(self.key, "gold", ""), shown.text_edit
+        document = QtGui.QTextDocument()
+        shown = comment_document.CommentDocument(document)
 
-        def pictures() -> int:
-            document = edit.document()
-            return sum(edit.is_image_block(document.findBlockByNumber(number))
-                       for number in range(document.blockCount()))
+        def opened() -> tuple:
+            """The comment as the Comments pane opens it: its last line and its pictures."""
+            shown.load(self.prefs.dir, self.key, comments.items_of(self.prefs, self.key))
+            return (document.toPlainText().split("\n")[-1],
+                    sum(comment_document.is_image_block(document.findBlockByNumber(number))
+                        for number in range(document.blockCount())))
 
-        shown.set_subject(subject)
-        self.assertEqual(("[image: still syncing]", 0), (edit.toPlainText().split("\n")[-1],
-                                                          pictures()))
+        self.assertEqual(("[image: still syncing]", 0), opened())
         os.makedirs(os.path.dirname(self.file_of(self.key, coming)), exist_ok=True)
         self.assertTrue(QtGui.QImage(4, 4, QtGui.QImage.Format.Format_RGB32).save(
             self.file_of(self.key, coming)))
-        shown.clear_subject()
-        shown.set_subject(subject)
-        self.assertEqual((1, False), (pictures(), "still syncing" in edit.toPlainText()))
+        self.assertEqual((1, False), (opened()[1], "still syncing" in document.toPlainText()))
 
     def test_cm25_a_files_comment_follows_its_location_through_every_change(self):
         root = test_support.scratch_dir("amaze_cm_files_")
@@ -384,10 +380,11 @@ class TypingTest(unittest.TestCase):
         self.type("five")
         self.page.close()
         self.assertEqual("three four five", self.saved(first, GLASS), "lost when closed")
-        self.assertTrue(_app.aboutToQuit.disconnect(self.page.flush), "nothing saves at quit")
+        comments = self.panel.pane.comments
+        self.assertTrue(_app.aboutToQuit.disconnect(comments.flush), "nothing saves at quit")
         self.page.show()
         self.type("six")
-        self.page.flush()    # what quitting calls; no timer fires after it
+        comments.flush()    # what quitting calls; no timer fires after it
         self.assertEqual("three four five six", self.saved(first, GLASS), "lost when Houdini quit")
         self.type("seven")
         other = test_support.seeded_library(self)

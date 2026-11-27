@@ -77,6 +77,8 @@ COMMENT_OPEN_COLOR = "#ff7760"   # an open to-do
 COMMENT_ADD_COLOR = "#dddddd"    # the + art's colour
 COMMENT_HEADER_BG = "#272727"
 COMMENT_PAGE_BG = "#2d2d2d"
+COMMENT_TEXT_COLOR = "#cdc8bc"    # the QML pane's comment text, as N01 draws its rows
+COMMENT_PLACEHOLDER = "Write a comment..."    # the empty comment's grey text
 SIDE_PANE_BAND_BG = "#1b1b1b"    # the QML side pane's header band, as N01 and N02 draw it
 COMMENT_DIM_NAME = "Nothing Selected"   # ▸ nothing selected (N01B): the header's two labels,
 COMMENT_DIM_TYPE = "Type"
@@ -1012,7 +1014,8 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("text ▸ name", 36, 7, 76, 15, "brushed_steel"),
             ("text ▸ type", 118, 7, 71, 15, "USD MaterialX"),
             ("button ▸ add", 419, 1, 28, 27, None),
-            ("menu marker ▸ Houdini's own, traced", 440, 21, 4.5, 4.5, None),
+            ("chip ▸ add", 421, 3, 24, 24, None),
+            ("menu marker ▸ Houdini's own, traced", 437, 19, 4.5, 4.5, None),
             ("line ▸ 1", 12, 42, 185.36, 16, None),
             ("text ▸ 1", 12, 42.5, 186, 15, "The rust reads too orange in daylight."),
             ("line ▸ 2", 36, 68, 109.41, 16, None),
@@ -1035,7 +1038,8 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("text ▸ name", 36, 7, 91, 15, "Nothing Selected"),
             ("text ▸ type", 133, 7, 25, 15, "Type"),
             ("button ▸ add", 419, 1, 28, 27, None),
-            ("menu marker ▸ Houdini's own, traced", 440, 21, 4.5, 4.5, None),
+            ("chip ▸ add", 421, 3, 24, 24, None),
+            ("menu marker ▸ Houdini's own, traced", 437, 19, 4.5, 4.5, None),
             ("icon ▸ header ▸ icon_comments.svg", 10, 5, 20, 20, None),
             ("icon ▸ add ▸ icon_comments_add.svg", 424, 6, 18, 18, None),
         ),
@@ -1500,8 +1504,8 @@ def drawn_comments(frame_key: str = "N01") -> dict:
         return drawn_node(frame_key, kind, owner)
 
     header, icon, name = node("header"), node("icon", "header"), node("text", "name")
-    add, glyph = node("button", "add"), node("glyph", "2")
-    plain, todo = node("line", "1"), node("line", "2")
+    add, chip, glyph = node("button", "add"), node("chip", "add"), node("glyph", "2")
+    plain, todo, plus = node("line", "1"), node("line", "2"), node("icon", "add")
     return {
         "width": width,
         "header": header[4],
@@ -1510,7 +1514,10 @@ def drawn_comments(frame_key: str = "N01") -> dict:
         "icon": icon[3],
         "add": (add[3], add[4]),
         "add_pad": width - (add[1] + add[3]),
-        "plus": node("icon", "add")[3],
+        "chip": chip[3],    # the QML pane's add button, the toolbar's chip
+        "chip_pad": width - (chip[1] + chip[3]),
+        "plus_at": plus[1] - chip[1],    # the art's inset in the chip
+        "plus": plus[3],
         "doc_margin": plain[1] - node("body")[1],
         "todo_indent": todo[1] - plain[1],
         "todo_pad": todo[2] - (plain[2] + plain[4]),

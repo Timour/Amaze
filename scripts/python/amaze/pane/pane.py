@@ -7,7 +7,7 @@ from PySide6 import QtCore
 from amaze import amazetheme
 from amaze.core import debug, matx_sources, section_list
 from amaze.helpers import hostos
-from amaze.pane import (assets, drop_placement, empty_state, files, info, library, loading,
+from amaze.pane import (assets, comments, drop_placement, empty_state, files, info, library, loading,
                         online_import, package_import, saving, sidebar, tile_capture, toolbar_menus)
 from amaze.prefs import prefs
 from amaze.render import husk_job
@@ -72,6 +72,7 @@ class Pane(QtCore.QObject):
         self.tile_capture = tile_capture.TileCapture(self)
         self.empty_state = empty_state.EmptyState(self)
         self.info = info.Info(self)
+        self.comments = comments.Comments(self)
         self.toolbar_menus = toolbar_menus.ToolbarMenus(self)
         husk_job.jobs.progressed.connect(self._on_render_progress)    # bound: jobs outlive the pane
         husk_job.jobs.activeChanged.connect(self._on_render_active)
@@ -81,6 +82,11 @@ class Pane(QtCore.QObject):
         if self.online_mode:
             return self.online_context
         return self.sections.get(self.current_section)
+
+    def one_side_pane(self) -> None:
+        """Comments and Info share one place: with both saved as open, Comments stays open."""
+        if self.prefs.show_notes and self.prefs.show_info:
+            self.prefs.show_info = False
 
     def is_online(self) -> bool:
         """Whether the online section is shown; the one check every handler uses."""

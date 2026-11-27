@@ -49,3 +49,20 @@ def live_current_index(view):
     if index.row() >= rows:
         return None
     return model.index(index.row(), 0, parent)   # COLUMN 0, not the clicked cell ▸r/row-selection
+
+
+def selected_current(view, indexes):
+    """The row a menu acts on: the current one while selected, else the first, else None."""
+    current = live_current_index(view)
+    if current is None or not current.isValid() or current not in indexes:
+        current = indexes[0] if indexes else None    # Qt keeps a current row OUTSIDE the selection
+    return current
+
+
+def selected_current_in(view, selection):
+    """`selected_current` from the selection model, which can be the view: tests one row first."""
+    current = live_current_index(view)
+    if current is not None and selection is not None \
+            and selection.isSelected(current):
+        return current
+    return selected_current(view, selected_rows(selection))
