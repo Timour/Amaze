@@ -130,12 +130,12 @@ if [ -z "$scratch" ]; then
     fi
 fi
 
+# Compiled copies go first: the mirror removes a deleted folder only once its cache is out.
+find "$install" -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
 amaze_mirror "$repo/scripts" "$install/scripts" '__pycache__'
 amaze_mirror "$repo/python_panels" "$install/python_panels"
 amaze_mirror "$repo/toolbar" "$install/toolbar"
 cp "$repo/OPmenu.xml" "$install/OPmenu.xml"
-# Stale compiled copies go with the sources they came from; Python writes fresh ones on import.
-find "$install" -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
 
 # Verify the whole of scripts/, not just python/amaze: the rsync copies
 # "$repo/scripts/", so anything added beside it would ship UNVERIFIED.
