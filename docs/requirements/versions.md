@@ -35,3 +35,4 @@ for tests are in the [README](README.md).
 - VS-30 Wrong output: Delete is off while one version is left.
 - VS-31 Wrong output: A Select that could not be done says so in a message that names the version.
 - VS-32 Wrong output: A Delete that could not be done says so in a message that names the version, and the window lists the versions as they are.
+- VS-33 Wrong output: A material with two versions or more shows the versions mark on its tile; one with a single version does not.

@@ -11,6 +11,7 @@ from amaze.helpers import theme, ui_helpers
 from amaze.pane import (asks, comment_document, drag_session, menus, node_drop, pane as pane_mod,
                         sidebar as pane_sidebar)
 from amaze.qml import hotkeys, pictures, rows_model
+from amaze.sections import base as section_base
 from amaze.utils import rc_calls
 from hutil.qt.common import qmlviews    # Houdini's own QML panels' base ▸r/houdini-qml-tabs
 
@@ -32,12 +33,15 @@ TILE_MARKS = (    # the marks on the tile's second line left of a renderer icon,
      "alone": None, "role": "RunningRole", "art": "tile/running", "off": "tile/running_off",
      "kindRole": "RendererRole", "kind": "Python"},    # on every snippet Run runs, green while it runs
     {"name": "comment", "with": "comment", "frames": ("QML T23",), "layer": "message-circle",
-     "alone": ("QML T24", "icon"), "role": "NotesRole", "art": "tile/comment", "off": "",
+     "alone": ("QML T24", "renderer_materialx.svg"), "role": "NotesRole", "art": "tile/comment", "off": "",
      "kindRole": "", "kind": ""},
-)    # with: the `tile_badges` ID showing it; alone: its right edge with nothing right of it
+    {"name": "versions", "with": "versions", "frames": ("QML T23",), "layer": "Stack",
+     "alone": ("QML T24", "renderer_materialx.svg"), "role": "VersionsRole", "art": "tile/versions",
+     "off": "", "kindRole": "", "kind": "", "least": section_base.VERSIONS_TO_PICK},    # as the Versions row
+)    # with: the `tile_badges` ID showing it; alone: its right edge with nothing right of it; least: 1
 RUN_WAIT_LIMIT_MS = 250    # a hidden pane draws nothing: Run's snippet starts anyway after this
 RENDERER_MARKS = {    # a material's renderer icon on that line, by the art its model names
-    "renderer_materialx": ("QML T24", "icon", "tile/materialx"),
+    "renderer_materialx": ("QML T24", "renderer_materialx.svg", "tile/materialx"),
     "renderer_redshift": ("QML T25", "icon", "tile/redshift"),
     "renderer_octane": ("QML T26", "renderer icon", "tile/octane"),
 }
@@ -90,7 +94,7 @@ def mark_rows(section) -> list:
         drawn = amazetheme.drawn_line_mark(mark["frames"], mark["layer"])
         alone = amazetheme.drawn_line_mark(mark["alone"][:1], mark["alone"][1]) if mark["alone"] else drawn
         rows.append(dict(drawn, inset=alone["inset"], role=grid_engine.role_name(mark["role"]),
-                         art=mark["art"], off=mark["off"], kind=mark["kind"],
+                         art=mark["art"], off=mark["off"], kind=mark["kind"], least=mark.get("least", 1),
                          kindRole=grid_engine.role_name(mark["kindRole"]) if mark["kindRole"] else ""))
     return rows
 
@@ -117,7 +121,8 @@ def drawn_tile() -> dict:
              for model_art, (frame, layer, art) in RENDERER_MARKS.items()}
     return dict(amazetheme.drawn_tile(), strip=amazetheme.drawn_category_strip("QML T20"),
                 card=amazetheme.TILE_GROUND, back=network_background(), least=amazetheme.BADGE_LEAST,
-                markGap=amazetheme.drawn_mark_gap("QML T23", "message-circle", "icon"), renderers=marks)
+                markGap=amazetheme.drawn_mark_gap("QML T23", "message-circle", "renderer_materialx.svg"),
+                renderers=marks)
 
 
 class PaneState(qmlviews.SharedState, asks.Asks):

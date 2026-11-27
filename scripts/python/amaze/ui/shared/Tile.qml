@@ -31,7 +31,7 @@ Item {
             shown.push(Object.assign({file: icon.art}, icon))
         for (const mark of root.marks) {
             const value = root.model[mark.role]
-            if (mark.kindRole ? root.model[mark.kindRole] === mark.kind : !!value)
+            if (mark.kindRole ? root.model[mark.kindRole] === mark.kind : value >= mark.least)    // houdini.ui's Number type hides JS Number
                 shown.push(Object.assign({file: value ? mark.art : mark.off}, mark))
         }
         let left = root.drawn.pad + root.side
@@ -154,7 +154,7 @@ Item {
         }
     }
 
-    Repeater {    // the marks on the second line at their drawn size: the renderer, the open scene, a comment
+    Repeater {    // the marks on the second line at their drawn size: the renderer, the open scene, a comment, versions
         model: root.lineMarks
         AmazeIcon {
             required property var modelData

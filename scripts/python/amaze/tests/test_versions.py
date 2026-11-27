@@ -348,6 +348,29 @@ class StoreTest(unittest.TestCase):
                                        shown[0]["active"]))
 
 
+class TileMarkTest(unittest.TestCase):
+    """The Amaze pane on the fixture library, its Materials grid: GOLD keeps two versions, GLASS one."""
+
+    def test_vs33_a_tile_shows_the_versions_mark_where_its_material_has_two_versions_or_more(self):
+        counts = {GOLD: 2, GLASS: 1}
+        with mock.patch.object(versions, "version_count", lambda _prefs, mat_id: counts.get(mat_id, 0)), \
+                mock.patch.object(versions, "stored_ids", lambda _prefs: set(counts)):
+            panel = test_support.fixture_qml_pane(self)
+            panel.pane.choose_tab("material")
+            QtWidgets.QApplication.processEvents()
+            model = panel.pane.material_model
+            names = {model.data(model.index(model.find_asset_row_by_id(key), 0)): key for key in counts}
+            marked, items = {}, [panel.view.rootObject()]
+            while items:    # the item tree: a view's delegates have no QObject parent to find them by
+                item = items.pop()
+                items.extend(item.childItems())
+                marks = item.property("lineMarks")
+                if marks is not None and item.property("model").property("display") in names:
+                    marked[names[item.property("model").property("display")]] = any(
+                        mark["file"] == "tile/versions" for mark in marks.toVariant())
+        self.assertEqual({GOLD: True, GLASS: False}, marked)
+
+
 class SavedOverTest(unittest.TestCase):
     """GOLD loaded into the scene, changed and saved over, as Update Existing does."""
 

@@ -742,16 +742,17 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("CheckCircle", 113, 155, 16, 16, None),
         ),
     },
-    "QML T23": {   # a favourite, and the comment mark left of the renderer icon
+    "QML T23": {   # a favourite, and the versions and comment marks left of the renderer icon
         "frame": (138, 177),
         "nodes": (
             ("tile card", 4, 4, 130, 173, None),
+            ("renderer_materialx.svg", 111, 161, 17, 10, None),
             ("thumbnail", 4, 4, 130, 130, None),
             ("tile name", 9, 139, 38, 15, "Badges"),
             ("tile subtitle", 9, 157, 14, 15, "on"),
-            ("icon ▸ filter_materialx.svg", 109, 159, 19, 13, None),
-            ("message-circle", 90, 160, 11, 11, None),
+            ("message-circle", 92, 160, 11, 11, None),
             ("badge favourite (top-right) ▸ badge_favourite", 95, 4, 39, 36, None),
+            ("Stack", 73, 160, 11, 11, None),
         ),
     },
     "QML T24": {   # the MaterialX icon at the subtitle's right end
@@ -761,7 +762,7 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("thumbnail", 4, 4, 130, 130, None),
             ("tile name", 9, 139, 120, 15, "Badges, long name te..."),
             ("tile subtitle", 9, 157, 49, 15, "MaterialX"),
-            ("icon ▸ filter_materialx.svg", 109, 159, 19, 13, None),
+            ("renderer_materialx.svg", 111, 161, 17, 10, None),
         ),
     },
     "QML T25": {   # the Redshift icon
@@ -771,7 +772,7 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("thumbnail", 4, 4, 130, 130, None),
             ("tile name", 9, 139, 120, 15, "Badges, long name te..."),
             ("tile subtitle", 9, 157, 43, 15, "Redshift"),
-            ("icon ▸ filter_redshift.svg", 113, 155, 15, 17, None),
+            ("icon ▸ filter_redshift.svg", 117, 159, 11, 12, None),
         ),
     },
     "QML T26": {   # the Octane icon
@@ -781,7 +782,7 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("thumbnail", 4, 4, 130, 130, None),
             ("tile name", 9, 139, 120, 15, "Badges, long name te..."),
             ("tile subtitle", 9, 157, 37, 15, "Octane"),
-            ("renderer icon ▸ renderer_octane", 112, 156, 16, 16, None),
+            ("renderer icon ▸ renderer_octane", 118, 160, 10, 11, None),
         ),
     },
     "L01": {   # the list table from the live panel - its header, widths and ticks are read
