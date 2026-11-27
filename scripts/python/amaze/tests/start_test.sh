@@ -1,6 +1,5 @@
 #!/bin/bash
 # Runs the hython test modules from anywhere.  HFS=/opt/hfs22.0 ./start_test.sh
-# Prose archived: AmazeNotes/code-prose.md ▸ start_test.sh
 
 set -e
 
