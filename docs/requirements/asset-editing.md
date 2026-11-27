@@ -28,3 +28,4 @@ tests are in the [README](README.md).
 - ED-32 Wrong output: Amaze never makes two categories with the same name in a section; names that differ only in capitals count as the same. Adding, saving and importing use the existing category of that name.
 - ED-33 Wrong output: When a sync brings in two categories with the same name, Amaze asks once: join them, or keep both. Keep Both renames the lower one in the sidebar, for example to Wood 2. Cancel changes nothing, and Amaze asks again the next time the library opens.
 - ED-34 Wrong output: Interpolation sets every key of a palette's stored ramp to the curve picked, in one save; its colours and key positions stay. The menu checks the palette's own curve, none when the curves are mixed.
+- ED-35 Wrong output: When two computers rename one category two ways, the one that saves second asks once: use the other name, or keep its own. Esc keeps its own, and it is not asked again.

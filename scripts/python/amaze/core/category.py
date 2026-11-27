@@ -81,6 +81,16 @@ def settle_names(model, sidebar, ask) -> bool:
     return changed
 
 
+def settle_renames(model, sidebar, ask) -> bool:
+    """Each category two users renamed put to `ask(mine, theirs, by)`: theirs taken on True."""
+    changed = False
+    for key, theirs, by in sidebar.take_renames():
+        mine = sidebar.name_of(key)
+        if mine and theirs and mine != theirs and ask(mine, theirs, by):
+            changed = bool(rename(model, sidebar, [key], theirs)) or changed
+    return changed
+
+
 def remove(model, sidebar, keys) -> bool:
     """Categories `keys` taken off every asset, then out of the sidebar; False when refused."""
     return change_categories(model, keys, model.remove_category, sidebar.remove_category)
@@ -117,6 +127,7 @@ class Categories(sidebar_model.SidebarModel):
         self._names = self._read_names()
         self._named = set()    # keys this model named, their names written at its save
         self._asked = set()    # the same-named categories asked about since the library opened
+        self._renamed = []    # the collisions on a category's name that the pane has not asked about
         self._removed = set()    # keys this model took out, dropped from the database at its save
         self._shown = list(self._categories)    # the rows the views last showed; `apply_refresh` compares
         self._renderer_filter = None  # the grid's kind filter, folded; None = none. Counts match the grid
@@ -213,7 +224,7 @@ class Categories(sidebar_model.SidebarModel):
             self._seen = list(self._categories)
             self._colour_table = self._read_colours()
             self._names, self._named = self._read_names(), set()
-            self._removed, self._asked = set(), set()
+            self._removed, self._asked, self._renamed = set(), set(), []
             self._shown = list(self._categories)    # the model reset has already updated the views
             self.drop_count_cache()
             self._forget_rows()
@@ -222,16 +233,23 @@ class Categories(sidebar_model.SidebarModel):
         self._tell_names_clash()
 
     def _tell_names_clash(self) -> None:
-        """`names_clash` when two of the categories just read have one name."""
-        if category_list.same_named({key: self._names.get(key, "") for key in self.top_keys()}):
+        """`names_clash` when two categories just read have one name, or one was renamed two ways."""
+        if self._renamed or category_list.same_named(
+                {key: self._names.get(key, "") for key in self.top_keys()}):
             self.names_clash.emit()
 
     def apply_refresh(self) -> bool:
         """Read in the database's names, colours and order; True when the sidebar changed."""
         changed = self._read_database()
-        if changed:
+        self._renamed += self._doc().take_collisions(library_db.is_rename)
+        if changed or self._renamed:
             self._tell_names_clash()
         return changed
+
+    def take_renames(self) -> list:
+        """(key, the other name, its user) of each category two users renamed, ours kept; once."""
+        found, self._renamed = self._renamed, []
+        return [(one.key, str(one.theirs or ""), one.by) for one in found]
 
     def _read_database(self) -> bool:
         """The database's names, colours and order taken; whether any differs from what was shown."""

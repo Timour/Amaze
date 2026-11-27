@@ -372,6 +372,10 @@ BUTTONS_IMPORT = ('Import', 'Cancel')
 BUTTONS_DELETE = ('Delete', 'Cancel')
 CATEGORIES_SAME_NAME = '%s has %s named "%s".\n\nJoin puts their assets in one category. Keep Both renames the lower one to %s.'
 BUTTONS_SAME_NAME = ('Join', 'Keep Both', 'Cancel')
+CATEGORY_RENAMED_TWICE = 'Someone else renamed a category in %s to "%s" while you renamed it to "%s".'
+CATEGORY_RENAMED_TWICE_BY = '%s renamed a category in %s to "%s" while you renamed it to "%s".'
+BUTTON_USE_NAME = 'Use %s'
+BUTTON_KEEP_NAME = 'Keep %s'
 
 BUTTONS_REMOVE = ('Remove', 'Cancel')
 

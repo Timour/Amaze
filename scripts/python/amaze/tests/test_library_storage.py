@@ -636,7 +636,7 @@ class TwoSessionsTest(_TwoUsers):
         self.anna.edit(ASSETS, "A1", name="Anna's name")
         self.erik.edit(ASSETS, "A1", name="Erik's name")
         self.assertEqual("Erik's name", self.both_save()[ASSETS]["A1"]["name"])
-        self.assertEqual([documents.Collision(MATERIALS, ASSETS, "A1", "name", ANNA)],
+        self.assertEqual([documents.Collision(MATERIALS, ASSETS, "A1", "name", ANNA, "Anna's name")],
                          self.erik.take_collisions())
 
     def test_ls30_with_no_user_selected_the_library_takes_no_change(self):

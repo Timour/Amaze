@@ -274,9 +274,14 @@ def report_save(saved, name: str = "") -> None:
                 key="database-write-failed-%s" % saved.reason)
 
 
+def is_rename(collision) -> bool:
+    """Whether two users named one category: its sidebar model takes it, and the pane asks."""
+    return (collision.section, collision.field) == ("categories", "name")
+
+
 def alert_collisions(key: str, held: documents.Document) -> None:
     """Each field two users changed at once, alerted once, naming the other user."""
-    for collision in held.take_collisions():
+    for collision in held.take_collisions(lambda one: not is_rename(one)):
         entry = held.get(collision.section, collision.key) \
             if held.kind.sections.get(collision.section) == guard.SHARED else None
         named = str((entry or {}).get("name") or collision.key)

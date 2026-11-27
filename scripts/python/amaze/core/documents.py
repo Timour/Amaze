@@ -18,7 +18,7 @@ UNFINISHED = "unfinished"    # recorded in the journal; the next read or save pu
 
 _GONE = object()
 
-Collision = collections.namedtuple("Collision", "document section key field by")
+Collision = collections.namedtuple("Collision", "document section key field by theirs")    # theirs: the value not kept
 
 
 class Saved:
@@ -85,7 +85,7 @@ def _merge_fields(ours: dict, theirs: dict, base, key, collide) -> dict:
         else:
             value, kept = mine, True
             if collide is not None:
-                collide(key, field, theirs.get(BY, ""))
+                collide(key, field, theirs.get(BY, ""), other)
         if value is not _GONE:
             out[field] = value
     source = theirs if took and not kept else ours
@@ -106,7 +106,7 @@ def _merge_entry(ours, theirs, base, key, collide):
     if isinstance(ours, dict) and isinstance(theirs, dict):
         return _merge_fields(ours, theirs, base, key, collide)
     if collide is not None:
-        collide(key, "", "")
+        collide(key, "", "", theirs)
     return ours
 
 
@@ -283,9 +283,10 @@ class Document:
         return sorted(key for key in set(ours) | set(base)
                       if not _same(ours.get(key, _GONE), base.get(key, _GONE)))
 
-    def take_collisions(self) -> list:
-        """Each field two users changed at once where ours was kept; returned once, then cleared."""
-        found, self.collisions = self.collisions, []
+    def take_collisions(self, wanted=None) -> list:
+        """Each field two users changed at once where ours was kept, or those `wanted` picks; once."""
+        found = [one for one in self.collisions if wanted is None or wanted(one)]
+        self.collisions = [one for one in self.collisions if not (wanted is None or wanted(one))]
         return found
 
     def _merge(self, theirs_document: dict) -> None:
@@ -295,8 +296,8 @@ class Document:
         for section, how in self.kind.sections.items():
             ours, base = self._data[section], self._base[section]
 
-            def collide(key, field, by, section=section):
-                self.collisions.append(Collision(self.name, section, key, field, by))
+            def collide(key, field, by, theirs, section=section):
+                self.collisions.append(Collision(self.name, section, key, field, by, theirs))
             if how == guard.PER_USER:    # each user's table three ways: one this session did not change takes theirs
                 table = {}
                 for uid in list(ours) + [one for one in theirs[section] if one not in ours]:

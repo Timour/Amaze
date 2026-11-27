@@ -264,6 +264,23 @@ class AssetEditingTest(_Edits):
                    if key in (theirs, also, mine, karma)),
             saved["assets"][self.key("gold")]["categories"]))
 
+    def test_ed35_a_category_renamed_two_ways_is_asked_about_once_where_it_is_noticed(self):
+        wood, stone = self.cat("Wood"), self.cat("Stone")
+        self.model.save()    # nothing of this session's waits: a rename's own save is the one that merges
+        for key, theirs, mine in ((wood, "Timber", "Oak"), (stone, "Rock", "Slate")):
+            other = documents.Library(self.prefs.dir, "u-other").document(MATERIALS)
+            other.edit(category.SECTION, key, name=theirs)
+            self.assertTrue(other.save())
+            category.rename(self.model, self.sidebar, [key], mine)    # saved second: renamed two ways
+        self.sidebar.apply_refresh()
+        asked = []
+        for _time in range(2):    # the second pass asks nothing
+            category.settle_renames(self.model, self.sidebar, lambda mine, theirs, by: asked.append(
+                (mine, theirs, by)) or theirs == "Rock")
+        self.assertEqual([("Oak", "Timber", "u-other"), ("Slate", "Rock", "u-other")], asked)
+        saved = self.on_disk()["categories"]
+        self.assertEqual(("Oak", "Rock"), (saved[wood]["name"], saved[stone]["name"]))
+
     def test_ed30_the_shipped_snippets_and_palettes_are_added_once_and_only_when_taken(self):
         for model, sidebar, seed in (
                 (code_library.CodeLibrary, code_library.CodeCategories, "seed_starter_snippets"),

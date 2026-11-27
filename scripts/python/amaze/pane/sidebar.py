@@ -6,7 +6,7 @@ import hou
 from PySide6 import QtCore
 
 from amaze import amazetheme, messages
-from amaze.core import category, category_list, grid_columns, library_files
+from amaze.core import category, category_list, grid_columns, library_db, library_files
 from amaze.helpers import wording
 
 KEY_PAUSE_MS = 180    #: the arrow keys' pause before the row they stop on is shown: a File step lists a folder
@@ -140,11 +140,29 @@ class Sidebar:
         self._names_timer.start()    # the models were read before anything listened
 
     def _settle_names(self) -> None:
-        stacks = [section.stack() for section in self.pane.sections.values()]
-        if any([category.settle_names(st.model, st.categories,
-                                      functools.partial(self._ask_same_name, st.model))
-                for st in stacks if st is not None]):
+        changed = []
+        for st in filter(None, (section.stack() for section in self.pane.sections.values())):
+            changed += [
+                category.settle_renames(st.model, st.categories,
+                                        functools.partial(self._ask_rename, st.model)),
+                category.settle_names(st.model, st.categories,
+                                      functools.partial(self._ask_same_name, st.model))]
+        if any(changed):
             self.refresh()    # counts and empty-category hiding, as after a rename from the menu
+
+    def _ask_rename(self, model, mine: str, theirs: str, by: str) -> bool:
+        """Whether the user takes the name another user gave a category over their own."""
+        ui = getattr(hou, "ui", None)
+        if ui is None:
+            return False
+        shown, label = category_list.display_name, library_files.section_label(model.DB_FILENAME)
+        who = library_db.display_name(library_db.key_of(self.pane.prefs), by)
+        text = (messages.CATEGORY_RENAMED_TWICE_BY % (who, label, shown(theirs), shown(mine)) if who
+                else messages.CATEGORY_RENAMED_TWICE % (label, shown(theirs), shown(mine)))
+        return ui.displayMessage(
+            text, buttons=(messages.BUTTON_USE_NAME % shown(theirs),
+                           messages.BUTTON_KEEP_NAME % shown(mine)),
+            default_choice=1, close_choice=1, title=messages.TITLE_AMAZE) == 0
 
     def _ask_same_name(self, model, name: str, count: int, apart: list) -> str:
         """The user's answer on `count` categories named `name`: category.JOIN, KEEP_BOTH or ""."""
