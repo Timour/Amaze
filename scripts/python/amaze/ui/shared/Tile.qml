@@ -20,6 +20,7 @@ Item {
     signal dragged(int modifiers)    // a press on the tile moved past the drag distance
 
     readonly property real side: width - 2 * root.drawn.pad    // the picture's side; the card is as wide
+    readonly property real sidePixels: root.side * Screen.devicePixelRatio    // a raster sourceSize is in pixels
     readonly property real textTop: root.drawn.pad + root.side + root.drawn.img_text_gap
     readonly property real lineBottom: root.textTop + root.nameHeight + root.drawn.line_gap + root.subtitleHeight
     readonly property var picture: root.model.picture || ({})
@@ -107,7 +108,7 @@ Item {
             asynchronous: true
             cache: false
             source: String(root.picture.url || "").startsWith("file:") ? root.picture.url : ""
-            sourceSize: Qt.size(root.side, root.side)
+            sourceSize: Qt.size(root.sidePixels, root.sidePixels)
             fillMode: root.picture.crop ? Image.PreserveAspectCrop : Image.PreserveAspectFit
             verticalAlignment: Image.AlignTop    // a wide picture sits at the top
         }
@@ -116,7 +117,7 @@ Item {
             asynchronous: false
             cache: false
             source: String(root.picture.url || "").startsWith("image:") ? root.picture.url : ""
-            sourceSize: Qt.size(root.side, root.side)
+            sourceSize: Qt.size(root.sidePixels, root.sidePixels)
             fillMode: Image.PreserveAspectFit
             verticalAlignment: Image.AlignTop
         }
