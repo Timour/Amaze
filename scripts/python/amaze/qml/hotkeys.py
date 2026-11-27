@@ -14,13 +14,17 @@ MOVES = (    # (name, label, key): each also with Shift, which extends the selec
 )
 SELECT_ALL = "select_all"
 EXTEND = "extend_"
+PANES = (    # (name, label, key, setting): each opens or closes its side pane, as its toolbar button does
+    ("info", "Info", "I", "show_info"),
+    ("comments", "Comments", "C", "show_notes"),
+)
 _installed = False    # Houdini keeps installed definitions for the session
 
 
 def _definitions():
     """Amaze's category, context, commands and default keys, in a `hou.PluginHotkeyDefinitions`."""
     definitions = hou.PluginHotkeyDefinitions()
-    about = "The keys of the Amaze pane's grid and list."
+    about = "The keys of the Amaze pane."
     definitions.addCommandCategory(CONTEXT, "Amaze", about)
     definitions.addContext(CONTEXT, "Amaze", about)
     for name, label, key in MOVES:
@@ -32,6 +36,10 @@ def _definitions():
     symbol = "%s.%s" % (CONTEXT, SELECT_ALL)
     definitions.addCommand(symbol, "Select All", "Select every item the grid or list shows.")
     definitions.addDefaultBinding(CONTEXT, symbol, ("Ctrl+A",))    # Houdini maps Ctrl to Cmd on a Mac
+    for name, label, key, _setting in PANES:
+        symbol = "%s.%s" % (CONTEXT, name)
+        definitions.addCommand(symbol, label, "Open or close the %s pane." % label)
+        definitions.addDefaultBinding(CONTEXT, symbol, (key,))    # a plain letter key
     return definitions
 
 

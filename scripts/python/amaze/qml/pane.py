@@ -577,11 +577,20 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         self._choose(row, modifiers, by_key=True)
 
     def run_key(self, name: str, extend: bool) -> None:
-        """An Amaze hotkey: select all here; a move goes to the shown grid or list, which knows its rows."""
-        if name == hotkeys.SELECT_ALL:
+        """An Amaze hotkey: select all and a side pane here; a move goes to the shown grid or list."""
+        setting = next((setting for key, _label, _key, setting in hotkeys.PANES if key == name), None)
+        if setting is not None:
+            self._key_side_pane(setting)
+        elif name == hotkeys.SELECT_ALL:
             self.selectAllTiles()
         else:
             self.keyStepped.emit(name, extend)
+
+    def _key_side_pane(self, setting: str) -> None:
+        """A side pane's hotkey: its toolbar button's click, and nothing in a section whose button is off."""
+        takes = self.takesInfo if setting == "show_info" else self.takesComments
+        if takes:
+            self._show_side_pane(setting, not getattr(self.pane.prefs, setting))
 
     @QtCore.Slot()
     def selectAllTiles(self) -> None:
