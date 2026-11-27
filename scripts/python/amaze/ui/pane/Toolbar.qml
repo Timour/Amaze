@@ -64,6 +64,7 @@ Item {
             artColor: SharedState.infoShown ? SharedState.info.color : "transparent"
             tip: SharedState.tips.info
             checked: SharedState.infoShown
+            enabled: SharedState.takesInfo
             onClicked: SharedState.showInfo(!SharedState.infoShown)
         }
         IconButton {
@@ -73,6 +74,7 @@ Item {
             artColor: SharedState.commentsShown ? SharedState.comments.color : "transparent"
             tip: SharedState.tips.comments
             checked: SharedState.commentsShown
+            enabled: SharedState.takesComments
             onClicked: SharedState.showComments(!SharedState.commentsShown)
         }
         IconButton {

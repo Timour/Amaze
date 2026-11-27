@@ -163,6 +163,8 @@ class PaneState(qmlviews.SharedState, asks.Asks):
     viewMode: str = "grid"
     favouritesOnly: bool = False
     takesFavourites: bool = True
+    takesComments: bool = True    # the shown section has comments, and so its toolbar button
+    takesInfo: bool = True
     filterOffered: bool = False    # the Filter button has a menu here
     filterTip: str = ""    # what the Filter button narrows by, per section; online, the kind
     tileSizes: list = list(amazetheme.TILE_SIZES)
@@ -403,6 +405,8 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         """The shown context's tab and what its toolbar offers."""
         self.currentTab = self._tab_keys.index(self.pane.current_tab())
         self.takesFavourites = bool(getattr(context, "takes_favourites", True))
+        self.takesComments = bool(getattr(context, "takes_comments", True))
+        self.takesInfo = bool(getattr(context, "takes_info", True))
         self.searchHint = getattr(context, "search_hint", "")
         self._show_filter()
 
