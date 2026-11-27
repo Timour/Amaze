@@ -83,6 +83,9 @@ TreeView {
         readonly property bool lit: entry.highlighted || entry.row === root.dropRow    // Houdini's selection
 
         leftMargin: root.drawn.bar_x * 2 + root.drawn.bar    // Houdini's tree starts after the bar
+        ToolTip.text: entry.model.toolTip ?? ""    // File's rows answer their folder's path; no other sidebar answers
+        ToolTip.visible: entry.hovered && ToolTip.text !== ""
+        ToolTip.delay: Config.toolTipDelay
         // Houdini's QML arrow takes this colour; its widget trees draw it in primary (parts.drawTreeBranch)
         effectiveTextColor: entry.lit ? entry.background.fg : Theme.primary
         background: RowGround {
