@@ -3,7 +3,7 @@ import QtQuick
 import houdini.pluto
 import houdini.ui
 
-ScrollView {
+ScrollArea {
     id: root
 
     property alias model: view.model

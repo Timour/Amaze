@@ -38,7 +38,7 @@ SidePane {
         onClicked: SharedState.togglePreview()
     }
 
-    ScrollView {    // the page scrolls as a whole: the picture, its line and the rows
+    ScrollArea {    // the page scrolls as a whole: the picture, its line and the rows
         anchors.fill: parent
 
         Flickable {

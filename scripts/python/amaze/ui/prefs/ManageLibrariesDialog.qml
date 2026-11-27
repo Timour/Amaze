@@ -27,7 +27,9 @@ Dialog {
             selectionModel: ItemSelectionModel {}
             selectionMode: TableView.ExtendedSelection
             selectionBehavior: TableView.SelectRows
-            ScrollBar.vertical: ScrollBar {}
+            ScrollBar.vertical: ScrollBar {
+                visible: size < 1.0    // as `ScrollArea` shows its bars, for a bar with no ScrollView
+            }
             columnWidthProvider: column => (
                 column === 0 ? SharedState.libraryNameWidth
                     : tableView.width - SharedState.libraryNameWidth

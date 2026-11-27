@@ -18,7 +18,7 @@ Item {
         border.width: area.activeFocus ? 1 : 0
         border.color: Qt.alpha(Theme.highlight, 0.5)
     }
-    ScrollView {
+    ScrollArea {
         anchors.fill: parent
         clip: true
         ScrollBar.horizontal.policy: ScrollBar.AlwaysOff

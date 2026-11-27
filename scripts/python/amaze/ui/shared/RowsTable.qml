@@ -78,7 +78,7 @@ Item {
         }
     }
 
-    ScrollView {
+    ScrollArea {
         anchors.fill: parent
         anchors.topMargin: header.height
 
