@@ -3,7 +3,7 @@
 What editing assets in the grid and sidebar must do. The engine is `core/library.py`, `core/category.py`,
 `core/sidebar_model.py`, `core/gradient_library.py`, `core/code_library.py` and the choices in
 `core/tile_icons.py`, run from `sections/base.py`, the drop in `pane/sidebar.py` and Customize in
-`pane/assets.py`. A delete applied whole or not at all is LS-02; merging with other sessions is LS-03
+`pane/assets.py` and `pane/customize.py`. A delete applied whole or not at all is LS-02; merging with other sessions is LS-03
 and LS-13; folders and the trash are LS-36 and LS-39; stars are LS-31. The levels and the rules for
 tests are in the [README](README.md).
 

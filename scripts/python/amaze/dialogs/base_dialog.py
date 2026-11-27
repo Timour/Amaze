@@ -10,8 +10,7 @@ from amaze.helpers import theme, ui_helpers
 SAVE_WIDTH = amazetheme.SAVE_WIDTH    # every small save dialog is this wide, whatever its labels ▸p/save-dialog-rows
 
 
-def fill_categories(combo, choices, current: str = "",
-                    blank: bool = False) -> None:
+def fill_categories(combo, choices, current: str = "") -> None:
     """One row per (key, name as shown) of `choices`, each carrying its key; `current` selected."""
     combo.clear()
     for key, shown in choices:
@@ -19,9 +18,6 @@ def fill_categories(combo, choices, current: str = "",
     row = combo.findData(current) if current else -1
     if row >= 0:
         combo.setCurrentIndex(row)
-    elif blank:
-        combo.insertItem(0, "", "")    # first row, meaning UNCHANGED: `chosen_category` returns an empty string
-        combo.setCurrentIndex(0)
 
 
 def chosen_category(combo) -> str:

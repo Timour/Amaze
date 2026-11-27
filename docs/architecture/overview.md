@@ -775,7 +775,7 @@ copied per dialog.
 | **Code Dialog** | Code | `dialogs/code_dialog.py` ✓ AssetDialog — typing a snippet (New Snippet, Edit); Apply saves and stays open. Houdini's Fixed face and its syntax colours (`helpers/vex_syntax.py`); a node's code saves through the Save Dialog |
 | **Save Dialog** | every section a scene node saves into | `dialogs/save_dialog.py` ✓ AssetDialog — D09: Section, Name, Category, Language, Tags. The Section row is guessed from the node and changeable; `dialogs/gradient_dialog.py` keeps only `CategoryDialog` |
 | **Preferences** | — (app-wide) | `dialogs/prefs_window.py` — Houdini's own kind of QML Preferences window: Houdini's prefs state on Amaze's Prefs, its `houdini.prefs` rows, Apply / Accept / Cancel; its pages are `ui/prefs/*.qml` (Library, Render, UI, Add-On, About), their rows in Houdini's `Group`s. A library and its user are picked there and opened on Apply; buttons act at once |
-| **Icon Dialog** | any tile | `dialogs/icon_dialog.py` ✓ AssetDialog (non-modal) |
+| **Icon Dialog** | any tile | `dialogs/icon_dialog.py` ✓ AssetDialog (non-modal) — Customize in the widget panel: it draws `pane/customize.py`, which holds every choice and rule |
 | **Manage Libraries** | — (app-wide) | `dialogs/library_dialog.py` ✓ AssetDialog — D15: the Library list, the most recently opened first; Remove from List takes libraries off it and leaves their folders alone |
 | **Versions** | Materials | `dialogs/versions_dialog.py` ✓ AssetDialog — D01: a material's versions, newest first; Select makes the picked one active |
 | **About** | — | a page of Preferences (`ui/prefs/AboutPage.qml`), with its Developer group — there is no separate About dialog |
@@ -1090,6 +1090,10 @@ pane/library.py           every way onto a library (`pane.library`): open,
 pane/sidebar.py           the sidebar's rows and selection (`pane.sidebar`)
 pane/assets.py            favourite, delete, render, convert, Versions,
                           Customize, export (`pane.assets`)
+pane/customize.py         CUSTOMIZE ENGINE - one Customize window's choices:
+                          the face, icon and colours, the icon search, and
+                          what Apply and Accept hand on; either host's
+                          window shows it
 pane/loading.py           a click on a row and Import into the scene
                           (`pane.loading`)
 pane/saving.py            scene nodes saved through D09, versions, snippets,

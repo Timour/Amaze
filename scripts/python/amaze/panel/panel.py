@@ -143,6 +143,7 @@ _reload_loaded("amaze.dialogs.library_dialog")
 _reload_loaded("amaze.dialogs.prefs_window")
 _reload_loaded("amaze.dialogs.save_dialog")
 _reload_loaded("amaze.dialogs.icon_dialog")
+_reload_loaded("amaze.pane.customize")    # the engine the icon dialog shows
 _reload_loaded("amaze.dialogs.gradient_dialog")
 _reload_loaded("amaze.dialogs.code_dialog")
 _reload_loaded("amaze.dialogs.user_dialog")
@@ -454,6 +455,7 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
     def open_customize(self, question, apply) -> None:
         """D02, one at a time and not modal: Apply and Accept hand `apply` the edits."""
         from amaze.dialogs import icon_dialog
+        from amaze.pane import customize
         existing = getattr(self, "_icon_dialog", None)
         if existing is not None:
             try:
@@ -462,34 +464,14 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
                 return
             except RuntimeError:
                 pass                      # already deleted underneath
-        dialog = icon_dialog.IconDialog(
-            question.icon, question.stroke, self,
-            tile_name=question.tile_name,
-            tile_name_enabled=question.tile_name_enabled,
-            tile_tags=question.tile_tags,
-            categories=question.categories,
-            tile_category=question.tile_category,
-            face=question.face,
-            faces=question.faces,
-            can_preview=question.can_preview,
-        )
+        dialog = icon_dialog.IconDialog(customize.Customize(question, apply, self.ask_colour), self)
         self._icon_dialog = dialog
-
-        def edits():
-            return asks.CustomizeAnswer(
-                spec=dialog.spec, name=getattr(dialog, "new_tile_name", None),
-                tags=getattr(dialog, "new_tags", None), category=getattr(dialog, "new_category", None))
 
         def finished(_result=0):
             self._icon_dialog = None
-            try:
-                if not dialog.canceled:
-                    apply(edits())
-            finally:
-                dialog.deleteLater()    # the panel parents it, so it must be deleted
+            dialog.deleteLater()    # the panel parents it, so it must be deleted
 
-        dialog.applied.connect(lambda: apply(edits()))    # Apply commits and stays open; Accept commits at the close
-        dialog.finished.connect(finished)
+        dialog.finished.connect(finished)    # after the window's own slot, which commits an Accept
         dialog.show()
 
     def show_comments(self) -> None:

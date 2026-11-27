@@ -12,12 +12,13 @@ from PySide6 import QtCore, QtGui, QtTest, QtWidgets  # noqa: E402
 from amaze import messages
 from amaze.core import category, code_library, debug, documents, gradient_library, library, library_db
 from amaze.core import grid_columns, library_files, locations, material, sidebar_model
+from amaze.pane import asks, customize
 from amaze.tests import test_support
 
 try:    # without Houdini the Name window's and the palette menu's tests skip
     import hou
     from amaze.dialogs import name_window
-    from amaze.pane import asks, menus
+    from amaze.pane import menus
     from amaze.qml import pane as qml_pane
     from amaze.sections import color as color_section
 except ImportError:
@@ -185,10 +186,17 @@ class AssetEditingTest(_Edits):
 
     def test_ed28_customize_writes_one_save_for_the_whole_selection(self):
         keys, shelf = {self.key(name) for name in ("gold", "glass", "Bricks")}, self.cat("Shelf")
+        window = customize.Customize(
+            asks.CustomizeQuestion(icon={}, stroke=0.0, tile_name="", tile_name_enabled=False,
+                                   tile_tags="", categories=self.sidebar.choices(), tile_category="",
+                                   face="image", faces={}, can_preview=True),
+            lambda answer: self.model.edit_tiles(keys, answer.name, answer.tags, answer.category),
+            ask_colour=None)
         with mock.patch.object(self.model, "save", wraps=self.model.save) as saves:
-            self.model.edit_tiles(keys, tags="probe", category=shelf)
-            self.model.edit_tiles(keys, tags="probe", category=shelf)
-        self.assertEqual(1, saves.call_count)
+            applied = window.commit("Other", "probe", shelf)
+            accepted = window.commit("Other", "probe", shelf)
+        self.assertEqual((1, (None, "probe", shelf), (None, None, None)),
+                         (saves.call_count, applied[1:], accepted[1:]))
 
     def test_ed29_an_edit_the_library_refuses_is_not_shown_as_done_and_the_user_is_told(self):
         gold, code = self.key("gold"), code_library.CodeLibrary(self.prefs)
