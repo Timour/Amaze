@@ -11,10 +11,11 @@ from amaze.core import notes
 
 DRAWN = amazetheme.drawn_comments()    # every size and spacing below is from the N01 design frame
 
-STATE_TODO = 1   # each block's userState; not inherited across Enter ▸r/qt-text-checklists
+STATE_PLAIN = 0    # a block's kind, kept in its format so that undo takes it back ▸r/qt-text-checklists
+STATE_TODO = 1
 STATE_DONE = 2
-STATE_IMAGE = 3   # a picture block: ONE image fragment, no text of its own ▸p/comment-images
 STATE_UNLOADED = 4    # a picture whose file did not load: text replaces it, `src` is stored on the block
+_STATE = QtGui.QTextFormat.Property.UserProperty.value + 3
 _UNLOADED_SRC = QtGui.QTextFormat.Property.UserProperty.value + 1
 _UNLOADED_TEXT = QtGui.QTextFormat.Property.UserProperty.value + 2
 PICTURE_INSET = 24    # px of the editor's width a picture leaves free
@@ -23,16 +24,22 @@ PICTURE_LEAST = 80    # px: a picture is never narrower, however narrow the edit
 ENTER_KEYS = (QtCore.Qt.Key.Key_Return, QtCore.Qt.Key.Key_Enter)
 
 
+def block_state(block) -> int:
+    """The block's kind; a new block takes the one above it, a merged block the upper one's."""
+    return block.blockFormat().intProperty(_STATE)
+
+
 def is_todo_block(block) -> bool:
-    return block.userState() in (STATE_TODO, STATE_DONE)
+    return block_state(block) in (STATE_TODO, STATE_DONE)
 
 
 def is_image_block(block) -> bool:
-    return block.userState() == STATE_IMAGE
+    """A block that holds a picture. ▸p/comment-images"""
+    return bool(image_src(block))
 
 
 def block_done(block) -> bool:
-    return block.userState() == STATE_DONE
+    return block_state(block) == STATE_DONE
 
 
 def block_label(block) -> str:
@@ -41,7 +48,7 @@ def block_label(block) -> str:
 
 def unloaded_picture(block):
     """The picture item an unloaded block replaces; None once its text has been edited out."""
-    if block.userState() != STATE_UNLOADED:
+    if block_state(block) != STATE_UNLOADED:
         return None
     block_format = block.blockFormat()
     shown = str(block_format.property(_UNLOADED_TEXT) or "")
@@ -86,40 +93,29 @@ class CommentDocument(QtCore.QObject):
         cursor.setPosition(position, QtGui.QTextCursor.MoveMode.KeepAnchor)
         return cursor
 
-    def _todo_format(self) -> QtGui.QTextBlockFormat:
-        fmt = QtGui.QTextBlockFormat()   # no background; padding above and below plus the glyph margin
+    def _block_format(self, state: int) -> QtGui.QTextBlockFormat:
+        """A block's format for `state`: a to-do has padding above and below and the glyph's margin."""
+        todo = state in (STATE_TODO, STATE_DONE)
+        fmt = QtGui.QTextBlockFormat()   # no background
         fmt.setBackground(QtGui.QBrush(QtCore.Qt.BrushStyle.NoBrush))
-        fmt.setTopMargin(self._px(DRAWN["todo_pad"]))
-        fmt.setBottomMargin(self._px(DRAWN["todo_pad"]))
-        fmt.setLeftMargin(self._px(DRAWN["todo_indent"]))
+        fmt.setTopMargin(self._px(DRAWN["todo_pad"]) if todo else 0)
+        fmt.setBottomMargin(self._px(DRAWN["todo_pad"]) if todo else 0)
+        fmt.setLeftMargin(self._px(DRAWN["todo_indent"]) if todo else 0)
+        fmt.setProperty(_STATE, state)
         return fmt
 
-    @staticmethod
-    def _plain_format() -> QtGui.QTextBlockFormat:
-        fmt = QtGui.QTextBlockFormat()
-        fmt.setBackground(QtGui.QBrush(QtCore.Qt.BrushStyle.NoBrush))
-        fmt.setTopMargin(0)
-        fmt.setBottomMargin(0)
-        fmt.setLeftMargin(0)
-        return fmt
-
-    def _restyle_block(self, block, todo: bool, done: bool) -> None:
+    def _set_state(self, block, state: int) -> None:
+        """Make `block` plain, an open or a done to-do: its state, its look and its glyph."""
         cursor = QtGui.QTextCursor(block)
-        cursor.mergeBlockFormat(self._todo_format() if todo else self._plain_format())
+        cursor.beginEditBlock()    # one undo takes back the state and the look together
+        cursor.mergeBlockFormat(self._block_format(state))
         cursor.select(QtGui.QTextCursor.SelectionType.BlockUnderCursor)
-        cursor.mergeCharFormat(label_format(todo and done))
+        cursor.mergeCharFormat(label_format(state == STATE_DONE))
+        cursor.endEditBlock()
+        self.states_changed.emit()
 
     def _set_todo(self, block, done: bool) -> None:
-        """Make `block` a to-do, done or open: its state and its look."""
-        block.setUserState(STATE_DONE if done else STATE_TODO)
-        self._restyle_block(block, True, done)
-        self.states_changed.emit()
-
-    def _make_plain(self, block) -> None:
-        """Turn `block` back into plain text; the label is kept as text."""
-        block.setUserState(-1)
-        self._restyle_block(block, False, False)
-        self.states_changed.emit()
+        self._set_state(block, STATE_DONE if done else STATE_TODO)
 
     def toggle(self, number: int) -> bool:
         """Flip the done state of the to-do in block `number`. Returns whether it was one."""
@@ -149,9 +145,7 @@ class CommentDocument(QtCore.QObject):
         self.document.addResource(    # the key Qt looks the name up by: its base url resolves it
             QtGui.QTextDocument.ResourceType.ImageResource,
             self.document.baseUrl().resolved(QtCore.QUrl(src)), image)    # the name stays RELATIVE ▸r/qtextdocument-images
-        block = cursor.block()
-        block.setUserState(STATE_IMAGE)
-        self._restyle_block(block, False, False)
+        self._set_state(cursor.block(), STATE_PLAIN)
         image_format = QtGui.QTextImageFormat()
         image_format.setName(src)
         width = float(min(image.width(), max(self._room() - self._px(PICTURE_INSET), self._px(PICTURE_LEAST))))
@@ -167,13 +161,11 @@ class CommentDocument(QtCore.QObject):
         cursor.beginEditBlock()
         if is_todo_block(block) or is_image_block(block) or block.text().strip():
             cursor.movePosition(QtGui.QTextCursor.MoveOperation.EndOfBlock)
-            cursor.insertBlock(self._plain_format())
+            cursor.insertBlock(self._block_format(STATE_PLAIN))
         if not self._make_image(cursor, src):
             cursor.endEditBlock()
             return -1
-        cursor.insertBlock(self._plain_format())    # out of the picture's block ▸p/comment-images
-        cursor.block().setUserState(-1)
-        cursor.setCharFormat(label_format(False))
+        cursor.insertBlock(self._block_format(STATE_PLAIN), label_format(False))    # below the picture ▸p/comment-images
         cursor.endEditBlock()
         return cursor.position()
 
@@ -189,32 +181,30 @@ class CommentDocument(QtCore.QObject):
         if cursor.hasSelection():
             return -1
         block = cursor.block()
-        merge = None    # (the to-do whose state the merged block keeps, the native edit)
+        merge = None    # the native edit that joins a line to the to-do above it
         if key == QtCore.Qt.Key.Key_Backspace:
             if is_todo_block(block) and (cursor.atBlockStart() or not block_label(block)):
-                self._make_plain(block)   # Backspace at a to-do's start turns it back into plain text
+                self._set_state(block, STATE_PLAIN)   # Backspace at a to-do's start turns it back into plain text
                 return cursor.position()
             if cursor.atBlockStart() and is_todo_block(block.previous()):
-                merge = (block.previous(), cursor.deletePreviousChar)   # into a to-do above: its checkbox stays
+                merge = cursor.deletePreviousChar
         elif key == QtCore.Qt.Key.Key_Delete:
             if is_todo_block(block) and cursor.atBlockEnd() and block.next().isValid():
-                merge = (block, cursor.deleteChar)   # the next line joins the to-do, which stays one
+                merge = cursor.deleteChar
         elif key in ENTER_KEYS and is_todo_block(block):
             if not block_label(block):
-                self._make_plain(block)   # Enter on an EMPTY to-do turns it back into plain text
+                self._set_state(block, STATE_PLAIN)   # Enter on an EMPTY to-do turns it back into plain text
                 return cursor.position()
             cursor.beginEditBlock()
             cursor.insertBlock()
-            self._set_todo(cursor.block(), False)   # a new to-do: userState is not inherited
+            self._set_todo(cursor.block(), False)   # a new to-do is open, whatever the one above
             cursor.endEditBlock()
             return cursor.position()
         if merge is None:
             return -1
-        keeper, edit = merge
-        done = block_done(keeper)
         cursor.beginEditBlock()
-        edit()    # a merge keeps the FOLLOWING block's state ▸r/qt-text-checklists
-        self._set_todo(cursor.block(), done)
+        merge()    # the joined block keeps the upper one's state ▸r/qt-text-checklists
+        self._set_state(cursor.block(), block_state(cursor.block()))    # its whole label struck as it is
         cursor.endEditBlock()
         return cursor.position()
 
@@ -249,9 +239,7 @@ class CommentDocument(QtCore.QObject):
 
     def _insert_unloaded_text(self, cursor, src: str, shown: str) -> None:
         """Insert `shown` in the cursor's block, storing `src` so `serialize` saves the picture."""
-        block = cursor.block()
-        block.setUserState(STATE_UNLOADED)
-        self._restyle_block(block, False, False)
+        self._set_state(cursor.block(), STATE_UNLOADED)
         block_format = QtGui.QTextBlockFormat()
         block_format.setProperty(_UNLOADED_SRC, src)
         block_format.setProperty(_UNLOADED_TEXT, shown)
@@ -268,7 +256,7 @@ class CommentDocument(QtCore.QObject):
             if item.get("t") == "image":
                 src = str(item.get("src", ""))
                 if not first:
-                    cursor.insertBlock(self._plain_format())
+                    cursor.insertBlock(self._block_format(STATE_PLAIN))
                 if not self._make_image(cursor, src):    # not synced yet, or deleted: its text ▸p/comment-images
                     self._insert_unloaded_text(cursor, src,
                                                item.get("text") or "[image: %s]" % os.path.basename(src))
@@ -282,8 +270,7 @@ class CommentDocument(QtCore.QObject):
                 for line in str(item.get("text", "")).split("\n"):
                     if not first:
                         cursor.insertBlock()
-                    cursor.block().setUserState(-1)
-                    self._restyle_block(cursor.block(), False, False)
+                    self._set_state(cursor.block(), STATE_PLAIN)
                     cursor.insertText(line, label_format(False))
                     first = False
             first = False
