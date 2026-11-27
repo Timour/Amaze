@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.10
+
+- The Amaze pane is the QML pane. The pane type Amaze (QML) is gone, and a desktop saved with it has to be saved again.
+- File: a folder in the sidebar shows its path as a tooltip.
+
 ## 2.0.9
 
 - Amaze (QML): Customize, opened from a tile's menu, with the tile's name, category, tags, and its picture or a custom icon.
