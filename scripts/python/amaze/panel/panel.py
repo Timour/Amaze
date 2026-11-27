@@ -57,7 +57,7 @@ from amaze.render import cop_nodes, husk_job, nodes
 from amaze.pane import asks, menus
 from amaze.pane import files as pane_files
 from amaze.pane import (assets as pane_assets, drop_placement, empty_state as pane_empty_state,
-                        library as pane_library, loading as pane_loading, online_import,
+                        info as pane_info, library as pane_library, loading as pane_loading, online_import,
                         package_import, pane as pane_mod, saving as pane_saving,
                         sidebar as pane_sidebar, tile_capture)
 
@@ -182,6 +182,7 @@ _reload(pane_assets)
 _reload(pane_loading)    # after sections, whose drop rules it reads
 _reload(pane_saving)
 _reload(pane_empty_state)
+_reload(pane_info)
 _reload(pane_mod)    # last of the engine: it holds every part above
 
 
@@ -344,7 +345,6 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
             pane.gradient_selection_model,
         ):
             selection.selectionChanged.connect(self._refresh_notes_subject)
-            selection.selectionChanged.connect(self._refresh_info_subject)
 
     def _on_library_shown(self) -> None:
         """A newly opened library's first section shows: the tile size, view mode and colours."""
@@ -358,9 +358,6 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
         pane = getattr(self, "notes_panel", None)
         if pane is not None:
             pane.clear_subject()    # the switch selects nothing
-        info = getattr(self, "info_panel", None)
-        if info is not None:
-            info.clear_subject()
 
     def _on_library_switched(self) -> None:
         self.click_slider.setValue(self.pane.tile_size())
@@ -394,7 +391,6 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
             QtCore.QTimer.singleShot(    # after the relayout, which would clamp it
                 0, lambda: grid.visible_view(self).verticalScrollBar().setValue(scroll))
         self._refresh_notes_subject()
-        self._refresh_info_subject()
 
     def _on_online_changed(self) -> None:
         """The Online chip follows the pane; out of online, Material Library is the checked source."""
@@ -664,9 +660,7 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
             pane = getattr(self, "notes_panel", None)
             if pane is not None:
                 pane.flush()
-            info = getattr(self, "info_panel", None)
-            if info is not None:
-                info.stop_reading()
+            self.pane.info.stop_reading()
             timer = getattr(self, "_thumbsize_save_timer", None)
             if timer is not None and timer.isActive():    # the debounce timer is deleted with the panel, so save now
                 timer.stop()
@@ -947,10 +941,9 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
             self.side_pane.add_page(self.notes_panel)
             self.notes_panel.copy_font_and_text_color(self.cat_list)
             self.notes_panel.changed.connect(self._on_note_saved)
-            self.info_panel = info_panel.InfoPanel(self.pane.prefs)
+            self.info_panel = info_panel.InfoPanel(self.pane.info)
             self.side_pane.add_page(self.info_panel)
             self.info_panel.copy_font(self.cat_list)
-            self.info_panel.shown.connect(self._refresh_info_subject)    # hiding forgot the subject
             self._show_side_page()
             splitter.setHandleWidth(theme.ui_px(self._SIDEBAR["handle"]))    # width only; Houdini draws the grip ▸r/sidebar-from-frame
         width = theme.ui_px(self._SIDEBAR["width"])    # the last dragged width, never wider ▸r/sidebar-from-frame
@@ -1063,7 +1056,7 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
         self.thumblist.viewport().installEventFilter(self)
         self.thumblist.doubleClicked.connect(self.import_asset_auto)
         self.thumblist.clicked.connect(self._refresh_notes_subject)    # idempotent
-        self.thumblist.clicked.connect(self._refresh_info_subject)
+        self.thumblist.clicked.connect(self.pane.info.refresh)
 
         self.texture_progress = ui_helpers.ThinProgressBar()    # the thin bar above thumbview, hidden until there is work
         self.texture_progress.set_accent_color(theme.accent(self.pane.prefs.accent_color))
@@ -1422,7 +1415,6 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
         self.pane.prefs.save()
         if checked:
             self._close_other_pane("btn_notes")
-            self._refresh_info_subject()
 
     def _show_side_page(self, opened=None) -> None:
         """Show the side pane's page: the one just `opened`, else the one the settings have on."""
@@ -1480,30 +1472,6 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
         if panel is None or panel.isHidden():
             return
         subject = self._notes_subject()
-        if subject is None:
-            panel.clear_subject()
-        else:
-            panel.set_subject(subject)
-
-    def _info_subject(self):
-        """What the info pane shows, or None: one selected row's, or several rows' together."""
-        context = self.pane.active_section()
-        if context is None or not context.takes_info:    # the context decides
-            return None
-        indexes = grid_columns.selected_rows(    # grid and list share this selection
-            context.grid_selection_model())
-        if not indexes:
-            return None
-        if len(indexes) == 1:
-            return context.info_subject(indexes[0])
-        return context.info_subject_for(indexes)
-
-    def _refresh_info_subject(self, *_args) -> None:
-        """Point the info pane at the current selection; returns at once while it is hidden."""
-        panel = getattr(self, "info_panel", None)
-        if panel is None or panel.isHidden():
-            return
-        subject = self._info_subject()
         if subject is None:
             panel.clear_subject()
         else:
