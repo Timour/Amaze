@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.7
+
+- Categories: when a sync leaves two categories with the same name in a section, Amaze asks once: Join, Keep Both or Cancel.
+- Categories: when you and someone else rename one category two ways, Amaze asks which name to use.
+
 ## 2.0.6
 
 - A library saved by a newer Amaze stays closed until Amaze is updated, whichever of its three format numbers is newer.
