@@ -10,6 +10,13 @@ from hutil.qt.common import qmlviews    # Houdini's own QML windows' base ▸r/q
 _open: dict = {}    # the one open window of each kind, by its class
 
 
+def menu_rows(choices, current: str) -> tuple:
+    """(key, name) `choices` as a `MenuBox`'s rows, and the row `current` is on, else the first."""
+    keys = [key for key, _shown in choices]
+    rows = [{"text": shown, "value": key} for key, shown in choices]
+    return rows, keys.index(current) if current in keys else (0 if keys else -1)
+
+
 class DialogState(qmlviews.SharedState):
     """What a dialog window's QML reads, its `question`, and its ends: OK or Apply with an answer."""
 

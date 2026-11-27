@@ -43,9 +43,7 @@ class SaveState(dialog_window.DialogState):
 
     def _show_categories(self, choices, current: str) -> None:
         """The (key, name) choices, `current` picked, else the first as a list shows on filling."""
-        keys = [key for key, _shown in choices]
-        self.categories = [{"text": shown, "value": key} for key, shown in choices]
-        self.categoryRow = keys.index(current) if current in keys else (0 if keys else -1)
+        self.categories, self.categoryRow = dialog_window.menu_rows(choices, current)
 
     @QtCore.Slot(str)
     def chooseSection(self, key: str) -> None:

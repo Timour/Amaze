@@ -28,9 +28,7 @@ class CodeState(dialog_window.DialogState):
     def __init__(self, question, **kwargs) -> None:
         super().__init__(question={"name": question.name or "", "tags": question.tags or "",
                                    "code": question.code or ""}, **kwargs)
-        keys = [key for key, _shown in question.categories]
-        self.categories = [{"text": shown, "value": key} for key, shown in question.categories]
-        self.categoryRow = keys.index(question.category) if question.category in keys else (0 if keys else -1)
+        self.categories, self.categoryRow = dialog_window.menu_rows(question.categories, question.category)
         language = question.language if question.language in self.languages else self.languages[0]
         self.languageRow = self.languages.index(language)
         self.highlighter = HIGHLIGHTERS.get(language, "")
