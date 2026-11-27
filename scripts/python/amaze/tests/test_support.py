@@ -724,6 +724,22 @@ def fixture_pane(testcase, render_geometry=False):
     return pane
 
 
+def fixture_qml_pane(testcase):
+    """The Amaze pane over a private fixture library, shown off screen; a pane engine opens it first."""
+    from PySide6 import QtCore, QtWidgets
+    from amaze.qml import pane as qml_pane
+
+    fixture_pane(testcase)
+    panel = qml_pane.QmlPanel()
+    testcase.addCleanup(dispose_panel, panel)
+    testcase.addCleanup(stop_panel_workers, panel)    # after deleteLater, so it runs first
+    panel.setAttribute(QtCore.Qt.WidgetAttribute.WA_DontShowOnScreen)
+    panel.resize(840, 420)
+    panel.show()
+    QtWidgets.QApplication.processEvents()
+    return panel
+
+
 def reopened_panel(testcase):
     """A second panel on the same settings, only after `fixture_panel`. ▸p/harness-isolation"""
     from amaze.helpers import hostos as hostos_mod

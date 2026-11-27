@@ -16,7 +16,7 @@ from amaze.tests import test_support  # noqa: E402
 class TheQmlPaneOpensAndCloses(unittest.TestCase):
 
     def test_qm15_qt_deletes_the_pane_and_its_engine_on_the_main_thread(self):
-        widget_panel = test_support.fixture_panel(self)    # the fixture library, and a second pane on it
+        engine = test_support.fixture_pane(self)    # the fixture library, and a second pane on it
         panel = qml_pane.QmlPanel()
         self.addCleanup(test_support.stop_panel_workers, panel)
         panel.setAttribute(QtCore.Qt.WidgetAttribute.WA_DontShowOnScreen)
@@ -24,8 +24,8 @@ class TheQmlPaneOpensAndCloses(unittest.TestCase):
         panel.show()
         QtWidgets.QApplication.processEvents()
         self.assertIsNotNone(panel.view.rootObject(), "the pane's QML did not load")
-        self.assertIsNot(widget_panel.pane, panel.pane, "the two panes share one engine")
-        self.assertIs(widget_panel.pane.material_model, panel.pane.material_model,
+        self.assertIsNot(engine, panel.pane, "the two panes share one engine")
+        self.assertIs(engine.material_model, panel.pane.material_model,
                       "the two panes on one library read separate models")
 
         parts = (panel, panel.view, panel.state, panel.pane)
@@ -38,14 +38,7 @@ class TheQmlPaneOpensAndCloses(unittest.TestCase):
                          "the pane, its QML view, its state or its engine outlived the close")
 
     def test_qm16_qt_acts_once_on_a_click_on_a_sidebar_row(self):
-        test_support.fixture_panel(self)
-        panel = qml_pane.QmlPanel()
-        self.addCleanup(test_support.stop_panel_workers, panel)
-        self.addCleanup(panel.deleteLater)
-        panel.setAttribute(QtCore.Qt.WidgetAttribute.WA_DontShowOnScreen)
-        panel.resize(840, 420)
-        panel.show()
-        QtWidgets.QApplication.processEvents()
+        panel = test_support.fixture_qml_pane(self)
         tree = next(item for item in panel.view.rootObject().findChildren(QtQuick.QQuickItem)
                     if item.metaObject().className().startswith("SidebarTree"))
         taps = []    # the tree's drag scrolling each time Qt's own tap handler reports the release

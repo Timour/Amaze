@@ -23,7 +23,6 @@ try:    # without Houdini every test here skips
     from amaze.core import debug, dragengine, lop_assign, scene_captures
     from amaze.helpers import helpers
     from amaze.pane import drag_session, drop_placement, loading, menus
-    from amaze.qml import pane as qml_pane
     from amaze.render import nodes
     from amaze.sections import code as code_section, file as file_section, material as material_section
 except ImportError:
@@ -645,14 +644,7 @@ def _first_tile(view) -> QtCore.QPointF:
 class ADragEndedEarlyMakesNothingTest(unittest.TestCase):
 
     def test_dd27_esc_another_button_or_a_hidden_pane_ends_a_drag_and_its_release_makes_nothing(self):
-        test_support.fixture_panel(self)    # the fixture library, which the QML pane opens too
-        panel = qml_pane.QmlPanel()
-        self.addCleanup(test_support.stop_panel_workers, panel)
-        self.addCleanup(panel.deleteLater)
-        panel.setAttribute(QtCore.Qt.WidgetAttribute.WA_DontShowOnScreen)
-        panel.resize(840, 420)
-        panel.show()
-        QtWidgets.QApplication.processEvents()
+        panel = test_support.fixture_qml_pane(self)
         view, kind, left = panel.view, QtCore.QEvent.Type, QtCore.Qt.MouseButton.LeftButton
         right, none = QtCore.Qt.MouseButton.RightButton, QtCore.Qt.MouseButton.NoButton
         at = _first_tile(view)

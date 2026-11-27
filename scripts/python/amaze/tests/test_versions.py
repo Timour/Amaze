@@ -425,19 +425,12 @@ class WindowTest(unittest.TestCase):
     """The Versions window opened from the pane over the fixture library."""
 
     def test_vs27_a_row_that_is_gone_opens_no_versions_window(self):
-        from amaze.dialogs import versions_dialog
-        panel = test_support.fixture_panel(self)
-        model, opened = panel.pane.material_model, []
+        pane = test_support.fixture_pane(self)
+        model, opened = pane.material_model, []
         self.assertTrue(model.assets, "premise: the fixture library holds materials")
-
-        def dialog(name, *_args, **_kwargs):
-            opened.append(name)
-            return mock.Mock(exec=lambda: QtWidgets.QDialog.DialogCode.Rejected)
-
-        with mock.patch.object(versions_dialog, "VersionsDialog", dialog), \
+        with mock.patch.object(pane.ui, "open_versions", lambda name, *_args: opened.append(name)), \
                 mock.patch.object(model, "version_list", lambda row: (["v1", "v2"], "v1")):
-            panel.pane.assets.open_versions(QtCore.QModelIndex(), panel.pane.material_sorted_model,
-                                            model)
+            pane.assets.open_versions(QtCore.QModelIndex(), pane.material_sorted_model, model)
         self.assertEqual([], opened, "a row that is gone opened another material's versions")
 
 

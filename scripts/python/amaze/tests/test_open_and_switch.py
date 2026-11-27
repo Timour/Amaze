@@ -168,11 +168,11 @@ class SwitchTest(_Pane):
 
 
 class ShownAfterASwitchTest(_Pane):
-    """A panel on a fixture library, its sidebar a view the user picks rows in."""
+    """The Amaze pane on a fixture library, its sidebar a view the user picks rows in."""
 
     def setUp(self):
-        self.panel = test_support.fixture_panel(self)
-        self.pane, self.first = self.panel.pane, self.panel.pane.prefs.dir
+        self.pane = test_support.fixture_qml_pane(self).pane
+        self.first = self.pane.prefs.dir
 
     def test_sw23_after_a_switch_each_section_shows_the_new_library_as_it_is_on_disk(self):
         from amaze.core import category

@@ -331,15 +331,13 @@ class CommentsTest(unittest.TestCase):
 
 
 class TypingTest(unittest.TestCase):
-    """The Comments page of a fixture panel, its comments pane open on the Materials grid."""
+    """The Amaze pane on the fixture library, its Comments pane open on the Materials grid."""
 
     def setUp(self):
-        self.panel = test_support.fixture_panel(self)
-        self.panel.setAttribute(QtCore.Qt.WidgetAttribute.WA_DontShowOnScreen)
-        self.panel.show()    # a page never shown gets no hide event
+        self.panel = test_support.fixture_qml_pane(self)
         self.panel.pane.choose_tab("material")
-        self.panel.btn_notes.setChecked(True)
-        self.page = self.panel.notes_panel
+        self.panel.state.showComments(True)
+        QtWidgets.QApplication.processEvents()
 
     def select(self, asset_id: str) -> None:
         """Select the tile of `asset_id`, as a click does."""
@@ -350,8 +348,9 @@ class TypingTest(unittest.TestCase):
         pane.material_selection_model.setCurrentIndex(index, flags.ClearAndSelect | flags.Rows)
 
     def type(self, words: str) -> None:
-        self.page.text_edit.moveCursor(self.page.text_edit.textCursor().MoveOperation.End)
-        self.page.text_edit.insertPlainText(" " + words)
+        cursor = QtGui.QTextCursor(self.panel.pane.comments.document.document)
+        cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
+        cursor.insertText(" " + words)
 
     @staticmethod
     def saved(library: str, asset_id: str) -> str:
@@ -361,7 +360,7 @@ class TypingTest(unittest.TestCase):
         return " ".join(" ".join(item.get("text", "") for item in items).split())
 
     def test_cm10_what_is_typed_is_saved_at_once_to_where_it_was_typed(self):
-        first, pane, notes_open = self.panel.pane.prefs.dir, self.panel.pane, self.panel.btn_notes
+        first, pane, state = self.panel.pane.prefs.dir, self.panel.pane, self.panel.state
         library_db.set_scheduler(pane.library._save_timer.start)    # saves wait, as in Houdini
         self.select(GOLD)
         self.type("one")
@@ -374,15 +373,16 @@ class TypingTest(unittest.TestCase):
         pane.material_model.set_tile_name(
             pane.material_model.find_asset_row_by_id(GLASS), "Glass renamed")
         self.type("four")
-        notes_open.setChecked(False)
+        self.panel.hide()
         self.assertEqual("three four", self.saved(first, GLASS), "lost by a rename or a hide")
-        notes_open.setChecked(True)
+        self.panel.show()
         self.type("five")
-        self.page.close()
+        state.showComments(False)
         self.assertEqual("three four five", self.saved(first, GLASS), "lost when closed")
         comments = self.panel.pane.comments
         self.assertTrue(_app.aboutToQuit.disconnect(comments.flush), "nothing saves at quit")
-        self.page.show()
+        state.showComments(True)
+        QtWidgets.QApplication.processEvents()
         self.type("six")
         comments.flush()    # what quitting calls; no timer fires after it
         self.assertEqual("three four five six", self.saved(first, GLASS), "lost when Houdini quit")
