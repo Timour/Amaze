@@ -168,6 +168,34 @@ def paint_svg(device, svg) -> bool:
     return True
 
 
+def os_file_icon(path: str, side: int) -> QtGui.QImage:
+    """The system's icon for `path`'s file type, centred on a transparent `side` square; never empty."""
+    provider = QtWidgets.QFileIconProvider()
+    icon = provider.icon(QtCore.QFileInfo(path))
+    target = side // 2
+    pixmap = icon.pixmap(target, target)
+    if pixmap.isNull():
+        style = QtWidgets.QApplication.style()
+        if style is not None:
+            pixmap = style.standardIcon(
+                QtWidgets.QStyle.StandardPixmap.SP_FileIcon
+            ).pixmap(target, target)
+    image = QtGui.QImage(
+        side, side,
+        QtGui.QImage.Format.Format_ARGB32_Premultiplied)
+    image.fill(QtCore.Qt.GlobalColor.transparent)
+    if not pixmap.isNull():
+        drawn = min(target, pixmap.width() * 2)    # a small native icon upscales at most 2x
+        painter = QtGui.QPainter(image)
+        painter.setRenderHint(
+            QtGui.QPainter.RenderHint.SmoothPixmapTransform)
+        offset = (side - drawn) // 2
+        painter.drawPixmap(
+            QtCore.QRect(offset, offset, drawn, drawn), pixmap)
+        painter.end()
+    return image
+
+
 def tooltip_text(text: str, max_px: int = 800) -> str:
     """A tooltip never drawn wider than `max_px` device pixels."""
     import html

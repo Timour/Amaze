@@ -81,6 +81,7 @@ COMMENT_PAGE_BG = "#2d2d2d"
 COMMENT_TEXT_COLOR = "#cdc8bc"    # the QML pane's comment text, as N01 draws its rows
 COMMENT_PLACEHOLDER = "Write a comment..."    # the empty comment's grey text
 SIDE_PANE_BAND_BG = "#1b1b1b"    # the QML side pane's header band, as N01 and N02 draw it
+SIDE_PANE_MIN_WIDTH = 220    # the narrowest a pane with a header is dragged
 COMMENT_DIM_NAME = "Nothing Selected"   # ▸ nothing selected (N01B): the header's two labels,
 COMMENT_DIM_TYPE = "Type"
 COMMENT_DIM_TEXT_OPACITY = 0.5          # drawn at half their usual opacity

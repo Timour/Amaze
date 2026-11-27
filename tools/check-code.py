@@ -21,7 +21,7 @@ ALLOWED = {    # the layers each layer may use: all below it, but models and hou
     "interface": {"base", "library", "formats", "models", "houdini", "actions", "interface"},
 }
 PACKAGE_LAYER = {    # every module under these packages ▸m/layer-plan
-    "panel": "interface", "dialogs": "interface", "utils": "interface", "pane": "interface",
+    "dialogs": "interface", "utils": "interface", "pane": "interface",
     "sections": "interface", "qml": "interface",
     "render": "houdini", "preview": "houdini", "prefs": "library", "actions": "actions",
 }
@@ -72,7 +72,7 @@ DIALOGS = {"displayMessage", "displayConfirmation", "displayCustomConfirmation",
            "selectFromList", "readInput", "readMultiInput"}
 TEXT_KEYWORDS = {"text", "help", "buttons", "title", "message", "details", "details_label",
                  "column_header"}
-INTERFACE = ("panel/", "pane/", "sections/", "dialogs/", "utils/")
+INTERFACE = ("pane/", "sections/", "dialogs/", "utils/")
 PLACEHOLDER = re.compile(r"%[sdif]")
 WORDED = re.compile(r"[A-Za-z]{3,}")
 LONG = re.compile(r"(?m)^[ \t]*(?:#|//).{100,}|[ \t](?:#|(?<![:\w])//).{100,}"
@@ -551,15 +551,15 @@ def test_modules() -> list:
     for name in sorted(n for n in os.listdir(TESTS) if n.startswith("test_") and n.endswith(".py")):
         source = _text(TESTS, name)
         tree = ast.parse(source, name)
-        panel = re.search(r"AmazePanel\s*\(", source)
+        panel = re.search(r"QmlPanel\s*\(", source)
         if name == "test_support.py":
             found += [] if panel else [
-                "tests/test_support.py builds no AmazePanel(, so the scan for one finds nothing"]
+                "tests/test_support.py builds no QmlPanel(, so the scan for one finds nothing"]
             found += [] if source.count("tempfile.mkdtemp(") == 1 else [
                 "tests/test_support.py makes a folder outside scratch_dir, which alone may make one"]
         elif panel:
             found.append("tests/%s builds a panel itself, which reads the user's settings and "
-                         "library; fixture_panel builds one on the fixture library" % name)
+                         "library; fixture_qml_pane builds one on the fixture library" % name)
         built = re.search(r"\bQ(?:Gui)?Application\(", source)
         if built and not 0 <= source.find(OFFSCREEN) < built.start():
             found.append("tests/%s builds the app before it sets the offscreen platform" % name)

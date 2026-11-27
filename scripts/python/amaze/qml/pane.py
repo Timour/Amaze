@@ -7,10 +7,9 @@ import amaze
 from amaze import amazetheme, tooltips
 from amaze.core import debug, grid_columns, grid_engine, locations
 from amaze.dialogs import code_window, customize_window, name_window, save_window, versions_window
-from amaze.helpers import ui_helpers
+from amaze.helpers import theme, ui_helpers
 from amaze.pane import (asks, comment_document, drag_session, menus, node_drop, pane as pane_mod,
                         sidebar as pane_sidebar)
-from amaze.panel import delegates, side_pane
 from amaze.qml import hotkeys, pictures, rows_model
 from amaze.utils import rc_calls
 from hutil.qt.common import qmlviews    # Houdini's own QML panels' base ▸r/houdini-qml-tabs
@@ -168,7 +167,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
     sortDescending: bool = False
     info: dict = {}    # frame N02's figures and the info pane's colours
     sidePaneWidth: float = 0.0    # the Info and Comments panes' one width, in the pane's design px
-    sidePaneLeast: float = side_pane.MIN_WIDTH
+    sidePaneLeast: float = amazetheme.SIDE_PANE_MIN_WIDTH
     infoShown: bool = False
     infoName: str = ""
     infoType: str = ""
@@ -196,7 +195,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
     drag = None    # the view's `drag_session`, which a press on a tile or row past the drag distance begins
     reorder = None    # the view's `SidebarReorder`, which a press on a sidebar row past it begins
     after_paint = None    # the view's `AfterPaint`, which `after_drawn` waits on
-    os_file_icon = staticmethod(delegates.os_file_icon)    # held by the shared File model
+    os_file_icon = staticmethod(ui_helpers.os_file_icon)    # held by the shared File model
 
     def after_drawn(self, then) -> None:
         """`then()` once the pane's change is in Houdini's window ▸r/qml-on-screen-before-a-block."""
@@ -722,7 +721,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
     def listInk(self, colour) -> QtGui.QColor:
         """A cell's own colour, Category's, made readable on Houdini's list ground as the widget list's."""
         ground = QtGui.QColor(self.theme.viewSurface)    # the palette base of Houdini's widget lists
-        return delegates.AssetItemDelegate.readable_on(QtGui.QColor(colour), ground)
+        return theme.readable_on(QtGui.QColor(colour), ground)
 
     @QtCore.Slot(int, str)
     def clickBadge(self, row: int, name: str) -> None:

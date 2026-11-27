@@ -3,6 +3,8 @@
 
 from PySide6 import QtGui
 
+from amaze import amazetheme
+
 try:
     import hou
 except ImportError:
@@ -136,6 +138,40 @@ def color_hex(name: str) -> str:
 def live(name: str) -> property:
     """A class attribute that is `color(name)` each time it is read, so a theme switch shows at once."""
     return property(lambda _owner: color(name))
+
+
+def _relative_luminance(color):
+    """WCAG relative luminance of a QColor, sRGB-linearised."""
+    channels = []
+    for value in (color.red(), color.green(), color.blue()):
+        channel = value / 255.0
+        channels.append(
+            channel / 12.92 if channel <= 0.03928
+            else ((channel + 0.055) / 1.055) ** 2.4
+        )
+    return (0.2126 * channels[0] + 0.7152 * channels[1]
+            + 0.0722 * channels[2])
+
+
+def contrast_ratio(one, two):
+    """WCAG contrast ratio between two colours (1.0 - 21.0)."""
+    first = _relative_luminance(one)
+    second = _relative_luminance(two)
+    lighter, darker = max(first, second), min(first, second)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def readable_on(color, background, floor=4.5):
+    """`color` lightened or darkened until it reaches `floor` contrast on `background`, hue kept."""
+    if contrast_ratio(color, background) >= floor:
+        return color
+    toward_light = _relative_luminance(background) < 0.5   # move away from the background's luminance
+    best = color
+    for _step in range(20):
+        best = best.lighter(115) if toward_light else best.darker(115)
+        if contrast_ratio(best, background) >= floor:
+            return best
+    return QtGui.QColor(amazetheme.LIST_TEXT_COLOR)    # a colour that never reaches `floor` takes the list's text colour
 
 
 def houdini_color(name: str, fallback: str) -> QtGui.QColor:

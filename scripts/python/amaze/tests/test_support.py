@@ -656,20 +656,6 @@ def _fixture_world(testcase, render_geometry: bool) -> str:
     return scene
 
 
-def fixture_panel(testcase, render_geometry=False):
-    """A real AmazePanel over a private fixture library, isolation asserted. ▸p/harness-isolation"""
-    from amaze.panel import panel as panel_mod       # reloads hostos
-    from amaze.core import library_db as library_db_mod
-
-    scene = _fixture_world(testcase, render_geometry)
-    panel = panel_mod.AmazePanel()
-    library_db_mod.drop_scheduler()    # a test reads what it changed at once, never after a timer
-    testcase.addCleanup(dispose_panel, panel)
-    testcase.addCleanup(stop_panel_workers, panel)    # after deleteLater, so it runs first: hython never emits aboutToQuit
-    _isolated(panel.pane, scene)
-    return panel
-
-
 def _isolated(pane, scene: str) -> None:
     """Raise unless every folder a fixture pane uses is in temp and its library opened."""
     from amaze.core import matx_library
@@ -740,25 +726,6 @@ def fixture_qml_pane(testcase):
     return panel
 
 
-def reopened_panel(testcase):
-    """A second panel on the same settings, only after `fixture_panel`. ▸p/harness-isolation"""
-    from amaze.helpers import hostos as hostos_mod
-    from amaze.panel import panel as panel_mod
-
-    probe = hostos_mod.config_root()
-    if not os.path.realpath(probe).startswith(
-            os.path.realpath(tempfile.gettempdir())):
-        raise RuntimeError(
-            "reopened_panel without fixture_panel's redirection - "
-            "config_root is %s, outside the temp directory" % probe)
-    panel = panel_mod.AmazePanel()
-    from amaze.core import library_db
-    library_db.drop_scheduler()    # a test reads what it changed at once
-    testcase.addCleanup(dispose_panel, panel)
-    testcase.addCleanup(stop_panel_workers, panel)
-    return panel
-
-
 def pick_user(state, name: str) -> None:
     """Pick the user called `name` in Preferences' User row, as its menu does."""
     from amaze.dialogs import prefs_window
@@ -781,45 +748,6 @@ def apply_library(testcase, panel, folder, user: str = "", state=None) -> bool:
     with mock.patch.object(prefs.Prefs, "save", persistence._Persistence.save):    # a switch re-reads it
         state.apply()
     return state.changeCount == 0    # a pick Apply could not open stays pending
-
-
-def fixture_unconfigured_panel(testcase):
-    """A real AmazePanel with no library, the legacy path blanked too. ▸p/harness-isolation"""
-    from amaze.panel import panel as panel_mod       # reloads hostos
-    from amaze.helpers import hostos as hostos_mod
-    from amaze.core import matx_sources
-
-    def _no_network(url, *args, **kwargs):
-        raise OSError(
-            "the test suite blocks the network - an unconfigured "
-            "fixture panel reached out to %s" % url
-        )
-
-    real_request = matx_sources._request
-    matx_sources._request = _no_network
-    testcase.addCleanup(setattr, matx_sources, "_request", real_request)
-
-    real_save = prefs.Prefs.save
-    prefs.Prefs.save = lambda self, *a, **k: None
-    testcase.addCleanup(setattr, prefs.Prefs, "save", real_save)
-
-    config = scratch_dir("amaze_fixture_noconf_")
-    testcase.addCleanup(shutil.rmtree, config, True)
-    real_config_root = hostos_mod.config_root
-    hostos_mod.config_root = lambda: config
-    testcase.addCleanup(setattr, hostos_mod, "config_root",
-                        real_config_root)
-
-    reset_database_singletons()
-    panel = panel_mod.AmazePanel()
-    testcase.addCleanup(dispose_panel, panel)
-    testcase.addCleanup(stop_panel_workers, panel)
-    if panel.pane.prefs.dir:
-        raise RuntimeError(
-            "the unconfigured fixture found a library (%s) - the "
-            "isolation failed and this panel is not first-run"
-            % panel.pane.prefs.dir)
-    return panel
 
 
 def dispose_panel(panel) -> None:
@@ -857,30 +785,6 @@ def stop_panel_workers(panel) -> None:
         pass
 
 
-def toolbar_row(panel) -> list:
-    """The toolbar row left to right, by `objectName`; unnamed widgets raise. ▸p/harness-isolation"""
-    layout = panel.toolbar_layout
-    row = []
-    for index in range(layout.count()):
-        item = layout.itemAt(index)
-        widget = item.widget()
-        if widget is not None:
-            name = widget.objectName()
-            if not name:
-                raise RuntimeError(
-                    "toolbar item %d is a %s with no objectName, so this "
-                    "row cannot tell it from its siblings - give it one "
-                    "where it is constructed"
-                    % (index, type(widget).__name__)
-                )
-            row.append(name)
-        elif item.expandingDirections():
-            row.append("stretch")
-        else:
-            row.append("gap")
-    return row
-
-
 def section_files() -> list:
     """Every section file's path relative to the package, `sections/base.py` first."""
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -899,21 +803,6 @@ def section_classes() -> dict:
 def section_class(name: str):
     """The Section class called `name`, from whichever section file holds it."""
     return section_classes()[name]
-
-BADGE_FAMILY = ("badge_open", "badge_favourite", "badge_versions",
-                "badge_comment")    # the tile badges, by SVG name, in corner order
-
-
-def tile_delegate(roles, subtitle_role=None, **kwargs):
-    """A tile delegate showing the badges in `roles`, each reading the number given (None: no role)."""
-    from amaze.panel import delegates
-    model = type("TileModel", (), {})
-    for name, role in roles.items():
-        if delegates.BADGE[name].role:
-            setattr(model, delegates.BADGE[name].role, role)
-    return delegates.AssetItemDelegate(
-        subtitle_role, tile_badges=tuple(roles), tile_model=model, **kwargs)
-
 
 def art_colours(name: str) -> set:
     """Every colour an SVG in ui/ declares, so tests avoid literal hexes. ▸p/harness-isolation"""

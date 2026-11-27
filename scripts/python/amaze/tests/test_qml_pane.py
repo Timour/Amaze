@@ -9,24 +9,14 @@ import shiboken6
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 import hou  # noqa: E402,F401
-from amaze.qml import pane as qml_pane  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
 
 class TheQmlPaneOpensAndCloses(unittest.TestCase):
 
     def test_qm15_qt_deletes_the_pane_and_its_engine_on_the_main_thread(self):
-        engine = test_support.fixture_pane(self)    # the fixture library, and a second pane on it
-        panel = qml_pane.QmlPanel()
-        self.addCleanup(test_support.stop_panel_workers, panel)
-        panel.setAttribute(QtCore.Qt.WidgetAttribute.WA_DontShowOnScreen)
-        panel.resize(840, 420)
-        panel.show()
-        QtWidgets.QApplication.processEvents()
+        panel = test_support.fixture_qml_pane(self)
         self.assertIsNotNone(panel.view.rootObject(), "the pane's QML did not load")
-        self.assertIsNot(engine, panel.pane, "the two panes share one engine")
-        self.assertIs(engine.material_model, panel.pane.material_model,
-                      "the two panes on one library read separate models")
 
         parts = (panel, panel.view, panel.state, panel.pane)
         main = QtWidgets.QApplication.instance().thread()
