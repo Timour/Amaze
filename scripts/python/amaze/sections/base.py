@@ -18,7 +18,7 @@ AssetStack = collections.namedtuple(
     "AssetStack", "model proxy selection categories")
 
 
-CommentSubject = collections.namedtuple("CommentSubject", "key name type")
+CommentSubject = collections.namedtuple("CommentSubject", "key name type row")    # row: its model's, kept
 
 
 FilterEntry = collections.namedtuple(    # `id` is what the remembered choice saves, so a label can change
@@ -635,6 +635,7 @@ class AssetSection(Section):
             key=notes.note_key(st.model.NOTES_SECTION, asset_id),    # the MODEL's notes section: shared by three sections
             name=source.data(QtCore.Qt.ItemDataRole.DisplayRole) or "",
             type=source.data(st.model.RendererLabelRole) or "",
+            row=QtCore.QPersistentModelIndex(source),
         )
 
     def filter_text(self, text: str) -> None:

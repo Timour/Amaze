@@ -923,7 +923,6 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
             self.notes_panel = notes_panel.NotesPanel(self.pane.comments)    # its two pages: one shows at a time
             self.side_pane.add_page(self.notes_panel)
             self.notes_panel.copy_font_and_text_color(self.cat_list)
-            self.pane.comments.saved.connect(self._on_note_saved)
             self.info_panel = info_panel.InfoPanel(self.pane.info)
             self.side_pane.add_page(self.info_panel)
             self.info_panel.copy_font(self.cat_list)
@@ -1432,10 +1431,6 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
             self._ui_icon_path("icon_comments.svg"),
             lighten_on_hover=False,
             recolour_on={amazetheme.COMMENT_ICON_ART_COLOR: amazetheme.COMMENT_ICON_COLOR})
-
-    def _on_note_saved(self, _key: str) -> None:
-        """A note was saved: repaint the grid so the tile's note badge appears or disappears."""
-        grid.visible_view(self).viewport().update()    # `NotesRole` emits no `dataChanged`
 
     def set_conversion_bar_visible(self, visible: bool) -> None:
         """The only setter of the conversion bar's visibility, and the Cancel button's with it."""

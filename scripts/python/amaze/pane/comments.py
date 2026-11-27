@@ -35,7 +35,6 @@ class Comments(QtCore.QObject):
     """The Comments pane's subject and its saves; the pane holds it as `comments`."""
 
     changed = QtCore.Signal()    # the header changed: another subject, or nothing selected
-    saved = QtCore.Signal(str)    # the comment of this key was written
 
     def __init__(self, pane) -> None:
         super().__init__(pane)
@@ -43,6 +42,7 @@ class Comments(QtCore.QObject):
         self.document = None    # the shown view's `CommentDocument`
         self._open = False    # the pane is shown: only then does it follow the selection
         self._key = None
+        self._row = None    # the subject's row in its model, whose comment mark a save changes
         self._library = ""    # the library the page was read from, and so the one its saves write to
         self._typed_in = None    # the library and user of the typing waiting to be saved
         self._loading = False
@@ -108,17 +108,18 @@ class Comments(QtCore.QObject):
         library = str(getattr(self.pane.prefs, "dir", "") or "")
         self._header = (subject.name, subject.type, False)
         if (subject.key, library) == (self._key, self._library):    # a rename: a reload would lose the typing
+            self._row = subject.row
             self.changed.emit()
             return
         self.flush()
-        self._key, self._library = subject.key, library
+        self._key, self._library, self._row = subject.key, library, subject.row
         self._show()
         self.changed.emit()
 
     def clear(self) -> None:
         """Nothing selected (N01B): the same page dimmed and empty, the typing saved first."""
         self.flush()
-        self._key, self._library = None, ""
+        self._key, self._library, self._row = None, "", None
         self._header = (amazetheme.COMMENT_DIM_NAME, amazetheme.COMMENT_DIM_TYPE, True)
         self._show()
         self.changed.emit()
@@ -154,9 +155,15 @@ class Comments(QtCore.QObject):
         if self._key is None or self.document is None:
             return
         if notes.set_notes(self._typed_in, {self._key: self.document.serialize()}):    # at quit no timer fires
-            self.saved.emit(self._key)
+            self._mark_row()
         else:
             debug.event("notes", "comment not saved", key=str(self._key))
+
+    def _mark_row(self) -> None:
+        """The subject's row reads its comment mark again, in every view of its model."""
+        row = self._row
+        if row is not None and row.isValid():
+            row.model().row_changed(row.row(), [row.model().NotesRole])
 
     def add_rows(self) -> list:
         """The add menu's rows, as `pane.menus.Menu` gives a menu's rows."""

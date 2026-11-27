@@ -465,6 +465,7 @@ class FolderSection(base.Section):
             key=notes.note_key(self.key, path),
             name=source.data(QtCore.Qt.ItemDataRole.DisplayRole) or "",
             type=source.data(model.FormatRole) or "",
+            row=QtCore.QPersistentModelIndex(source),
         )
 
 
