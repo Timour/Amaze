@@ -189,6 +189,17 @@ class FactsTest(_Info):
         test_support.pump_until(lambda: False, 0.2)
         self.assertEqual([], got)
 
+        info, gate = test_support.fixture_pane(self).info, self.gated(file_info, [("Read", "rows")])
+        subject = file_info.Subject("c", "c", "", request=file_info.Request(file_info.KIND_SIZES, ("/c",)))
+        info.set_subject(subject)
+        test_support.pump_until(lambda: False, 0.2)
+        self.assertEqual([], gate.calls, "the closed pane read a file")
+        info.set_open(True)
+        info.set_subject(subject)
+        self.assertTrue(test_support.pump_until(lambda: gate.calls, 2.0))
+        info.set_open(False)
+        self.assertTrue(gate.calls[0][2].wait(2.0), "closing the pane did not stop the read")
+
     def test_in20_facts_for_an_earlier_selection_are_never_shown(self):
         reader, sizes = file_info.Reader(), file_info.Request(file_info.KIND_SIZES, (self.box(),))
         self.assertEqual(["b"], self.late_answer(reader, lambda: reader.ask("a", sizes),
@@ -373,6 +384,17 @@ class PictureTest(_Info):
             reader.ask(path, 100)
             self.assertTrue(test_support.pump_until(lambda: len(widths) == count, 3.0))
         self.assertEqual([40, 60], widths, "the picture read before was kept")
+        info = test_support.fixture_pane(self).info
+        info.set_width(100)
+        info.set_open(True)
+        info.set_subject(file_info.Subject("a", "a", "", request=file_info.request_for_file(path)))
+        self.assertTrue(test_support.pump_until(lambda: info.picture() is not None, 3.0))
+        info.toggle_preview()
+        self.assertIsNone(info.picture(), "hiding the picture kept it")
+        info.toggle_preview()
+        self.assertTrue(test_support.pump_until(lambda: info.picture() is not None, 3.0))
+        info.set_open(False)
+        self.assertIsNone(info.picture(), "hiding the pane kept the picture")
 
     def test_in32_a_picture_narrower_than_asked_is_the_whole_file(self):
         path, marks = picture(self.at("a.exr"), 400, 200, kind=oiio.HALF), []
@@ -382,6 +404,19 @@ class PictureTest(_Info):
             reader.ask(path, width)
             self.assertTrue(test_support.pump_until(lambda: len(marks) == count, 3.0))
         self.assertEqual(["", "1"], marks, "the whole file is not told from a part of it")
+        info = test_support.fixture_pane(self).info
+        info.set_width(100)
+        info.set_open(True)
+        info.set_subject(file_info.Subject("a", "a", "", request=file_info.request_for_file(path)))
+        self.assertTrue(test_support.pump_until(lambda: info.picture() is not None, 3.0))
+        for width, shown in ((200, 200), (900, 400)):
+            info.set_width(width)    # the pane dragged wider
+            self.assertTrue(test_support.pump_until(lambda: info.picture().width() == shown, 3.0))
+        changed = []
+        info.picture_changed.connect(lambda: changed.append(1))
+        info.set_width(1000)
+        test_support.pump_until(lambda: False, 0.5)
+        self.assertEqual([], changed, "the whole file was read again")
 
 if __name__ == "__main__":
     unittest.main()
