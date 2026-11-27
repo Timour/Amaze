@@ -5,7 +5,6 @@ Item {
     id: root
 
     required property TableView view    // a child of it, so the stripes go in its content
-    property int stripe: 1    // the rows, by parity, drawn on the alternate ground
     property real rowHeight: 0    // a row's height as drawn; 0 for the ground's own
     readonly property real rowSize: view.rows > 0 ? view.contentHeight / view.rows
                                   : root.rowHeight > 0 ? root.rowHeight : ground.implicitHeight
@@ -24,7 +23,7 @@ Item {
             y: index * root.rowSize
             width: Math.max(root.view.width, root.view.contentWidth)
             height: root.rowSize
-            alternate: root.view.alternatingRows && (root.view.rows + index) % 2 === root.stripe
+            alternate: root.view.alternatingRows && (root.view.rows + index) % 2 === 1
         }
     }
 }

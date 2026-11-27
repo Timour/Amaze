@@ -66,7 +66,8 @@ SidePane {
 
                 readonly property real whole: shown.implicitWidth > 0
                                               ? page.width * shown.implicitHeight / shown.implicitWidth : 0
-                property real wanted: SharedState.infoPreviewHeight
+                property real dragged: -1    // the height while its line is dragged, -1 otherwise
+                readonly property real wanted: dragged >= 0 ? dragged : SharedState.infoPreviewHeight
 
                 width: page.width
                 height: SharedState.infoPicture !== "" ? Math.min(picture.wanted, picture.whole) : 0
@@ -105,9 +106,14 @@ SidePane {
                     onPositionChanged: mouse => {
                         moved = true
                         const top = mapToItem(page.contentItem, 0, mouse.y).y - press
-                        picture.wanted = Math.max(root.drawn.least, Math.min(top, picture.whole))
+                        picture.dragged = Math.max(root.drawn.least, Math.min(top, picture.whole))
                     }
-                    onReleased: if (moved) SharedState.keepPreviewHeight(picture.wanted)
+                    onReleased: {
+                        if (moved)
+                            SharedState.keepPreviewHeight(picture.dragged)
+                        picture.dragged = -1
+                    }
+                    onCanceled: picture.dragged = -1
                 }
             }
             RowsTable {
@@ -119,11 +125,17 @@ SidePane {
                 scrolls: false
                 model: SharedState.infoRows
                 rowHeight: root.drawn.row
-                stripe: 0    // N02's first row is the bright one
                 drawn: SharedState.table
                 columns: [{width: root.drawn.label_width, tick: false, inset: root.drawn.label_inset},
                           {width: Math.max(1, page.width - root.drawn.label_width), tick: false,
                            inset: root.drawn.value_inset}]
+            }
+            Rectangle {    // N02's divider between the two columns, down the whole table
+                x: root.drawn.label_width - root.drawn.divider / 2    // the drawn line's middle
+                y: table.y
+                width: root.drawn.divider
+                height: table.height
+                color: root.drawn.page
             }
         }
     }

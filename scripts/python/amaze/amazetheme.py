@@ -96,6 +96,7 @@ INFO_SHOW_PREVIEW = "Show Preview"    # and while it is hidden
 INFO_PREVIEW_LEAST = 38             # px: the lowest the drag line takes the picture area, two rows
 DRAG_LINE_COLOR = "#202020"         # the line under the picture; dragging it sets the picture area's height
 DRAG_LINE_GRAB = 3                  # px above and below the line that also take the drag
+INFO_DIVIDER_WEIGHT = 2             # px: the stroke of N02's divider line, which its node box omits
 
 
 TILE_TEXT = "#cdc8bc"           # ▸ the tile and list delegates
@@ -1542,4 +1543,5 @@ def drawn_info(frame_key: str = "N02") -> dict:
         "label_width": node("divider")[1] - row[1],    # the value column starts at the drawn divider
         "label_inset": node("label", "1")[1] - row[1],    # each column's text inside it
         "value_inset": node("value", "1")[1] - node("divider")[1],
+        "divider": INFO_DIVIDER_WEIGHT,    # centred on the column edge, in the page colour
     }

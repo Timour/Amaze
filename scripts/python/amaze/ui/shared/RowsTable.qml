@@ -10,7 +10,6 @@ Item {
     property alias selectionModel: view.selectionModel
     property var columns: []    // per model column: its starting width, 0 to hide it, if a tick, an inset
     property real rowHeight: 0    // a row's height as drawn; 0 for the ground's own
-    property int stripe: 1    // the rows, by parity, drawn on the alternate ground
     property bool scrolls: true    // false: the rows take the height they need and a page scrolls them
     readonly property real contentHeight: header.height + view.contentHeight
     property var drawn: ({})    // `amazetheme.drawn_list`: the header's height, the text inset, the tick
@@ -125,7 +124,6 @@ Item {
             }
             RowStripes {
                 view: view
-                stripe: root.stripe
                 rowHeight: root.rowHeight
             }
             Item {    // under the rows and the space below them, so one handler takes every click
@@ -158,7 +156,7 @@ Item {
                 readonly property var inset: column < root.columns.length ? root.columns[column].inset : undefined
 
                 highlighted: selected
-                alternate: view.alternatingRows && row % 2 === root.stripe
+                alternate: view.alternatingRows && row % 2 === 1
                 clip: true
 
                 Text {
