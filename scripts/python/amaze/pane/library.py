@@ -480,4 +480,5 @@ class Library:
         )
         pane.show_context(pane.sections[pane.current_section])    # the path a tab click takes
         pane.library_shown.emit()
+        pane.sidebar.watch_names()
         pane.online_changed.emit()    # the online models exist from here on

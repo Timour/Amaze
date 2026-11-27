@@ -10,7 +10,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")    # the first app picks t
 from PySide6 import QtCore, QtGui, QtTest, QtWidgets  # noqa: E402
 
 from amaze import messages
-from amaze.core import category, code_library, debug, gradient_library, library, library_db
+from amaze.core import category, code_library, debug, documents, gradient_library, library, library_db
 from amaze.core import grid_columns, library_files, locations, material, sidebar_model
 from amaze.tests import test_support
 
@@ -237,6 +237,32 @@ class AssetEditingTest(_Edits):
         self.assertEqual(["Karma_Mats", "usds", "Wood"],
                          sorted((entry["name"] for entry in self.on_disk()["categories"].values()),
                                 key=str.lower))
+
+    def test_ed33_same_named_categories_from_a_sync_are_asked_about_once_an_open(self):
+        theirs, also = "f" * 32, "e" * 32
+        other = documents.Library(self.prefs.dir, "u-other").document(MATERIALS)
+        other.put(category.SECTION, theirs, {"name": "wood", "order": 0})
+        other.put(category.SECTION, also, {"name": "karma_mats", "order": 99})
+        self.assertTrue(other.save())
+        mine, karma = self.cat("Wood"), self.cat("Karma_Mats")    # this save merges the other's two in
+        self.sidebar.apply_refresh()
+        self.model.edit_tiles([self.key("gold")], category=mine)
+        asked = []
+
+        def answer(reply):
+            return lambda name, count, apart: asked.append((name, count, apart)) or reply.get(name, "")
+        for _time in range(2):    # Esc on both; the second pass asks nothing
+            category.settle_names(self.model, self.sidebar, answer({}))
+        self.assertEqual([("Karma_Mats", 2, ["Karma_Mats 2"]), ("wood", 2, ["wood 2"])], asked)
+        self.assertLessEqual({theirs, also, mine, karma}, set(self.sidebar.top_keys()), "Esc changed it")
+        self.sidebar.switch_model_data()    # the next open asks again
+        category.settle_names(self.model, self.sidebar, answer(
+            {"wood": category.JOIN, "Karma_Mats": category.KEEP_BOTH}))
+        saved = self.on_disk()
+        self.assertEqual((["Karma_Mats", "Karma_Mats 2", "wood"], [theirs]), (
+            sorted(entry["name"] for key, entry in saved["categories"].items()
+                   if key in (theirs, also, mine, karma)),
+            saved["assets"][self.key("gold")]["categories"]))
 
     def test_ed30_the_shipped_snippets_and_palettes_are_added_once_and_only_when_taken(self):
         for model, sidebar, seed in (

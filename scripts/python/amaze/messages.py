@@ -370,6 +370,8 @@ BUTTONS_REPAIR_OR_CANCEL = ('Repair', 'Cancel')
 BUTTONS_IMPORT = ('Import', 'Cancel')
 
 BUTTONS_DELETE = ('Delete', 'Cancel')
+CATEGORIES_SAME_NAME = '%s has %s named "%s".\n\nJoin puts their assets in one category. Keep Both renames the lower one to %s.'
+BUTTONS_SAME_NAME = ('Join', 'Keep Both', 'Cancel')
 
 BUTTONS_REMOVE = ('Remove', 'Cancel')
 

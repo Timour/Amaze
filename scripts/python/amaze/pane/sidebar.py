@@ -1,7 +1,13 @@
 """The sidebar's rows: the model shown, the pane's selection of its rows, and the work on them."""
 
-from amaze import amazetheme
-from amaze.core import category, category_list, grid_columns
+import functools
+
+import hou
+from PySide6 import QtCore
+
+from amaze import amazetheme, messages
+from amaze.core import category, category_list, grid_columns, library_files
+from amaze.helpers import wording
 
 KEY_PAUSE_MS = 180    #: the arrow keys' pause before the row they stop on is shown: a File step lists a folder
 
@@ -120,6 +126,39 @@ class Sidebar:
             if proxy is not None:
                 found.append(proxy)
         return tuple(found)
+
+    def watch_names(self) -> None:
+        """Ask about categories of one name now and after each read that leaves some, while the pane lives."""
+        self._names_timer = QtCore.QTimer(self.pane)    # owned: a closed pane leaves nothing scheduled
+        self._names_timer.setSingleShot(True)
+        self._names_timer.setInterval(0)    # a question inside a model's own signal would nest its reset
+        self._names_timer.timeout.connect(self._settle_names)
+        for section in self.pane.sections.values():
+            st = section.stack()
+            if st is not None:
+                section.follow(st.categories.names_clash, self._names_timer.start)
+        self._names_timer.start()    # the models were read before anything listened
+
+    def _settle_names(self) -> None:
+        stacks = [section.stack() for section in self.pane.sections.values()]
+        if any([category.settle_names(st.model, st.categories,
+                                      functools.partial(self._ask_same_name, st.model))
+                for st in stacks if st is not None]):
+            self.refresh()    # counts and empty-category hiding, as after a rename from the menu
+
+    def _ask_same_name(self, model, name: str, count: int, apart: list) -> str:
+        """The user's answer on `count` categories named `name`: category.JOIN, KEEP_BOTH or ""."""
+        ui = getattr(hou, "ui", None)
+        if ui is None:
+            return ""
+        picked = ui.displayMessage(
+            messages.CATEGORIES_SAME_NAME % (
+                library_files.section_label(model.DB_FILENAME),
+                wording.count(count, "category", "categories"),
+                category_list.display_name(name), wording.and_list(apart)),
+            buttons=messages.BUTTONS_SAME_NAME, default_choice=2, close_choice=2,
+            title=messages.TITLE_AMAZE)
+        return (category.JOIN, category.KEEP_BOTH, "")[picked]
 
     def refresh(self) -> None:
         """Re-evaluate empty-category hiding and counts, for changes that emit no layoutChanged."""

@@ -16,9 +16,30 @@ def is_all(key) -> bool:
     return key in ALL_NAMES
 
 
+def folded(name) -> str:
+    """A name as two are compared: as shown, capitals aside (`_WIP`, WIP and wip are one)."""
+    return display_name(str(name).strip()).casefold()
+
+
 def same_name(one, other) -> bool:
-    """Whether two names are one category's: as shown, capitals aside (`_WIP`, WIP and wip)."""
-    return display_name(str(one).strip()).casefold() == display_name(str(other).strip()).casefold()
+    """Whether two names are one category's."""
+    return folded(one) == folded(other)
+
+
+def same_named(names: dict) -> list:
+    """The keys of `names`, {key: name} in list order, that share a name: one list for each name."""
+    found = {}
+    for key, name in names.items():
+        found.setdefault(folded(name), []).append(key)
+    return [keys for name, keys in found.items() if name and len(keys) > 1]
+
+
+def free_name(names, name: str) -> str:
+    """`name 2`, or with the first number after 2 that no name in `names` has."""
+    taken, number = {folded(held) for held in names}, 2
+    while folded("%s %d" % (name, number)) in taken:
+        number += 1
+    return "%s %d" % (name, number)
 
 
 def new_key() -> str:

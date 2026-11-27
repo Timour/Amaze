@@ -18,6 +18,7 @@ ROW_ROLES = frozenset((int(QtCore.Qt.ItemDataRole.DisplayRole), SIDEBAR_COUNT_RO
                        SIDEBAR_COLOR_ROLE, SIDEBAR_KEY_ROLE))    # every role a category row answers
 
 ALL = "_All"    # the first row: a view of every asset, never stored
+JOIN, KEEP_BOTH = "join", "keep both"    # the answers `settle_names` acts on; any other changes nothing
 SECTION = "categories"    # {id: {"name": n, "order": n, "color": c}} in the section's database
 
 
@@ -58,6 +59,28 @@ def rename(model, sidebar, keys, typed) -> str:
     return target
 
 
+def settle_names(model, sidebar, ask) -> bool:
+    """Categories of one name put to `ask(name, count, apart)`, once an open; whether any changed."""
+    names = {key: sidebar.name_of(key) for key in sidebar.top_keys()}
+    groups = category_list.same_named(names)
+    if not groups or not model.takes_edits():
+        return False
+    changed = False
+    for keys in groups:
+        if not sidebar.ask_once(keys):
+            continue
+        apart = []
+        for _key in keys[1:]:    # the lower ones in the sidebar, the same on every computer
+            apart.append(category_list.free_name(list(names.values()) + apart, names[keys[0]]))
+        answer = ask(names[keys[0]], len(keys), apart)
+        if answer == JOIN:
+            changed = bool(rename(model, sidebar, keys, names[keys[0]])) or changed
+        elif answer == KEEP_BOTH:
+            for key, name in zip(keys[1:], apart):
+                changed = bool(rename(model, sidebar, [key], name)) or changed
+    return changed
+
+
 def remove(model, sidebar, keys) -> bool:
     """Categories `keys` taken off every asset, then out of the sidebar; False when refused."""
     return change_categories(model, keys, model.remove_category, sidebar.remove_category)
@@ -82,6 +105,7 @@ class Categories(sidebar_model.SidebarModel):
     """The category list for one library, backed by DB_FILENAME; each row keyed by its id."""
 
     DB_FILENAME = library_files.MATERIALS  # subclassed by each section over its own database
+    names_clash = QtCore.Signal()    # a read of the database left categories of one name: the pane asks
 
     def __init__(self, preferences: prefs.Prefs) -> None:
         super().__init__()
@@ -92,6 +116,7 @@ class Categories(sidebar_model.SidebarModel):
         self._colour_table = self._read_colours()
         self._names = self._read_names()
         self._named = set()    # keys this model named, their names written at its save
+        self._asked = set()    # the same-named categories asked about since the library opened
         self._removed = set()    # keys this model took out, dropped from the database at its save
         self._shown = list(self._categories)    # the rows the views last showed; `apply_refresh` compares
         self._renderer_filter = None  # the grid's kind filter, folded; None = none. Counts match the grid
@@ -188,15 +213,28 @@ class Categories(sidebar_model.SidebarModel):
             self._seen = list(self._categories)
             self._colour_table = self._read_colours()
             self._names, self._named = self._read_names(), set()
-            self._removed = set()
+            self._removed, self._asked = set(), set()
             self._shown = list(self._categories)    # the model reset has already updated the views
             self.drop_count_cache()
             self._forget_rows()
         finally:
             self.endResetModel()
+        self._tell_names_clash()
+
+    def _tell_names_clash(self) -> None:
+        """`names_clash` when two of the categories just read have one name."""
+        if category_list.same_named({key: self._names.get(key, "") for key in self.top_keys()}):
+            self.names_clash.emit()
 
     def apply_refresh(self) -> bool:
         """Read in the database's names, colours and order; True when the sidebar changed."""
+        changed = self._read_database()
+        if changed:
+            self._tell_names_clash()
+        return changed
+
+    def _read_database(self) -> bool:
+        """The database's names, colours and order taken; whether any differs from what was shown."""
         colours, names = self._read_colours(), self._read_names()
         recoloured = colours != self._colour_table
         renamed = [key for key in self.top_keys() if names.get(key) != self._names.get(key)]
@@ -306,6 +344,12 @@ class Categories(sidebar_model.SidebarModel):
         finally:
             self.endResetModel()
         self._mark_rows_shown()
+
+    def ask_once(self, keys) -> bool:
+        """Whether these same-named categories were not asked about yet since the library opened."""
+        new = frozenset(keys) not in self._asked
+        self._asked.add(frozenset(keys))
+        return new
 
     def name_of(self, key: str) -> str:
         """The stored name of the category keyed `key`, "" for none."""
