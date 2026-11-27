@@ -93,6 +93,7 @@ SETTINGS = {    # a row's `pref` -> (the Prefs value as Houdini's rows' text, th
     "matx_parallel_downloads": NUMBER,
     **{renderer.switch: SWITCH for renderer in renderers.ALL},
     "sidebar_counts": SWITCH,
+    "show_tooltips": SWITCH,
     "hide_empty_categories": SWITCH,
     "step_size": SWITCH,
     "render_rat_files": SWITCH,
@@ -137,6 +138,7 @@ TIPS = {    # a row's or a button's `tipID` -> the text Houdini's tip window sho
     **{renderer.switch: tooltips.PREFS_RENDERER_SWITCH for renderer in renderers.ALL},
     **{pref: tooltips.PREFS_SECTION_SWITCH for pref in SECTION_PREFS},
     "sidebar_counts": tooltips.PREFS_SIDEBAR_COUNTS,
+    "show_tooltips": tooltips.PREFS_SHOW_TOOLTIPS,
     "hide_empty_categories": tooltips.PREFS_HIDE_EMPTY_CATEGORIES,
     "step_size": tooltips.PREFS_STEP_SIZE,
     "render_rat_files": tooltips.PREFS_RENDER_RAT_FILES,
@@ -1014,7 +1016,9 @@ class AmazePrefsState(mainprefs.PrefsState):
     @QtCore.Slot(str, str, str, float, float, float, float, str)
     def showHelpTip(self, title: str, text: str, tip_id: str,
                     x=-1.0, y=-1.0, w=1.0, h=1.0, alignment="Left") -> None:
-        """Houdini's tip window, with Amaze's text where Houdini reads its help pages."""
+        """Houdini's tip window, with Amaze's text; with Show Tooltips off, only while Control is held."""
+        if not (self.getBool("show_tooltips") or self.ctrlHeld):
+            return
         text = text or _tip_html(self._tip_text(tip_id))
         super().showHelpTip(title, text, tip_id, x, y, w, h, alignment)
 

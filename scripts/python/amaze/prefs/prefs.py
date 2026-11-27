@@ -438,6 +438,14 @@ class Prefs(_Persistence):
         self._sidebar_counts = bool(val)
 
     @property
+    def show_tooltips(self) -> bool:
+        return self._show_tooltips
+
+    @show_tooltips.setter
+    def show_tooltips(self, val: bool) -> None:
+        self._show_tooltips = bool(val)
+
+    @property
     def render_rat_files(self) -> bool:
         """Whether a `.rat` file gets a rendered thumbnail; off, it shows the rat face."""
         return self._render_rat_files

@@ -170,7 +170,7 @@ Item {
                     color: cell.highlighted || !cell.model.foreground ? cell.fg : root.ink(cell.model.foreground)
                     text: cell.model.display ?? ""
                     ToolTip.text: text    // a cut value whole, as Houdini's theme list tips a cut name
-                    ToolTip.visible: truncated && over.hovered
+                    ToolTip.visible: SharedState.tipsShown && truncated && over.hovered
                     ToolTip.delay: Config.toolTipDelay
 
                     HoverHandler {

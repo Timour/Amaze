@@ -28,31 +28,21 @@ DialogRoot {
         font.pixelSize: Typography.medium
         text: "0000-00-00"
     }
-    Item {    // the list, its tip shown anywhere over it
+    RowsTable {
+        id: table
         width: parent.width
         height: SharedState.listHeight
-        ToolTip.text: SharedState.tip
-        ToolTip.visible: over.hovered
-        ToolTip.delay: Config.toolTipDelay
-
-        HoverHandler {
-            id: over
+        headings: false
+        ownKeys: true
+        model: SharedState.rows    // first: a selection set before it is cleared by Qt
+        selectionModel: SharedState.selection
+        columns: {
+            const date = Math.ceil(day.advanceWidth) + 2 * SharedState.table.text_inset
+            return [{width: Math.max(1, width - date), tick: false}, {width: date, tick: false}]
         }
-        RowsTable {
-            id: table
-            anchors.fill: parent
-            headings: false
-            ownKeys: true
-            model: SharedState.rows    // first: a selection set before it is cleared by Qt
-            selectionModel: SharedState.selection
-            columns: {
-                const date = Math.ceil(day.advanceWidth) + 2 * SharedState.table.text_inset
-                return [{width: Math.max(1, width - date), tick: false}, {width: date, tick: false}]
-            }
-            drawn: SharedState.table
-            onRowClicked: row => SharedState.pick(row)
-            onRowKeyed: row => SharedState.pick(row)
-            Component.onCompleted: table.forceActiveFocus()    // the arrows move the pick at once
-        }
+        drawn: SharedState.table
+        onRowClicked: row => SharedState.pick(row)
+        onRowKeyed: row => SharedState.pick(row)
+        Component.onCompleted: table.forceActiveFocus()    // the arrows move the pick at once
     }
 }

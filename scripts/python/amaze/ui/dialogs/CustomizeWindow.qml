@@ -41,7 +41,7 @@ DialogRoot {
         enabled: SharedState.custom
         opacity: enabled ? 1.0 : Theme.disabledAlpha
         ToolTip.text: swatch.tip
-        ToolTip.visible: over.hovered && swatch.tip !== ""
+        ToolTip.visible: SharedState.tipsShown && over.hovered && swatch.tip !== ""
         ToolTip.delay: Config.toolTipDelay
 
         TapHandler {
@@ -74,7 +74,7 @@ DialogRoot {
                 enabled: SharedState.question.nameEnabled    // off for several tiles
                 text: SharedState.question.name
                 ToolTip.text: SharedState.tips.name
-                ToolTip.visible: hovered
+                ToolTip.visible: SharedState.tipsShown && hovered
                 ToolTip.delay: Config.toolTipDelay
                 onEntered: root.accept()
                 onCanceled: root.reject()    // Esc in Houdini's field
@@ -93,7 +93,7 @@ DialogRoot {
                 currentIndex: SharedState.categoryRow
                 onEntered: root.accept()
                 ToolTip.text: SharedState.tips.category
-                ToolTip.visible: hovered
+                ToolTip.visible: SharedState.tipsShown && hovered
                 ToolTip.delay: Config.toolTipDelay
             }
             FieldLabel {
@@ -106,7 +106,7 @@ DialogRoot {
                 visible: SharedState.question.hasTags
                 text: SharedState.question.tags
                 ToolTip.text: SharedState.tips.tags
-                ToolTip.visible: hovered
+                ToolTip.visible: SharedState.tipsShown && hovered
                 ToolTip.delay: Config.toolTipDelay
                 onEntered: root.accept()
                 onCanceled: root.reject()
@@ -145,7 +145,7 @@ DialogRoot {
                 enabledRole: "enabled"    // Image is greyed for a tile that can have no picture
                 currentIndex: SharedState.faceRow
                 ToolTip.text: SharedState.tips.image
-                ToolTip.visible: hovered
+                ToolTip.visible: SharedState.tipsShown && hovered
                 ToolTip.delay: Config.toolTipDelay
                 onActivated: SharedState.chooseFace(currentValue)
                 onEntered: root.accept()
@@ -158,7 +158,7 @@ DialogRoot {
                 enabled: SharedState.custom
                 checked: SharedState.light
                 ToolTip.text: SharedState.tips.light
-                ToolTip.visible: hovered
+                ToolTip.visible: SharedState.tipsShown && hovered
                 ToolTip.delay: Config.toolTipDelay
                 onToggled: SharedState.setLight(checked)
             }
@@ -229,7 +229,7 @@ DialogRoot {
                     flat: true
                     checked: cell.modelData === SharedState.icon
                     ToolTip.text: cell.modelData
-                    ToolTip.visible: hovered
+                    ToolTip.visible: SharedState.tipsShown && hovered
                     ToolTip.delay: Config.toolTipDelay
                     onClicked: SharedState.chooseIcon(cell.modelData)
                     contentItem: Item {

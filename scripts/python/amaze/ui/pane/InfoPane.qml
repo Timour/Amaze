@@ -33,7 +33,7 @@ SidePane {
             file: SharedState.infoPreviewShown ? "icon_preview_hide.svg" : "icon_preview_show.svg"
         }
         ToolTip.text: SharedState.infoPreviewShown ? SharedState.tips.hidePreview : SharedState.tips.showPreview
-        ToolTip.visible: hovered
+        ToolTip.visible: SharedState.tipsShown && hovered
         ToolTip.delay: Config.toolTipDelay
         onClicked: SharedState.togglePreview()
     }

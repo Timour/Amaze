@@ -3,7 +3,7 @@
 from PySide6 import QtCore
 
 import amaze
-from amaze import amazetheme, messages, tooltips
+from amaze import amazetheme, messages
 from amaze.core import guard, versions
 from amaze.qml import dialog_window, rows_model
 
@@ -29,7 +29,6 @@ class VersionsState(dialog_window.DialogState):
     table: dict = {}    # L01's figures, as every table has them
     listHeight: int = LIST["view"][1]
     frame: dict = {}    # the frame's own figures: the space around the list and its buttons, their widths
-    tip: str = tooltips.PANEL_VERSION_ROW
     selectText: str = amazetheme.BTN_SELECT
     deleteText: str = messages.BUTTONS_DELETE[0]
     deleteTip: str = messages.HELP_DELETE_VERSION % guard.TRASH_DAYS

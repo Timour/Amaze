@@ -3,119 +3,121 @@
 from __future__ import annotations
 
 
-PREFS_LIBRARY = 'The library Amaze shows. Pick another, then press Apply to switch to it.'   # ▸ P01
+PREFS_LIBRARY = 'The library Amaze shows.'   # ▸ P01
 
-PREFS_ADD_LIBRARY = 'Add a library folder to the list, or an empty folder for a new library.'
+PREFS_ADD_LIBRARY = 'Add a library folder, or an empty folder for a new library.'
 
 PREFS_MANAGE_LIBRARIES = 'Remove libraries from the list.'
 
-PREFS_CHECK_LIBRARY = "Look over the library's databases and folders and fix what you choose. Files moved to Amaze's trash are deleted after 30 days."
+PREFS_CHECK_LIBRARY = "Check the library's databases and folders and fix what you choose."
 
 PREFS_RELOAD_LIBRARY = 'Reload the library from disk.'
 
 PREFS_OPEN_LIBRARY_FOLDER = 'Open the library folder.'
 
-PREFS_MATERIAL_VERSIONS = "When on, saving over a material keeps the old one as a version. When off, saving over a material replaces it and keeps no version. This setting is stored in the library, so it applies to everyone who uses it."
+PREFS_MATERIAL_VERSIONS = 'Keep the old material as a version when saving over it, for everyone using this library.'
 
-PREFS_LIBRARY_USER = "Who you are in this library. Your favorites and folders follow your name, so the same person on another machine sees the same items, and two people sharing one library keep their things separate. Your name also signs the versions you save. It is never guessed from your machine name."
+PREFS_LIBRARY_USER = 'Your name in this library, which your favorites and folders follow.'
 
-PREFS_RENAME_USER = 'Change the name shown for this user. Only the name changes; your favorites and folders stay yours.'
+PREFS_RENAME_USER = 'Rename this user.'
 
-PREFS_DELETE_USER = 'Remove this user, their favorites, and their folders. You will be asked to confirm.'
+PREFS_DELETE_USER = 'Remove this user with their favorites and folders.'
 
 PREFS_CACHE_PATH = 'Where the preview cache is kept on this machine.'
 
-PREFS_DEFAULT_CACHE = 'Move the preview cache back to its default location. Nothing is deleted; previews are rebuilt at the new location as you browse.'
+PREFS_DEFAULT_CACHE = 'Use the default location for the preview cache.'
 
-PREFS_DELETE_LOCAL_CACHE = 'Delete the preview cache. It rebuilds as you browse; your library is not touched.'
+PREFS_DELETE_LOCAL_CACHE = 'Delete the preview cache, which rebuilds as you browse.'
 
-PREFS_RENDER_SIZE = 'Thumbnail size in pixels. Bigger looks sharper but takes longer to render.'   # ▸ Preferences - Render tab (P02)
+PREFS_RENDER_SIZE = 'Thumbnail size in pixels.'   # ▸ Preferences - Render tab (P02)
 
 PREFS_SAMPLES_REDSHIFT = 'Render quality for Redshift thumbnails.'
 
-PREFS_SAMPLES_KARMA = 'Render quality for Karma thumbnails. 9 is the Karma default.'
+PREFS_SAMPLES_KARMA = "Render quality for Karma thumbnails. Karma's default is 9."
 
 PREFS_SAMPLES_OCTANE = 'Render quality for Octane thumbnails.'
 
 
-PREFS_GEOMETRY_SHADING = 'How geometry thumbnails are drawn: shaded, wireframe, or both.'
+PREFS_GEOMETRY_SHADING = 'How geometry thumbnails are drawn.'
 
 PREFS_GEOMETRY_BACKGROUND = 'The background behind geometry thumbnails.'
 
-PREFS_RENDER_ON_IMPORT = 'Render thumbnails as soon as you import materials. Turn off to render them later with Render Image.'
+PREFS_RENDER_ON_IMPORT = 'Render thumbnails as soon as materials are imported.'
 
-PREFS_RENDER_RAT_FILES = 'Render a thumbnail for every .rat file in the File tab. Off, a .rat file shows the rat picture.'
-PREFS_GENERIC_FILE_ICONS = 'Show the generic file icon for a file that has no preview in the File tab. Off, such a file shows its system icon.'
+PREFS_RENDER_RAT_FILES = 'Render a thumbnail for each .rat file in the File tab.'
+PREFS_GENERIC_FILE_ICONS = 'Files without a preview show the generic icon instead of the system icon.'
 
-PREFS_CONVERSION_THREADS = 'How many textures (EXR/HDR) are turned into thumbnails at the same time.'
+PREFS_CONVERSION_THREADS = 'How many EXR and HDR thumbnails are made at once.'
 
-PREFS_DOWNLOAD_RESOLUTION = 'The texture size to download. If that size is not available, the largest one available is used.'
+PREFS_DOWNLOAD_RESOLUTION = 'The texture size to download, else the largest available.'
 
-PREFS_PARALLEL_DOWNLOADS = 'How many previews download at the same time. More is faster because these wait on network delay, not your bandwidth.'
+PREFS_PARALLEL_DOWNLOADS = 'How many previews download at once.'
 
 
-PREFS_RENDERER_SWITCH = 'Which renderers Amaze offers. Hide the ones you do not use.'   # ▸ Preferences - UI ▸ Renderer (P03a)
+PREFS_RENDERER_SWITCH = 'Offer this renderer in Amaze.'   # ▸ Preferences - UI ▸ Renderer (P03a)
 
-PREFS_SECTION_SWITCH = 'Which sections the panel shows. Hiding a section keeps everything in it; its tab is just hidden.'   # ▸ UI ▸ Sections (P03b)
+PREFS_SECTION_SWITCH = 'Show this section as a tab in the pane.'   # ▸ UI ▸ Sections (P03b)
 
-PREFS_SIDEBAR_COUNTS = 'Show how many items each category has.'   # ▸ Preferences - UI tab (P04)
+PREFS_SHOW_TOOLTIPS = 'Show a tip when the pointer rests on an Amaze control.'   # ▸ Preferences - UI tab (P04)
 
-PREFS_HIDE_EMPTY_CATEGORIES = 'With a Filter choice other than All, hide the categories that have nothing to show. Under All, every category shows.'
+PREFS_SIDEBAR_COUNTS = 'Show how many items each category has.'
+
+PREFS_HIDE_EMPTY_CATEGORIES = 'Hide the categories the Filter leaves empty.'
 
 PREFS_STEP_SIZE = 'Step the tile size slider from mark to mark.'
 
-PREFS_WRITE_PATHS_AS ='How Amaze writes paths in Copy Path, the File section and the textures of a material it imports. A variable is used when the path is inside it; otherwise the path is written as is.'
+PREFS_WRITE_PATHS_AS = 'Paths inside this variable are written with it, others in full.'
 
-PREFS_TILE_ICON_LINE = 'Line weight of the tile icons: thin or regular.'
+PREFS_TILE_ICON_LINE = 'Line weight of the tile icons.'
 
 
-PREFS_ADDON_SWITCH = 'On or off from the next Houdini start. Off keeps Houdini from loading these nodes; a scene that uses them keeps their values and shows them incomplete until they are on again.'   # ▸ Preferences - Add-On tab (P05)
+PREFS_ADDON_SWITCH = 'Load these nodes from the next Houdini start.'   # ▸ Preferences - Add-On tab (P05)
 
-PREFS_ADDONS_CHECK = 'Look in the Amaze store for new add-ons and newer versions. Nothing is downloaded or changed.'
+PREFS_ADDONS_CHECK = 'Look in the Amaze store for new add-ons and versions.'
 
-PREFS_ADDONS_UPDATE = 'Download and install what the check found. Houdini must be restarted afterwards.'
+PREFS_ADDONS_UPDATE = 'Install what the check found, then restart Houdini.'
 
-PREFS_INSTALL_UPDATE = 'Download and install the new release. Your library and settings are not affected; Houdini must be restarted afterwards.'   # ▸ Preferences - About tab (P06)
+PREFS_INSTALL_UPDATE = 'Install the new release, then restart Houdini.'   # ▸ Preferences - About tab (P06)
 
-PREFS_CHECK_FOR_UPDATES = 'Check if a newer Amaze is available. Nothing is downloaded or changed.'
+PREFS_CHECK_FOR_UPDATES = 'Check for a newer Amaze.'
 
-PREFS_REPORT_A_BUG = 'Open the Amaze bug page with your Amaze, Houdini, and OS versions already filled in. Nothing is sent until you press Submit.'
+PREFS_REPORT_A_BUG = 'Open the bug page with your versions filled in.'
 
-PREFS_DEBUG_MODE = 'Write a session log to help diagnose problems. Off by default.'
+PREFS_DEBUG_MODE = 'Write a session log to help diagnose problems.'
 
 PREFS_OPEN_LOG = 'Open the debug log.'
 
-PREFS_SAVE_LOG = 'Copy the debug log to a folder you choose. The copy is named for this machine and Houdini version, and contains your file paths, asset, and material names.'
+PREFS_SAVE_LOG = 'Save a copy of the debug log, which holds your file paths and asset names.'
 
-PREFS_CLEAR_LOG = 'Clear the log and start fresh.'
+PREFS_CLEAR_LOG = 'Clear the debug log.'
 
-PREFS_ADDON_BETAS = 'Which version of each add-on Check for Updates on the Add-On tab installs: the newest beta when on, the newest release when off.'
+PREFS_ADDON_BETAS = 'Install add-on betas instead of releases.'
 
-CUSTOMIZE_TILE_NAME = 'Rename this tile. The name drives the grid, the sidebar count, and every search.'   # ▸ Customize dialog (D02)
+CUSTOMIZE_TILE_NAME = 'Rename this tile.'   # ▸ Customize dialog (D02)
 
-CUSTOMIZE_CATEGORY = 'Move to this category. Applies to every selected tile.'
+CUSTOMIZE_CATEGORY = 'Move every selected tile to this category.'
 
 CUSTOMIZE_TAGS_ONE_TILE = 'Tags for this tile, separated by commas.'
 
-CUSTOMIZE_TAGS_MANY_TILES = 'Tags to add to every selected tile, separated by commas. Each tile keeps the tags it already has.'
+CUSTOMIZE_TAGS_MANY_TILES = 'Tags to add to every selected tile, separated by commas.'
 
-CUSTOMIZE_ICON = 'What the tile shows: its render, its capture, its section\'s icon, or an icon you choose.'
+CUSTOMIZE_ICON = 'What the tile shows.'
 
 CUSTOMIZE_LIGHT_ICON = 'Draw the icon lines light for a dark background.'
 
-CUSTOMIZE_CUSTOM_COLOR = 'The current background. Click to pick any color with Houdini color picker.'
+CUSTOMIZE_CUSTOM_COLOR = "Pick any background color in Houdini's color picker."
 
-SAVE_NAME = 'Name it, pick a category, and add tags so you can find it later.'   # ▸ Save dialogs (D09, D11)
+SAVE_NAME = 'The name it is saved under.'   # ▸ Save dialogs (D09, D11)
 
 PANEL_FAVORITES = 'Show favorites.'   # ▸ Panel toolbar
 
-PANEL_COMMENTS = 'Comments - notes and to-dos for the selected tile.'
+PANEL_COMMENTS = 'Comments for the selected tile.'
 
 PANEL_ONLINE = 'Browse materials online.'
 
 PANEL_VIEW_MENU = 'Import a gallery file or a package, or export one.'
 
-PANEL_INFO = 'Info - details of the selected tile.'
+PANEL_INFO = 'Details of the selected tile.'
 
 PANEL_KIND_FILTER = 'Show one kind of tile.'
 
@@ -123,14 +125,12 @@ PANEL_PREFERENCES = 'Open preferences.'
 
 PANEL_CATEGORIES = 'Show the category sidebar.'
 
-PANEL_VIEW_MODE = 'Switch between the thumbnail grid and the detail list.'
+PANEL_VIEW_MODE = 'Show tiles as a grid or a list.'
 
-PANEL_SEARCH = 'Search for items. Put a colon first to search tags instead: :metal finds everything tagged metal.'   # ▸ Panel filter row
+PANEL_SEARCH = 'Search names, or tags with a colon first: :metal.'   # ▸ Panel filter row
 
 PANEL_TILE_SIZE = 'Tile size.'
 
-PANEL_TILE_SIZE_LIST = 'Tile size - grid only. A list row is one text line, so it does not scale.'
-
-PANEL_VERSION_ROW = 'Pick a version and press Select to make it current. Versions are made automatically when you save.'   # ▸ Versions dialog (D01)
+PANEL_TILE_SIZE_LIST = 'Tile size, in the grid only.'
 
 NOTES_ADD_TODO = 'Add a bullet point or an image.'   # ▸ Comments pane

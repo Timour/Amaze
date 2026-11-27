@@ -416,6 +416,22 @@ def doc_pictures() -> list:
     return found
 
 
+def tips_follow_the_switch() -> list:
+    """Every QML tip opens only while Preferences' Show Tooltips is on: it reads it first."""
+    found = []
+    for folder, dirs, files in os.walk(os.path.join(PACKAGE, "ui")):
+        dirs.sort()
+        for name in sorted(f for f in files if f.endswith(".qml")):
+            path = os.path.join(folder, name)
+            with open(path, encoding="utf-8") as handle:
+                for number, line in enumerate(handle, 1):
+                    if ("ToolTip.visible:" in line and "ToolTip.visible: SharedState.tipsShown &&"
+                            not in line) or "ToolTip.show(" in line:
+                        found.append("%s:%d shows a tip Show Tooltips does not turn off" % (
+                            os.path.relpath(path, ROOT).replace(os.sep, "/"), number))
+    return found
+
+
 def _text(*parts) -> str:
     """A repository file's text, its path given from the repository's root."""
     with open(os.path.join(ROOT, *parts), encoding="utf-8") as handle:
@@ -580,7 +596,8 @@ def test_modules() -> list:
 
 RULES = (layers, engine_widgets, preview_api, host_checks, unbound_names, defined_twice,
          event_pumps, unowned_styles, colour_pickers, text_names, placeholders, text_literals)
-CHECKS = (comment_length, doc_pictures, suite_lists, test_runner, tool_scripts, test_modules)
+CHECKS = (comment_length, doc_pictures, tips_follow_the_switch, suite_lists, test_runner, tool_scripts,
+          test_modules)
 
 
 def refusals() -> list:

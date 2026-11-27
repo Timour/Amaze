@@ -44,7 +44,7 @@ DialogRoot {
             text: SharedState.question.name
             enabled: SharedState.question.nameEnabled    // off for a save of several nodes
             ToolTip.text: SharedState.nameTip
-            ToolTip.visible: hovered
+            ToolTip.visible: SharedState.tipsShown && hovered
             ToolTip.delay: Config.toolTipDelay
             onEntered: root.accept()
             onCanceled: root.reject()    // Esc in Houdini's field

@@ -21,6 +21,7 @@ class DialogState(qmlviews.SharedState):
     """What a dialog window's QML reads, its `question`, and its ends: OK or Apply with an answer."""
 
     question: dict = {}    # what the window opens with; each kind names its own fields
+    tipsShown: bool = True    # the asking pane's, taken as the window opens
 
     answered = QtCore.Signal("QVariant")    # OK, with what the window's QML hands on
     applied = QtCore.Signal("QVariant")    # Apply, with the same: the window stays open
@@ -79,6 +80,7 @@ class DialogWindow(qmlviews.BaseQmlView):
             except RuntimeError:    # deleted already
                 pass
         window = _open[cls] = cls(title, question, then)
+        window.sharedState().tipsShown = owner.tipsShown
         owner.destroyed.connect(window.close)    # it never outlives the pane it answers
         window.show()    # as Houdini shows its Preferences window
         window.raise_()

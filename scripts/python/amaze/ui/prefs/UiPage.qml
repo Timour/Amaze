@@ -6,6 +6,14 @@ import houdini.prefs
 
 PrefsPage {
     Group {
+        text: "Tooltips"
+
+        TogglePref {
+            label: "Show Tooltips"
+            pref: "show_tooltips"
+        }
+    }
+    Group {
         text: "Categories"
 
         TogglePref {

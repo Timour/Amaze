@@ -29,7 +29,7 @@ ToolButton {
     opacity: enabled ? 1.0 : Theme.disabledAlpha
     layer.enabled: !enabled    // dimmed as one picture, or the chip would show through the art
     ToolTip.text: button.tip
-    ToolTip.visible: button.hovered && button.tip !== ""
+    ToolTip.visible: SharedState.tipsShown && button.hovered && button.tip !== ""
     ToolTip.delay: Config.toolTipDelay
     onPressed: if (button.opens !== "") button.menuAsked(button.opens)
     background: Item {

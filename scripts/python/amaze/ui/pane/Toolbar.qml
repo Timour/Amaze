@@ -108,7 +108,7 @@ Item {
             }
             onTapped: index => SharedState.setViewMode(names[index])
             ToolTip.text: SharedState.tips.viewMode
-            ToolTip.visible: hover.hovered
+            ToolTip.visible: SharedState.tipsShown && hover.hovered
             ToolTip.delay: Config.toolTipDelay
 
             HoverHandler {
@@ -133,7 +133,7 @@ Item {
             enabled: SharedState.viewMode !== "list"    // a list row is one text line
             layer.enabled: !enabled    // Houdini dims it by opacity; flat, the groove no longer shows through
             ToolTip.text: enabled ? SharedState.tips.tileSize : SharedState.tips.tileSizeList
-            ToolTip.visible: hovered
+            ToolTip.visible: SharedState.tipsShown && hovered
             ToolTip.delay: Config.toolTipDelay
             onMoved: SharedState.setTileSize(Math.round(value))
         }
@@ -155,7 +155,7 @@ Item {
             rightPadding: clear.visible ? clear.width : padding
             placeholderText: SharedState.searchHint
             ToolTip.text: SharedState.tips.search
-            ToolTip.visible: hovered
+            ToolTip.visible: SharedState.tipsShown && hovered
             ToolTip.delay: Config.toolTipDelay
             onTextChanged: SharedState.typeSearch(text)
             Keys.onEscapePressed: {    // as Houdini's SearchField: Esc empties a filled box

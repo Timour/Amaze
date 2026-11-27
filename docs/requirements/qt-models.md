@@ -13,3 +13,4 @@ The levels and the rules for tests are in the [README](README.md).
 - QM-14 Severe: A sort never moves a row's data to another row, even when the grid's row lists are out of step.
 - QM-15 Severe: The Amaze QML pane is built on Houdini's main thread, and closing it deletes the pane, its view, its state and its engine.
 - QM-16 Wrong output: Qt's tree acts once on a click on a sidebar row: no view of the QML pane scrolls by dragging.
+- QM-17 Wrong output: With Show Tooltips off in Preferences, the pane and its windows show no tip; in Preferences, a row's tip shows only while Control is held.

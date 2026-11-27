@@ -94,7 +94,7 @@ Item {
                     enabled: root.extraEnabled
                     implicitWidth: root.extraWidth
                     ToolTip.text: root.extraTip
-                    ToolTip.visible: hovered && root.extraTip !== ""
+                    ToolTip.visible: SharedState.tipsShown && hovered && root.extraTip !== ""
                     ToolTip.delay: Config.toolTipDelay
                     onClicked: SharedState.apply(root.extraAnswer)
                 }

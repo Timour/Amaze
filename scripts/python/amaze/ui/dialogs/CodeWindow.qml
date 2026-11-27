@@ -36,7 +36,7 @@ DialogRoot {
                 Layout.horizontalStretchFactor: 1
                 text: SharedState.question.name
                 ToolTip.text: SharedState.nameTip
-                ToolTip.visible: hovered
+                ToolTip.visible: SharedState.tipsShown && hovered
                 ToolTip.delay: Config.toolTipDelay
                 onCanceled: root.reject()    // Esc in Houdini's field
             }
