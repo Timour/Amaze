@@ -12,6 +12,7 @@ FORM_DIALOG_MARGIN = 5        # ▸ the content margin every compact form dialog
 
 D02_MARGINS = (8, 12, 8, 12)   # ▸ D02 Customize (Tile Icon): left, top, right, bottom
 D02_CELL = 34            # one icon button in the chooser grid
+D02_CELL_ART = 20        # the icon's art inside its button
 D02_COLUMNS = 8          # what the drawn 319 grid column fits at 2px spacing
 D02_FIELD_H = 22         # every field, the search and both buttons
 D02_SWATCH_GAP = 6
@@ -1398,6 +1399,57 @@ def drawn_code_dialog(frame_key: str = "D11") -> dict:
         "tab_close": (close[3], close[4], tab[1] + tab[3] - close[1] - close[3]),    # w, h, inset
         "plus": plus[1:5],
         "plus_gap": plus[1] - tab[1] - tab[3],
+    }
+
+
+def drawn_customize(frame_key: str = "D02") -> dict:
+    """Customize's margins and gaps for QML, and each fixed part's box from the Image menu's corner."""
+    height = DIALOG_LAYOUT[frame_key]["frame"][1]
+
+    def boxes(kind):
+        return drawn_repeats(frame_key, kind, None)    # top to bottom, then left to right
+
+    def label(text):
+        return drawn_boxes(frame_key)[("QLabel", text)]
+
+    def gap(box, other):
+        """From `box`'s right edge to `other`'s left."""
+        return other[0] - (box[0] + box[2])
+
+    (name, tags, search), (category, face) = boxes("QLineEdit"), boxes("QComboBox")
+    (preview,), (light,), (chip, *presets) = boxes("QLabel"), boxes("ToggleSwitch"), boxes("QToolButton")
+    apply, accept = boxes("QPushButton")
+    grid = drawn_node(frame_key, "icon grid")
+    left, top = preview[0], face[1]    # the fixed parts are placed from here
+    bottom = max(box[1] + box[3] for box in (preview, *presets))
+
+    def placed(box):
+        return [box[0] - left, box[1] - top, box[2], box[3]]    # a list, which QML reads as an array
+    label_gap = gap(label(LABEL_NAME), name)
+    return {
+        "top": name[1],
+        "bottom": height - (apply[1] + apply[3]),
+        "label_width": name[0] - label_gap - left,    # the labels' column, which ends label_gap left of a field
+        "label_gap": label_gap,
+        "row_gap": category[1] - (name[1] + name[3]),
+        "block_gap": top - (tags[1] + tags[3]),    # the Tags row to the fixed parts
+        "block": bottom - top,    # the fixed parts' height
+        "preview": placed(preview),
+        "face_label": label(LABEL_ICON)[0] - left,
+        "face": placed(face),
+        "light": placed(light),
+        "light_gap": gap(light, label(LABEL_LIGHT_ICON)),
+        "chip": placed(chip),
+        "chip_gap": gap(chip, label(LABEL_CUSTOM_COLOR)),
+        "presets": [placed(box) for box in presets],
+        "search_gap": search[1] - bottom,
+        "grid_gap": grid[2] - (search[1] + search[3]),
+        "cell": D02_CELL,
+        "cell_gap": D02_GRID_SPACING,
+        "cell_art": D02_CELL_ART,
+        "button_gap": apply[1] - (grid[2] + grid[4]),
+        "buttons": [apply[2], accept[2]],
+        "pair_gap": drawn_pair_gap(frame_key),
     }
 
 

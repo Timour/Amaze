@@ -783,6 +783,7 @@ copied per dialog.
 | **Save window** | the Amaze (QML) pane | `dialogs/save_window.py` on **DialogWindow** — D09's rows in Houdini's controls: Section, Name, Category (the picked section's (key, name) list), Language (for a section that stores one), Tags; OK hands on a SaveAnswer. Its drop-down lists are `ui/shared/MenuBox.qml`, Houdini's ComboBox with its menu sized by its rows |
 | **Versions window** | the Amaze (QML) pane | `dialogs/versions_window.py` on **DialogWindow** — a material's versions newest first in the shared `RowsTable` (name, then the day it was saved), the active one picked; Select makes the picked one active. Opened by the tile's versions badge |
 | **Name window** | the Amaze (QML) pane | `dialogs/name_window.py` on **DialogWindow** — the one name field (`ui/shared/NameForm.qml`), OK and Cancel; asked by Add, Rename, New Folder and Save Scene. Not modal: Houdini stays usable while it is open |
+| **Customize window** | the Amaze (QML) pane | `dialogs/customize_window.py` on **DialogWindow** — the second view of `pane/customize.py`, in Houdini's controls at the places `amazetheme.drawn_customize` reads off the design record: Name, Category, Tags, the preview, the Image menu, Light Icons, the colour chip and presets (Houdini's ColorChip), Houdini's SearchField over the icons (a GridView of Houdini's tool buttons, made only while on screen), then Apply and Accept. Apply commits and keeps the window, Accept closes it and then commits, Esc and the window's close commit nothing. The colour chip opens the host's `ask_colour` |
 
 *Adoption is complete* (R51, 2026-08-21) — every dialog is built on AssetDialog;
 a new QDialog subclass in `dialogs/` either subclasses the base or records its
@@ -1121,6 +1122,9 @@ qml/dialog_window.py      DIALOG WINDOW: the QML pane's dialog windows, not
                           modal, one per kind, each answering its asker once
 qml/rows_model.py         ROWS MODEL: a QML table's rows, one dict each - the
                           Versions list and Manage Libraries
+qml/pictures.py           STATE PICTURES: a QML image provider whose pictures
+                          its state gives on the main thread - the tiles, the
+                          Info pane's picture, Customize's preview
 qml/hotkeys.py            The pane's keys as Houdini hotkeys (context
                           `h.pane.amaze`, editable in Edit > Hotkeys): installs
                           them, makes the context active for the pane, and
@@ -1348,6 +1352,8 @@ dialogs/save_window.py    the Save window on DialogWindow: OK hands on a
                           SaveAnswer, the categories follow the section
 dialogs/versions_window.py the Versions window on DialogWindow: Select hands
                           on the version picked
+dialogs/customize_window.py Customize on DialogWindow: what its QML shows of
+                          the Customize engine, and the slots its controls call
 dialogs/prefs_window.py   Preferences as Houdini's own QML window: its
                           prefs state reads and writes Amaze's Prefs;
                           the pages are ui/prefs/*.qml

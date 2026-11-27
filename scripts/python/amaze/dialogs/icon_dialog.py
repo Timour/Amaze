@@ -130,7 +130,7 @@ class IconDialog(base_dialog.AssetDialog):
 
         group = QtWidgets.QButtonGroup(self)   # every button is built once; the filter only shows or hides
         group.setExclusive(True)
-        icon_px = theme.ui_px(CELL - 14)
+        icon_px = theme.ui_px(amazetheme.D02_CELL_ART)
         self._icon_px = icon_px
         self._icon_color = icon_color
         self._icon_dpr = None                             # the device pixel ratio of the current icons; None until first drawn ▸r/screen-dpr

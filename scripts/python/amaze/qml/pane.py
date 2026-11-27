@@ -6,7 +6,7 @@ import shiboken6
 import amaze
 from amaze import amazetheme, tooltips
 from amaze.core import debug, grid_columns, grid_engine, locations
-from amaze.dialogs import code_window, name_window, save_window, versions_window
+from amaze.dialogs import code_window, customize_window, name_window, save_window, versions_window
 from amaze.helpers import ui_helpers
 from amaze.pane import (asks, comment_document, drag_session, menus, node_drop, pane as pane_mod,
                         sidebar as pane_sidebar)
@@ -698,6 +698,10 @@ class PaneState(qmlviews.SharedState, asks.Asks):
     def open_code(self, question, apply) -> None:
         """The code window, not modal: each Apply hands `apply` a CodeAnswer; a close hands on nothing."""
         code_window.ask(self, question, apply)
+
+    def open_customize(self, question, apply) -> None:
+        """Customize, not modal: Apply and Accept hand `apply` a CustomizeAnswer; a close, nothing."""
+        customize_window.ask(self, question, apply)
 
     def ask_colour(self, start: str, title: str, then) -> None:
         """Houdini's colour picker, the one the widget panel opens: `then` gets "#rrggbb", None for Cancel."""
