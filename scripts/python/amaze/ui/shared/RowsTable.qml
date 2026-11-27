@@ -8,7 +8,7 @@ Item {
 
     property alias model: view.model    // set before `selectionModel`: Qt points a selection at its rows
     property alias selectionModel: view.selectionModel
-    property var columns: []    // per model column: its starting width, 0 to hide it, if a tick, an inset
+    property var columns: []    // per model column: its width, 0 to hide it, if a tick, an inset, if whole
     property real rowHeight: 0    // a row's height as drawn; 0 for the ground's own
     property bool scrolls: true    // false: the rows take the height they need and a page scrolls them
     readonly property real contentHeight: header.height + view.contentHeight
@@ -154,6 +154,7 @@ Item {
                 required property bool selected
                 readonly property bool tick: column < root.columns.length && root.columns[column].tick
                 readonly property var inset: column < root.columns.length ? root.columns[column].inset : undefined
+                readonly property bool whole: column < root.columns.length && !!root.columns[column].whole
 
                 highlighted: selected
                 alternate: view.alternatingRows && row % 2 === 1
@@ -165,9 +166,17 @@ Item {
                     width: parent.width - x
                     height: parent.height
                     verticalAlignment: Text.AlignVCenter
-                    elide: Text.ElideRight
+                    elide: cell.whole ? Text.ElideMiddle : Text.ElideRight    // a long path keeps both its ends
                     color: cell.highlighted || !cell.model.foreground ? cell.fg : root.ink(cell.model.foreground)
                     text: cell.model.display ?? ""
+                    ToolTip.text: text    // a cut value whole, as Houdini's theme list tips a cut name
+                    ToolTip.visible: truncated && over.hovered
+                    ToolTip.delay: Config.toolTipDelay
+
+                    HoverHandler {
+                        id: over
+                        enabled: cell.whole
+                    }
                 }
                 AmazeIcon {    // a yes is L01's tick at its box; a no shows nothing
                     visible: cell.tick && !!cell.model.display

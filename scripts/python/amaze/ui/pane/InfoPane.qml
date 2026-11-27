@@ -128,7 +128,7 @@ SidePane {
                 drawn: SharedState.table
                 columns: [{width: root.drawn.label_width, tick: false, inset: root.drawn.label_inset},
                           {width: Math.max(1, page.width - root.drawn.label_width), tick: false,
-                           inset: root.drawn.value_inset}]
+                           inset: root.drawn.value_inset, whole: true}]    // cut in the middle, tipped whole
             }
             Rectangle {    // N02's divider between the two columns, down the whole table
                 x: root.drawn.label_width - root.drawn.divider / 2    // the drawn line's middle
