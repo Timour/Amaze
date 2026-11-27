@@ -58,10 +58,6 @@ class Asks:
         """Preferences, on `page` when one is named."""
         raise NotImplementedError
 
-    def show_comments(self) -> None:
-        """The Comments pane, opened or closed as its toolbar button does."""
-        raise NotImplementedError
-
     def after_drawn(self, then) -> None:
         """`then()` once what the pane just changed is on screen, before work that holds the main thread."""
         raise NotImplementedError

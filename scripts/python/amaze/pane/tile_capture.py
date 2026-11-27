@@ -12,17 +12,6 @@ class TileCapture:
     def __init__(self, pane) -> None:
         self.pane = pane
 
-    def from_toolbar(self) -> None:
-        """Toolbar Capture: the one selected tile; in File with nothing selected, the open scene."""
-        context = self.pane.active_section()
-        indexes = context.grid_selection() if context is not None else []
-        if len(indexes) == 1 and getattr(context, "takes_capture", False):
-            self.onto_tile(context, indexes[0])
-        elif not indexes and getattr(context, "key", "") == "file":
-            self.capture_and_report()    # "" = the scene the viewport is showing
-        else:
-            self.show_capture_warning(messages.CAPTURE_SELECT_ONE_TILE)
-
     def onto_tile(self, context, proxy_index) -> None:
         """The Scene View as one tile's picture, the tile then showing it. Never automatic ▸r/tile-captures"""
         model, proxy = context.tile_models()

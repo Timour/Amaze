@@ -413,9 +413,6 @@ class Section:
         return (len(indexes) == 1 and current is not None and model is not None
                 and int(current.data(model.VersionsRole) or 0) >= VERSIONS_TO_PICK)
 
-    def menu_comments(self, indexes, current, payload=None) -> None:
-        self.pane.ui.show_comments()    # as the toolbar Comments button does, so the two never differ
-
     def menu_delete(self, indexes, current, payload=None) -> None:
         self.pane.assets.delete(indexes)
 

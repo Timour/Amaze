@@ -461,17 +461,6 @@ class AssetLibrary(grid_engine.GridEngine,
     ) -> int:
         return len(self._assets)
 
-    def removeRow(
-        self,
-        row: int,
-        /,
-        parent: QtCore.QModelIndex | QtCore.QPersistentModelIndex = ...,
-    ) -> bool:
-        if not self._unlist_row(row):
-            return False
-        self.rebuild_thumbs()  # rows shifted, so remap keys to rows; the dropped image ages out of the LRU
-        return True
-
     def _unlist_row(self, row: int) -> bool:
         """Take one row out of the model, marked for removal at the next save; maps NOT rebuilt."""
         if not 0 <= row < len(self._assets):

@@ -73,7 +73,6 @@ NO_LIBRARY_OPEN = "Open a library first."
 AMAZE_COULD_NOT = "%d of %d items could not be imported."
 SCENE_BUILD_PARTIAL_FAILURE = "%d of %d could not be built."
 TILE_ICON_SAVE_FAILED = "%d tile icon%s could not be saved - check that the library folder is writable."
-CAPTURE_SELECT_ONE_TILE = "Select one tile to capture onto."
 CAPTURE_NO_FILE = "No file was given for the capture."
 CAPTURE_NO_ASSETUTILS = "This Houdini has no husd.assetutils (%s), so the viewport cannot be captured."
 CAPTURE_NO_VIEWER = "No scene viewer is open - the capture needs a visible viewport to capture."
@@ -409,7 +408,6 @@ HELP_LOG_SAVED = 'It contains your file paths, asset and material names - check 
 
 
 SNIPPET_HAS_NO_CODE = "No code to save."
-CODE_VERSION_UNREADABLE = "That version's file could not be read. The editor keeps the code it had."
 
 SNIPPET_RUN_FAILED = "\"%s\" stopped: %s"
 SNIPPET_NOT_PYTHON = "\"%s\" was not run: it is %s, and only a Python snippet runs in Houdini."

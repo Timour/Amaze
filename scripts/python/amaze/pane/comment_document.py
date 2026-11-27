@@ -208,8 +208,8 @@ class CommentDocument(QtCore.QObject):
         cursor.endEditBlock()
         return cursor.position()
 
-    def glyphs(self, until: float = -1) -> list:
-        """Each to-do's glyph and its click zone, in document px, down to `until` if given."""
+    def glyphs(self) -> list:
+        """Each to-do's glyph and its click zone, in document px."""
         layout = self.document.documentLayout()
         side = self._px(DRAWN["glyph"])
         found = []
@@ -217,8 +217,6 @@ class CommentDocument(QtCore.QObject):
         while block.isValid():
             if is_todo_block(block):
                 rect = layout.blockBoundingRect(block)
-                if 0 <= until < rect.top():
-                    break
                 lines = block.layout()   # lineAt() on an un-laid-out block crashes hython natively
                 if lines is not None and lines.lineCount() > 0:
                     line = lines.lineAt(0)
@@ -231,11 +229,6 @@ class CommentDocument(QtCore.QObject):
                                               rect.height())})    # left of the text, the whole block high
             block = block.next()
         return found
-
-    def todo_at(self, x: float, y: float) -> int:
-        """The to-do block whose glyph zone holds (x, y) in document px, or -1."""
-        point = QtCore.QPointF(x, y)
-        return next((glyph["block"] for glyph in self.glyphs(y) if glyph["zone"].contains(point)), -1)
 
     def _insert_unloaded_text(self, cursor, src: str, shown: str) -> None:
         """Insert `shown` in the cursor's block, storing `src` so `serialize` saves the picture."""
