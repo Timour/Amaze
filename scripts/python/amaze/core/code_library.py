@@ -11,6 +11,7 @@ from amaze import messages
 from amaze.core import debug, library, library_files, category, material
 from amaze.core import thumbnails
 
+LANGUAGES = ("VEX", "OpenCL", "Python", "Code")
 _STARTER_DEF = "res/def/starter_snippets.json"  # shipped example snippets, seeded once per library
 _STARTER_MARK = "code_starter_v1"  # in the library's marks; versioned: a new name seeds again
 

@@ -184,7 +184,7 @@ class CodeSection(base.AssetSection):
                     "id")    # no Version column: a snippet's name is its active version's name
     filter_tooltip = "Show snippets in one language."
 
-    FILTER_CHOICES = (    # the stored language strings, "Code" the catch-all; not imported from code_dialog
+    FILTER_CHOICES = (    # the stored language strings, "Code" the catch-all; not imported from code_library
         base.FilterEntry("VEX", "VEX", "VEX"),
         base.FilterEntry("OpenCL", "OpenCL", "OpenCL"),
         base.FilterEntry("Python", "Python", "Python"),

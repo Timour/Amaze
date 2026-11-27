@@ -4,7 +4,7 @@ from PySide6 import QtCore
 
 import amaze
 from amaze import amazetheme, branding, tooltips
-from amaze.dialogs import code_dialog
+from amaze.core import code_library
 from amaze.pane import asks
 from amaze.qml import dialog_window
 
@@ -19,7 +19,7 @@ class SaveState(dialog_window.DialogState):
     sectionRow: int = 0
     categories: list = []    # the picked section's categories, as {text, value: its key}
     categoryRow: int = -1
-    languages: list = list(code_dialog.LANGUAGES)
+    languages: list = list(code_library.LANGUAGES)
     languageRow: int = 0
     languageOn: bool = False    # the picked section stores a language
     nameTip: str = tooltips.SAVE_NAME

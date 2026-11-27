@@ -5,7 +5,7 @@ import hou
 
 import amaze
 from amaze import amazetheme, branding, messages, tooltips
-from amaze.dialogs import code_dialog
+from amaze.core import code_library
 from amaze.pane import asks
 from amaze.qml import dialog_window
 
@@ -18,7 +18,7 @@ class CodeState(dialog_window.DialogState):
 
     categories: list = []    # the snippet section's categories, as {text, value: its key}
     categoryRow: int = -1
-    languages: list = list(code_dialog.LANGUAGES)
+    languages: list = list(code_library.LANGUAGES)
     languageRow: int = 0
     highlighter: str = ""    # Houdini's colours for the language the snippet opened with
     codeGround: str = ""    # Houdini's own code field ground, "" where no Houdini window gives one

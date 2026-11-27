@@ -11,7 +11,6 @@ from amaze.actions import check as check_actions
 from amaze.actions import library as library_actions
 from amaze.core import (check_library, debug, library_db, library_settings, model_registry,
                         renderers, section_list, texture_library, tile_icons, updater, users)
-from amaze.dialogs import library_dialog, user_dialog
 from amaze.helpers import hostos, ui_helpers
 from amaze.pane import files as pane_files
 from amaze.prefs import prefs as prefs_mod
@@ -44,7 +43,29 @@ def _same_folder(one: str, other: str) -> bool:
     return bool(one and other) and hostos.comparable_path(one) == hostos.comparable_path(other)
 
 
-SWITCH = (_switch_text, _switch_value)    # Houdini's switch rows write "1" and "0"
+def library_name(folder: str) -> str:
+    """What the Library list calls a library: its folder's name."""
+    return (os.path.basename(os.path.normpath(folder)) or folder) if folder else ""
+
+
+def shown_path(folder: str) -> str:
+    """A library's folder as the list shows it, `~` for the home folder."""
+    return hostos.storage_path_key(folder).rstrip("/") or folder
+
+
+CREATE = "\x00create"    # the create row's value: never a name and never a UID
+CREATE_TEXT = "Create a new user..."
+DEFAULT_NAME = "Amaze User"    # the user a library with nobody in it starts with
+
+
+def user_rows(known: dict) -> list:
+    """(name, UID) for every user by name, A to Z, then the create row last."""
+    rows = sorted(((name, user_id) for user_id, name in known.items()),
+                  key=lambda pair: pair[0].lower())
+    return rows + [(CREATE_TEXT, CREATE)]
+
+
+SWITCH =(_switch_text, _switch_value)    # Houdini's switch rows write "1" and "0"
 NOT_SWITCH = (lambda value: _switch_text(not value),    # a switch on while its setting is off
               lambda text: not _switch_value(text))
 WORD = (str, str)
@@ -295,7 +316,7 @@ class AmazePrefsState(mainprefs.PrefsState):
         if record and name == LIBRARY:
             self.setAll({LIBRARY: value, USER: self._picked_library_user(value)}, registry, auto_apply)
             return
-        if record and name == USER and value == user_dialog.CREATE:
+        if record and name == USER and value == CREATE:
             self._ask_new_user()
             return
         if (record and name == OVERWRITE and _switch_value(value)
@@ -403,8 +424,8 @@ class AmazePrefsState(mainprefs.PrefsState):
 
     def _picked_library_user(self, folder: str) -> str:
         """A library pick's user: this computer's in the open library, else the first A to Z, else new."""
-        rows = user_dialog.user_rows(self._known_users(folder))    # the create row last
-        first = rows[0][1] if len(rows) > 1 else NEW_USER + user_dialog.DEFAULT_NAME
+        rows = user_rows(self._known_users(folder))    # the create row last
+        first = rows[0][1] if len(rows) > 1 else NEW_USER + DEFAULT_NAME
         return self._preselected(folder) or first
 
     def _library_folders(self) -> list:
@@ -418,7 +439,7 @@ class AmazePrefsState(mainprefs.PrefsState):
     def _user_rows(self, folder: str, uid: str) -> list:
         """The User list for `folder`: its users A to Z, the one named here, then the create row."""
         rows = [{"text": name, "value": user_id}
-                for name, user_id in user_dialog.user_rows(self._known_users(folder))]
+                for name, user_id in user_rows(self._known_users(folder))]
         if uid.startswith(NEW_USER):
             rows.insert(len(rows) - 1, {"text": uid[len(NEW_USER):], "value": uid})
         return rows
@@ -447,10 +468,10 @@ class AmazePrefsState(mainprefs.PrefsState):
         if folder != self._shown_folder:
             self._shown_folder = folder
             self._clear_check()
-        self.libraryOptions = [{"text": library_dialog.library_name(known), "value": known}
+        self.libraryOptions = [{"text": library_name(known), "value": known}
                                for known in self._library_folders()]
         self.userOptions = self._user_rows(folder, uid)
-        self.userPicked = bool(uid) and uid != user_dialog.CREATE
+        self.userPicked = bool(uid) and uid != CREATE
         self.libraryOpen = self._is_open(folder)
         self.userEditable = uid.startswith(NEW_USER) or (self.libraryOpen and self.userPicked)
         self.libraryFormat, self.applyLine, _may_apply = self._library_note(folder)
@@ -462,7 +483,7 @@ class AmazePrefsState(mainprefs.PrefsState):
 
     def _apply_library(self, folder: str, uid: str) -> bool:
         """Open the library and the user picked; False when that could not be done."""
-        if not uid or uid == user_dialog.CREATE or not self._library_note(folder)[2]:
+        if not uid or uid == CREATE or not self._library_note(folder)[2]:
             return False
         switching = not self._is_open(folder)
         if not switching and uid == self._prefs.library_user:
@@ -550,9 +571,9 @@ class AmazePrefsState(mainprefs.PrefsState):
         """Manage Libraries' rows, read as it opens: the Library list, most recent first."""
         rows = []
         for folder in self._prefs.libraries:
-            reached, shown = os.path.isdir(folder), library_dialog.shown_path(folder)
+            reached, shown = os.path.isdir(folder), shown_path(folder)
             rows.append({
-                "name": library_dialog.library_name(folder), "folder": folder, "dim": not reached,
+                "name": library_name(folder), "folder": folder, "dim": not reached,
                 "shown": shown if reached else "%s, %s" % (shown, amazetheme.LABEL_NOT_CONNECTED),
                 "isOpen": _same_folder(folder, self._prefs.dir)})    # shown, never selectable
         self.libraryRows.fill(rows)
@@ -620,7 +641,7 @@ class AmazePrefsState(mainprefs.PrefsState):
     def renameUser(self) -> None:
         """Rename opens the name dialog on the user's name; its OK comes back to `nameUser`."""
         uid = self.getPref(USER)
-        if not uid or uid == user_dialog.CREATE:
+        if not uid or uid == CREATE:
             return
         self._creating = False
         new = uid.startswith(NEW_USER)
@@ -658,7 +679,7 @@ class AmazePrefsState(mainprefs.PrefsState):
         if uid.startswith(NEW_USER):
             self.setPref(USER, "")
             return
-        if not uid or uid == user_dialog.CREATE or not self._is_open(self.getPref(LIBRARY)):
+        if not uid or uid == CREATE or not self._is_open(self.getPref(LIBRARY)):
             return
         name = users.name_for(self._prefs, uid)
         if hou.ui.displayMessage(
@@ -980,7 +1001,7 @@ class AmazePrefsState(mainprefs.PrefsState):
     def _tip_text(self, tip_id: str) -> str:
         """The tip a row or button shows; Active Library's also names the picked folder's path."""
         if tip_id == LIBRARY and self.getPref(LIBRARY):
-            return TIPS[LIBRARY] + "\n\n" + library_dialog.shown_path(self.getPref(LIBRARY))
+            return TIPS[LIBRARY] + "\n\n" + shown_path(self.getPref(LIBRARY))
         if tip_id.startswith(ADDON):
             return tooltips.PREFS_ADDON_SWITCH
         return TIPS.get(tip_id, "")
