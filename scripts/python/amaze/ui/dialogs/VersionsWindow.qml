@@ -13,7 +13,6 @@ DialogRoot {
     extraText: SharedState.deleteText
     extraEnabled: SharedState.picked >= 0 && SharedState.deletable
     extraAnswer: ({"delete": SharedState.picked})
-    extraTip: SharedState.deleteTip
     okWidth: SharedState.frame.widths[0]
     extraWidth: SharedState.frame.widths[1]
     cancelWidth: SharedState.frame.widths[2]

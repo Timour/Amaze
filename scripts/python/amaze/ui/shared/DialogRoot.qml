@@ -17,7 +17,6 @@ Item {
     property string extraText: ""    // a button after the primary one that hands on `extraAnswer` and keeps the window
     property var extraAnswer: null
     property bool extraEnabled: true
-    property string extraTip: ""
     property real buttonWidth: 80    // each button's width, as the kind's frame draws it
     property real okWidth: buttonWidth    // the primary button's, where its frame draws the buttons unalike
     property real extraWidth: buttonWidth
@@ -93,9 +92,6 @@ Item {
                     visible: root.extraText !== ""
                     enabled: root.extraEnabled
                     implicitWidth: root.extraWidth
-                    ToolTip.text: root.extraTip
-                    ToolTip.visible: SharedState.tipsShown && hovered && root.extraTip !== ""
-                    ToolTip.delay: Config.toolTipDelay
                     onClicked: SharedState.apply(root.extraAnswer)
                 }
                 Button {

@@ -4,7 +4,7 @@ from PySide6 import QtCore
 
 import amaze
 from amaze import amazetheme, messages
-from amaze.core import guard, versions
+from amaze.core import versions
 from amaze.qml import dialog_window, rows_model
 
 VERSIONS_QML = amaze.package_file("ui", "dialogs", "VersionsWindow.qml")
@@ -31,7 +31,6 @@ class VersionsState(dialog_window.DialogState):
     frame: dict = {}    # the frame's own figures: the space around the list and its buttons, their widths
     selectText: str = amazetheme.BTN_SELECT
     deleteText: str = messages.BUTTONS_DELETE[0]
-    deleteTip: str = messages.HELP_DELETE_VERSION % guard.TRASH_DAYS
 
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
