@@ -14,6 +14,17 @@ T.ComboBox {
         text: " "
     }
 
+    signal entered()    // Return or Enter while the list is closed, as Houdini's text field names it
+
+    function returned(event) {    // Qt's ComboBox takes the key and drops it while its list is closed
+        if (list.visible)
+            event.accepted = false    // Qt picks the highlighted row
+        else
+            root.entered()
+    }
+
+    Keys.onReturnPressed: event => root.returned(event)
+    Keys.onEnterPressed: event => root.returned(event)
     implicitWidth: implicitBackgroundWidth
     implicitHeight: implicitBackgroundHeight
     leftPadding: 4 + indicator.width

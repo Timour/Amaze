@@ -91,6 +91,7 @@ DialogRoot {
                 textRole: "text"
                 valueRole: "value"
                 currentIndex: SharedState.categoryRow
+                onEntered: root.accept()
                 ToolTip.text: SharedState.tips.category
                 ToolTip.visible: hovered
                 ToolTip.delay: Config.toolTipDelay
@@ -147,6 +148,7 @@ DialogRoot {
                 ToolTip.visible: hovered
                 ToolTip.delay: Config.toolTipDelay
                 onActivated: SharedState.chooseFace(currentValue)
+                onEntered: root.accept()
             }
             Switch {    // centred on the frame's switch, at Houdini's own size
                 x: root.drawn.light[0]

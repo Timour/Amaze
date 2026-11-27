@@ -31,6 +31,7 @@ DialogRoot {
             currentIndex: SharedState.sectionRow
             enabled: SharedState.sections.length > 1
             onActivated: SharedState.chooseSection(currentValue)    // the categories follow it
+            onEntered: root.accept()
         }
         Text {
             text: "Name"
@@ -60,6 +61,7 @@ DialogRoot {
             textRole: "text"
             valueRole: "value"
             currentIndex: SharedState.categoryRow
+            onEntered: root.accept()
         }
         Text {
             text: "Language"
@@ -72,6 +74,7 @@ DialogRoot {
             model: SharedState.languages
             currentIndex: SharedState.languageRow
             enabled: SharedState.languageOn    // only for a section that stores one
+            onEntered: root.accept()
         }
         Text {
             text: "Tags"
