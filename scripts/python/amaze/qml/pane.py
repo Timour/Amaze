@@ -1,6 +1,6 @@
 """The Amaze (QML) pane: its pane-tab widget, its QML view, and the state hosting the engine."""
 
-from PySide6 import QtCore, QtGui, QtQml, QtQuick, QtWidgets
+from PySide6 import QtCore, QtGui, QtQml, QtWidgets
 import shiboken6
 
 import amaze
@@ -11,7 +11,7 @@ from amaze.helpers import ui_helpers
 from amaze.pane import (asks, comment_document, drag_session, menus, node_drop, pane as pane_mod,
                         sidebar as pane_sidebar)
 from amaze.panel import delegates, side_pane
-from amaze.qml import hotkeys, rows_model
+from amaze.qml import hotkeys, pictures, rows_model
 from amaze.utils import rc_calls
 from hutil.qt.common import qmlviews    # Houdini's own QML panels' base ▸r/houdini-qml-tabs
 
@@ -44,34 +44,7 @@ RENDERER_MARKS = {    # a material's renderer icon on that line, by the art its 
 }
 
 
-class StatePictures(QtQuick.QQuickImageProvider):
-    """A picture the state gives on the main thread, kept nowhere; `picture(key)` finds it."""
-
-    def __init__(self, state) -> None:
-        super().__init__(QtQml.QQmlImageProviderBase.ImageType.Image)
-        self._state = state
-
-    def picture(self, key: str):
-        """The QImage for `key`, or None."""
-        return None
-
-    def requestImage(self, key: str, size: QtCore.QSize, requested: QtCore.QSize) -> QtGui.QImage:
-        try:
-            image = self.picture(key)
-        except (RuntimeError, ValueError):    # the pane closed, or a url not made by this pane
-            image = None
-        if image is None or image.isNull():    # a null image is an error in the QML log: a clear dot instead
-            image = QtGui.QImage(1, 1, QtGui.QImage.Format.Format_ARGB32_Premultiplied)
-            image.fill(QtCore.Qt.GlobalColor.transparent)
-        elif requested.isValid() and (image.width() > requested.width() or image.height() > requested.height()):
-            image = image.scaled(requested, QtCore.Qt.AspectRatioMode.KeepAspectRatio,
-                                 QtCore.Qt.TransformationMode.SmoothTransformation)
-        size.setWidth(image.width())
-        size.setHeight(image.height())
-        return image
-
-
-class TilePictures(StatePictures):
+class TilePictures(pictures.StatePictures):
     """`image://amazetile/...`: a tile's painted picture, painted by the shown grid's model."""
 
     def picture(self, key: str):
@@ -81,7 +54,7 @@ class TilePictures(StatePictures):
         return model.paint_tile(int(row)) if model is not None and "%x" % id(model) == token else None
 
 
-class InfoPictures(StatePictures):
+class InfoPictures(pictures.StatePictures):
     """`image://amazeinfo/<n>`: the info pane's picture, as the pane engine holds it."""
 
     def picture(self, key: str):
