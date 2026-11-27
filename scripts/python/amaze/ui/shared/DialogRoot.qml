@@ -12,6 +12,7 @@ Item {
     property string okText: "OK"    // the primary button's word, as the kind's frame names it; "" for none
     property bool okEnabled: true    // off while the kind has nothing to hand on
     property string applyText: ""    // a button that hands the answer on and keeps the window, as Houdini's Apply
+    property string cancelText: "Cancel"    // "" where the kind's frame draws none: its window's close cancels
     property bool fills: false    // the rows take the height the window is given, not the window theirs
     property string extraText: ""    // a button after the primary one that hands on `extraAnswer` and keeps the window
     property var extraAnswer: null
@@ -98,7 +99,8 @@ Item {
                     onClicked: SharedState.apply(root.extraAnswer)
                 }
                 Button {
-                    text: "Cancel"
+                    text: root.cancelText
+                    visible: root.cancelText !== ""
                     implicitWidth: root.cancelWidth
                     onClicked: root.reject()
                 }
