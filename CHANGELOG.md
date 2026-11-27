@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.9
+
+- Amaze (QML): Customize, opened from a tile's menu, with the tile's name, category, tags, and its picture or a custom icon.
+- Amaze (QML): a drop-down menu with a long list shows as many rows as its window is tall and scrolls the rest. A scroll bar sits beside the rows.
+- Customize: when the library refuses an Apply, the next Apply or Accept writes the same edits.
+
 ## 2.0.8
 
 - Amaze (QML): the Info pane and the Comments pane, each opened from its toolbar button.
