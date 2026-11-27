@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.0.13
+
+- Save to Amaze and Customize: Return accepts the window while a drop-down menu has the focus, as it does from a text field.
+
 ## 2.0.12
 
 - Geometry and USD previews fill their picture again. On Houdini 22.0.504 and later they were drawn small in the lower left corner. A preview made before this update stays until you use Render Image on it.
