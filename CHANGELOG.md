@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.0.12
+
+- Geometry and USD previews fill their picture again. On Houdini 22.0.504 and later they were drawn small in the lower left corner. A preview made before this update stays until you use Render Image on it.
+- Tile pictures are sharp on Retina screens.
+- A material with two or more versions shows a versions mark on its tile.
+- The tile's favourite, run and renderer icons are redrawn.
+
 ## 2.0.11
 
 - The code of the old widget panel is removed.
