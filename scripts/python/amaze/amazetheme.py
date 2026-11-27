@@ -1014,8 +1014,7 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("text ▸ name", 36, 7, 76, 15, "brushed_steel"),
             ("text ▸ type", 118, 7, 71, 15, "USD MaterialX"),
             ("button ▸ add", 419, 1, 28, 27, None),
-            ("chip ▸ add", 421, 3, 24, 24, None),
-            ("menu marker ▸ Houdini's own, traced", 437, 19, 4.5, 4.5, None),
+            ("houdini checked chip ▸ btn_menu_view", 421, 3, 24, 24, None),
             ("line ▸ 1", 12, 42, 185.36, 16, None),
             ("text ▸ 1", 12, 42.5, 186, 15, "The rust reads too orange in daylight."),
             ("line ▸ 2", 36, 68, 109.41, 16, None),
@@ -1038,7 +1037,6 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("text ▸ name", 36, 7, 91, 15, "Nothing Selected"),
             ("text ▸ type", 133, 7, 25, 15, "Type"),
             ("button ▸ add", 419, 1, 28, 27, None),
-            ("chip ▸ add", 421, 3, 24, 24, None),
             ("menu marker ▸ Houdini's own, traced", 437, 19, 4.5, 4.5, None),
             ("icon ▸ header ▸ icon_comments.svg", 10, 5, 20, 20, None),
             ("icon ▸ add ▸ icon_comments_add.svg", 424, 6, 18, 18, None),
@@ -1504,7 +1502,8 @@ def drawn_comments(frame_key: str = "N01") -> dict:
         return drawn_node(frame_key, kind, owner)
 
     header, icon, name = node("header"), node("icon", "header"), node("text", "name")
-    add, chip, glyph = node("button", "add"), node("chip", "add"), node("glyph", "2")
+    add, glyph = node("button", "add"), node("glyph", "2")
+    chip = node("houdini checked chip", "btn_menu_view")    # the toolbar's chip, drawn on the add button
     plain, todo, plus = node("line", "1"), node("line", "2"), node("icon", "add")
     return {
         "width": width,
