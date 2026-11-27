@@ -14,20 +14,18 @@ kept outside this repo, is the *what we did and why* log).
 
 ## 1. The one-paragraph picture
 
-Amaze is a single Houdini **Python Panel** — one window with a
-**Toolbar**, a **Section Tab Strip**, a **Sidebar**, and a **Grid**.
-Metadata is edited in floating **Dialogs** (see §6) — Materials has the
-**Edit Info Dialog**, Code its editor — one per section, not a docked
-panel.
+Amaze is a single Houdini **Python Panel**: one pane tab, built in QML,
+with a **Toolbar**, a **Section Tab Strip**, a **Sidebar**, and a **Grid**.
+Names, code, versions and tile icons are edited in separate **Dialog
+windows** (see §6).
 
-The same widgets are reused for every kind of
-asset; switching tabs just repoints them at different data. Behind the
-panel are six standalone **Engines** (thumbnails, image conversion,
-keyed stores, Karma materials, debug, OS integration) that the rest of
-the code calls through small, stable APIs. Each
-tab is a **Section** object — a node-type-like plug-in that defines how the
-panel uses the shared widgets. Data is read/written through
-**Models** backed by a **Library** folder on disk.
+The same QML views show every kind of asset; switching tabs points them
+at different data. Behind the pane are six standalone **Engines**
+(thumbnails, image conversion, keyed stores, Karma materials, debug, OS
+integration) that the rest of the code calls through small, stable APIs.
+Each tab is a **Section** object, a plug-in that defines what the pane
+shows and what its rows do. Data is read and written through **Models**
+backed by a **Library** folder on disk.
 
 ---
 
@@ -35,14 +33,14 @@ panel uses the shared widgets. Data is read/written through
 
 | Term | What it is | In code |
 |---|---|---|
-| **Panel** | The whole window. One class, built once. | `panel/panel.py` → `AmazePanel` |
-| **Toolbar** | Top strip, laid out left to right in one place (`_lay_out_toolbar`, frame B01): Categories, Renderer + View menus, Online, Grid/List toggle, Favourites star, the Preferences gear and Capture (every section, greyed online), then the size slider and the Search box, and at the far right Comments and Info (every section, greyed online). The View menu holds Generate Material, the imports and the two package exports, each export greyed unless the shown context has what it writes. Categories and Online were moved out of the View menu (2026-08-01): a control that toggles state is a button, not a menu row, and having both lets the button and the menu row show different states. Every chip's four state pixmaps come from `ChipToggleButton.set_art` — the SVG as drawn at rest, hover lightens, and a chip whose ON state is shown by COLOUR (star amber, Online green, Comments purple, Info amber) does not lighten at all. Disabled chips paint at 50%. | built in `init_ui()`, states in `ui_helpers.ChipToggleButton.set_art` |
-| **Section Tab Strip** | The Material/Color/Node/Code/File tabs (singular since the 2026-07-31 merge; stored keys keep their historical names): Houdini's own QML tab bar (`houdini.pluto` TabBar and TabButton, in `ui/pane/SectionTabs.qml`, one strip for both panes, set up with Houdini's theme as its own QML views are), each tab with its section icon drawn from its file by `ui/shared/AmazeIcon.qml` where frame S01 draws it, 2 px from its name, and a 1 px line along the strip's bottom row over the tab bar. Carries a standard **Cancel button** at its right end: shown exactly while the conversion bar shows — the pane engine's `show_progress` is the only way the bar shows or hides, and the panel's `set_conversion_bar_visible`, which follows it, shows or hides both — it stops a background thumbnail render while one runs (`husk_job.jobs`, which controls the bar meanwhile), otherwise the File section's image batch (flush first, then cancel). | `ui_helpers.SectionTabBar` |
-| **Sidebar** | Left list: categories (asset sections + Color) or folders (File). ONE view, `sidebar.SidebarTreeView`, which is the app's one table class (`ui_helpers.Table`, a tree view the host's style paints) over a model of two columns: the row's colour as a fixed-width cell shown first, then the name, with the style's own arrow in the name column (`setTreePosition`). In File each location unfolds to its subfolders. The view has no mouse code: Qt selects, opens and closes rows, and the panel shows a row's content on `Table.row_chosen`, emitted when the user moves the current row by mouse or keyboard. Rows are shown in the STORED order with "All" fixed at row 0 by the database (and, in File, `$HIP` fixed at row 1 by the model), and the ORDER IS THE USER'S: a row is dragged with Qt's own drag and drop (`InternalMove`) and the model's `RowMoves` mixin answers `canDropMimeData` and writes the order once in `dropMimeData`. The QML tree makes the same calls from its own row drag (`qml/pane.SidebarReorder`), the gap lined as Houdini's Context Options list lines it. A model that cannot be reordered (Online) gives no drag flag. Whether a dragged tile may be DROPPED on a row is decided by the context — `Section.takes_category_drops` and `accepts_category_drop`. | the `cat_list` widget, `panel/sidebar.py`, `core/sidebar_model.py` |
-| **Grid** | The main thumbnail area. GRID scales 64-512 and snaps to 128 when near it; LIST is a table fixed at its smallest size (the slider greys out) whose row is as wide as its COLUMNS need, scrolling sideways rather than squeezing or dropping any. LIST mode is a tree view over a real `QAbstractTableModel`, made by `ui_helpers.striped_rows` like every other row list with its header shown, so the host style paints its rows, the space under them and its headline ▸r/list-mode-is-a-tree (a `QTableView` from 2026-08-04 to 1.41.1); the painted header strip, `ListColumnHeader`, `ListColumns` and the delegate's list-painting branch are all removed. **The grid selection is read in ROWS** (2026-08-06): a SelectRows selection returns one index per CELL - ten per row, hidden thumb column included - so every caller reduces it to one index per row at column 0 through `grid_columns.selected_rows`, and the current, double-click and drag indexes are normalised to column 0 the same way (`live_current_index`, the panel's double-click entry, the drag press). The table carries the same context-menu and double-click wiring as the list view. The column ORDER is defined once, in `core/grid_columns.COLUMNS`; every grid model reads it, and sorts its own rows, through the **Grid Engine** (§4i). WIDTHS are fixed defaults the user can DRAG (`panel.COLUMN_DEFAULT_WIDTH`, derived from the real library), with the last column filling the remaining width — nothing is measured at runtime. Tile badges are grid-only: at list size a badge is 12px and its SVG rasterises to a dark smudge, so those four facts are columns there instead. | the `thumblist` and `thumbrows` widgets, `panel/grid.py`, `panel/delegates.py` |
-| **Tile** | One item in the Grid (thumbnail + name + subtitle). Painted by the **Tile Delegate**. | `AssetItemDelegate` |
-| **Tile Badges** | ONE drawn family (2026-08-01): each glyph on its own dark backdrop (`ui/badge_*.svg` — the colours are in the SVG files, never in code), rendered AS DRAWN by one function (`_badge_pixmap`) at one size rule (`_badge_side`). Corners: top-left open scene, top-right favourite, lower-left versions, lower-right comment. TWO are BUTTONS, driven by the `BADGES` table: versions (click opens the Versions dialog) and, since 2026-08-21, favourite — always drawn where a section wires its click (every local grid, never Online): dim white star at rest, brighter on hover, amber when favourite, and a click toggles the selection's stars through the section's own `toggle_favourite`. Wiring the click (`set_badge_click`) is what MAKES a badge a button; hit-testing, hover and tooltips all derive from the same table. | `delegates.py` `_paint_badges`, `button_badge_at` |
-| **Filter Box** | The search field in the Toolbar. | `line_filter` |
+| **Panel** | The Amaze pane tab. `QmlPanel` is the tab Houdini creates; it holds one QML view, `PaneView`, which loads `ui/pane/Pane.qml`. `PaneState` is the QML side's state: it is fed by the pane engine (`pane/pane.py`) and answers the engine's asks (`pane/asks.py`). The engine holds the data and builds no view. | `qml/pane.py` → `QmlPanel`, `PaneView`, `PaneState` |
+| **Toolbar** | The top strip, in frame B01's order: Categories, the Renderer and View menus, Online, Info, Comments, Favourites, the list/grid strip, the size slider, the Search box, and Preferences at the right end. The buttons are Houdini's own controls with Amaze's art. The View menu holds Generate Material, the imports and the package exports; each export is greyed unless the shown context has what it writes. A button that toggles state is a button, not a menu row. | `ui/pane/Toolbar.qml`, `ui/pane/ToolbarButton.qml`; the menus in `pane/toolbar_menus.py` |
+| **Section Tab Strip** | The Material, Color, Node, Code and File tabs: Houdini's own QML TabBar and TabButton, each tab with its section icon (`ui/shared/AmazeIcon.qml`) where frame S01 draws it. The strip's rows come from `ui_helpers.section_tab_rows`. A **Cancel button** at its right end shows while the progress line shows (`show_progress` in the pane engine); it calls `cancel_work`, which stops a background thumbnail render or the File section's image batch. | `ui/pane/SectionTabs.qml`, `ui/pane/Pane.qml` |
+| **Sidebar** | The left list: categories (asset sections and Color) or folders (File). Houdini's TreeView over the engine's rows, for every section; in File each location unfolds to its subfolders. Rows keep the STORED order, with "All" fixed at row 0 (and, in File, `$HIP` at row 1), and the order is the user's: a row dragged between rows (`SidebarReorder`) is dropped through the model's `RowMoves` mixin, which answers `canDropMimeData` and writes the order once in `dropMimeData`. A model that cannot be reordered (Online) gives no drag flag. Whether a dragged tile may drop on a row is the context's: `Section.takes_category_drops` and `accepts_category_drop`, asked through `Sidebar.drop_target`; `SidebarDrop` lights that row. | `ui/shared/SidebarTree.qml`, `pane/sidebar.py`, `core/sidebar_model.py` |
+| **Grid** | The main area. GRID mode is Qt's GridView of tiles, sized 64-512 by the slider. LIST mode is a table (`RowsTable`) over the same rows, one size, its columns in `core/grid_columns.py` ▸ `COLUMNS`. Both views share the section's own selection model. A selection is read in ROWS: every caller reduces it to one index per row at column 0 through `grid_columns.selected_rows`, and the current index the same way (`live_current_index`). Every grid model reads the column order, and sorts its rows, through the **Grid Engine** (§4i). With nothing to show, `ui/pane/EmptyState.qml` shows the engine's words and button (`pane/empty_state.py`). | `ui/shared/TileGrid.qml`, `ui/shared/RowsTable.qml` |
+| **Tile** | One item in the Grid: picture, name, subtitle, the category strip, its buttons and its marks, as frames T01 and QML T20-T26 draw them. Its picture is painted by the shown model and served by `TilePictures`. | `ui/shared/Tile.qml`; `drawn_tile`, `TilePictures` in `qml/pane.py` |
+| **Tile Badges** | The buttons on a tile's picture (`TILE_BUTTONS`: favourite, and Run on a Python snippet) and the marks on its second line (`TILE_MARKS`: the open scene, a running snippet, a comment), with a material's renderer icon (`RENDERER_MARKS`). The art is in `ui/tile/`. A click goes to `Assets.click_badge`, which runs the section's handler on the selection when the tile is in it. Each section lists the badges it shows in `tile_badges`. | `qml/pane.py` → `badge_rows`, `mark_rows`; `pane/assets.py` |
+| **Filter Box** | The search field in the Toolbar. It shows the context's `search_hint`; Esc empties it. | `ui/pane/Toolbar.qml`; `Pane.type_search` |
 
 ---
 
@@ -50,10 +48,10 @@ panel uses the shared widgets. Data is read/written through
 
 A **Section** is one tab. It is a small object that defines what the
 pane shows for its kind of asset and what its rows do. The **Pane
-Engine** (`pane/pane.py`, held by the Panel as `panel.pane`) holds the
-data and the models and builds no widget; the Panel holds the widgets
-and follows the engine's signals; a Section only defines *what to do
-with the data*, and touches no widget. What the engine needs a window
+Engine** (`pane/pane.py`, held by the Panel as `pane`) holds the
+data and the models and builds no view; `PaneState` follows the engine's
+signals and feeds the QML; a Section only defines *what to do with the
+data*, and touches no view. What the engine needs a window
 for (a name, a colour, the drop menu, Versions, Save, Code, Customize,
 Preferences) it asks its host through `pane.ui` (`pane/asks.py`), and
 each answer comes back through a callback, so a host that does not
@@ -89,15 +87,10 @@ Plus one *view mode*, not a section:
 
 - **Online Browser** — a separate context with a Section's interface:
   `online.OnlineContext`, returned by `pane.active_section()` like any
-  section, so no code path has to check whether the panel is online. It is
+  section, so no code path has to check whether the pane is online. It is
   NOT in `SECTION_CLASSES` and never appears in `enabled_sections`,
-  because it is not a section. Its delegate carries only the roles
-  `matx_library` has — no version, licence, comments or category
-  colour — so the online grid cannot paint a column no online record
-  can fill. Entering and leaving go through `pane.show_context`, the
-  same function a section switch uses, which fixed the Capture button,
-  the search box and the Comments subject showing stale state when you
-  went online. (2026-08-03; it was a view mode over Materials before.)
+  because it is not a section. Entering and leaving go through
+  `pane.show_context`, the same function a section switch uses.
 
 ### The three Archetypes
 
@@ -153,8 +146,7 @@ Plus one *view mode*, not a section:
 | `takes_file_drops` + `accepts_file_drop` / `drop_folder` / `move_files_to` / `can_undo_move` / `menu_undo_move` | a **Grid** tile released on a **Sidebar** folder moves the selected files there on disk (File only; `core/file_moves.py`), and Undo Move puts the last move back |
 | `menu_copy` / `menu_paste` / `menu_paste_enabled` | File's **Grid** menu: Copy puts the selected files on the system clipboard (`pane/files.copy_files`); Paste copies the clipboard's files into the folder shown on the same worker (`file_moves.copy`), asking once about names in use |
 | `double_click(index)` | a **Tile** is double-clicked (the *primary action*) — calls `pane.loading.click_on_row` (below) |
-| `GRID_MENU` / `SIDEBAR_MENU` | right-click on the **Grid** or the **Sidebar** — the host renders the table (`grid.open_grid_menu`, `grid.open_catlist_menu`) |
-| `edit_dialog()` | open the section's edit **Dialog** (see §6), if any |
+| `GRID_MENU` / `SIDEBAR_MENU` | right-click on the **Grid** or the **Sidebar** — `pane/menus.py` turns the table into rows and `ui/shared/AmazeMenu.qml` shows them |
 | `can_save(nodes)` / `save_categories()` / `takes_language` | `pane.saving.save_from_node` (through `_save_targets`) calls every section to learn whether it can save these scene nodes, and what its Category row offers; `takes_language` lights the Language row (Code only). One right-click entry and the panel drop both go through `pane.saving.save_from_node` |
 | `prefs_changed()` | Preferences closed — re-scan live filesystem/render state |
 
@@ -165,10 +157,8 @@ Plus one piece of DATA, alongside `key` and `label`: **`search_hint`** —
 what the **Filter Box** shows while this section is active. It is set on the
 ARCHETYPE, because the archetype decides what a search matches (Asset
 sections take `:tag`, the File section has only a file name, Color also
-matches the colour names inside a palette). The Panel writes it in
-`_sync_filter_placeholder()`, called wherever the section or the view
-mode changes; the **Online Browser** supplies its own, since its search
-matches something different again. Wording in the UI text register.
+matches the colour names inside a palette). `PaneState` reads it from the
+shown context as `searchHint`; the **Online Browser** supplies its own. Wording in the UI text register.
 
 **A VALUE CARRIES ITS OWN NAME.** Several values passed together are
 a named tuple, never a bare tuple read by position:
@@ -203,23 +193,23 @@ can be left undeclared.
 | `handler` | NAME of a method on the section, called as `handler(indexes, current, payload)` |
 | `needs` | what makes the row LIVE — `any` (the default), `one`, `always`, or the name of a fact — and it greys, never hides |
 | `shown` | the fact deciding whether the row EXISTS at all |
-| `children` | a method returning `((label, payload, icon, live[, checked]), ...)`; the icon is a hex colour, painted as a chip at `amazetheme.MENU_CHIP`, a `ui/` icon name, drawn by `ui_helpers.menu_icon` as the Filter menu's are, or empty. A renderer's icon is named once, in `core/renderers.py` |
+| `children` | a method returning `((label, payload, icon, live[, checked]), ...)`; the icon is a hex colour, painted as a chip at `amazetheme.MENU_CHIP`, a `ui/` icon name, or empty. A renderer's icon is named once, in `core/renderers.py` |
 | `count_suffix` | appends ` (N)` on a multi-selection |
 | `checkable` | the fact giving the CURRENT state, making it a tick-box whose handler receives the state the user chose |
-| `glyph` | the row's Phosphor glyph by its name in Houdini's `PhosphorGlyphs` (`upload_simple`): the QML menu sets it as the row's `symbol`; the widget menu shows none |
+| `glyph` | the row's Phosphor glyph by its name in Houdini's `PhosphorGlyphs` (`upload_simple`): the menu sets it as the row's `symbol` |
 
-**The Grid Menu** (2026-08-03) is the same idea for right-click. Every
+**The Grid Menu** is the same idea for right-click. Every
 context declares `GRID_MENU` — a tuple of `MenuEntry` rows, one per
-entry — and `panel/grid.py` is the ONLY code that turns one into a
-QMenu. A row holds its label (from the UI text register), the NAME of
+entry — and `pane/menus.py` ▸ `Menu` is the ONLY code that turns one into
+menu rows. A row holds its label (from the UI text register), the NAME of
 the Section method that performs it, the fact deciding whether it EXISTS
 (`shown`), what it needs to be LIVE (`needs`), and optionally the method
 building a submenu's children. Names, not callables. The last rows
 are `GRID_MENU_TAIL` — Render Image (shown where `menu_offers_preview`
 says the selection renders), Capture Image, Customize, a divider,
 Favorite, Delete — shared by every context and gated on facts it already
-declares, so adding a section adds no copy of them. Dispatch is a dict keyed by
-QAction, never `==` against an action that may be None.
+declares, so adding a section adds no copy of them. A picked row runs through
+`Menu.run` by its key.
 
 `pane.loading.click_on_row` is the one function a double-click AND the menu entry
 labelled with the same verb both call — one
@@ -241,9 +231,8 @@ a click provides the section.
 section, name)` (2026-08-13, ROADMAP line 24): every named handler — the
 release bodies, the click handlers, the creation rules, the holder node
 type — is a method of the declaring Section, and both drag and click
-look it up there. The panel fallback the migration kept is REMOVED; a
-declaration naming a handler its section does not define raises an error.
-The panel keeps the shared release plumbing the handlers call
+look it up there; a declaration naming a handler its section does not
+define raises an error. `pane/drop_placement.py` keeps the shared release plumbing the handlers call
 (`drop_placement.context_under_cursor`,
 `drop_placement.release_position_in`, `drop_placement.create_holder_node`,
 `drop_placement.scene_path`, `drop_placement.node_under_cursor`) — shared because it
@@ -255,7 +244,7 @@ the creation step. Anything other than exactly one visible selected node
 skips straight to that step.
 
 **WHICH MODELS A LIBRARY SWITCH REPOINTS is derived, not listed.**
-Each section declares `library_model_attrs` — the panel attributes
+Each section declares `library_model_attrs` — the pane attributes
 holding data read from `prefs.dir` — and `pane.library.models()`
 collects them for `switch_all_models()`, the ONE function. It was three
 hand-written lists carrying seven models where there are eight, and
@@ -278,25 +267,24 @@ P01). The Library list is settings.json's `libraries`; picking one shows
 its users from its own `DataBase.json` ▸ `users` and preselects by name, then the
 only user. Nothing switches until Apply, which opens the library with
 the picked user and restores both when it fails to open. A user named
-for a library not yet made is created after the library opens. At start
-`open_library(needs_user=True)` stops after `prepare` when no user is
-picked; once the pane has drawn, `ensure_library_user` asks to open
-Preferences on this tab.
+for a library not yet made is created after the library opens. At start,
+once the pane has drawn, `ensure_library_user` asks to open Preferences
+when the library has no user picked on this computer.
 
-**The Sidebar Menu** is the same table, same builder (2026-08-04):
-`Section.SIDEBAR_MENU`, rendered by the same `panel/grid.py` code that
-renders `GRID_MENU`. Material, Node and Code share ONE table object -
+**The Sidebar Menu** is the same table, same builder:
+`Section.SIDEBAR_MENU`, turned into rows by the same `Menu` that
+turns `GRID_MENU`. Material, Node and Code share ONE table object -
 not three equal copies - and File has its own entries for a location
 (Label instead of Rename, Locate, and two per-location toggles). Moving
 the three sidebar menus to tables needed exactly two additions to the builder: a
 `checkable` field, and a per-CHILD enabled state so a submenu row greys
 rather than vanishes.
 
-**The Filter Menu** (the eye button, 2026-08-02) works the same way and
-is the fuller form of the same idea: the Panel holds ONE menu and ONE
+**The Filter Menu** (the eye button) works the same way and
+is the fuller form of the same idea: the pane holds ONE menu and ONE
 button for every tab, the Section defines what it offers (`filter_entries`,
 plus `FILTER_CHOICES` and `filter_tooltip` as data) and what an entry
-MEANS (`apply_filter`). The Panel passes the label to the Section and
+MEANS (`apply_filter`). The pane passes the label to the Section and
 the value back **without ever looking inside the value** — which is what
 lets five tabs filter on five unrelated things through one control:
 renderer (Material), palette size (Color), node context (Node), language
@@ -312,7 +300,7 @@ by LABEL; a remembered entry no longer on offer falls back to All.
 An **Engine** is a FUNCTION of the system, not a piece of code: one
 named responsibility the rest of the code calls through a small
 stable API. An engine may span several scripts (the Drag & Drop Engine
-is in core/dragengine.py + the gesture widgets + the panel's release
+is in core/dragengine.py, pane/drag_session.py and the sections' release
 handlers) — the file listings below say where each one is TODAY,
 which is an implementation detail, not the engine's identity. There are
 six mapped here, plus the Drag & Drop Engine (its own
@@ -331,9 +319,8 @@ on the wrong tile.
   load a PNG), **CONVERT** (one call to the **Conversion Engine** per
   image, off the UI thread), **RENDER** (geometry — Houdini flipbook),
   **PAINT** (colors/code — drawn in memory).
-- **RAM budget:** 256 MB, for the widget grid only; evicted images reload
-  from disk on demand. Its Preferences row was removed 2026-11-23: the QML
-  pane keeps no decoded picture.
+- **RAM budget:** 256 MB; evicted images reload from disk on demand. It
+  has no Preferences row.
 - **Storage rule (no exceptions):** a LIBRARY-OWNED asset's thumbnail is part
   of the library — `<id>.png` in the asset's own folder, copied with it to other
   machines (Material, Node; an online import's preview becomes its
@@ -354,7 +341,7 @@ never a bare None that hides which.
 
 - **File:** `core/conversion.py` · **Entry point:**
   `convert_image(path, size, cancelled) -> Conversion`
-- **Adapter API:** `produce(source, out_path, ctx) -> (wrote_it, why_not)`.
+- **Adapter API:** `produce(source, out_path, ctx) -> (wrote, why)`.
   An adapter writes a PNG into a scratch file the engine gives it and
   returns whether it worked. It does not set the order, does not verify
   output and does not log.
@@ -453,7 +440,7 @@ change of several files is being applied.
   (`Document.rekey_everyones`, `take_everyones`).
 - **Check Library never removes a location's file data**: a folder absent from
   this machine is removed from this user's `locations` only
-  (`repair.set_aside_folders`), so its per-file keys stay in `files.json`.
+  (`check_library.set_aside`), so its per-file keys stay in `files.json`.
 - **`core/library_settings.py`** holds the shared settings and the
   overwrite switch in `DataBase.json` ▸ `settings`;
   **`core/library_policy.py`** the library's version stamp.
@@ -615,9 +602,7 @@ test `sys.platform` or hardcode an OS path convention.
 - **Filename rules are here too**, because case-insensitivity is a
   platform fact: `matched_extension(name, extensions)` (the entry a
   filename ends with, LONGEST first so `x.bgeo.sc` is not `.bgeo`; one
-  function for geometry, scenes and images, which had two copies and a
-  third mechanism between them) and `migrate_legacy_file(dir, old, new)`
-  (rename-once, best-effort, same-directory; three copies before).
+  function for geometry, scenes and images).
 - **`rename_exclusive(source, dest)`** — a rename that checks for an existing
   name in the same call, False when it exists: `renamex_np(RENAME_EXCL)` on
   macOS, `renameat2(RENAME_NOREPLACE)` on Linux, `os.rename` on Windows.
@@ -678,11 +663,6 @@ Engine** and the thumbnail runner (`render/thumbs.py`), its callers.
   `jobs.cancel()` (husk is stopped, finished PNGs stay), and
   `thumbnailWritten(asset_id)` repaints that one tile. With no event loop
   (hython, the suite) `render_batch` runs the same husk to the end.
-- **The part that is not Python:** the scene's node has seven spare
-  parameters the caller sets — `mat`, `path`,
-  `cop_out_img`, `resx`/`resy`, `obj_exclude`, `lights`, `render` — and
-  `safe_set` ignores a missing one, so a replacement scene spelling one
-  differently produces a wrong thumbnail rather than an error.
 - **The scene's lifetime is the CALLER'S:** `thumbs.py` builds inside
   `hou.undos.disabler()` and destroys in a `finally`.
 
@@ -722,20 +702,19 @@ model (§5, the one model set). It is in `core/grid_engine.py`.
 | **Library Model** | The Qt model over a **Library**'s JSON. The shared base class is `AssetLibrary` (records, categories, tags, tile icons, saves, deletes, the connector's guards — nothing renderer-specific); the four section models subclass it over their own JSON. `MaterialLibrary` adds what a MATERIAL is: its USD and shader-type labels, and the repaint when a render finishes; saving, updating, converting, loading and rendering one are `actions/materials.py`'s. Colors uses the same base class with its palette payload (`colors`/`ramp`) stored on the record. | `core/library.py` → `AssetLibrary`, `MaterialLibrary`; `cop_library.py`; `code_library.py`; `gradient_library.py` |
 | **Material** | One asset record (id, name, categories, tags, renderer, date, …). **NOT a favourite and NOT a tile icon**: those are the database's `favorites` (per user) and `icons` sections. **One category per asset** — multi-category was removed 2026-07-27; tags are the many-to-many axis. | `core/material.py` |
 | **Tile Icon** | A chosen Feather symbol on a colour, for assets with nothing to render; the section's database ▸ `icons` is the only store, keyed by asset id (a file key in `files.json`). Composed in memory for every section (`tile_icons.compose_for`); no file is written. | `core/tile_icons.py` |
-| **Comment** | A page of text + to-dos per asset (the Comments pane, toggled from the toolbar). Stored in the section's database ▸ `comments`, keyed by asset id or file key; a comment item belongs to its author. WHICH asset the pane shows is decided by the context — `Section.comment_subject(index)`, one of the four area hooks — because only the context can map an index through its proxy and read its roles; the panel finds the live current index and delegates. `takes_comments` is the separate, selection-free half that the toolbar chip reads. EVERY section takes notes, Color included - a gradient carries a full-uuid4 identity in `id` (from creation, or from the schema-8 migration that creates one for any row loaded without it — a construction-time backfill did this until 2026-08-20; the field was `uid` before 2026-08-09 and the VALUE never changed, so existing keys still resolve), keyed `gradient:<value>`. | `core/notes.py`, `panel/notes_panel.py` |
+| **Comment** | A page of text + to-dos per asset (the Comments pane, toggled from the toolbar). Stored in the section's database ▸ `comments`, keyed by asset id or file key; a comment item belongs to its author. WHICH asset the pane shows is decided by the context — `Section.comment_subject(index)`, one of the four area hooks — because only the context can map an index through its proxy and read its roles; `pane/comments.py` finds the selected current index and asks it. `takes_comments` is the separate, selection-free half that the toolbar button reads. EVERY section takes notes, Color included - a gradient carries a full-uuid4 identity in `id` (from creation, or from the schema-8 migration that creates one for any row loaded without it — a construction-time backfill did this until 2026-08-20; the field was `uid` before 2026-08-09 and the VALUE never changed, so existing keys still resolve), keyed `gradient:<value>`. | `core/notes.py`, `pane/comments.py`, `pane/comment_document.py`, `ui/pane/CommentsPane.qml` |
 | **Category Colour** | A colour on a category, painted under every tile in it and down its sidebar row. Stored with the category's name under its id in the same JSON, so the grid reads it from the connector's shared data dict. | `core/category.py` → `Categories.set_color` |
 | **Sidebar Model** | What every Sidebar list is: All on row 0, the top rows, and the rows under a row, each row keyed by its parent row and its key. It answers the key role, `index_of(key)` and the reorder calls; the Categories Model, the Folders Model and the online source list are built on it. | `core/sidebar_model.py` → `SidebarModel` |
 | **Categories Model** | The Sidebar list for an Asset section, a Sidebar Model with top rows only. | `core/category.py` → `Categories` |
-| **Sidebar Proxy** | Presents the STORED category order (no sort — the manual order, 2026-08-14) and hides empty categories (renderer-aware). All four category sidebars go through it, Color included; the save dialog's dropdown keeps its own alphabetical sort. | `category.CategoriesSidebarProxy` |
+| **Sidebar Proxy** | Presents the STORED category order (no sort — the manual order, 2026-08-14) and hides empty categories (renderer-aware). All four category sidebars go through it, Color included. | `category.CategoriesSidebarProxy` |
 | **Filter Proxy** | The Grid's search/renderer/favourite/tag filter (Asset sections). | `core/multifilterproxy_model.py` |
 | **Asset Stack** | The four models an Asset section works through — Library Model, Filter Proxy, selection model, Categories Model — as `base.AssetStack`, whose fields are `model` / `proxy` / `selection` / `categories`. A bare 4-tuple until 2026-08-03: it was unpacked in nine places and read by NUMBER in three more (`st[0]`, `st[3]`), which is where a reorder would have gone unnoticed. | `section.stack()` |
 | **Folders Model / Files Model** | The Folder-archetype pair (registered dirs / files inside). Folders share ONE base — `core/folders.py` `FolderTreeModel` (counts, add/remove/relocate, the scene row, and each folder's subfolders, read with its count on the same worker once its row shows), a Sidebar Model whose keys are folder paths; each section only names its prefs surface + extension predicate. | `core/folders.py`, `texture_library.py`, `geo_library.py`, `scene_captures.py` |
-| **Online world** | A PARALLEL world, not a view mode over Materials (which is what it was until 2026-08-01). The toolbar's Online button enters it and turns green — the colour is the only indication — and the tab strip becomes the SOURCES in source order (Amaze first, then GPUOpen, PolyHaven, SimReady, PhysicallyBased, RGL) from `matx_sources.all_sources()`. The Amaze source browses the `AmazePackages` repository per TILE: folders under `packages/` are categories, every entry in every `.amazepkg` is one record read by ranged requests (a plain-file entry becomes a bare tile), and importing fetches only the chosen tiles' members. No File tab, and `enabled_sections` does not apply, because these are not sections. ONE strip, two lists: `_build_section_tabs` already rebuilt on an `enabled_sections` change, so switching worlds reuses that path. A tab click picks a source. Leaving returns you to the section you left from. `_is_online()` is now just the mode — it used to be `online_mode AND current_section == "material"` — and since 2026-08-15 six panel paths that branched on it call the CONTEXT instead: this world implements `search_hint`, `filter_text`, `filter_favorites`, `select_category`, `double_click` and an empty `SIDEBAR_MENU` like any section, so the eleven `_is_online()` reads left are all WORLD questions (which tab strip to build, which world a progress bar draws over) rather than section ones. Favourites and Comments are disabled here: an online record has no favourite state, and a comment is written against a library asset. | `panel.py` `enter_online_mode` / `leave_online_mode`, `core/matx_sources.py` |
-| **Designed dialogs** | Every dialog is built on `base_dialog.AssetDialog` and takes its sizes and places from its drawn frame in `amazetheme.DIALOG_LAYOUT`, read through `theme.ui_px` like every other chrome measurement. No sizing path reads a device ratio: Houdini's UI scale is one number fixed at startup and it never rescales when a window moves between monitors, so neither does a dialog. A dialog's list (D01, D15) is `library_dialog.DialogTable`: the app's one table class with two columns, a name and a second text, painted by the host's style. The first designed shell, `ui_helpers.DesignedDialog` (the Versions dialog, 2026-08-02), was removed on 2026-10-25 with D01's dropdown. | `dialogs/base_dialog.py`; `helpers/ui_helpers.py` places each widget at its drawn box (`fit_drawn`) |
+| **Online world** | A PARALLEL world, not a view mode over Materials. The toolbar's Online button enters it and turns green — the colour is the only indication — and the tab strip becomes the SOURCES in source order (Amaze first, then GPUOpen, PolyHaven, SimReady, PhysicallyBased, RGL) from `matx_sources.all_sources()`. The Amaze source browses the `AmazePackages` repository per TILE: folders under `packages/` are categories, every entry in every `.amazepkg` is one record read by ranged requests (a plain-file entry becomes a bare tile), and importing fetches only the chosen tiles' members. No File tab, and `enabled_sections` does not apply, because these are not sections. ONE strip, two lists: entering or leaving emits `tabs_changed`, and the strip is rebuilt from `online_tabs` or the sections. A tab click picks a source. Leaving returns you to the section you left from. `is_online()` is only the mode: this world implements `search_hint`, `filter_text`, `filter_favorites`, `select_category`, `double_click` and an empty `SIDEBAR_MENU` like any section, so the code asks the CONTEXT, not the mode, for section questions. Favourites and Comments are disabled here: an online record has no favourite state, and a comment is written against a library asset. | `pane/pane.py` `enter_online` / `leave_online`, `core/matx_sources.py` |
 | **Filtering & sorting** | THREE proxies, one base: `core/grid_proxy.py`'s `GridProxyModel`, inherited by `MultiFilterProxyModel` (the asset sections and Online), `TextureFilterProxyModel` (File) and `GradientFilterProxyModel` (Color). They differ in what they FILTER ON; the base decides WHAT IS SHOWN, and the ORDER is the model's (the Grid Engine, §4i) - a proxy's `sortColumn()` stays -1, so rows coming back from a filter come back in the model's order and nothing re-sorts after an insert. `setDynamicSortFilter(False)` also turns off the re-test of a row whose DATA changed (2026-08-03 — un-favouriting a tile with Favourites-only on left it in the grid, star off), so the base restores that: role-aware (`watched_roles`) and coalesced onto one pass per event-loop turn. | `core/grid_proxy.py`, `core/multifilterproxy_model.py` |
-| **Scrolling** | Both axes go through one handler: per-PIXEL scroll mode and `dragdrop_widgets.wheelEvent`, which reads the dominant axis, and converts a classic wheel's 120-unit notches; the distance is the system's own (the Scroll Speed preference was removed 2026-11-23). Horizontal was on Qt's per-ITEM default until 2026-08-01 — one step is a whole row, which feels like extreme acceleration — and it went unnoticed because nothing could scroll sideways until list rows grew wider than the panel. | `panel/dragdrop_widgets.py` |
-| **Info** | A read-only table of facts about the selection (the Info pane, toggled from the toolbar; it and the Comments pane are never open together and share one saved width). WHAT it shows is the context's: `Section.info_subject(index)` for one row and `info_subject_for(indexes)` for several return a `file_info.Subject` - the header, the rows known at once, and at most one `Request` for rows that need a file read (a picture's facts from its header through `OpenImageIO`, or from Houdini's `iinfo` when OpenImageIO has no reader for the file, a geometry file's from `ginfo`, a USD stage's from `pxr`, the largest of a material's textures, the total size of several items). `file_info.Reader` runs that read on a worker thread and the pane puts its rows between the others. When one image file is selected, the pane also shows the picture above the table, whole and centred in an area whose height the drag line under it sets (the user setting `info_preview_height`), never taller than the picture is at the page's width; picture, line and table are one page that `side_pane.Body` places and scrolls as a whole, the table showing all its rows. `image_preview.Reader` reads the picture from the file at the pane's width in screen pixels on a worker thread, and reads it again when the pane is dragged wider. A button at the right of the header hides the picture and shows it again; the choice is the user setting `info_preview`, and while the picture is hidden the file is not read. `.rat` and `.pic` have no reader in OpenImageIO and get no picture; nor does any selection that is not one image file. A file is read only while the pane is shown: hiding it stops the read. `takes_info` is the selection-free half the toolbar chip reads. | `core/file_info.py`, `core/image_preview.py`, `panel/info_panel.py` |
-| **Splitter panes** | THE construction: categories \| grid \| side pane, with exactly ONE flexible pane — the grid (stretch 1). Both other panes are `side_pane.Pane`, the pane engine's one pane class: it keeps its place in the splitter and returns its width from `sizeHint` (the width last dragged to, else the drawn width), so a pane that does not stretch is given exactly that. The side pane's Comments and Info are two PAGES of one pane, swapped in place, so they share one width by construction (`notes_panel_width`) and a switch resizes nothing. Every part of a pane — header, header buttons, picture, drag line, striped rows — is built once in the engine; a page is a `side_pane.Page` description listing its parts, and the engine's `Body` alone gives each part its place and size, so no part sets its own size and nothing depends on a scrollbar's width ▸r/info-pane-layout-loop. | `panel/side_pane.py`, `panel/panel.py` |
+| **Scrolling** | Every view takes the wheel as Houdini's Context Options list takes it: the event's pixels, else its step, at once. The distance is the system's own. | `ui/shared/WheelScroll.qml` |
+| **Info** | A read-only table of facts about the selection (the Info pane, toggled from the toolbar; it and the Comments pane are never open together and share one saved width). WHAT it shows is the context's: `Section.info_subject(index)` for one row and `info_subject_for(indexes)` for several return a `file_info.Subject` - the header, the rows known at once, and at most one `Request` for rows that need a file read (a picture's facts from its header through `OpenImageIO`, or from Houdini's `iinfo` when OpenImageIO has no reader for the file, a geometry file's from `ginfo`, a USD stage's from `pxr`, the largest of a material's textures, the total size of several items). `file_info.Reader` runs that read on a worker thread and the pane puts its rows between the others. When one image file is selected, the pane also shows the picture above the table, whole and centred in an area whose height the drag line under it sets (the user setting `info_preview_height`), never taller than the picture is at the page's width; picture, line and table are one page that scrolls as a whole, the table showing all its rows. `image_preview.Reader` reads the picture from the file at the pane's width in screen pixels on a worker thread, and reads it again when the pane is dragged wider. A button at the right of the header hides the picture and shows it again; the choice is the user setting `info_preview`, and while the picture is hidden the file is not read. `.rat` and `.pic` have no reader in OpenImageIO and get no picture; nor does any selection that is not one image file. A file is read only while the pane is shown: hiding it stops the read. `takes_info` is the selection-free half the toolbar button reads. | `core/file_info.py`, `core/image_preview.py`, `pane/info.py`, `ui/pane/InfoPane.qml` |
+| **Splitter panes** | Houdini's SplitView: sidebar \| grid \| side pane, with exactly ONE flexible pane, the grid. The sidebar keeps the width last dragged to (`sidebar_width`), never wider than frame G01. The Info and Comments panes are each a `SidePane` (a header band over its body), shown one at a time in the same place, so they share one width (`notes_panel_width`), never under `amazetheme.SIDE_PANE_MIN_WIDTH`. | `ui/pane/Pane.qml`, `ui/shared/SidePane.qml` |
 | **Prefs** | Settings, one shared instance injected into every model. `settings.json` is stored where the OS keeps preferences (`~/Library/Preferences/Amaze` on macOS, `%APPDATA%/Amaze` on Windows, `$XDG_CONFIG_HOME/Amaze` on Linux) — never in the install — and holds bootstrap, this machine's view state and last-known copies; the SHARED settings are the library's own, in `DataBase.json` ▸ `settings` (`core/library_settings.py`), read at load and written on save. Split in two 2026-08-09: `prefs.py` defines what a setting IS (64 property pairs plus the location, favourite and section-filter accessors), and `prefs/persistence.py` reads and writes it on disk — save, load, the field-wise merge between two panes of one session, the migration out of older installs, and the portable path encoding. `_Persistence` is mixed into `Prefs`, so every call site still calls `prefs.save()` and the document's shape is untouched. | `prefs/prefs.py` → `Prefs`, from `settings.json` |
 | **Database** | One of the six JSON documents of keyed sections, read and written through the guard (§4c). | `core/guard.py`, `core/documents.py`, `core/library_db.py` |
 
@@ -754,42 +733,24 @@ A library from before 2.0 has no `DataBase.json` and is not opened, and
 
 ## 6. Dialogs — a convention, not an Engine
 
-A **Dialog** is a modal form (save, edit, preferences, about). Dialogs
-are *not* an Engine — they have no runtime pipeline, they're just forms —
-but they share one house style, so that style is a **base class**, not
-copied per dialog.
-
-- **AssetDialog** — the shared base: a `QFormLayout` with right-aligned
-  labels + fields right, native 5px margins, fixed size fitted to content,
-  OK/Cancel. Helpers `add_line` / `add_combo` / `add_row` / `finish`. A
-  new dialog is a few `add_*` calls, identical by construction.
-  `dialogs/base_dialog.py`.
-- **Section-owned** — a Section provides its own dialog through the
-  Section API's `edit_dialog()` hook, as it defines its menu. Material →
-  **Edit Info Dialog**; Code → its editor. File/Node can get
-  one the same way when they need it.
+A **Dialog** is a form (save, edit, preferences). Dialogs are *not* an
+Engine — they have no runtime pipeline — but they share one base, so the
+house style is built once. What a dialog asks and what its answer writes
+is the engine's (`pane/asks.py` and the module that asks); the window only
+shows it.
 
 | Dialog | Section | In code |
 |---|---|---|
-| **Edit Info Dialog** | Materials | `edit_material_info` / `details_dialog` |
-| **Code Dialog** | Code | `dialogs/code_dialog.py` ✓ AssetDialog — typing a snippet (New Snippet, Edit); Apply saves and stays open. Houdini's Fixed face and its syntax colours (`helpers/vex_syntax.py`); a node's code saves through the Save Dialog |
-| **Save Dialog** | every section a scene node saves into | `dialogs/save_dialog.py` ✓ AssetDialog — D09: Section, Name, Category, Language, Tags. The Section row is guessed from the node and changeable; `dialogs/gradient_dialog.py` keeps only `CategoryDialog` |
 | **Preferences** | — (app-wide) | `dialogs/prefs_window.py` — Houdini's own kind of QML Preferences window: Houdini's prefs state on Amaze's Prefs, its `houdini.prefs` rows, Apply / Accept / Cancel; its pages are `ui/prefs/*.qml` (Library, Render, UI, Add-On, About), their rows in Houdini's `Group`s. A library and its user are picked there and opened on Apply; buttons act at once |
-| **Icon Dialog** | any tile | `dialogs/icon_dialog.py` ✓ AssetDialog (non-modal) — Customize in the widget panel: it draws `pane/customize.py`, which holds every choice and rule |
-| **Manage Libraries** | — (app-wide) | `dialogs/library_dialog.py` ✓ AssetDialog — D15: the Library list, the most recently opened first; Remove from List takes libraries off it and leaves their folders alone |
-| **Versions** | Materials | `dialogs/versions_dialog.py` ✓ AssetDialog — D01: a material's versions, newest first; Select makes the picked one active |
+| **Manage Libraries** | — (app-wide) | `ui/prefs/ManageLibrariesDialog.qml`, opened from Preferences ▸ Library; its rows are `prefs_window.LibraryRows` — D15: the Library list, the most recently opened first; Remove from List takes libraries off it and leaves their folders alone |
 | **About** | — | a page of Preferences (`ui/prefs/AboutPage.qml`), with its Developer group — there is no separate About dialog |
-| **Code window** | the Amaze (QML) pane | `dialogs/code_window.py` on **DialogWindow** — New File and Edit: Name, Category, Language, Tags over Houdini's own code field (`ui/shared/CodeField.qml`: its monospace text and its VEX and Python colours, line numbers drawn as Houdini's), then Apply and Cancel. Each Apply saves and keeps the window open; a snippet with no code is refused in Houdini's message box. The window grows with its code field |
-| **Save window** | the Amaze (QML) pane | `dialogs/save_window.py` on **DialogWindow** — D09's rows in Houdini's controls: Section, Name, Category (the picked section's (key, name) list), Language (for a section that stores one), Tags; OK hands on a SaveAnswer. Its drop-down lists are `ui/shared/MenuBox.qml`, Houdini's ComboBox with its menu sized by its rows |
-| **Versions window** | the Amaze (QML) pane | `dialogs/versions_window.py` on **DialogWindow** — a material's versions newest first in the shared `RowsTable` (name, then the day it was saved), the active one picked; Select makes the picked one active. Opened by the tile's versions badge |
-| **Name window** | the Amaze (QML) pane | `dialogs/name_window.py` on **DialogWindow** — the one name field (`ui/shared/NameForm.qml`), OK and Cancel; asked by Add, Rename, New Folder and Save Scene. Not modal: Houdini stays usable while it is open |
-| **Customize window** | the Amaze (QML) pane | `dialogs/customize_window.py` on **DialogWindow** — the second view of `pane/customize.py`, in Houdini's controls at the places `amazetheme.drawn_customize` reads off the design record: Name, Category, Tags, the preview, the Image menu, Light Icons, the colour chip and presets (Houdini's ColorChip), Houdini's SearchField over the icons (a GridView of Houdini's tool buttons, made only while on screen), then Apply and Accept. Apply commits and keeps the window, Accept closes it and then commits, Esc and the window's close commit nothing. The colour chip opens the host's `ask_colour` |
+| **Code window** | the Amaze pane | `dialogs/code_window.py` on **DialogWindow** — New File and Edit: Name, Category, Language, Tags over Houdini's own code field (`ui/shared/CodeField.qml`: its monospace text and its VEX and Python colours, line numbers drawn as Houdini's), then Apply and Cancel. Each Apply saves and keeps the window open; a snippet with no code is refused in Houdini's message box. The window grows with its code field |
+| **Save window** | the Amaze pane | `dialogs/save_window.py` on **DialogWindow** — D09's rows in Houdini's controls: Section, Name, Category (the picked section's (key, name) list), Language (for a section that stores one), Tags; OK hands on a SaveAnswer. Its drop-down lists are `ui/shared/MenuBox.qml`, Houdini's ComboBox with its menu sized by its rows |
+| **Versions window** | the Amaze pane | `dialogs/versions_window.py` on **DialogWindow** — a material's versions newest first in the shared `RowsTable` (name, then the day it was saved), the active one picked; Select makes the picked one active. Opened by the tile's versions badge |
+| **Name window** | the Amaze pane | `dialogs/name_window.py` on **DialogWindow** — the one name field (`ui/shared/NameForm.qml`), OK and Cancel; asked by Add, Rename, New Folder and Save Scene. Not modal: Houdini stays usable while it is open |
+| **Customize window** | the Amaze pane | `dialogs/customize_window.py` on **DialogWindow** — the second view of `pane/customize.py`, in Houdini's controls at the places `amazetheme.drawn_customize` reads off the design record: Name, Category, Tags, the preview, the Image menu, Light Icons, the colour chip and presets (Houdini's ColorChip), Houdini's SearchField over the icons (a GridView of Houdini's tool buttons, made only while on screen), then Apply and Accept. Apply commits and keeps the window, Accept closes it and then commits, Esc and the window's close commit nothing. The colour chip opens the host's `ask_colour` |
 
-*Adoption is complete* (R51, 2026-08-21) — every dialog is built on AssetDialog;
-a new QDialog subclass in `dialogs/` either subclasses the base or records its
-reason in a `HOUSE_STRAY` attribute.
-
-The QML pane's dialogs are separate windows on one engine, **DialogWindow**
+The pane's dialogs are separate windows on one engine, **DialogWindow**
 (`qml/dialog_window.py`), made as Houdini makes its own (`qmlviews.BaseQmlView`,
 as its Create Asset window): not modal, one open per kind (asked again, the open
 one is cancelled and replaced), as tall as its content, closed with the pane that
@@ -801,10 +762,10 @@ window's own close and the pane's close all hand on None. Each kind's QML is a
 
 ## Drag & Drop Engine (core/dragengine.py + pane/drag_session.py + core/lop_assign.py)
 
-**`core/lop_assign.py`** is the USD half of a LOP material assign, split
-out of the panel 2026-07-27: what is already bound under a prim,
-rebinding it, naming an assign after the geometry it applies to, and
-removing a material nothing references any more. No Qt, no panel — it
+**`core/lop_assign.py`** is the USD half of a LOP material assign: what
+is already bound under a prim, rebinding it, naming an assign after the
+geometry it applies to, and removing a material nothing references any
+more. No Qt, no pane — it
 reports reasons rather than showing dialogs, so it is testable
 headlessly (`tests/test_drop_into_scene.py`). No drag uses it since
 Houdini's own viewport drop assigns; it is kept, with
@@ -813,7 +774,7 @@ Houdini's own viewport drop assigns; it is kept, with
 One SELF-MANAGED gesture for every section: a viewport never sees Qt's drag
 loop, because Houdini repaints its viewports only from its own main loop and a
 nested one stops every repaint for the whole drag (▸r/viewport-foreign-drag,
-▸r/native-drag-paint). The widgets run press-move-release on the
+▸r/native-drag-paint). The pane's view runs press-move-release on the
 live event loop; the engine handles everything about position and timing: the
 drag image's target check and the rect-tracked pane (`ghost_tick` /
 `pane_under_cursor_tracked` — target checks at the picking rate, the pane kept
@@ -830,8 +791,7 @@ because the viewer drops it. Both go at every end of the drag. At the release th
 handler gets the viewer. A material on an object is imported into `/mat` and set as
 its material, one undo step, with no menu, as Houdini's object-level drop does. On a
 prim the rows open at once, at the release point, in the pane's own menu engine
-(`Asks.ask_drop_choice`: the widget panel's modal QMenu, the QML pane's `AmazeMenu`,
-not waited on): `lop_assign.drop_choices`, Set as Material on the prim and on each
+(`Asks.ask_drop_choice`, shown as an `AmazeMenu`, not waited on): `lop_assign.drop_choices`, Set as Material on the prim and on each
 parent, worded as Houdini's `dropGetChoices` words them. Only the row picked imports
 the material, into the Material Library LOP Houdini's `getMaterialLibraryLop` picks,
 and assigns it with Houdini's `assignMat`, one undo step; a dismissed menu imports
@@ -844,26 +804,24 @@ ends with the red X), or the mime data and drop action of Houdini's own drag
 there. The session then ends and runs one `QDrag` with the name tag as its
 picture; Houdini's pane does the rest. Only a File row over a Parameters pane
 uses it, handing over its path as text (copy).
-One drag is a `drag_session.DragSession`, one per view, the same for both panes: `begin`
+One drag is a `drag_session.DragSession`, one per view: `begin`
 (the pressed row; the drop handlers read the selection), `move` per pointer move, and one end,
 `release` or `cancel`. Its `_end` is reached by the release, Esc (the view grabs the keyboard
 for the length of the drag), another mouse button, a hidden view, an error while following
 the pointer and the switch to a native drag; it is the only caller of `dragengine.end()`. The
 session has no widget: the name tag and the red X are `ui_helpers.DragMarks`, handed to it by
-the view. The widget panel's views start it past the drag distance (`GridGestureMixin`); the
-QML grid and list start it from `ui/shared/DragOut.qml`, a DragHandler, and the pane's view,
+the view. The grid and list start it from `ui/shared/DragOut.qml`, a DragHandler, and the pane's view,
 which keeps the mouse while a button is down, hands it the moves and the release. A grid or
 list holds its flicking while a tile or row is pressed, or at a UI scale under 1 the flick
 takes a downward drag. Over the sidebar, `Sidebar.drop_target` says which row a tile may drop
-on, for both panes; the QML tree lights that row as it lights its selected rows.
+on; the tree lights that row as it lights its selected rows.
 The name tag is hidden while another application is in front.
 Sections' release handlers call the import code. What a release does is one engine call,
 `DropPlacement.release(section_key, key, pane_tab, pane_kind)` in `pane/drop_placement.py`: the
-tile's drop rule, its handler and the wire splice as one undo step; the drag session calls it
-for both panes.
-A node dragged the other way, from a network editor onto either pane, is read by `pane/node_drop.py`
+tile's drop rule, its handler and the wire splice as one undo step; the drag session calls it.
+A node dragged the other way, from a network editor onto the pane, is read by `pane/node_drop.py`
 (the node paths a drag carries) and saved as Houdini's right-click Save to Amaze saves it, after the
-drop has returned; the widget panel's central widget and the QML pane's view both call it.
+drop has returned; the pane's view calls it.
 Rules: an item is placed where it is dropped; nothing is created before release; a material
 dropped on a prim stays imported when its menu is dismissed (one undo takes it out); SOP and LOP
 contexts never reference each other; a release where nothing takes the row is a miss (red X).
@@ -922,8 +880,8 @@ writing (`versions.create_version`).
 Preferences ▸ Library. When true, `update_asset_content`
 (`actions/materials.py`) keeps the material as it was as a version
 (`versions.keep_base`) before it replaces the files, and the new state
-becomes the active version; the Save dialog offers Save Version. When
-false, the save replaces the files and keeps no version; the dialog
+becomes the active version; the save's question offers Save Version. When
+false, the save replaces the files and keeps no version; the question
 offers Overwrite. The value is stored in the library, so two machines
 using one library have the same value. A policy that cannot be read
 allows no save-over at all (`library_settings.policy_readable`, LS-20),
@@ -1078,9 +1036,7 @@ left alone; an unknown file moves only once Fix All has named it.
 ## 9. Where things live (quick map)
 
 ```
-panel/panel.py            The Panel: the widgets only - built, wired to the
-                          pane engine's signals, and the dialogs it asks for
-pane/pane.py              THE PANE ENGINE (`panel.pane`): no widget. Prefs, the
+pane/pane.py              THE PANE ENGINE (`pane`): no view. Prefs, the
                           models, the sections and the shown one, tabs and
                           online, search, favourites, Filter choice, progress
 pane/asks.py              what the engine asks of its host window (`pane.ui`):
@@ -1093,8 +1049,7 @@ pane/assets.py            favourite, delete, render, convert, Versions,
                           Customize, export (`pane.assets`)
 pane/customize.py         CUSTOMIZE ENGINE - one Customize window's choices:
                           the face, icon and colours, the icon search, and
-                          what Apply and Accept hand on; either host's
-                          window shows it
+                          what Apply and Accept hand on
 pane/loading.py           a click on a row and Import into the scene
                           (`pane.loading`)
 pane/saving.py            scene nodes saved through D09, versions, snippets,
@@ -1107,18 +1062,23 @@ pane/package_import.py    The package import: .amazepkg files and store
                           tiles into the library (`pane.package_import`)
 pane/drop_placement.py    Where a drop or a click creates nodes: the network,
                           the position, the holder node (`pane.drop_placement`)
-pane/node_drop.py         A node dragged onto either pane: its paths, then its save
-pane/drag_session.py      One view's drag of tiles into Houdini, for both panes:
-                          begin, each move's feedback, the release or the end
+pane/node_drop.py         A node dragged onto the pane: its paths, then its save
+pane/drag_session.py      One view's drag of tiles into Houdini: begin, each
+                          move's feedback, the release or the end
 pane/tile_capture.py      Capture: the Scene View onto one tile, or the
                           open scene onto its File tile (`pane.tile_capture`)
 pane/empty_state.py       EMPTY STATE ENGINE - which empty state the shown
                           grid has, its words, and when it may change
-                          (`pane.empty_state`); both panes show what it says
-qml/pane.py               The Amaze (QML) pane, the engine's second host:
-                          its pane-tab widget, its QML view (ui/pane/*.qml)
+                          (`pane.empty_state`)
+pane/comments.py          the Comments pane's subject, its saves, its add menu
+pane/comment_document.py  a comment's document: text, to-do and picture blocks
+pane/info.py              what the Info pane shows; it reads only while open
+pane/menus.py             a MenuEntry table turned into menu rows
+pane/toolbar_menus.py     the toolbar's View and Filter menus
+qml/pane.py               The Amaze pane, the engine's host: QmlPanel (the
+                          pane tab), PaneView (its QML view, ui/pane/*.qml)
                           and PaneState, what the QML shows and asks
-qml/dialog_window.py      DIALOG WINDOW: the QML pane's dialog windows, not
+qml/dialog_window.py      DIALOG WINDOW: the pane's dialog windows, not
                           modal, one per kind, each answering its asker once
 qml/rows_model.py         ROWS MODEL: a QML table's rows, one dict each - the
                           Versions list and Manage Libraries
@@ -1139,13 +1099,11 @@ sections/{material,node,code,color,file}.py  one Section each: its GRID_MENU and
                           name, filters and empty texts; file.py holds
                           FolderSection, File's archetype
 sections/online.py        The Online context, a Section's interface, no tab
-panel/grid.py             The GRID area - the one right-click menu
-                          builder over those tables
-panel/sidebar.py          The SIDEBAR area - what a row means, and the
-                          drag-hover over it (`pane.sidebar.drop_target` decides)
-panel/empty_state.py      the widget panel's empty page: its labels and button
-panel/dragdrop_widgets.py The widget panel's views: the press that starts a drag, a
-                          node dropped in to save it
+ui/pane/*.qml             the pane's QML: Pane, Toolbar, SectionTabs,
+                          InfoPane, CommentsPane, EmptyState
+ui/shared/*.qml           the parts every view shares: TileGrid, Tile,
+                          RowsTable, SidebarTree, AmazeMenu, SidePane,
+                          DialogRoot and the rest
 core/thumbnails.py        THUMBNAIL ENGINE (cache, budget, loaders)
 core/conversion.py        CONVERSION ENGINE (file -> QImage, verified)
 core/guard.py             DATABASE ENGINE: the only module that reads and writes a library's files
@@ -1167,7 +1125,7 @@ core/grid_engine.py       GRID ENGINE (every grid model's cells and row order)
 core/library.py           Library Model (Materials) + base for Cop/Code;
                           no cleanup of its own - Check Library is
                           core/check_library.py's
-core/model_registry.py    the ONE source-model set per library; panels are views
+core/model_registry.py    the ONE source-model set per library; panes are views
 core/material.py          Material record
 core/renderers.py         the renderer table: names, icons, switches, samples, converters,
                           and RENDERABLE_CONTEXTS, the node contexts whose tile can hold a render
@@ -1237,14 +1195,6 @@ core/texstore.py          a material's textures: its own copies in its
                           the save-time copy and the path written at load
 core/library_settings.py  the SHARED settings: DataBase.json ▸ settings
 core/library_policy.py    the library's version stamp in DataBase.json
-panel/side_pane.py        the pane engine: every part of a pane beside the
-                          grid, built once (pane with its saved width,
-                          header, buttons, picture, drag line, striped
-                          rows); a pane or page is a description of parts
-panel/notes_panel.py      the Comments page of the side pane
-panel/info_panel.py       the Info page of the side pane: an image file's
-                          picture, a drag line, then the selection's facts
-                          as two-column rows
 core/file_info.py         what the Info pane shows: the Subject a section
                           returns, the system's facts for a file, a picture's
                           header through OpenImageIO, the reads of Houdini's
@@ -1320,32 +1270,27 @@ helpers/wording.py        `and_list`, a sentence's list of names, and
                           layer shares one
 helpers/hostver.py        HOST-CAPABILITY ENGINE - every "does this
                           environment behave differently here?" question
-helpers/                  theme, ui widgets, vex syntax, generic helpers
+helpers/ui_helpers.py     the drag tag and miss mark, SVG and file icons,
+                          the logo, the section tab rows, the colour picker
+helpers/theme.py          Houdini's UI scale, screen ratio, readable colours
+helpers/vex_syntax.py     VEX colours for the Code tile preview
 utils/rc_calls.py         the entry points Houdini itself calls: the
                           OPmenu's Amaze submenu (Convert to Redshift,
                           Convert to Karma, Save), and the shelf's
                           Capture, Updates and Reload, one call each -
-                          finds the open pane by its pane-tab label,
-                          the Amaze (QML) pane before the widget panel;
+                          finds the open pane by its pane-tab label;
                           `start()` gives the log its `HoudiniUI`
 branding.py               the app's DISPLAY name, once
 amazetheme.py             THE DESIGN, in one document: every colour,
                           size, placement and word the designs set and
                           Houdini's theme does not. Edit a Figma
-                          change here and nowhere else; helpers/theme.py
-                          holds what FOLLOWS Houdini's live theme
+                          change here and nowhere else
 messages.py               EVERY message Amaze shows in a dialog, in one
                           document - `displayMessage` and `debug.alert`
                           alike. Keyed by NAME, never a line number, so
                           the Figma register stays correct when lines move
                           ▸p/messages-in-three-places
-dialogs/                  save / preferences / about / code / gradient dialogs
-dialogs/user_dialog.py    the User list's rows, A to Z then the create
-                          row
-dialogs/library_dialog.py the Library list's Manage window: it removes
-                          libraries from the list, never a folder
-dialogs/versions_dialog.py a material's versions as a list; Select
-                          makes the picked one active
+dialogs/code_window.py    the Code window on DialogWindow: each Apply saves
 dialogs/name_window.py    the Name window: one name, on DialogWindow, the
                           name handed on stripped
 dialogs/save_window.py    the Save window on DialogWindow: OK hands on a
@@ -1356,26 +1301,28 @@ dialogs/customize_window.py Customize on DialogWindow: what its QML shows of
                           the Customize engine, and the slots its controls call
 dialogs/prefs_window.py   Preferences as Houdini's own QML window: its
                           prefs state reads and writes Amaze's Prefs;
-                          the pages are ui/prefs/*.qml
+                          the pages are ui/prefs/*.qml; the Library and
+                          User rows (library_name, user_rows) are here
 dialogs/update_dialog.py  what an update asks and shows - Continue or
                           Cancel when it updates the library, then how
                           the install went; the About tab, the shelf's
                           Updates tool and the panel share it
 
-tests/test_support.py     fixture_panel() - the ONLY way a test builds a
-                          panel: own settings, library, caches, network
-                          blocked, own registered file location
+tests/test_support.py     fixture_qml_pane() - the ONLY way a test builds a
+                          pane: own settings, library, caches, network
+                          blocked, own registered file location;
+                          fixture_pane() builds the engine alone
 tests/assets/library/     the fixture library (a copy per test)
 tests/assets/files/       the fixture File-section location, GENERATED by
                           make_file_fixtures.py - one tiny file per KIND
-tools/check-code.py       refuses a test module that builds its own panel,
+tools/check-code.py       refuses a test module that builds its own pane,
                           so no test reads the machine's own files
 ```
 
 **A test never touches the machine's own data.** Never construct the
-panel directly — use `test_support.fixture_panel(testcase)`, or
-`fixture_panel(class_scope(cls))` for a class-scoped one. It asserts
-every path it would touch is inside the temp dir before it returns.
+pane directly — use `test_support.fixture_qml_pane(testcase)`, or
+`test_support.fixture_pane(testcase)` for the engine alone. Both assert
+every path they would touch is inside the temp dir before they return.
 
 ---
 

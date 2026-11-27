@@ -130,7 +130,7 @@ PaneRoot {
                 visible: SharedState.sidebarShown
                 color: Theme.viewSurface
                 SplitView.preferredWidth: SharedState.sidebarWidth
-                SplitView.maximumWidth: SharedState.sidebar.width    // never wider than G01, as the widget's
+                SplitView.maximumWidth: SharedState.sidebar.width    // never wider than G01
                 // Qt 6.8.3's tree leaves its own moves unaccepted (Qt fixed it later): they end here
                 Keys.onPressed: event => event.accepted = sidebar.steps.includes(event.key)
 
