@@ -8,7 +8,11 @@ Item {
 
     property alias model: view.model    // set before `selectionModel`: Qt points a selection at its rows
     property alias selectionModel: view.selectionModel
-    property var columns: []    // per model column: its starting width, 0 to hide it, and if a tick
+    property var columns: []    // per model column: its starting width, 0 to hide it, if a tick, an inset
+    property real rowHeight: 0    // a row's height as drawn; 0 for the ground's own
+    property int stripe: 1    // the rows, by parity, drawn on the alternate ground
+    property bool scrolls: true    // false: the rows take the height they need and a page scrolls them
+    readonly property real contentHeight: header.height + view.contentHeight
     property var drawn: ({})    // `amazetheme.drawn_list`: the header's height, the text inset, the tick
     property int sortColumn: -1    // the heading drawn sorted; -1 for none
     property bool descending: false
@@ -98,6 +102,7 @@ Item {
                 }
             }
             columnWidthProvider: column => root.widthOf(column)
+            rowHeightProvider: row => root.rowHeight > 0 ? root.rowHeight : -1    // -1: the ground's
             onWidthChanged: forceLayout()
 
             function moved(name, from) {    // one row up or down, -1 for a move a list does not take
@@ -114,11 +119,14 @@ Item {
                 }
             }
 
-            WheelScroll {    // always: Qt's own wheel is off with its drag scrolling
+            WheelScroll {    // Qt's own wheel is off with its drag scrolling
+                enabled: root.scrolls
                 view: view
             }
             RowStripes {
                 view: view
+                stripe: root.stripe
+                rowHeight: root.rowHeight
             }
             Item {    // under the rows and the space below them, so one handler takes every click
                 parent: view.contentItem
@@ -147,14 +155,15 @@ Item {
                 required property int column
                 required property bool selected
                 readonly property bool tick: column < root.columns.length && root.columns[column].tick
+                readonly property var inset: column < root.columns.length ? root.columns[column].inset : undefined
 
                 highlighted: selected
-                alternate: view.alternatingRows && row % 2 === 1
+                alternate: view.alternatingRows && row % 2 === root.stripe
                 clip: true
 
                 Text {
                     visible: !cell.tick
-                    x: root.drawn.text_inset
+                    x: cell.inset !== undefined ? cell.inset : root.drawn.text_inset
                     width: parent.width - x
                     height: parent.height
                     verticalAlignment: Text.AlignVCenter

@@ -1533,10 +1533,13 @@ def drawn_info(frame_key: str = "N02") -> dict:
         "pad": icon[1] - header[1],
         "preview_button": button[3],
         "preview_button_pad": width - (button[1] + button[3]),    # its inset from the header's right
+        "preview_button_top": button[2] - header[2],
         "preview_height": preview[4],    # the picture area until its line is dragged
         "drag_line": node("line", "drag")[4],
         "gap": name[1] - (icon[1] + icon[3]),
         "icon": icon[3],
         "row": row[4],
         "label_width": node("divider")[1] - row[1],    # the value column starts at the drawn divider
+        "label_inset": node("label", "1")[1] - row[1],    # each column's text inside it
+        "value_inset": node("value", "1")[1] - node("divider")[1],
     }

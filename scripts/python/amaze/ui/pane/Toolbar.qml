@@ -113,7 +113,16 @@ Item {
             enabled: SharedState.onlinePossible
             onClicked: SharedState.setOnline(!SharedState.online)
         }
-        // Info and Comments come here, at B01's btn_info and btn_notes, with their panes
+        IconButton {
+            Layout.leftMargin: root.drawn.gap
+            node: "btn_info"
+            art: "icon_info.svg"
+            artColor: SharedState.infoShown ? SharedState.info.color : "transparent"
+            tip: SharedState.tips.info
+            checked: SharedState.infoShown
+            onClicked: SharedState.showInfo(!SharedState.infoShown)
+        }
+        // Comments comes here, at B01's btn_notes, with its pane
         IconButton {
             Layout.leftMargin: root.drawn.gap
             node: "cb_favsonly"

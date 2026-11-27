@@ -9,12 +9,13 @@ from amaze.core import debug, grid_columns, grid_engine, locations
 from amaze.dialogs import code_window, name_window, save_window, versions_window
 from amaze.helpers import ui_helpers
 from amaze.pane import asks, drag_session, menus, node_drop, pane as pane_mod, sidebar as pane_sidebar
-from amaze.panel import delegates
-from amaze.qml import hotkeys
+from amaze.panel import delegates, side_pane
+from amaze.qml import hotkeys, rows_model
 from amaze.utils import rc_calls
 from hutil.qt.common import qmlviews    # Houdini's own QML panels' base ▸r/houdini-qml-tabs
 
 PANE_QML = amaze.package_file("ui", "pane", "Pane.qml")
+INFO_PICTURE = "amazeinfo"    #: image://amazeinfo/<n>: the info pane's picture, n counting each one
 SIZE_SAVE_MS = 500    # the slider's pause before its tile size is saved, as in the widget panel
 TILE_BUTTONS = (    # the tile's buttons on its picture, by `tile_badges` ID; art in ui/tile/, "" for none
     {"name": "favourite", "role": "FavoriteRole", "equals": "", "handler": "menu_favourite",
@@ -42,22 +43,21 @@ RENDERER_MARKS = {    # a material's renderer icon on that line, by the art its 
 }
 
 
-class TilePictures(QtQuick.QQuickImageProvider):
-    """`image://amazetile/...`: a tile's painted picture, made on the main thread, kept nowhere."""
+class StatePictures(QtQuick.QQuickImageProvider):
+    """A picture the state gives on the main thread, kept nowhere; `picture(key)` finds it."""
 
     def __init__(self, state) -> None:
         super().__init__(QtQml.QQmlImageProviderBase.ImageType.Image)
         self._state = state
 
+    def picture(self, key: str):
+        """The QImage for `key`, or None."""
+        return None
+
     def requestImage(self, key: str, size: QtCore.QSize, requested: QtCore.QSize) -> QtGui.QImage:
-        image = None
-        try:    # the shown grid's model paints it, if the url is that model's
-            token, row = key.split("/")[:2]
-            proxy = self._state.gridModel
-            model = proxy.sourceModel() if proxy is not None else None
-            if model is not None and "%x" % id(model) == token:
-                image = model.paint_tile(int(row))
-        except (RuntimeError, ValueError):    # the pane closed, or a url not made by `picture_for_view`
+        try:
+            image = self.picture(key)
+        except (RuntimeError, ValueError):    # the pane closed, or a url not made by this pane
             image = None
         if image is None or image.isNull():    # a null image is an error in the QML log: a clear dot instead
             image = QtGui.QImage(1, 1, QtGui.QImage.Format.Format_ARGB32_Premultiplied)
@@ -68,6 +68,29 @@ class TilePictures(QtQuick.QQuickImageProvider):
         size.setWidth(image.width())
         size.setHeight(image.height())
         return image
+
+
+class TilePictures(StatePictures):
+    """`image://amazetile/...`: a tile's painted picture, painted by the shown grid's model."""
+
+    def picture(self, key: str):
+        token, row = key.split("/")[:2]
+        proxy = self._state.gridModel
+        model = proxy.sourceModel() if proxy is not None else None
+        return model.paint_tile(int(row)) if model is not None and "%x" % id(model) == token else None
+
+
+class InfoPictures(StatePictures):
+    """`image://amazeinfo/<n>`: the info pane's picture, as the pane engine holds it."""
+
+    def picture(self, key: str):
+        return self._state.pane.info.picture()
+
+
+class InfoRows(rows_model.RowsModel):
+    """The info pane's rows: each fact's label, then its value."""
+
+    COLUMNS = ("label", "value")
 
 
 def badge_rows(section) -> list:
@@ -167,6 +190,19 @@ class PaneState(qmlviews.SharedState, asks.Asks):
     listColumns: list = []    # `list_columns` of the shown section
     sortColumn: int = -1    # the column the shown rows are sorted by, the model's own sort
     sortDescending: bool = False
+    info: dict = {}    # frame N02's figures and the info pane's colours
+    infoShown: bool = False
+    infoWidth: float = 0.0    # in the pane's design px
+    infoName: str = ""
+    infoType: str = ""
+    infoDimmed: bool = True
+    infoRows: QtCore.QObject = None    # an `InfoRows`
+    infoPreviewOffered: bool = False    # an image file: its picture can be hidden
+    infoPreviewShown: bool = True
+    infoPreviewHeight: float = 0.0    # the picture area's height in design px
+    infoPicture: str = ""    # the engine's picture as an `INFO_PICTURE` url, "" for none
+
+    infoAnother = QtCore.Signal()    # another selection is shown: the info page starts at the top
 
     searchCleared = QtCore.Signal()    # the empty state's Clear Search: the QML empties its field
     keyStepped = QtCore.Signal(str, bool)    # a move by Houdini's hotkey: its name, and if Shift extends
@@ -219,9 +255,24 @@ class PaneState(qmlviews.SharedState, asks.Asks):
                      "viewMode": tooltips.PANEL_VIEW_MODE, "viewMenu": tooltips.PANEL_VIEW_MENU,
                      "prefs": tooltips.PANEL_PREFERENCES,
                      "tileSize": tooltips.PANEL_TILE_SIZE, "tileSizeList": tooltips.PANEL_TILE_SIZE_LIST,
-                     "search": tooltips.PANEL_SEARCH, "sidebar": tooltips.PANEL_CATEGORIES}
+                     "search": tooltips.PANEL_SEARCH, "sidebar": tooltips.PANEL_CATEGORIES,
+                     "info": tooltips.PANEL_INFO, "hidePreview": amazetheme.INFO_HIDE_PREVIEW,
+                     "showPreview": amazetheme.INFO_SHOW_PREVIEW}
         self.words = {"cancel": amazetheme.BTN_CANCEL, "search": "Search"}
         self.sidebar = amazetheme.drawn_sidebar()
+        drawn = amazetheme.drawn_info()
+        self.info = dict(
+            drawn, band=dict({key: drawn[key] for key in ("header", "pad", "gap", "icon")},
+                             right_pad=drawn["preview_button_pad"]),
+            ground=amazetheme.COMMENT_HEADER_BG, page=amazetheme.COMMENT_PAGE_BG,
+            color=amazetheme.INFO_ICON_COLOR, dim_icon=amazetheme.COMMENT_DIM_ICON_COLOR,
+            dim_icon_opacity=amazetheme.COMMENT_DIM_ICON_OPACITY,
+            dim_text_opacity=amazetheme.COMMENT_DIM_TEXT_OPACITY, least=amazetheme.INFO_PREVIEW_LEAST,
+            line=amazetheme.DRAG_LINE_COLOR, grab=amazetheme.DRAG_LINE_GRAB,
+            least_width=side_pane.MIN_WIDTH)
+        self.infoRows = InfoRows(self)
+        self._on_screen = False    # the view is shown: only then is the info pane open
+        self._pictures = 0    # the info pictures shown, which gives each its own url
 
     def start(self) -> None:
         """Build this pane's engine, follow it, and open the library; Qt deletes the engine with this."""
@@ -241,8 +292,12 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         pane.progress.connect(self._set_progress)
         pane.empty_changed.connect(self._show_empty)
         pane.filter_changed.connect(self._show_filter)
+        pane.info.changed.connect(self._show_info)
+        pane.info.another.connect(self.infoAnother)
+        pane.info.picture_changed.connect(self._show_info_picture)
         self._show_tabs()
         self._show_settings()
+        self._show_info()
         pane.library.start()
 
     def _show_tabs(self) -> None:
@@ -352,6 +407,35 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         self.sidebarCounts = bool(prefs.sidebar_counts)
         drawn = self.sidebar["width"]    # the last dragged width, never wider than drawn
         self.sidebarWidth = min(prefs.sidebar_width / self.uiScale, drawn) if prefs.sidebar_width else drawn
+        self.infoShown = bool(prefs.show_info)
+        self.infoWidth = prefs.notes_panel_width / self.uiScale if prefs.notes_panel_width else self.info["width"]
+        saved = self.pane.info.preview_height()    # in the widget panel's px, as its drags keep it
+        self.infoPreviewHeight = max(self.info["least"], saved / self.uiScale) if saved else self.info[
+            "preview_height"]
+        self._open_info()
+
+    def _show_info(self) -> None:
+        """The info engine's header, rows and preview button."""
+        info = self.pane.info
+        self.infoName, self.infoType, self.infoDimmed = info.name(), info.type(), info.dimmed()
+        self.infoPreviewOffered, self.infoPreviewShown = info.preview_offered(), info.preview_shown()
+        rows = [{"label": str(label), "value": str(value)} for label, value in info.rows()]
+        if rows != self.infoRows.rows:
+            self.infoRows.fill(rows)
+
+    def _show_info_picture(self) -> None:
+        """The engine's picture under a url of its own, so the QML reads it again."""
+        self._pictures += 1
+        shown = self.pane.info.picture() is not None
+        self.infoPicture = "image://%s/%d" % (INFO_PICTURE, self._pictures) if shown else ""
+
+    def _open_info(self) -> None:
+        """The info pane reads only while it is shown and the view is on screen."""
+        self.pane.info.set_open(self.infoShown and self._on_screen)
+
+    def set_on_screen(self, shown: bool) -> None:
+        self._on_screen = bool(shown)
+        self._open_info()
 
     def _show_progress(self, visible: bool) -> None:
         self.progressShown = bool(visible)
@@ -399,6 +483,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
     def clickTile(self, row: int, modifiers: int) -> None:
         """The user's click on tile or row `row`, -1 for none, as Qt's views take it; Ctrl/Cmd, Shift."""
         self._choose(row, modifiers, by_key=False)
+        self.pane.info.refresh()    # a click on the selected tile shows its facts as they are now
 
     @QtCore.Slot(int, int)
     def keyTile(self, row: int, modifiers: int) -> None:
@@ -591,6 +676,38 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         self.sidebarWidth = width
 
     @QtCore.Slot(bool)
+    def showInfo(self, on: bool) -> None:
+        """The toolbar's info button: the pane opened or closed, remembered as the widget panel does."""
+        self.pane.prefs.show_info = bool(on)
+        self.pane.prefs.save()
+        self.infoShown = bool(on)
+        self._open_info()
+
+    @QtCore.Slot(float)
+    def keepInfoWidth(self, width: float) -> None:
+        """A drag of the split ended: the side pane's width, in the widget panel's px."""
+        if width <= 0:
+            return
+        self.pane.prefs.notes_panel_width = int(round(width * self.uiScale))
+        self.pane.prefs.save()
+        self.infoWidth = width
+
+    @QtCore.Slot(float)
+    def setPictureWidth(self, pixels: float) -> None:
+        """The info page's width in screen pixels: its picture is read no wider."""
+        self.pane.info.set_width(pixels)
+
+    @QtCore.Slot()
+    def togglePreview(self) -> None:
+        self.pane.info.toggle_preview()
+
+    @QtCore.Slot(float)
+    def keepPreviewHeight(self, height: float) -> None:
+        """A drag of the picture's line ended: its height, in the widget panel's px."""
+        self.pane.info.keep_preview_height(int(round(height * self.uiScale)))
+        self.infoPreviewHeight = height
+
+    @QtCore.Slot(bool)
     def setOnline(self, on: bool) -> None:
         if on:
             self.pane.enter_online()
@@ -760,6 +877,7 @@ class PaneView(qmlviews.BaseQmlWidget):
 
     def setupEngine(self) -> None:
         self.engine().addImageProvider(grid_engine.PAINTED, TilePictures(self.sharedState()))
+        self.engine().addImageProvider(INFO_PICTURE, InfoPictures(self.sharedState()))
 
     def event(self, event) -> bool:
         """Qt's shortcut override: the pane claims the keys it acts on, or Houdini's hotkey takes them."""
@@ -878,10 +996,15 @@ class PaneView(qmlviews.BaseQmlWidget):
         if node_drop.save(self.sharedState().pane, event.mimeData()):
             event.acceptProposedAction()
 
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self.sharedState().set_on_screen(True)
+
     def hideEvent(self, event) -> None:
         self.drag.cancel()    # a pane hidden mid-drag gets no release
         self.reorder.cancel()
         self._drag_held = False
+        self.sharedState().set_on_screen(False)    # a hidden pane reads nothing
         super().hideEvent(event)
 
 

@@ -53,7 +53,7 @@ class Info(QtCore.QObject):
         self._rows = ()
         self._picture_path = ""    # the image file the preview is for, "" for none
         self._picture = None
-        self._width = 1    # the picture's room in screen pixels: it is read no wider
+        self._width = 0    # the picture's room in screen pixels, 0 until the view gives it
         self._followed = []    # the selections whose changes point the pane at the selection
         pane.models_built.connect(self._follow_selections)
         pane.context_shown.connect(self.refresh)
@@ -160,7 +160,10 @@ class Info(QtCore.QObject):
 
     def set_width(self, width: float) -> None:
         """The picture's room in screen pixels; wider than the picture read, it is read again."""
-        self._width = max(1, round(width))
+        known, self._width = self._width, max(1, round(width))
+        if not known:    # the picture waited for its room
+            self._ask_picture()
+            return
         image = self._picture
         if image is not None and image.width() < self._width and not image.text(image_preview.WHOLE):
             self._wider.start()    # read it wider once the drag rests
@@ -175,7 +178,7 @@ class Info(QtCore.QObject):
 
     def _ask_picture(self) -> None:
         self._wider.stop()
-        if not self._picture_path or not self.preview_shown():    # hidden: the file is not read
+        if not self._picture_path or not self.preview_shown() or not self._width:    # not read
             self._pictures.stop()
             return
         self._pictures.ask(self._picture_path, self._width)

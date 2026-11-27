@@ -117,7 +117,13 @@ PaneRoot {
             splitColor: Theme.bg    // inside a pane, as Houdini's style draws it; paneDivider is between panes
             Layout.fillWidth: true
             Layout.fillHeight: true
-            onResizingChanged: if (!resizing) SharedState.keepSidebarWidth(sidebarArea.width)
+            onResizingChanged: {
+                if (resizing)
+                    return
+                SharedState.keepSidebarWidth(sidebarArea.width)
+                if (info.visible)
+                    SharedState.keepInfoWidth(info.width)
+            }
 
             Rectangle {    // the list's own ground below its rows, as Houdini's lists have
                 id: sidebarArea
@@ -198,6 +204,12 @@ PaneRoot {
                     anchors.centerIn: parent
                     width: parent.width - 48    // the widget panel's empty page keeps 24 px each side
                 }
+            }
+            InfoPane {    // right of the grid, at its kept width
+                id: info
+                visible: SharedState.infoShown
+                SplitView.preferredWidth: SharedState.infoWidth
+                SplitView.minimumWidth: SharedState.info.least_width
             }
         }
     }
