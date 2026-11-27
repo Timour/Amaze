@@ -2,7 +2,7 @@
 
 What the info pane must show about the selection: its facts, and an image file's picture. The
 engine is `core/file_info.py`, `info_rows` and `_info_facts` in each section's model,
-`info_subject` in `sections/base.py`, `core/image_preview.py` and `panel/info_panel.py`. The
+`info_subject` in `sections/base.py`, `core/image_preview.py` and `pane/info.py`. The
 levels and the rules for tests are in the [README](README.md).
 
 ## Catastrophe

@@ -51,7 +51,7 @@ def cursor_overlay(text: str = "") -> QtWidgets.QLabel:
 
 
 class DragMarks:
-    """What a drag shows at the cursor, for both panes: its name tag, and a miss's mark."""
+    """What a drag shows at the cursor: its name tag, and a miss's mark."""
 
     MISS_MS = 167    #: how long the miss mark stays on screen (ms) ▸r/qt-windows-macos
     MISS_ICON = "icon_drop_miss.svg"    # frame X01b's mark, in the red it is drawn in

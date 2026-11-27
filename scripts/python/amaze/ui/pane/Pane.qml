@@ -94,7 +94,7 @@ PaneRoot {
                 currentIndex: SharedState.currentTab
                 onTabChosen: index => SharedState.chooseTab(index)
             }
-            Rectangle {    // the strip's bottom row over the tab bar, as the widget panel's strip draws it
+            Rectangle {    // the strip's bottom row, drawn over the tab bar
                 id: line
                 anchors.bottom: parent.bottom
                 width: parent.width
@@ -202,7 +202,7 @@ PaneRoot {
                 }
                 EmptyState {
                     anchors.centerIn: parent
-                    width: parent.width - 48    // the widget panel's empty page keeps 24 px each side
+                    width: parent.width - 48    // the empty page keeps 24 px each side
                 }
             }
             Item {    // right of the grid, at its kept width: the Info or the Comments pane, one at a time

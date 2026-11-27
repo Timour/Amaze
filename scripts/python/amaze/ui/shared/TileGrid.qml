@@ -37,7 +37,7 @@ ScrollArea {
         id: view
 
         property int selectionChanges: 0    // counted, so every tile reads its selected state again
-        // each line in whole px, as QFontMetrics gives the widget tile its cell
+        // each line in whole px, as QFontMetrics measures a line
         readonly property int nameHeight: Math.round(nameFont.ascent) + Math.round(nameFont.descent)
         readonly property int subtitleHeight: Math.round(subtitleFont.ascent) + Math.round(subtitleFont.descent)
 

@@ -684,7 +684,7 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("renderer icon ▸ renderer_octane", 112, 156, 16, 16, None),
         ),
     },
-    "QML T08": {   # the QML tile's frames from here; T01-T26 above go with the old panel. A scene, open
+    "QML T08": {   # the QML tile's frames from here; T01-T26 above are design records. A scene, open
         "frame": (138, 177),
         "nodes": (
             ("tile card", 4, 4, 130, 173, None),

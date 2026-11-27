@@ -16,7 +16,7 @@ from hutil.qt.common import qmlviews    # Houdini's own QML panels' base ▸r/ho
 
 PANE_QML = amaze.package_file("ui", "pane", "Pane.qml")
 INFO_PICTURE = "amazeinfo"    #: image://amazeinfo/<n>: the info pane's picture, n counting each one
-SIZE_SAVE_MS = 500    # the slider's pause before its tile size is saved, as in the widget panel
+SIZE_SAVE_MS = 500    # the slider's pause before its tile size is saved
 TILE_BUTTONS = (    # the tile's buttons on its picture, by `tile_badges` ID; art in ui/tile/, "" for none
     {"name": "favourite", "role": "FavoriteRole", "equals": "", "handler": "menu_favourite",
      "art": "tile/favourite", "hover": "tile/favourite_hover", "press": "tile/favourite_on",
@@ -156,7 +156,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
     sidebarShown: bool = True
     prefsOpen: bool = False    # the Preferences button shows its on state while the window is open
     sidebarWidth: float = 0.0    # in the pane's design px
-    gridModel: QtCore.QAbstractItemModel = None    # the shown section's tiles, the proxy the widget grid shows
+    gridModel: QtCore.QAbstractItemModel = None    # the shown section's tiles: its sorted, filtered proxy
     gridSelection: QtCore.QObject = None    # the section's own selection of them, the engine's
     tile: dict = {}    # `drawn_tile`
     badges: list = []    # `badge_rows` of the shown section
@@ -216,7 +216,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         self._size_save.setSingleShot(True)
         self._size_save.setInterval(SIZE_SAVE_MS)
         self._size_save.timeout.connect(self._save_prefs)
-        self._key_pause = QtCore.QTimer(self)    # the arrow keys' pause, as the widget panel's
+        self._key_pause = QtCore.QTimer(self)    # the arrow keys' pause
         self._key_pause.setSingleShot(True)
         self._key_pause.setInterval(pane_sidebar.KEY_PAUSE_MS)
         self._key_pause.timeout.connect(self._show_key_choice)
@@ -319,7 +319,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
             listed.rowsInserted.connect(self._reveal_step)
 
     def _show_grid(self, section) -> None:
-        """The section's tiles, its own selection of them and its badges, as the widget grid binds them."""
+        """The section's tiles, its own selection of them and its badges, bound to the grid."""
         proxy = getattr(self.pane, section.proxy_attr, None) if section.proxy_attr else None
         self._grid_anchor = QtCore.QPersistentModelIndex()
         self.badges = badge_rows(section)
@@ -406,8 +406,8 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         self.pane.one_side_pane()
         self.infoShown, self.commentsShown = bool(prefs.show_info), bool(prefs.show_notes)
         self.sidePaneWidth = (prefs.notes_panel_width / self.uiScale if prefs.notes_panel_width
-                              else self.comments["width"])    # the widget panel's start width
-        saved = self.pane.info.preview_height()    # in the widget panel's px, as its drags keep it
+                              else self.comments["width"])    # the drawn width at the start
+        saved = self.pane.info.preview_height()    # in scaled px, as the drags keep it
         self.infoPreviewHeight = max(self.info["least"], saved / self.uiScale) if saved else self.info[
             "preview_height"]
         self._open_side_panes()
@@ -600,7 +600,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
 
     @QtCore.Slot(int)
     def doubleClickTile(self, row: int) -> None:
-        """The user's double-click on tile or row `row`: the pane's, as the widget grid's."""
+        """The user's double-click on tile or row `row`: the pane engine runs it."""
         if self.gridModel is not None and row >= 0:
             self.pane.double_click(self.gridModel.index(row, 0))
 
@@ -650,7 +650,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         indexes = context.sidebar_selection()
         current = index if index.isValid() and index in indexes else (indexes[0] if indexes else None)
         self._menu = menus.Menu(context, entries, indexes, current, host=self)
-        self._after_menu = context.reselect_sidebar_row    # the old panel's own put-back
+        self._after_menu = context.reselect_sidebar_row    # the section's own put-back
         return self._menu.rows
 
     @QtCore.Slot()
@@ -703,7 +703,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         customize_window.ask(self, question, apply)
 
     def ask_colour(self, start: str, title: str, then) -> None:
-        """Houdini's colour picker, the one the widget panel opens: `then` gets "#rrggbb", None for Cancel."""
+        """Houdini's colour picker, through `pick_color`: `then` gets "#rrggbb", None for Cancel."""
         chosen = ui_helpers.pick_color(start, None, title)
         then(chosen.name() if chosen is not None else None)
 
@@ -732,28 +732,28 @@ class PaneState(qmlviews.SharedState, asks.Asks):
 
     @QtCore.Slot(bool)
     def showSidebar(self, on: bool) -> None:
-        """The toolbar's sidebar button: shown or hidden, remembered as the widget panel does."""
+        """The toolbar's sidebar button: shown or hidden, and remembered."""
         self.pane.prefs.show_categories = bool(on)
         self.pane.prefs.save()
         self.sidebarShown = bool(on)
 
     @QtCore.Slot(float)
     def keepSidebarWidth(self, width: float) -> None:
-        """A drag of the split ended: the width is kept in the widget panel's px, as its drags are."""
+        """A drag of the split ended: the width is kept in scaled px."""
         if width <= 0:
-            return    # a sidebar dragged shut keeps the width it had, as the widget panel's
+            return    # a sidebar dragged shut keeps the width it had
         self.pane.prefs.sidebar_width = int(round(width * self.uiScale))
         self.pane.prefs.save()
         self.sidebarWidth = width
 
     @QtCore.Slot(bool)
     def showInfo(self, on: bool) -> None:
-        """The toolbar's info button: the pane opened or closed, remembered as the widget panel does."""
+        """The toolbar's info button: the pane opened or closed, and remembered."""
         self._show_side_pane("show_info", on)
 
     @QtCore.Slot(bool)
     def showComments(self, on: bool) -> None:
-        """The toolbar's Comments button: the pane opened or closed, remembered as the widget panel does."""
+        """The toolbar's Comments button: the pane opened or closed, and remembered."""
         self._show_side_pane("show_notes", on)
 
     def _show_side_pane(self, setting: str, on: bool) -> None:
@@ -765,7 +765,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
 
     @QtCore.Slot(float)
     def keepSidePaneWidth(self, width: float) -> None:
-        """A drag of the split ended: the side pane's width, in the widget panel's px."""
+        """A drag of the split ended: the side pane's width, in scaled px."""
         if width <= 0:
             return
         self.pane.prefs.notes_panel_width = int(round(width * self.uiScale))
@@ -783,7 +783,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
 
     @QtCore.Slot(float)
     def keepPreviewHeight(self, height: float) -> None:
-        """A drag of the picture's line ended: its height, in the widget panel's px."""
+        """A drag of the picture's line ended: its height, in scaled px."""
         self.pane.info.keep_preview_height(int(round(height * self.uiScale)))
         self.infoPreviewHeight = height
 
@@ -850,7 +850,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         self.pane.files.locate_unreadable(self.pane.empty_state.unreadable_folder())
 
     def show_prefs(self, page: str = "") -> None:
-        """Preferences, one window per pane as in the widget panel; a second open raises it."""
+        """Preferences, one window per pane; a second open raises it."""
         from amaze.dialogs import prefs_window
         self.save_size()
         window = self._prefs_window
@@ -938,7 +938,7 @@ class PaneView(qmlviews.BaseQmlWidget):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         hotkeys.watch(self)    # Amaze's hotkey context is active for this pane
-        # Qt's context menu request, as the widget grid takes it: answered here, never passed up to Houdini
+        # Qt's context menu request: answered here, never passed up to Houdini
         self.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._context_menu)
         self.drag = self.sharedState().drag = drag_session.DragSession(self, ui_helpers.DragMarks())

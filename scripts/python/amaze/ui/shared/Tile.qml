@@ -109,7 +109,7 @@ Item {
             source: String(root.picture.url || "").startsWith("file:") ? root.picture.url : ""
             sourceSize: Qt.size(root.side, root.side)
             fillMode: root.picture.crop ? Image.PreserveAspectCrop : Image.PreserveAspectFit
-            verticalAlignment: Image.AlignTop    // a wide picture sits at the top, as the widget tile draws it
+            verticalAlignment: Image.AlignTop    // a wide picture sits at the top
         }
         Image {    // a painted picture: Python paints on the main thread, as on Qt's reader thread it deadlocks
             anchors.fill: parent

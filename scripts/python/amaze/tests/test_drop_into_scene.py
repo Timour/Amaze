@@ -559,7 +559,7 @@ class WhereADropGoesTest(_Drops):
         self.assertEqual("cube", hou.node("/obj/cube").name())
 
     def test_dd24_a_material_dropped_on_a_prim_offers_its_rows_and_imports_only_on_the_pick(self):
-        for at_once in (True, False):    # the widget panel's menu answers at once, the QML pane's later
+        for at_once in (True, False):    # the menu answered at once, then later
             with self.subTest(at_once=at_once):
                 lopnet = hou.node("/stage").createNode("lopnet")
                 self.addCleanup(test_support.drop_node, lopnet)

@@ -93,7 +93,7 @@ TreeView {
             failed: entry.lost
             alternate: root.alternatingRows && entry.row % 2 === 1
         }
-        contentItem: IconLabel {    // Houdini's label; the name and its count, as the widget panel's
+        contentItem: IconLabel {    // Houdini's label; the name and its count
             height: entry.rowHeight
             alignment: Qt.AlignLeft | Qt.AlignVCenter
             mirrored: entry.mirrored

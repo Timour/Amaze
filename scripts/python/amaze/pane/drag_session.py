@@ -1,4 +1,4 @@
-"""A drag of tiles out of a pane into Houdini, the one gesture both panes run. ▸o/section-api"""
+"""A drag of tiles out of a pane into Houdini. ▸o/section-api"""
 
 from PySide6 import QtCore, QtGui
 import hou

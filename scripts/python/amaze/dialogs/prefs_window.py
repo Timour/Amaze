@@ -65,7 +65,7 @@ def user_rows(known: dict) -> list:
     return rows + [(CREATE_TEXT, CREATE)]
 
 
-SWITCH =(_switch_text, _switch_value)    # Houdini's switch rows write "1" and "0"
+SWITCH = (_switch_text, _switch_value)    # Houdini's switch rows write "1" and "0"
 NOT_SWITCH = (lambda value: _switch_text(not value),    # a switch on while its setting is off
               lambda text: not _switch_value(text))
 WORD = (str, str)

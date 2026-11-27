@@ -123,7 +123,7 @@ class GridEngine:
         return picture.paint() if picture.paint is not None else None
 
     def shown_picture(self, row: int, face: str = "") -> tuple:
-        """(image, crop) of `tile_picture`, read through the thumbnail engine, for the widget grid."""
+        """(image, crop) of `tile_picture`, read through the thumbnail engine."""
         picture = self.tile_picture(row, face)
         for path, key, crop in picture.files:
             image = thumbnails.engine.request_file(key, path)

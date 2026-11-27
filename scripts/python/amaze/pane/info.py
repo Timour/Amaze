@@ -86,7 +86,7 @@ class Info(QtCore.QObject):
         return bool(self.pane.prefs.info_preview)
 
     def preview_height(self) -> int:
-        """The picture area's height as last dragged, in the widget panel's px; 0 for none."""
+        """The picture area's height as last dragged, in scaled px; 0 for none."""
         return int(self.pane.prefs.info_preview_height or 0)
 
     def keep_preview_height(self, height: int) -> None:
