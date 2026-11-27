@@ -245,9 +245,6 @@ class ThumbNailRenderer:
                 if candidate.parm("camera") is not None:  # no camera parm: destroyed below, and the Karma CPU ROP is used instead
                     rop = candidate
                     renderer_used = "flipbook ROP (viewport renderer)"
-                    preview.safe_set(cam, "orthowidth", ortho_width * 2.0)  # quadrant compensation, flipbook only; never conditional on device scale ▸r/platform-files
-                    preview.safe_set(cam, "tx", world_center[0] + ortho_width * 0.5)  # half the intended span, not the doubled one
-                    preview.safe_set(cam, "ty", world_center[1] + ortho_width * 0.5)
                     preview.safe_set(rop, "vobjects", geo.path())  # scoped to our nodes, not the user's whole /obj scene and lights
                     preview.safe_set(rop, "alights", light.path())
                     shading = rop.parm("shadingmode")  # shading mode from Preferences, set by menu token, before the background block

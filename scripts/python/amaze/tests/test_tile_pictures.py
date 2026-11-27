@@ -722,6 +722,22 @@ class PicturesTest(_Library):
             found = [[nearest(image.pixelColor(x, y)) for x in (1, last)] for y in (1, last)]
             self.assertEqual([[0, 0], [2, 2]], found, "%s: the first colour is not along the top" % name)
 
+    @needs_houdini
+    def test_tp31_a_geometry_picture_shows_the_whole_geometry_in_its_middle(self):
+        from amaze.render import thumbs
+        prefs = test_support.fixture_prefs(self)
+        picture = os.path.join(prefs.path, "cube.png")
+        self.assertTrue(thumbs.ThumbNailRenderer(prefs).create_thumb_geo_file(
+            os.path.join(test_support.FILES_FIXTURE_DIR, "cube.bgeo"), picture, 96))
+        image = QtGui.QImage(picture)
+        ground = image.pixelColor(0, 0).rgb()
+        lit = [(x, y) for y in range(96) for x in range(96) if image.pixelColor(x, y).rgb() != ground]
+        xs, ys = [x for x, _y in lit], [y for _x, y in lit]
+        middle = ((min(xs) + max(xs)) / 2.0, (min(ys) + max(ys)) / 2.0)
+        span = max(max(xs) - min(xs), max(ys) - min(ys)) + 1
+        self.assertTrue(abs(middle[0] - 47.5) <= 2 and abs(middle[1] - 47.5) <= 2 and span >= 80,
+                        "the cube sits at %s, %d pixels across, in a 96 pixel picture" % (middle, span))
+
 
 if __name__ == "__main__":
     unittest.main()
