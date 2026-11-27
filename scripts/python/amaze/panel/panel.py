@@ -1375,9 +1375,8 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
         """Show or hide the pane and remember it; the grid takes up the width."""
         if getattr(self, "notes_panel", None) is None:
             return
-        self.pane.prefs.show_notes = bool(checked)
+        self.pane.show_side_pane("show_notes", checked)
         self._show_side_page(self.notes_panel if checked else None)
-        self.pane.prefs.save()
         if checked:
             self._close_other_pane("btn_info")
 
@@ -1391,9 +1390,8 @@ class AmazePanel(QtWidgets.QWidget, asks.Asks):
         """Show or hide the info pane and remember it; opening it closes the comments pane."""
         if getattr(self, "info_panel", None) is None:
             return
-        self.pane.prefs.show_info = bool(checked)
+        self.pane.show_side_pane("show_info", checked)
         self._show_side_page(self.info_panel if checked else None)
-        self.pane.prefs.save()
         if checked:
             self._close_other_pane("btn_notes")
 

@@ -774,10 +774,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
     def _show_side_pane(self, setting: str, on: bool) -> None:
         """Open or close a side pane and remember it; opening one closes the other."""
         prefs = self.pane.prefs
-        setattr(prefs, setting, bool(on))
-        if on:
-            setattr(prefs, "show_info" if setting == "show_notes" else "show_notes", False)
-        prefs.save()
+        self.pane.show_side_pane(setting, on)
         self.infoShown, self.commentsShown = bool(prefs.show_info), bool(prefs.show_notes)
         self._open_side_panes()
 

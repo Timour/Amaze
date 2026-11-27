@@ -88,6 +88,13 @@ class Pane(QtCore.QObject):
         if self.prefs.show_notes and self.prefs.show_info:
             self.prefs.show_info = False
 
+    def show_side_pane(self, setting: str, on: bool) -> None:
+        """Remember the side pane of `setting` as open or closed; opening one closes the other."""
+        setattr(self.prefs, setting, bool(on))
+        if on:
+            setattr(self.prefs, "show_info" if setting == "show_notes" else "show_notes", False)
+        self.prefs.save()
+
     def is_online(self) -> bool:
         """Whether the online section is shown; the one check every handler uses."""
         return bool(self.online_mode)    # `current_section` still names the local section underneath
