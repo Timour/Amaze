@@ -264,7 +264,7 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         self.info = dict(
             drawn, band=dict({key: drawn[key] for key in ("header", "pad", "gap", "icon")},
                              right_pad=drawn["preview_button_pad"]),
-            ground=amazetheme.COMMENT_HEADER_BG, page=amazetheme.COMMENT_PAGE_BG,
+            ground=amazetheme.SIDE_PANE_BAND_BG,
             color=amazetheme.INFO_ICON_COLOR, dim_icon=amazetheme.COMMENT_DIM_ICON_COLOR,
             dim_icon_opacity=amazetheme.COMMENT_DIM_ICON_OPACITY,
             dim_text_opacity=amazetheme.COMMENT_DIM_TEXT_OPACITY, least=amazetheme.INFO_PREVIEW_LEAST,

@@ -77,6 +77,7 @@ COMMENT_OPEN_COLOR = "#ff7760"   # an open to-do
 COMMENT_ADD_COLOR = "#dddddd"    # the + art's colour
 COMMENT_HEADER_BG = "#272727"
 COMMENT_PAGE_BG = "#2d2d2d"
+SIDE_PANE_BAND_BG = "#1b1b1b"    # the QML side pane's header band, as N01 and N02 draw it
 COMMENT_DIM_NAME = "Nothing Selected"   # ▸ nothing selected (N01B): the header's two labels,
 COMMENT_DIM_TYPE = "Type"
 COMMENT_DIM_TEXT_OPACITY = 0.5          # drawn at half their usual opacity

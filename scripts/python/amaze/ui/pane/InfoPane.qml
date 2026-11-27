@@ -11,7 +11,7 @@ SidePane {
 
     readonly property var drawn: SharedState.info    // N02's figures and the info pane's colours
 
-    color: root.drawn.page
+    color: Theme.viewSurface    // N02's page is its rows' own ground
     band.drawn: root.drawn.band
     band.color: root.drawn.ground
     band.icon: "icon_info.svg"
@@ -135,7 +135,7 @@ SidePane {
                 y: table.y
                 width: root.drawn.divider
                 height: table.height
-                color: root.drawn.page
+                color: Theme.viewSurface    // the page's colour, so it shows on the bright rows only
             }
         }
     }
