@@ -51,7 +51,7 @@ class Asks:
         raise NotImplementedError
 
     def open_customize(self, question, apply) -> None:
-        """Customize for a CustomizeQuestion: Apply and Accept call `apply(CustomizeAnswer)`."""
+        """Customize: Apply and Accept call `apply(CustomizeAnswer)`, which answers whether it wrote."""
         raise NotImplementedError
 
     def show_prefs(self, page: str = "") -> None:

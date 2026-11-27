@@ -15,9 +15,10 @@ from amaze.core import grid_columns, library_files, locations, material, sidebar
 from amaze.pane import asks, customize
 from amaze.tests import test_support
 
-try:    # without Houdini the Name window's and the palette menu's tests skip
+try:    # without Houdini the tests of the Name window, the palette menu and a refused Apply skip
     import hou
     from amaze.dialogs import name_window
+    from amaze.pane import assets as pane_assets
     from amaze.pane import menus
     from amaze.qml import pane as qml_pane
     from amaze.sections import color as color_section
@@ -229,6 +230,24 @@ class AssetEditingTest(_Edits):
             library_db.refresh(self.prefs)
             self.assertFalse(self.model.edit_tiles({gold}, name="Other"))
         self.assertEqual(messages.CHANGE_REFUSED_READ_ONLY % "Materials", told.call_args.args[0])
+
+    @unittest.skipUnless(hou, "Houdini is not loaded")
+    def test_ed36_after_a_refused_apply_in_customize_the_next_commit_writes_those_edits(self):
+        gold, opened = self.key("gold"), []
+        pane = types.SimpleNamespace(prefs=self.prefs, ui=types.SimpleNamespace(
+            open_customize=lambda question, apply: opened.append((question, apply))))
+        pane_assets.Assets(pane).edit_tile_icon(self.model, None, [self.model.index(self.row("gold"), 0)])
+        window = customize.Customize(*opened[0], ask_colour=None)
+
+        def shown() -> tuple:
+            asset = self.model.assets[self.model.find_asset_row_by_id(gold)]
+            return asset.name, list(asset.tags)
+        before, self.prefs.library_user = shown(), ""
+        with mock.patch.object(debug, "refuse"):
+            window.commit("Other", "probe")
+        refused, self.prefs.library_user = shown(), test_support.FIXTURE_USER
+        window.commit("Other", "probe")
+        self.assertEqual((before, ("Other", ["probe"])), (refused, shown()))
 
     def test_ed32_a_section_never_gets_two_categories_of_one_name(self):
         usds, wood = self.cat("usds"), self.cat("Wood")

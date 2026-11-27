@@ -192,14 +192,15 @@ class Assets:
             can_preview=any(model.can_preview(row) for row in rows),
         )
 
-        def apply(answer, tile_keys=frozenset(tile_keys)):
+        def apply(answer, tile_keys=frozenset(tile_keys)) -> bool:
             if model.TILE_FIELDS and not model.edit_tiles(
                     tile_keys, answer.name, answer.tags, answer.category):
-                return    # refused, and the user told: the icon is not written either
+                return False    # refused, and the user told: the icon is not written either
             rows = [row for row in range(model.rowCount())    # by key, after that save: rows move
                     if model.tile_key(row) in tile_keys]
             if rows:
                 self.apply_icon_spec(model, rows, answer.spec)
+            return True
 
         self.pane.ui.open_customize(question, apply)
 

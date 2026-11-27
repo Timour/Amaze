@@ -18,7 +18,7 @@ class Customize(QtCore.QObject):
 
     def __init__(self, question, apply, ask_colour, parent=None) -> None:
         super().__init__(parent)
-        self._apply = apply    # the asker's, called with a CustomizeAnswer at each commit
+        self._apply = apply    # the asker's: called at each commit, True when it wrote the answer
         self._ask_colour = ask_colour    # the host's `ask_colour`
         self._pictures = dict(question.faces or {})    # {face: image} for the preview
         self._stroke = question.stroke or tile_icons.STROKE_UNITS
@@ -107,9 +107,10 @@ class Customize(QtCore.QObject):
                                     tags=tags if retags else None, category=category if moves else None)
 
     def commit(self, name: str = "", tags: str = "", category: str = "") -> asks.CustomizeAnswer:
-        """Apply or Accept: the asker gets the edits, and the next commit compares against them."""
+        """Apply or Accept: the asker gets the edits; the next commit compares against those it wrote."""
         answer = self.answer(name, tags, category)
-        self._apply(answer)
+        if not self._apply(answer):
+            return answer    # refused: nothing was written, so the next commit hands on the same edits
         if answer.name is not None:
             self.name = answer.name
         if answer.tags is not None:
