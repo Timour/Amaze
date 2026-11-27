@@ -29,7 +29,7 @@ def enabled(context, entry, indexes, current) -> bool:
 
 
 def is_chip(icon) -> bool:
-    """A child's icon that is a colour ("#rrggbb"), drawn as a chip; any other names a ui/ icon."""
+    """A child's icon that is a colour ("#rrggbb"), drawn as a chip."""
     return bool(icon) and icon.startswith("#")
 
 
@@ -102,7 +102,7 @@ class Menu:
         return out
 
     def _children(self, entry, indexes, current, prefix) -> list:
-        """The rows a section lists for a submenu: (label, payload, icon, live[, checked]), None a divider."""
+        """A section's submenu rows: (label, payload, icon, live[, checked]), None a divider ▸o/section-api"""
         out = []
         for at, child in enumerate(getattr(self.context, entry.children)(indexes, current)):
             key = prefix + str(at)
@@ -116,6 +116,8 @@ class Menu:
                 row["chip"] = icon
                 if entry.chip_glyph:
                     row["glyph"] = entry.chip_glyph
+            elif isinstance(icon, base.Glyph):
+                row["glyph"] = str(icon)
             elif icon:
                 row["icon"] = icon
                 row["iconFile"] = amaze.package_file("ui", icon + ".svg")    # Houdini's row draws our SVG

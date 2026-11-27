@@ -41,6 +41,13 @@ MenuEntry = collections.namedtuple(    # opens: the asks.Asks window the row ope
 )    # glyph: the row's Phosphor glyph by name; chip_glyph: its colour rows' glyph, "" a square
 
 
+class Glyph(str):
+    """A submenu row's or a FilterEntry's icon as a Phosphor glyph name, not an SVG in ui/."""
+
+
+ALL_GLYPH = Glyph("list")    # the everything-entry of every filter menu, C12-C17
+
+
 SEPARATOR = MenuEntry("")  # the empty label is what makes it a divider
 VERSIONS_TO_PICK = 2    # the fewest versions the Versions row opens on
 
@@ -242,7 +249,7 @@ class Section:
         """FilterEntry rows, everything-entry first; value None removes the filter."""
         if not self.FILTER_CHOICES:
             return ()
-        return (FilterEntry(self.ALL_ID, self.ALL_LABEL, None),) + tuple(self.FILTER_CHOICES)
+        return (FilterEntry(self.ALL_ID, self.ALL_LABEL, None, ALL_GLYPH),) + tuple(self.FILTER_CHOICES)
 
     def apply_filter(self, value) -> None:
         """Narrow this section to one Filter-menu value; the section defines what an entry means."""
@@ -328,7 +335,8 @@ class Section:
         """Label ▸: the four chips, then Custom (the picker) and Remove (no colour)."""
         chips = tuple((name, colour, colour, True)
                       for name, colour in amazetheme.LABEL_COLOURS)
-        return chips + (None, ("Custom", True, "", True), ("Remove", "", "", True))
+        return chips + (None, ("Custom", True, Glyph("palette"), True),
+                        ("Remove", "", Glyph("backspace"), True))
 
     def menu_label_colour(self, indexes, current, payload=None) -> None:
         if payload is True:    # Custom: the pane's `sidebar.set_colour` asks for a colour
@@ -477,14 +485,16 @@ class AssetSection(Section):
     takes_category_drops = True
 
     SIDEBAR_MENU = (  # shared by Material, Node and Code; Rename acts on one category, the rest on the selection
-        MenuEntry("Add", handler="menu_add_category", needs="always", opens="ask_name"),
-        MenuEntry("Rename", handler="menu_rename_category", needs="one", opens="ask_name"),
-        MenuEntry("Delete", handler="menu_remove_category"),
+        MenuEntry("Add Category", handler="menu_add_category", needs="always", opens="ask_name",
+                  glyph="stack_plus"),
+        MenuEntry("Rename", handler="menu_rename_category", needs="one", opens="ask_name",
+                  glyph="textbox"),
+        MenuEntry("Delete", handler="menu_remove_category", glyph="trash"),
         SEPARATOR,
         MenuEntry("Sort by name", handler="menu_sort_categories",
-                  needs="always"),
+                  needs="always", glyph="sort_ascending"),
         SEPARATOR,
-        MenuEntry("Label", handler="menu_label_colour", children="label_colours"),
+        MenuEntry("Label", handler="menu_label_colour", children="label_colours", glyph="tag"),
     )
 
     def menu_add_category(self, indexes, current, payload=None) -> None:

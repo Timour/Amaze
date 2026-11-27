@@ -114,17 +114,18 @@ class GradientSection(base.AssetSection):
         return name in dict(self.pane.gradient_model.user_categories())    # no synthetic row
 
     SIDEBAR_MENU = (  # everything below All is a real user category, so the per-category entries exist only on such a row
-        base.MenuEntry("Add", handler="menu_add_category", needs="always", opens="ask_name"),
+        base.MenuEntry("Add Category", handler="menu_add_category", needs="always", opens="ask_name",
+                  glyph="stack_plus"),
         base.MenuEntry("Rename", handler="menu_rename_category", needs="one", opens="ask_name",
-                  shown="on_a_category"),
+                  shown="on_a_category", glyph="textbox"),
         base.MenuEntry("Delete", handler="menu_remove_category",
-                  shown="on_a_category"),
+                  shown="on_a_category", glyph="trash"),
         base.SEPARATOR,
         base.MenuEntry("Sort by name", handler="menu_sort_categories",
-                  needs="always"),
+                  needs="always", glyph="sort_ascending"),
         base.SEPARATOR,
         base.MenuEntry("Label", handler="menu_label_colour", children="label_colours",
-                  shown="on_a_category"),
+                  shown="on_a_category", glyph="tag"),
     )
 
     def on_a_category(self, indexes, current) -> bool:
@@ -173,11 +174,11 @@ class GradientSection(base.AssetSection):
     filter_tooltip = "Show palettes of one size."
 
     FILTER_CHOICES = (  # value (fewest, most); `most` None is the open end of "5+"
-        base.FilterEntry("1 color", "1 color", (1, 1)),
-        base.FilterEntry("2 colors", "2 colors", (2, 2)),
-        base.FilterEntry("3 colors", "3 colors", (3, 3)),
-        base.FilterEntry("4 colors", "4 colors", (4, 4)),
-        base.FilterEntry("5+ colors", "5+ colors", (5, None)),
+        base.FilterEntry("1 color", "1 color", (1, 1), base.Glyph("swatches")),
+        base.FilterEntry("2 colors", "2 colors", (2, 2), base.Glyph("swatches")),
+        base.FilterEntry("3 colors", "3 colors", (3, 3), base.Glyph("swatches")),
+        base.FilterEntry("4 colors", "4 colors", (4, 4), base.Glyph("swatches")),
+        base.FilterEntry("5+ colors", "5+ colors", (5, None), base.Glyph("swatches")),
     )
 
     def apply_filter(self, value) -> None:

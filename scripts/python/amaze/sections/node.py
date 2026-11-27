@@ -78,13 +78,13 @@ class CopSection(base.AssetSection):
     filter_tooltip = "Show setups saved from one context."
 
     FILTER_CHOICES = (    # the contexts cop_nodes.SAVE_CONTEXTS saves, spelled as Houdini's network tabs show them
-        base.FilterEntry("SOP", "SOP", "Sop"),
-        base.FilterEntry("COP", "COP", "Cop"),
-        base.FilterEntry("LOP", "LOP", "Lop"),
-        base.FilterEntry("DOP", "DOP", "Dop"),
-        base.FilterEntry("TOP", "TOP", "Top"),
-        base.FilterEntry("CHOP", "CHOP", "Chop"),
-        base.FilterEntry("Object", "Object", "Object"),
+        base.FilterEntry("SOP", "SOP", "Sop", base.Glyph("git_fork")),
+        base.FilterEntry("COP", "COP", "Cop", base.Glyph("git_fork")),
+        base.FilterEntry("LOP", "LOP", "Lop", base.Glyph("git_fork")),
+        base.FilterEntry("DOP", "DOP", "Dop", base.Glyph("git_fork")),
+        base.FilterEntry("TOP", "TOP", "Top", base.Glyph("git_fork")),
+        base.FilterEntry("CHOP", "CHOP", "Chop", base.Glyph("git_fork")),
+        base.FilterEntry("Object", "Object", "Object", base.Glyph("cube")),
     )
 
     def can_save(self, nodes) -> bool:

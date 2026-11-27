@@ -158,13 +158,11 @@ class MaterialSection(base.AssetSection):
                     "license", "date", "id")
     filter_tooltip = "Show materials for one renderer."
 
-    FILTER_ALL_ICON = "filter_all"
-
     def filter_entries(self) -> tuple:
         """Rebuilt, never hidden: the pane uses All for a saved choice no longer offered."""
         offered = renderers.offered(self.pane.prefs)
         every = None if len(offered) == len(renderers.ALL) else tuple(r.key for r in offered)    # All: the renderers switched on
-        return (base.FilterEntry(self.ALL_ID, self.ALL_LABEL, every, self.FILTER_ALL_ICON),) + tuple(
+        return (base.FilterEntry(self.ALL_ID, self.ALL_LABEL, every, base.ALL_GLYPH),) + tuple(
             base.FilterEntry(renderer.key, renderer.label, renderer.key, renderer.icon)
             for renderer in offered)
 

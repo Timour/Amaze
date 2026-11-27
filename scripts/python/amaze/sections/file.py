@@ -478,9 +478,9 @@ class FileSection(FolderSection):
     empty_noun = "file"
 
     FILTER_CHOICES = (  # the known kinds, in the order kind_for tests them; KIND_OTHER has no entry
-        base.FilterEntry("Images", "Images", locations.KIND_IMAGE),
-        base.FilterEntry("Geometry", "Geometry", locations.KIND_GEO),
-        base.FilterEntry("Hip", "Hip", locations.KIND_HIP),
+        base.FilterEntry("Images", "Images", locations.KIND_IMAGE, base.Glyph("image")),
+        base.FilterEntry("Geometry", "Geometry", locations.KIND_GEO, base.Glyph("cube")),
+        base.FilterEntry("Hip", "Hip", locations.KIND_HIP, base.Glyph("file")),
     )
 
     GRID_MENU = UNDO_MOVE + (  # the selection's KINDS decide the actions; no Delete: these are the user's own files
@@ -635,19 +635,20 @@ class FileSection(FolderSection):
         return True
 
     SIDEBAR_MENU = UNDO_MOVE + (  # per-location entries need a REAL row: All is no location, its key `""`
-        base.MenuEntry("Add", handler="menu_add_location", needs="always"),
+        base.MenuEntry("Add Location", handler="menu_add_location", needs="always",
+                  glyph="stack_plus"),
         base.MenuEntry("Locate", handler="menu_locate_location",
-                  needs="on_a_location"),
+                  needs="on_a_location", glyph="magnifying_glass"),
         base.MenuEntry("Rename", handler="menu_rename_location",
-                  children="rename_actions", needs="on_a_location"),
+                  children="rename_actions", needs="on_a_location", glyph="textbox"),
         base.MenuEntry("Remove", handler="menu_remove_location",
-                  needs="on_a_location"),
+                  needs="on_a_location", glyph="backspace"),
         base.SEPARATOR,
         base.MenuEntry("Sort by name", handler="menu_sort_locations",
-                  needs="always"),
+                  needs="always", glyph="sort_ascending"),
         base.SEPARATOR,
         base.MenuEntry("Label", handler="menu_label_colour", children="label_colours",
-                  needs="on_a_location"),
+                  needs="on_a_location", glyph="tag"),
     )
 
     def menu_sort_locations(self, indexes, current, payload=None) -> None:
@@ -668,8 +669,9 @@ class FileSection(FolderSection):
         """Edit names the location; Set to Default goes back to the folder's own name."""
         path = self.location_key(current)
         named = bool(path and self.pane.prefs.file_folder_names.get(path))
-        return (("Edit", "edit", "", True), None,
-                ("Set to Default", "default", "", named))    # disabled with no name set, never hidden
+        return (("Edit", "edit", base.Glyph("cursor_text"), True), None,
+                ("Set to Default", "default", base.Glyph("arrow_u_up_left"),
+                 named))    # disabled with no name set, never hidden
 
     def _repaint_location(self, path: str) -> None:
         folders = self._p(self.sidebar_attr)

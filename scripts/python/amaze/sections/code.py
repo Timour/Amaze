@@ -185,10 +185,10 @@ class CodeSection(base.AssetSection):
     filter_tooltip = "Show snippets in one language."
 
     FILTER_CHOICES = (    # the stored language strings, "Code" the catch-all; not imported from code_library
-        base.FilterEntry("VEX", "VEX", "VEX"),
-        base.FilterEntry("OpenCL", "OpenCL", "OpenCL"),
-        base.FilterEntry("Python", "Python", "Python"),
-        base.FilterEntry("Code", "Code", "Code"),
+        base.FilterEntry("VEX", "VEX", "VEX", base.Glyph("code_block")),
+        base.FilterEntry("OpenCL", "OpenCL", "OpenCL", base.Glyph("code_block")),
+        base.FilterEntry("Python", "Python", "Python", base.Glyph("file_py")),
+        base.FilterEntry("Code", "Code", "Code", base.Glyph("code")),
     )
 
     takes_language = True

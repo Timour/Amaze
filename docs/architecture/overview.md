@@ -167,7 +167,7 @@ a named tuple, never a bare tuple read by position:
 |---|---|---|
 | `base.AssetStack` | `model proxy selection categories` | the four models an Asset section works through; read by NAME |
 | `base.CommentSubject` | `key name type` | `key` is the notes key (`notes.note_key`); `type` is the row's renderer label, or its file format in File |
-| `base.FilterEntry` | `id label value icon` | `id` is what the remembered choice saves, so a label can change |
+| `base.FilterEntry` | `id label value icon` | `id` is what the remembered choice saves, so a label can change; `icon` is a `base.Glyph` or a `ui/` icon name |
 
 **The two DECLARATIONS a section author writes.** Both are data — names
 of methods, never callables — and every field has a default, so a field
@@ -193,7 +193,7 @@ can be left undeclared.
 | `handler` | NAME of a method on the section, called as `handler(indexes, current, payload)` |
 | `needs` | what makes the row LIVE — `any` (the default), `one`, `always`, or the name of a fact — and it greys, never hides |
 | `shown` | the fact deciding whether the row EXISTS at all |
-| `children` | a method returning `((label, payload, icon, live[, checked]), ...)`; the icon is a hex colour, painted as a chip at `amazetheme.MENU_CHIP`, a `ui/` icon name, or empty. A renderer's icon is named once, in `core/renderers.py` |
+| `children` | a method returning `((label, payload, icon, live[, checked]), ...)`; the icon is a hex colour, painted as a chip at `amazetheme.MENU_CHIP`, a `base.Glyph("palette")` for a Phosphor glyph, a `ui/` icon name, or empty. A renderer's icon is named once, in `core/renderers.py` |
 | `count_suffix` | appends ` (N)` on a multi-selection |
 | `checkable` | the fact giving the CURRENT state, making it a tick-box whose handler receives the state the user chose |
 | `glyph` | the row's Phosphor glyph by its name in Houdini's `PhosphorGlyphs` (`upload_simple`): the menu sets it as the row's `symbol` |

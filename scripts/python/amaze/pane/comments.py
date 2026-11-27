@@ -9,9 +9,9 @@ from amaze.core import debug, grid_columns, notes
 
 SAVE_DELAY_MS = 600       # a crash loses a sentence at most, and typing is not a write per key
 
-ADD_ITEMS = (    # the add menu's rows, in order: (key, text); a new item type is ONE line here
-    ("todo", "Bullet point"),
-    ("image", "Image"),
+ADD_ITEMS = (    # the add menu's rows, in order: (key, text, glyph); a new item type is ONE line here
+    ("todo", "Bullet point", "check_circle"),
+    ("image", "Image", "image"),
 )
 PICTURE_PATTERN = "*.png *.jpg *.jpeg *.gif *.bmp *.tif *.tiff"
 
@@ -167,7 +167,8 @@ class Comments(QtCore.QObject):
 
     def add_rows(self) -> list:
         """The add menu's rows, as `pane.menus.Menu` gives a menu's rows."""
-        return [{"key": key, "text": text, "enabled": not self.dimmed()} for key, text in ADD_ITEMS]
+        return [{"key": key, "text": text, "glyph": glyph, "enabled": not self.dimmed()}
+                for key, text, glyph in ADD_ITEMS]
 
     def add(self, key: str, position: int) -> int:
         """Run the add menu's row `key` at cursor `position`; the new cursor position, -1 for none."""
