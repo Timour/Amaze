@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.8
+
+- Amaze (QML): the Info pane and the Comments pane, each opened from its toolbar button.
+- Amaze (QML): I opens and closes Info, and C opens and closes Comments. Both keys can be changed in Edit > Hotkeys, under Houdini > Panes > Amaze.
+- Amaze (QML): a grid or list that shows everything has no scroll bar.
+- Comments: Undo gives back a to-do that Backspace turned into plain text.
+- Comments: the add button has a new icon.
+
 ## 2.0.7
 
 - Categories: when a sync leaves two categories with the same name in a section, Amaze asks once: Join, Keep Both or Cancel.
