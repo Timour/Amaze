@@ -9,40 +9,8 @@
        reach at load time - Houdini reads it before any code runs, so a
        rename is edited HERE to match branding.APP_NAME, and every saved
        .desk keyed on name= is patched in the same change. -->
+  <!-- The pane is QML, built as Houdini's own Node Info pane is. -->
   <interface name="Amaze" label="Amaze" icon="$AMAZE/scripts/python/amaze/ui/logo_mark.svg" showNetworkNavigationBar="false"
-    help_url="">
-    <script><![CDATA[import os
-
-from amaze.panel import panel
-
-# Reload ONLY with the dev switch on - the import above already ran the
-# module body, and reloading runs it and its whole chain again on every
-# panel open. The live-test loop relaunches Houdini instead.
-if os.environ.get("AMAZE_DEV_RELOAD"):
-    import importlib
-    importlib.reload(panel)
-
-
-def onCreateInterface():
-    amaze_widget = panel.AmazePanel()
-    return amaze_widget
-
-
-# Houdini calls this when the tab becomes visible again. Coming back to
-# Amaze rereads the library: without that, everything shown is the copy read when
-# the panel opened, so a colleague's new material or comment needs a
-# Houdini restart to appear.
-def onActivateInterface():
-    from amaze.core import model_registry
-
-    model_registry.refresh_all()]]></script>
-    <includeInPaneTabMenu menu_position="99" create_separator="false" />
-    <includeInToolbarMenu menu_position="415" create_separator="false" />
-    <help><![CDATA[]]></help>
-  </interface>
-  <!-- The pane being rebuilt in QML, step by step, beside the Amaze pane above; built as
-       Houdini's own Node Info pane is. -->
-  <interface name="amaze_qml" label="Amaze (QML)" icon="$AMAZE/scripts/python/amaze/ui/logo_mark.svg" showNetworkNavigationBar="false"
     help_url="">
     <script><![CDATA[from amaze.qml import pane
 
@@ -55,7 +23,10 @@ def onCreateInterface():
     return thePanel
 
 
-# As the Amaze pane: coming back to it rereads what other sessions saved.
+# Houdini calls this when the tab becomes visible again. Coming back to
+# Amaze rereads the library: without that, everything shown is the copy read when
+# the pane opened, so a colleague's new material or comment needs a
+# Houdini restart to appear.
 def onActivateInterface():
     from amaze.core import model_registry
 
@@ -70,8 +41,8 @@ def onDeactivateInterface():
 # Houdini's own step before it destroys the pane, earlier than Qt's deletion.
 def onDestroyInterface():
     thePanel.interfaceDestroyed()]]></script>
-    <includeInPaneTabMenu menu_position="100" create_separator="false" />
-    <includeInToolbarMenu menu_position="416" create_separator="false" />
+    <includeInPaneTabMenu menu_position="99" create_separator="false" />
+    <includeInToolbarMenu menu_position="415" create_separator="false" />
     <help><![CDATA[]]></help>
   </interface>
 </pythonPanelDocument>

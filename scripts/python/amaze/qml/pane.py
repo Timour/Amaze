@@ -1,4 +1,4 @@
-"""The Amaze (QML) pane: its pane-tab widget, its QML view, and the state hosting the engine."""
+"""The Amaze pane: its pane-tab widget, its QML view, and the state hosting the engine."""
 
 from PySide6 import QtCore, QtGui, QtQml, QtWidgets
 import shiboken6
@@ -1193,7 +1193,7 @@ def _takes_hotkeys_first(item) -> bool:
 
 
 class QmlPanel(QtWidgets.QFrame):
-    """The Amaze (QML) pane tab: one QML view filling it, as Houdini's Node Info pane is built."""
+    """The Amaze pane tab: one QML view filling it, as Houdini's Node Info pane is built."""
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)

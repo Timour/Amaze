@@ -1,4 +1,4 @@
-// The Amaze (QML) pane: toolbar, section tabs, progress line, the sidebar and the grid's area.
+// The Amaze pane: toolbar, section tabs, progress line, the sidebar and the grid's area.
 import QtQuick
 import QtQuick.Layouts
 import houdini.pluto

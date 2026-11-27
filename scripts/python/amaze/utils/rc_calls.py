@@ -77,19 +77,13 @@ def start() -> None:
     debug.set_ui(HoudiniUI)
 
 
-PANE_LABELS = (branding.APP_NAME + " (QML)", branding.APP_NAME)    # the panes a save goes to, first first
-
-
 def _find_panel():
-    """An open Amaze pane's root widget, the QML pane first; None after telling the user to open one."""
+    """An open Amaze pane's root widget; None after telling the user to open one."""
     ui = getattr(hou, "ui", None)
     if ui is None:
         return None
-    open_panes = {}
-    for pane_tab in ui.paneTabs():
-        if pane_tab.type() == hou.paneTabType.PythonPanel and pane_tab.label() in PANE_LABELS:
-            open_panes.setdefault(pane_tab.label(), pane_tab)
-    found = next((open_panes[label] for label in PANE_LABELS if label in open_panes), None)
+    found = next((pane_tab for pane_tab in ui.paneTabs()
+                  if pane_tab.type() == hou.paneTabType.PythonPanel and pane_tab.label() == branding.APP_NAME), None)
     panel = found.activeInterfaceRootWidget() if found is not None else None
     if not panel:
         ui.displayMessage(

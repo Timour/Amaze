@@ -1,4 +1,4 @@
-"""The Amaze (QML) pane builds on the main thread and Qt deletes all of it when it closes."""
+"""The Amaze pane builds on the main thread and Qt deletes all of it when it closes."""
 import os
 import unittest
 
