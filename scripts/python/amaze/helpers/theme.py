@@ -1,4 +1,4 @@
-"""Palette, fonts and UI scale from Houdini's Pluto theme, else built-in colours. ▸r/pluto-theme"""
+"""Houdini's UI scale and screen pixel ratio, and a colour made readable on another."""
 
 
 from PySide6 import QtGui
@@ -47,99 +47,6 @@ def ui_px(value):
     return max(result, 1) if value > 0 else result
 
 
-MIN_UI_POINTS = 12   # the smallest readable size before the UI scale ▸r/font-sizing
-
-FONT_ROLES = {       # a role is a scale and a weight, never a literal size ▸r/font-sizing
-    "comments_title": {"scale": 1.0, "bold": True},    # the Comments subject name, beside its type
-    "empty_headline": {"scale": 1.25, "bold": True},   # the empty grid's headline, over its one explaining sentence
-}
-
-
-def point_size(source, scale: float = 1.0):
-    """`scale` times `source`'s point size, or None when it has none to scale. ▸r/font-sizing"""
-    points = source.pointSizeF()
-    return points * scale if points > 0 else None   # `> 0` because a font sized in PIXELS returns -1, and Qt rejects any size at or below zero
-
-
-def ui_font(source=None) -> QtGui.QFont:
-    """The base font: `source` or the application font, floored at MIN_UI_POINTS. ▸r/font-sizing"""
-    font = QtGui.QFont(source if source is not None
-                       else QtGui.QGuiApplication.font())
-    floor = float(ui_px(MIN_UI_POINTS))
-    points = point_size(font)   # None for a pixel-sized font, which is left alone ▸r/linux-live-facts
-    if points is not None and points < floor:
-        font.setPointSizeF(floor)
-    return font
-
-
-def font(role: str, source=None) -> QtGui.QFont:
-    """One named font derived from :func:`ui_font`; raises KeyError on an unknown role."""
-    try:
-        spec = FONT_ROLES[role]
-    except KeyError:
-        raise KeyError(
-            "%r is not a font role - the roles are %s"
-            % (role, ", ".join(sorted(FONT_ROLES)))) from None
-    derived = ui_font(source)
-    points = point_size(derived, spec["scale"])
-    if points is not None:
-        derived.setPointSizeF(points)   # a pixel-sized base keeps its own size: the role's weight still applies, its scale cannot
-    if spec.get("bold"):
-        derived.setBold(True)
-    if spec.get("italic"):
-        derived.setItalic(True)    # a request; check `QFontInfo(...).styleName()` ▸r/font-italic
-    return derived
-
-
-_DEFAULTS = {        # Houdini's default dark theme, for a session that publishes no theme (hython)
-    "tab_bar": "#242424",  # the line under a row of tabs: the section tabs' and Preferences'
-    "surface_low": "#282828",  # sidebar backdrop, thumb bg
-    "surface": "#2d2d2d",  # toolbar row, tab strip, line_tags
-    "field": "#434343",  # filter box fill, toolbar divider
-    "text_dim": "#656565",  # grid tile subtitle
-    "text": "#a6a6a6",  # grid tile name
-    "text_bright": "#dddddd",  # "Filter" label
-    "star": "#fdba00",  # favorite badge (Yellow mode)
-}
-
-_ROLES = {           # an Amaze colour -> the role Houdini's theme publishes it under ▸r/one-row-list
-    "tab_bar": "surfaceLowest",    # what Houdini's own style fills a tab bar with
-    "surface_low": "surfaceLow",
-    "surface": "bg",
-    "field": "field",
-    "text_dim": "dimFg",
-    "text": "secondarySurfaceFg",
-    "text_bright": "fg",
-    "star": "highlight",
-}
-
-
-def houdini_role(role: str):
-    """A colour Houdini 22's theme publishes under `role`, or None where no theme is published."""
-    app = QtGui.QGuiApplication.instance()
-    value = app.property("pluto_" + role) if app is not None else None
-    return QtGui.QColor(value) if isinstance(value, QtGui.QColor) and value.isValid() else None
-
-
-def accent(fallback_hex: str) -> QtGui.QColor:
-    """The theme's accent; the manual accent preference when no theme."""
-    return houdini_role("primary") or QtGui.QColor(fallback_hex)
-
-
-def color(name: str) -> QtGui.QColor:
-    """A named Amaze colour: Houdini's own for it, read now, so a changed theme shows at once."""
-    return houdini_role(_ROLES[name]) or QtGui.QColor(_DEFAULTS[name])
-
-
-def color_hex(name: str) -> str:
-    return color(name).name()
-
-
-def live(name: str) -> property:
-    """A class attribute that is `color(name)` each time it is read, so a theme switch shows at once."""
-    return property(lambda _owner: color(name))
-
-
 def _relative_luminance(color):
     """WCAG relative luminance of a QColor, sRGB-linearised."""
     channels = []
@@ -172,25 +79,3 @@ def readable_on(color, background, floor=4.5):
         if contrast_ratio(best, background) >= floor:
             return best
     return QtGui.QColor(amazetheme.LIST_TEXT_COLOR)    # a colour that never reaches `floor` takes the list's text colour
-
-
-def houdini_color(name: str, fallback: str) -> QtGui.QColor:
-    """Houdini's own colour `name` from the active scheme, else `fallback`."""
-    qt = getattr(hou, "qt", None)    # absent in hython ▸r/houdini-code-look
-    if qt is not None:
-        try:
-            return QtGui.QColor(qt.getColor(name))
-        except Exception:    # noqa: BLE001 - hou.OperationFailed for a name the scheme lacks
-            pass
-    return QtGui.QColor(fallback)
-
-
-def syntax_colors() -> dict:
-    """Houdini's syntax colours by kind; its dark scheme's when the current ones are for light."""
-    from amaze import amazetheme
-    live = {kind: houdini_color(name, fallback)
-            for kind, (name, fallback) in amazetheme.CODE_SYNTAX.items()}
-    if live["plain"].lightnessF() < 0.5:    # Houdini's light scheme: unreadable on Amaze's dark background
-        live = {kind: QtGui.QColor(fallback)
-                for kind, (_name, fallback) in amazetheme.CODE_SYNTAX.items()}
-    return live

@@ -107,9 +107,6 @@ CUSTOMIZE_CUSTOM_COLOR = 'The current background. Click to pick any color with H
 
 SAVE_NAME = 'Name it, pick a category, and add tags so you can find it later.'   # ▸ Save dialogs (D09, D11)
 
-CODE_NAME = "The version's name. The tab above and the snippet's tile show it."
-CODE_VERSIONS = 'New Version saves the code as a new version when you press Apply. Pick a version to open it in the editor.'
-
 PANEL_FAVORITES = 'Show favorites.'   # ▸ Panel toolbar
 
 PANEL_COMMENTS = 'Comments - notes and to-dos for the selected tile.'
@@ -126,8 +123,6 @@ PANEL_PREFERENCES = 'Open preferences.'
 
 PANEL_CATEGORIES = 'Show the category sidebar.'
 
-PANEL_CAPTURE = 'Capture the Scene View as the selected tile\'s picture.'
-
 PANEL_VIEW_MODE = 'Switch between the thumbnail grid and the detail list.'
 
 PANEL_SEARCH = 'Search for items. Put a colon first to search tags instead: :metal finds everything tagged metal.'   # ▸ Panel filter row
@@ -137,15 +132,5 @@ PANEL_TILE_SIZE = 'Tile size.'
 PANEL_TILE_SIZE_LIST = 'Tile size - grid only. A list row is one text line, so it does not scale.'
 
 PANEL_VERSION_ROW = 'Pick a version and press Select to make it current. Versions are made automatically when you save.'   # ▸ Versions dialog (D01)
-
-BADGE_VERSIONS = 'Click to select a version.'   # ▸ Tile badges, on hover
-
-BADGE_COMMENTS = 'Show or hide comments.'
-
-BADGE_FAVORITE_REMOVE = 'Remove from favorites.'
-
-BADGE_FAVORITE_ADD = 'Add to favorites.'
-
-BADGE_EXECUTE = 'Run this snippet.'
 
 NOTES_ADD_TODO = 'Add a bullet point or an image.'   # ▸ Comments pane

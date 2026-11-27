@@ -87,7 +87,7 @@ def generic_image(art: str):
     drawn = ui_helpers.svg_image(art + ".svg") if art else None
     if drawn is None:
         return None
-    key = (art, drawn.cacheKey())    # a redrawn SVG, after `forget_svg_images`, is another key
+    key = (art, drawn.cacheKey())    # another rendering of the SVG is another key
     if key not in _generic_images:
         _generic_images[key] = on_ground(drawn)
     return _generic_images[key]

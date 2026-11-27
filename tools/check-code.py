@@ -381,7 +381,7 @@ def text_literals(code) -> list:
                 said = node.args[:1] if name != "note" or interface else []
             elif owner.endswith("QMessageBox"):
                 said = node.args[1:3]
-            elif name in ("setToolTip", "tooltip_text"):
+            elif name == "setToolTip":
                 said = node.args[:1]
             for words in filter(None, map(literal_words, said)):
                 found.append("%s:%d writes its own text %r" % (path, node.lineno, words[:40]))

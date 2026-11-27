@@ -2,50 +2,10 @@
 
 from __future__ import annotations
 
-HEADER_BAND_H = 30       # ▸ THE DRAWN HEADER: the strip D11 shows; fill and text colour follow Houdini
-HEADER_BAND_INSET = 18   # where the name starts
-HEADER_BAND_TEXT_PX = 12
-HEADER_BAND_TEXT_BOLD = True    # the drawn weight on D11
-
-FORM_DIALOG_MARGIN = 5        # ▸ the content margin every compact form dialog uses
-
-
-D02_MARGINS = (8, 12, 8, 12)   # ▸ D02 Customize (Tile Icon): left, top, right, bottom
-D02_CELL = 34            # one icon button in the chooser grid
+D02_CELL = 34            # ▸ D02 Customize (Tile Icon): one icon button in the chooser grid
 D02_CELL_ART = 20        # the icon's art inside its button
-D02_COLUMNS = 8          # what the drawn 319 grid column fits at 2px spacing
-D02_FIELD_H = 22         # every field, the search and both buttons
-D02_SWATCH_GAP = 6
-D02_CHIP_W = 35          # the current-colour chip beside the Custom Color label, swatch-sized
-D02_STACK_GAP = 13       # preview to the switch stack, and its label column to its fields
-D02_ROW_GAP = 9          # between the stacked field rows, and the column rhythm below them
-D02_LABEL_GAP = 8        # a label to its field in the top form
-D02_FACE_GAP = 6         # the Image label to its menu
-D02_GRID_GAP = 6         # search to the grid
-D02_SECTION_GAP = 37     # the Image menu's row to the Light Icons row
-D02_PRESET_GAP = 10      # the current-colour chip to the preset row
-D02_TOP_GAP = 9          # the Tags row to the Image menu
-D02_PREVIEW_DROP = 2     # the Image menu's top to the preview square's
-D02_BUTTON_GAP = 8       # grid to the button row
-D02_GRID_SPACING = 2     # the chooser grid's cell gap, unscaled; D02_COLUMNS assumes it
-D02_CHOOSER_RADIUS = 3   # an icon button's corner, UNSCALED - a stylesheet px, like the two below
-D02_CHECKED_BORDER = 2   # the ring on the chosen icon, UNSCALED
-D02_SWATCH_BORDER = 1    # the preset chips and the current-colour chip, UNSCALED
+D02_GRID_SPACING = 2     # the chooser grid's cell gap, unscaled
 
-SAVE_LABEL_RIGHT = 60    # ▸ the save family D09 and D13: a D09 label ends here, right-aligned
-SAVE_FIELD_H = 22
-SAVE_BUTTON_H = 22       # the OK / Cancel pair, drawn flush right
-SAVE_BUTTON_W = (35, 65)  # OK, Cancel, for a dialog that draws no pair of its own
-SAVE_BUTTON_GAP = 6
-
-CODE_FONT = ("SideFX Source Code Pro", 14)    # ▸ D11's code: Houdini's Fixed face ▸r/houdini-code-look
-CODE_RADIUS = 3                    # the editor's corners, the current line's, the tab's top ones
-CODE_LINE_NUMBER_TEXT_COLOR = "#b0b0b0"
-CODE_BAND = "#272727"              # ▸ D11's band, and an unselected version tab on it
-CODE_TAB = "#383838"               # the selected version tab
-CODE_BACKGROUND = "#383838"            # the window behind the form and the editor, which the selected tab joins
-CODE_TAB_TEXT_COLOR = "#dddddd"           # a tab's name
-CODE_TAB_MAX_W = 200               # a tab is as wide as its name and its ×, up to this
 CODE_SYNTAX = {    # ▸ token kind: Houdini's own colour name, and its value in UIDark.hcs headless
     "plain": ("ParmSyntaxPlainColor", "#bcbec3"),
     "comment": ("ParmSyntaxCommentColor", "#7b7e84"),
@@ -72,11 +32,8 @@ LABEL_COLOURS = (              # ▸ the sidebar's Label submenu (C09c): its fou
 )
 
 COMMENT_ICON_COLOR = "#765d99"   # ▸ the Comments pane (N01): its header icon, and its toolbar button while open
-COMMENT_ICON_ART_COLOR = "#5d7abd"    # the colour icon_comments.svg is drawn in; COMMENT_ICON_COLOR replaces it
 COMMENT_DONE_COLOR = "#4af2a1"   # a done to-do
 COMMENT_OPEN_COLOR = "#ff7760"   # an open to-do
-COMMENT_ADD_COLOR = "#5d7abd"    # the + art's colour
-COMMENT_HEADER_BG = "#272727"
 COMMENT_PAGE_BG = "#2d2d2d"
 COMMENT_TEXT_COLOR = "#cdc8bc"    # the QML pane's comment text, as N01 draws its rows
 COMMENT_PLACEHOLDER = "Write a comment..."    # the empty comment's grey text
@@ -95,7 +52,6 @@ TOOLBAR_ON = {"fill": "#393939", "border": "#a3abc5", "ring": "#364269"}    # �
 TOOLBAR_SEARCH_END_GAP = 6    # the least space between the Search box and the right-end buttons, narrow
 TOOLBAR_FIELD_TEXT = 20    # the Search box's text inset, past its magnifier; an empty box shows none of it
 INFO_ICON_COLOR = "#b69c51"      # ▸ the info pane (N02): its header icon, and its toolbar button while open
-INFO_ICON_ART_COLOR = "#5d7abd"  # the colour icon_info.svg is drawn in; INFO_ICON_COLOR replaces it
 INFO_HIDE_PREVIEW = "Hide Preview"    # the header button's tooltip while the picture is shown
 INFO_SHOW_PREVIEW = "Show Preview"    # and while it is hidden
 INFO_PREVIEW_LEAST = 38             # px: the lowest the drag line takes the picture area, two rows
@@ -104,25 +60,16 @@ DRAG_LINE_GRAB = 3                  # px above and below the line that also take
 INFO_DIVIDER_WEIGHT = 2             # px: the stroke of N02's divider line, which its node box omits
 
 
-TILE_TEXT = "#cdc8bc"           # ▸ the tile and list delegates
-TILE_SUBTITLE = "#5d7abd"       # the sidebar's drag highlight until the panel applies the accent
-CODE_TEXT_OPACITY = 0.5         # T05B: a code tile's text at half strength, under its run button
+CODE_TEXT_OPACITY = 0.5         # ▸ T05B: a code tile's text at half strength, under its run button
 TILE_GROUND = "#1b1b1b"             # T01's tile card, and under every generic icon (T05-T13)
 GRID_BACK = "#272726"               # the QML grid headless; with an interface, Houdini's own
-BADGE_REST_OPACITY = 0.75       # every button badge's icon at rest; the backdrop stays as drawn
-BADGE_HOVER_OPACITY = 1.0       # and the icon under the pointer
 BADGE_LEAST = 12                # px: a corner badge is never smaller, at any tile size
-BADGE_PART = 4                  # a corner badge grows to this part of the picture's side, to its drawn size
 RENDERER_ICON_BLEED = 4         # px painted around a renderer icon's own box, for its shadow
 TILE_SIZES = (64, 128, 192, 256, 320, 384, 448, 512)    # the slider's steps; a tile below 64 is smaller than its badges
 LIST_TILE_SIZE = 16             # list mode's one size; `thumbsize_list` is still written, never read
 MENU_ICON = 16                  # ▸ C13: a menu entry's icon box, the size Houdini draws it ▸r/menu-checked-look
 LIST_TEXT_COLOR = "#d8d6d4"            # a table is read down its columns, so every column is drawn in this except Category
-LIST_SELECTED_TEXT = "#000000"  # every column of a selected row
 
-SLIDER_LEFT = "#5d7abd"         # ▸ the slider, tabs and icon-menu button; the default accent
-SLIDER_HANDLE = "#777f95"
-SLIDER_TRACK = "#1a1a1a"        # the progress track's OWN colour, never the slider's, so one tweak cannot recolour both
 MENU_IDLE_BODY = "#5d7abd"
 MENU_HOVER_BODY = "#cccdcd"
 MENU_IDLE_TRIANGLE = "#7f807f"
@@ -168,7 +115,6 @@ BTN_FIX = "Fix"                     # when the light fixes alone put right what 
 
 TITLE_TILE_ICON = "Tile Icon"    # what D02 shows when the selection has no ONE name to show
 TITLE_MANAGE_LIBRARIES = "Manage Libraries"
-BAND_UNTITLED = "Untitled"       # what D11's band shows for a snippet that has no name yet
 MENU_NEW_VERSION = "New Version"    # D11's + menu, above the snippet's versions
 
 EMPTY_SHARED = {    # ▸ E06 E08 E09, the empty states every section shares, read by `EmptyState.words`
@@ -1092,13 +1038,8 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
     },
 }
 
-D01_FRAME =DIALOG_LAYOUT["D01"]["frame"]    # ▸ the frame sizes call sites name, read from the drawing
-D02_FORM_WIDTH, D02_FRAME_H = DIALOG_LAYOUT["D02"]["frame"]    # the OPENING size; the grid grows
+D02_FORM_WIDTH, D02_FRAME_H = DIALOG_LAYOUT["D02"]["frame"]    # ▸ the OPENING size, read from the drawing; the grid grows
 SAVE_WIDTH = DIALOG_LAYOUT["D09"]["frame"][0]    # D09 and D13 alike, whatever their labels
-SAVE_FIELD_WIDTH = next(n[3] for n in DIALOG_LAYOUT["D09"]["nodes"] if n[0] == "QLineEdit")
-NAME_FIELD_WIDTH = next(n[3] for n in DIALOG_LAYOUT["D13"]["nodes"] if n[0] == "QLineEdit")
-D15_WIDTH = DIALOG_LAYOUT["D15"]["frame"][0]
-D11_FORM_WIDTH = DIALOG_LAYOUT["D11"]["frame"][0]    # a FLOOR: D11 resizes around its editor
 
 _NODE_MARK = " ▸ "       # what separates a node's kind from the note after it
 _TEXT_SUFFIX = _NODE_MARK + "text"
@@ -1152,12 +1093,6 @@ def drawn_repeats(frame_key: str, kind: str, text) -> tuple:
     return () if box is None else (box,)
 
 
-def forget_drawn_boxes() -> None:
-    """Clear the derived-box cache, for tests."""
-    _DRAWN_BOXES.clear()
-    _DRAWN_REPEATS.clear()
-
-
 def drawn_name(node) -> list:
     """A node's name as its `▸` parts, each without its `(note)`: kind, owner, art."""
     return [part.split(" (")[0] for part in node[0].split(_NODE_MARK)]
@@ -1177,34 +1112,6 @@ def drawn_node(frame_key: str, kind: str, owner=None) -> tuple:
 def drawn_by_owner(frame_key: str, kind: str) -> dict:
     """{owner: node} for a frame's `kind` nodes; for an owner drawn twice, the later node."""
     return {drawn_name(n)[1]: n for n in drawn_nodes(frame_key, kind)}
-
-
-_FORM_FIELDS = ("QLineEdit", "QComboBox")
-
-
-def drawn_form(frame_key: str) -> dict:
-    """A form frame's margins and gaps, read off its drawn nodes; {} if it draws no form."""
-    layout = DIALOG_LAYOUT.get(frame_key) or {}
-    nodes = layout.get("nodes", ())
-    fields = sorted((n for n in nodes if n[0] in _FORM_FIELDS and n[5] is None),
-                    key=lambda n: n[2])
-    buttons = [n for n in nodes if n[0] == "QPushButton" and n[5] is None]
-    labels = [n for n in nodes if n[0] == "QLabel" and n[5]]
-    if not (fields and buttons and labels and layout.get("frame")):
-        return {}
-    width, height = layout["frame"]
-    first, last = fields[0], fields[-1]
-    button_top = min(b[2] for b in buttons)
-    right = width - max(n[1] + n[3] for n in fields + buttons)
-    return {
-        "top": first[2],
-        "left": min([right] + [n[1] for n in labels]),    # labels right-align: the longest must fit
-        "right": right,
-        "bottom": height - max(b[2] + b[4] for b in buttons),
-        "row_gap": fields[1][2] - (first[2] + first[4]) if len(fields) > 1 else 0,
-        "label_gap": first[1] - max(n[1] + n[3] for n in labels),
-        "button_gap": button_top - (last[2] + last[4]),
-    }
 
 
 def drawn_pair_gap(frame_key: str):
@@ -1241,43 +1148,6 @@ def drawn_category_strip(frame_key: str = "T20") -> int:
     return drawn_node(frame_key, "category strip")[4]
 
 
-def drawn_renderer_icon(frame_key: str = "T24") -> dict:
-    """A material tile's renderer icon: its height, its inset from the card's right edge, its drop."""
-    card, sub, icon = (drawn_node(frame_key, kind)
-                       for kind in ("tile card", "tile subtitle", "renderer icon"))
-    return {
-        "height": icon[4],    # each renderer's art gives its own width
-        "inset": card[1] + card[3] - (icon[1] + icon[3]),
-        "below": icon[2] + icon[4] - (sub[2] + sub[4]),    # its bottom under the subtitle's bottom
-    }
-
-
-def drawn_renderer_icons() -> dict:
-    """{art name: `drawn_renderer_icon` of its frame} for every frame that draws a renderer icon."""
-    return {drawn_name(node)[1]: drawn_renderer_icon(key)
-            for key, layout in DIALOG_LAYOUT.items() for node in layout["nodes"]
-            if drawn_name(node)[0] == "renderer icon" and not key.startswith(QML_FRAME)}
-
-
-def drawn_badges() -> dict:
-    """{badge: (edge x, inset x, edge y, inset y, side)} off every T frame; repeats must match."""
-    out = {}
-    for key, layout in DIALOG_LAYOUT.items():
-        if not key.startswith("T"):
-            continue
-        thumb = drawn_node(key, "thumbnail")
-        for node in layout["nodes"]:
-            kind, x, y, w = drawn_name(node)[0], node[1], node[2], node[3]
-            if not kind.startswith("badge "):
-                continue
-            place = (_badge_edge(x, w, thumb[1], thumb[3])
-                     + _badge_edge(y, w, thumb[2], thumb[4]) + (w,))
-            badge = kind[len("badge "):]
-            if out.setdefault(badge, place) != place:
-                raise ValueError("badge %s is drawn in two places" % badge)
-    return out
-
-
 def _badge_edge(at, size, start, span):
     """("start"|"end", inset from that edge), or ("centre", its middle's offset) if it straddles."""
     middle = start + span / 2
@@ -1286,9 +1156,6 @@ def _badge_edge(at, size, start, span):
     if at + size / 2 > middle:
         return "end", start + span - at - size
     return "start", at - start
-
-
-QML_FRAME = "QML "    # what starts the key of a frame drawn in UI Design QML
 
 
 def drawn_qml_buttons(frame_keys=("QML T20", "QML T23")) -> dict:
@@ -1339,67 +1206,6 @@ def drawn_list(frame_key: str = "L01") -> dict:
         "widths": {key: n[3] for key, n in columns.items()},
         "tick_pad": tick[1] - columns[drawn_name(tick)[1]][1],
         "tick_side": tick[3],
-    }
-
-
-def drawn_band(frame_key: str) -> tuple:
-    """(height, text inset) of the frame's header band; HEADER_BAND_H and _INSET without one."""
-    nodes = (DIALOG_LAYOUT.get(frame_key) or {}).get("nodes", ())
-    band = next((n for n in nodes if n[0] == "header band"), None)
-    if band is None:
-        return HEADER_BAND_H, HEADER_BAND_INSET
-    label = next((n for n in nodes if n[0] == "QLabel" and n[2] < band[2] + band[4]), None)
-    return band[4], (label[1] - band[1]) if label else HEADER_BAND_INSET
-
-
-def drawn_code_dialog(frame_key: str = "D11") -> dict:
-    """The code dialog's margins and gaps, its two label columns, and the editor's own sizes."""
-    layout = DIALOG_LAYOUT[frame_key]
-    width, height = layout["frame"]
-    nodes = layout["nodes"]
-
-    def one(name):
-        found, = (n for n in nodes if n[0] == name)
-        return found
-
-    band, editor = one("header band"), one("CodeEditor")
-    tabs = sorted((n for n in nodes if n[0] == "header band ▸ tab"), key=lambda n: n[1])
-    tab = tabs[-1]    # the selected one: its × ends flush with it
-    close = max((n for n in nodes if n[0] == "icon ▸ close ▸ icon_tab_close.svg"),
-                key=lambda n: n[1])
-    plus = one("icon ▸ add ▸ icon_version_add.svg")
-    numbers, text = one("CodeEditor ▸ line numbers"), one("CodeEditor ▸ text")
-    line = one("CodeEditor ▸ current line")
-    fields = sorted((n for n in nodes if n[0] in ("QLineEdit", "QComboBox")),
-                    key=lambda n: (n[2], n[1]))
-    left, below = fields[0], fields[2]    # row one's first field, row two's first
-    button = min((n for n in nodes if n[0] == "QPushButton"), key=lambda n: n[1])
-    labels = [n for n in nodes if n[0] == "QLabel" and n[2] >= band[4]]
-    label_end = max(n[1] + n[3] for n in labels if n[1] + n[3] <= left[1])
-    right = [n for n in labels if n[1] >= left[1] + left[3]]
-    right_end, right_column = max(n[1] + n[3] for n in right), max(n[3] for n in right)
-    return {
-        "margins": (editor[1], left[2] - band[4], width - editor[1] - editor[3],
-                    height - button[2] - button[4]),
-        "row_gap": below[2] - left[2] - left[4],
-        "stack_gap": editor[2] - below[2] - below[4],
-        "button_gap": button[2] - editor[2] - editor[4],
-        "field": (left[3], left[4]),
-        "label_gap": left[1] - label_end,
-        "label_columns": (label_end - editor[1], right_column),
-        "half_gap": right_end - right_column - left[1] - left[3],
-        "editor": (editor[3], editor[4]),
-        "gutter": (numbers[1] - editor[1], numbers[3]),
-        "text_x": text[1] - editor[1],
-        "current_line": (line[1] - editor[1], editor[1] + editor[3] - line[1] - line[3],
-                         line[4]),
-        "tab": (tab[3], tab[4]),
-        "tab_gap": tab[1] - tabs[-2][1] - tabs[-2][3] if len(tabs) > 1 else 0,
-        "tab_text": next((n[1] - tab[1], n[2], n[4]) for n in nodes    # x in the tab, y, height
-                         if n[0] == "QLabel" and n[2] < band[4] and n[1] >= tab[1]),
-        "tab_close": (close[3], close[4], tab[1] + tab[3] - close[1] - close[3]),    # w, h, inset
-        "plus": plus[1:5],
-        "plus_gap": plus[1] - tab[1] - tab[3],
     }
 
 

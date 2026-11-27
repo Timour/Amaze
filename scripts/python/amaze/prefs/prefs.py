@@ -79,7 +79,7 @@ class Prefs(_Persistence):
             setattr(self, attr, default)
         self._shared_seen: dict = {}  # stored key -> the value last read from or written to the library
         self._section_filters: dict = {}  # the Filter menu's choice per section key, as the entry's id
-        self._thumbsize = 128  # the grid view; `_thumbsize_list` is the list view. Both match ClickSlider.DEFAULT_VALUE
+        self._thumbsize = 128  # the grid view; `_thumbsize_list` is the list view
         self._thumbsize_list = 128
         self._library_user = ""  # who this is; blank = no user chosen yet, never filled in automatically ▸p/identity-is-chosen
         self._file_folders: list[str] = []  # the File section's one folder/favourite/last quartet, and since 2026-08-12 the only one
