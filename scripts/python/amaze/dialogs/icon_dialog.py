@@ -1,4 +1,4 @@
-"""Customize as a widget window, shown and never exec'd: a view of `pane.customize.Customize`."""
+"""Customize as a widget window on `pane.customize`: show it, never exec. ▸r/houdini-colour-picker"""
 
 from __future__ import annotations
 

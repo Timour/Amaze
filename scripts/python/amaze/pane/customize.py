@@ -75,7 +75,7 @@ class Customize(QtCore.QObject):
             self.changed.emit()
 
     def pick_colour(self) -> None:
-        """The host's colour picker, opened on the background; the colour picked replaces it."""
+        """The host's picker on the background; a view must not be modal. ▸r/houdini-colour-picker"""
         self._ask_colour(self.background, COLOUR_TITLE,
                          lambda colour: colour is not None and self.set_background(colour))
 
