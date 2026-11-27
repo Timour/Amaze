@@ -48,10 +48,8 @@ Menu {
                 root.fill(sub, row.rows)
                 menu.addMenu(sub)
                 const opener = menu.itemAt(menu.count - 1)    // the row Houdini's Menu made for it
-                opener.enabled = row.enabled
+                opener.enabled = row.enabled    // a MenuRow: greyed, its text and glyph take one colour
                 opener.symbol = root.rowSymbol(row)
-                if (!row.enabled)    // Houdini's row dims its text but not its glyph
-                    opener.symbolColor = Theme.dimFg
             } else {
                 // `checked` alone draws the mark: Houdini's MenuItem cannot set checkable in a window menu
                 // owned by the menu, not in it yet: our pick is wired before the menu's own close
