@@ -21,7 +21,7 @@ tests are in the [README](README.md).
 - ED-25 Wrong output: The sidebar keeps the order the user dragged or sorted, after a reload too; All stays first; Sort by Name sorts by the name shown; a move the library refuses is put back.
 - ED-26 Wrong output: A category's colour is kept with the library and shows on every tile in it.
 - ED-27 Wrong output: A tile's face is stored in its database only, never as a file and never over its picture, and is kept after a reload; a choice that cannot be read is no choice.
-- ED-28 Wrong output: Customize writes one save for the whole selection; OK after Apply writes only what changed since Apply.
+- ED-28 Wrong output: Customize writes one save for the whole selection; Accept after Apply writes only what changed since Apply.
 - ED-29 Wrong output: An edit the library refuses is not shown as done: the tile keeps its old value and the user is told.
 - ED-30 Wrong output: The shipped snippets and palettes are added once per library, and only when the library takes them.
 - ED-31 Wrong output: Add and Rename for categories, New Folder and Save Scene ask for a name in a small window. OK or Return uses the name typed, and an empty name is allowed. Cancel, Esc or closing the window does nothing.
@@ -30,3 +30,4 @@ tests are in the [README](README.md).
 - ED-34 Wrong output: Interpolation sets every key of a palette's stored ramp to the curve picked, in one save; its colours and key positions stay. The menu checks the palette's own curve, none when the curves are mixed.
 - ED-35 Wrong output: When two computers rename one category two ways, the one that saves second asks once: use the other name, or keep its own. Esc keeps its own, and it is not asked again.
 - ED-36 Wrong output: After the library refuses an Apply in Customize, the next Apply or Accept writes those edits.
+- ED-37 Wrong output: In Customize, Esc or closing the window writes nothing.

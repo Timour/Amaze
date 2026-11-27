@@ -17,7 +17,7 @@ from amaze.tests import test_support
 
 try:    # without Houdini the tests of the Name window, the palette menu and a refused Apply skip
     import hou
-    from amaze.dialogs import name_window
+    from amaze.dialogs import customize_window, name_window
     from amaze.pane import assets as pane_assets
     from amaze.pane import menus
     from amaze.qml import pane as qml_pane
@@ -248,6 +248,33 @@ class AssetEditingTest(_Edits):
         refused, self.prefs.library_user = shown(), test_support.FIXTURE_USER
         window.commit("Other", "probe")
         self.assertEqual((before, ("Other", ["probe"])), (refused, shown()))
+
+    @unittest.skipUnless(hou, "Houdini is not loaded")
+    def test_ed37_esc_or_closing_customize_writes_nothing(self):
+        opened, written = [], []
+        pane = types.SimpleNamespace(prefs=self.prefs, ui=types.SimpleNamespace(
+            open_customize=lambda question, apply: opened.append(question)))
+        pane_assets.Assets(pane).edit_tile_icon(self.model, None, [self.model.index(self.row("gold"), 0)])
+        host = qml_pane.PaneState()
+        self.addCleanup(host.deleteLater)
+
+        def ended(end) -> tuple:
+            """How many answers the QML window, opened as the pane opens it, has handed on once ended."""
+            host.open_customize(opened[0], written.append)
+            window = next(shown for shown in QtGui.QGuiApplication.topLevelWindows()
+                          if isinstance(shown, customize_window.CustomizeWindow) and shown.isVisible())
+            test_support.pump_until(lambda: window.activeFocusItem() is not None)
+            gone = []
+            window.destroyed.connect(lambda: gone.append(True))    # a closed window is deleted
+            end(window)
+            for _ in range(60):    # until Qt has deleted it, at most 3 s
+                QtCore.QCoreApplication.sendPostedEvents(None, QtCore.QEvent.Type.DeferredDelete)
+                if test_support.pump_until(lambda: gone, 0.05):
+                    break
+            return len(written), bool(gone)
+        ends = (lambda window: _click(window, "Accept"), lambda window: _key(window, QtCore.Qt.Key.Key_Escape),
+                lambda window: window.close())
+        self.assertEqual([(1, True), (1, True), (1, True)], [ended(end) for end in ends])
 
     def test_ed32_a_section_never_gets_two_categories_of_one_name(self):
         usds, wood = self.cat("usds"), self.cat("Wood")
