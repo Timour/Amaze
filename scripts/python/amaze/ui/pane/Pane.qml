@@ -121,8 +121,8 @@ PaneRoot {
                 if (resizing)
                     return
                 SharedState.keepSidebarWidth(sidebarArea.width)
-                if (info.visible)
-                    SharedState.keepInfoWidth(info.width)
+                if (side.visible)
+                    SharedState.keepSidePaneWidth(side.width)
             }
 
             Rectangle {    // the list's own ground below its rows, as Houdini's lists have
@@ -205,11 +205,20 @@ PaneRoot {
                     width: parent.width - 48    // the widget panel's empty page keeps 24 px each side
                 }
             }
-            InfoPane {    // right of the grid, at its kept width
-                id: info
-                visible: SharedState.infoShown
-                SplitView.preferredWidth: SharedState.infoWidth
-                SplitView.minimumWidth: SharedState.info.least_width
+            Item {    // right of the grid, at its kept width: the Info or the Comments pane, one at a time
+                id: side
+                visible: SharedState.infoShown || SharedState.commentsShown
+                SplitView.preferredWidth: SharedState.sidePaneWidth
+                SplitView.minimumWidth: SharedState.sidePaneLeast
+
+                InfoPane {
+                    anchors.fill: parent
+                    visible: SharedState.infoShown
+                }
+                CommentsPane {
+                    anchors.fill: parent
+                    visible: SharedState.commentsShown
+                }
             }
         }
     }

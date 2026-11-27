@@ -8,7 +8,8 @@ from amaze import amazetheme, tooltips
 from amaze.core import debug, grid_columns, grid_engine, locations
 from amaze.dialogs import code_window, name_window, save_window, versions_window
 from amaze.helpers import ui_helpers
-from amaze.pane import asks, drag_session, menus, node_drop, pane as pane_mod, sidebar as pane_sidebar
+from amaze.pane import (asks, comment_document, drag_session, menus, node_drop, pane as pane_mod,
+                        sidebar as pane_sidebar)
 from amaze.panel import delegates, side_pane
 from amaze.qml import hotkeys, rows_model
 from amaze.utils import rc_calls
@@ -191,8 +192,9 @@ class PaneState(qmlviews.SharedState, asks.Asks):
     sortColumn: int = -1    # the column the shown rows are sorted by, the model's own sort
     sortDescending: bool = False
     info: dict = {}    # frame N02's figures and the info pane's colours
+    sidePaneWidth: float = 0.0    # the Info and Comments panes' one width, in the pane's design px
+    sidePaneLeast: float = side_pane.MIN_WIDTH
     infoShown: bool = False
-    infoWidth: float = 0.0    # in the pane's design px
     infoName: str = ""
     infoType: str = ""
     infoDimmed: bool = True
@@ -201,6 +203,12 @@ class PaneState(qmlviews.SharedState, asks.Asks):
     infoPreviewShown: bool = True
     infoPreviewHeight: float = 0.0    # the picture area's height in design px
     infoPicture: str = ""    # the engine's picture as an `INFO_PICTURE` url, "" for none
+    comments: dict = {}    # frame N01's figures and the Comments pane's colours
+    commentsShown: bool = False
+    commentsName: str = ""    # its own subject: the selected current row, never several
+    commentsType: str = ""
+    commentsDimmed: bool = True
+    commentGlyphs: list = []    # each to-do's glyph and click zone, in its document's px
 
     infoAnother = QtCore.Signal()    # another selection is shown: the info page starts at the top
 
@@ -257,22 +265,31 @@ class PaneState(qmlviews.SharedState, asks.Asks):
                      "tileSize": tooltips.PANEL_TILE_SIZE, "tileSizeList": tooltips.PANEL_TILE_SIZE_LIST,
                      "search": tooltips.PANEL_SEARCH, "sidebar": tooltips.PANEL_CATEGORIES,
                      "info": tooltips.PANEL_INFO, "hidePreview": amazetheme.INFO_HIDE_PREVIEW,
-                     "showPreview": amazetheme.INFO_SHOW_PREVIEW}
-        self.words = {"cancel": amazetheme.BTN_CANCEL, "search": "Search"}
+                     "showPreview": amazetheme.INFO_SHOW_PREVIEW, "comments": tooltips.PANEL_COMMENTS,
+                     "addToComment": tooltips.NOTES_ADD_TODO}
+        self.words = {"cancel": amazetheme.BTN_CANCEL, "search": "Search",
+                      "writeComment": amazetheme.COMMENT_PLACEHOLDER}
         self.sidebar = amazetheme.drawn_sidebar()
+        band = dict(ground=amazetheme.SIDE_PANE_BAND_BG, dim_icon=amazetheme.COMMENT_DIM_ICON_COLOR,
+                    dim_icon_opacity=amazetheme.COMMENT_DIM_ICON_OPACITY,
+                    dim_text_opacity=amazetheme.COMMENT_DIM_TEXT_OPACITY)    # both side panes' header band
         drawn = amazetheme.drawn_info()
         self.info = dict(
             drawn, band=dict({key: drawn[key] for key in ("header", "pad", "gap", "icon")},
                              right_pad=drawn["preview_button_pad"]),
-            ground=amazetheme.SIDE_PANE_BAND_BG,
-            color=amazetheme.INFO_ICON_COLOR, dim_icon=amazetheme.COMMENT_DIM_ICON_COLOR,
-            dim_icon_opacity=amazetheme.COMMENT_DIM_ICON_OPACITY,
-            dim_text_opacity=amazetheme.COMMENT_DIM_TEXT_OPACITY, least=amazetheme.INFO_PREVIEW_LEAST,
-            line=amazetheme.DRAG_LINE_COLOR, grab=amazetheme.DRAG_LINE_GRAB,
-            least_width=side_pane.MIN_WIDTH)
+            color=amazetheme.INFO_ICON_COLOR, least=amazetheme.INFO_PREVIEW_LEAST,
+            line=amazetheme.DRAG_LINE_COLOR, grab=amazetheme.DRAG_LINE_GRAB, **band)
+        drawn = amazetheme.drawn_comments()
+        self.comments = dict(
+            drawn, band=dict({key: drawn[key] for key in ("header", "pad", "gap", "icon")},
+                             right_pad=drawn["chip_pad"]),
+            color=amazetheme.COMMENT_ICON_COLOR, page=amazetheme.COMMENT_PAGE_BG,
+            text=amazetheme.COMMENT_TEXT_COLOR, open=amazetheme.COMMENT_OPEN_COLOR,
+            done=amazetheme.COMMENT_DONE_COLOR, dim_add=amazetheme.COMMENT_DIM_ADD_COLOR, **band)
         self.infoRows = InfoRows(self)
-        self._on_screen = False    # the view is shown: only then is the info pane open
+        self._on_screen = False    # the view is shown: only then are the side panes open
         self._pictures = 0    # the info pictures shown, which gives each its own url
+        self._comment_editor = None    # (the QML editor's QQuickTextDocument, its CommentDocument)
 
     def start(self) -> None:
         """Build this pane's engine, follow it, and open the library; Qt deletes the engine with this."""
@@ -295,9 +312,12 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         pane.info.changed.connect(self._show_info)
         pane.info.another.connect(self.infoAnother)
         pane.info.picture_changed.connect(self._show_info_picture)
+        pane.comments.changed.connect(self._show_comments)
+        self._use_comment_document()
         self._show_tabs()
         self._show_settings()
         self._show_info()
+        self._show_comments()
         pane.library.start()
 
     def _show_tabs(self) -> None:
@@ -407,12 +427,14 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         self.sidebarCounts = bool(prefs.sidebar_counts)
         drawn = self.sidebar["width"]    # the last dragged width, never wider than drawn
         self.sidebarWidth = min(prefs.sidebar_width / self.uiScale, drawn) if prefs.sidebar_width else drawn
-        self.infoShown = bool(prefs.show_info)
-        self.infoWidth = prefs.notes_panel_width / self.uiScale if prefs.notes_panel_width else self.info["width"]
+        self.pane.one_side_pane()
+        self.infoShown, self.commentsShown = bool(prefs.show_info), bool(prefs.show_notes)
+        self.sidePaneWidth = (prefs.notes_panel_width / self.uiScale if prefs.notes_panel_width
+                              else self.comments["width"])    # the widget panel's start width
         saved = self.pane.info.preview_height()    # in the widget panel's px, as its drags keep it
         self.infoPreviewHeight = max(self.info["least"], saved / self.uiScale) if saved else self.info[
             "preview_height"]
-        self._open_info()
+        self._open_side_panes()
 
     def _show_info(self) -> None:
         """The info engine's header, rows and preview button."""
@@ -429,13 +451,73 @@ class PaneState(qmlviews.SharedState, asks.Asks):
         shown = self.pane.info.picture() is not None
         self.infoPicture = "image://%s/%d" % (INFO_PICTURE, self._pictures) if shown else ""
 
-    def _open_info(self) -> None:
-        """The info pane reads only while it is shown and the view is on screen."""
+    def _open_side_panes(self) -> None:
+        """A side pane follows the selection only while it is shown and the view is on screen."""
         self.pane.info.set_open(self.infoShown and self._on_screen)
+        self.pane.comments.set_open(self.commentsShown and self._on_screen)
 
     def set_on_screen(self, shown: bool) -> None:
         self._on_screen = bool(shown)
-        self._open_info()
+        self._open_side_panes()
+
+    def _show_comments(self) -> None:
+        """The Comments engine's header."""
+        comments = self.pane.comments
+        self.commentsName, self.commentsType = comments.name(), comments.type()
+        self.commentsDimmed = comments.dimmed()
+
+    def _show_glyphs(self, *_args) -> None:
+        """Each to-do's glyph where its block is laid out now; the QML redraws only on a change."""
+        glyphs = [{"block": glyph["block"], "done": glyph["done"], "x": glyph["x"], "y": glyph["y"],
+                   "side": glyph["side"], "top": glyph["zone"].top(), "right": glyph["zone"].right(),
+                   "height": glyph["zone"].height()}
+                  for glyph in self._comment_editor[1].glyphs()] if self._comment_editor else []
+        if glyphs != self.commentGlyphs:
+            self.commentGlyphs = glyphs
+
+    @QtCore.Slot(QtCore.QObject)
+    def useCommentEditor(self, edit) -> None:
+        """The Comments pane's TextArea: its document is the engine's to load, edit and save."""
+        text = edit.property("textDocument")    # kept: its document goes with it
+        document = comment_document.CommentDocument(text.textDocument(), room=lambda: edit.width())
+        self._comment_editor = (text, document)
+        document.states_changed.connect(self._show_glyphs)
+        document.document.documentLayout().update.connect(self._show_glyphs)
+        self._use_comment_document()
+
+    def _use_comment_document(self) -> None:
+        """The engine takes the editor's document once both exist: the QML is made before the engine."""
+        if self.pane is not None and self._comment_editor:
+            self.pane.comments.use_document(self._comment_editor[1])
+
+    @QtCore.Slot(int, int, int, result=int)
+    def commentKey(self, key: int, position: int, anchor: int) -> int:
+        """A key in the comment: the engine's new cursor position, -1 when the key is the editor's."""
+        if not self._comment_editor:
+            return -1
+        return self._comment_editor[1].key(key, position, anchor)
+
+    @QtCore.Slot(int, int, result=int)
+    def pasteIntoComment(self, position: int, anchor: int) -> int:
+        """The clipboard's text, plain, over the selection; the new cursor position."""
+        if not self._comment_editor:
+            return -1
+        data = QtGui.QGuiApplication.clipboard().mimeData()
+        return self._comment_editor[1].insert_text(position, anchor, data.text() if data is not None else "")
+
+    @QtCore.Slot(int)
+    def toggleComment(self, block: int) -> None:
+        if self._comment_editor:
+            self._comment_editor[1].toggle(block)
+
+    @QtCore.Slot(result="QVariantList")
+    def commentAddRows(self) -> list:
+        return self.pane.comments.add_rows()
+
+    @QtCore.Slot(str, int, result=int)
+    def addToComment(self, key: str, position: int) -> int:
+        """The add menu's pick at the text cursor: the new cursor position, -1 for none."""
+        return self.pane.comments.add(key, position)
 
     def _show_progress(self, visible: bool) -> None:
         self.progressShown = bool(visible)
@@ -678,19 +760,31 @@ class PaneState(qmlviews.SharedState, asks.Asks):
     @QtCore.Slot(bool)
     def showInfo(self, on: bool) -> None:
         """The toolbar's info button: the pane opened or closed, remembered as the widget panel does."""
-        self.pane.prefs.show_info = bool(on)
-        self.pane.prefs.save()
-        self.infoShown = bool(on)
-        self._open_info()
+        self._show_side_pane("show_info", on)
+
+    @QtCore.Slot(bool)
+    def showComments(self, on: bool) -> None:
+        """The toolbar's Comments button: the pane opened or closed, remembered as the widget panel does."""
+        self._show_side_pane("show_notes", on)
+
+    def _show_side_pane(self, setting: str, on: bool) -> None:
+        """Open or close a side pane and remember it; opening one closes the other."""
+        prefs = self.pane.prefs
+        setattr(prefs, setting, bool(on))
+        if on:
+            setattr(prefs, "show_info" if setting == "show_notes" else "show_notes", False)
+        prefs.save()
+        self.infoShown, self.commentsShown = bool(prefs.show_info), bool(prefs.show_notes)
+        self._open_side_panes()
 
     @QtCore.Slot(float)
-    def keepInfoWidth(self, width: float) -> None:
+    def keepSidePaneWidth(self, width: float) -> None:
         """A drag of the split ended: the side pane's width, in the widget panel's px."""
         if width <= 0:
             return
         self.pane.prefs.notes_panel_width = int(round(width * self.uiScale))
         self.pane.prefs.save()
-        self.infoWidth = width
+        self.sidePaneWidth = width
 
     @QtCore.Slot(float)
     def setPictureWidth(self, pixels: float) -> None:
@@ -1157,4 +1251,5 @@ class QmlPanel(QtWidgets.QFrame):
         """At the close, a tile size the slider set is saved; the children get no event of their own."""
         if event.type() == QtCore.QEvent.Type.DeferredDelete:
             self.state.save_size()
+            self.pane.comments.flush()    # what was typed, before the editor goes
         return super().event(event)
