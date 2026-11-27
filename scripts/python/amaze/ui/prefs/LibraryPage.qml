@@ -191,7 +191,7 @@ PrefsPage {
                 }
             }
         }
-        MenuPref {
+        ListMenuPref {
             label: "Write Paths As"
             pref: "path_style"
             options: [

@@ -79,12 +79,7 @@ Menu {
 
     Component {
         id: entry
-        MenuItem {    // pluto's height, kept while the menu is closed ▸r/qml-menu-placed-before-layout
-            implicitHeight: Math.max(implicitBackgroundHeight + topInset + bottomInset,
-                                     contentItem.implicitHeight + topPadding + bottomPadding,
-                                     implicitIndicatorHeight + topPadding + bottomPadding)
-            symbolColor: enabled ? textColor : Theme.dimFg    // Houdini's row dims its text but not its glyph
-        }
+        MenuRow {}
     }
     Component {
         id: divider

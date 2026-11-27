@@ -24,7 +24,7 @@ PrefsPage {
             label: "Step Size"
             pref: "step_size"
         }
-        MenuPref {
+        ListMenuPref {
             label: "Custom Icons Line Width"
             pref: "icon_line_weight"
             options: [

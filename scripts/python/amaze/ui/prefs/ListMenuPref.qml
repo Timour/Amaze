@@ -1,16 +1,27 @@
-// A MenuPref whose options change while its page is shown. Its menu is sized by its rows, because
-// Houdini's menu takes the height its list measured, which is 0 after a change while closed.
+// Amaze's preference drop-down: Houdini's MenuPref with `MenuBox` for its ComboBox.
 import QtQuick
-import houdini.pluto
 import houdini.prefs
+import "../shared"
 
-MenuPref {
+ChoiceBasePref {
     id: root
 
-    // one of Houdini's own menu rows, never drawn, for the height each row of the menu takes
-    readonly property Item menuRow: MenuItem {
-        text: " "
-    }
+    property alias currentIndex: menu.currentIndex    // which ChoiceBasePref reads and sets
 
-    popup.implicitHeight: root.options.length * root.menuRow.implicitHeight * popup._scale
+    MenuBox {
+        id: menu
+
+        model: root.options
+        enabled: root.enabled
+        width: root.contentWidth
+        textRole: "text"
+        valueRole: "value"
+        currentIndex: root.findCurrentIndex(SharedState.getPref(root.pref, root.registry))
+        onModelChanged: root.initialize()
+        onActivated: {
+            root.activated(currentIndex)
+            if (root.pref)
+                SharedState.setPref(root.pref, root.options[currentIndex].value, root.registry, root.autoApply)
+        }
+    }
 }

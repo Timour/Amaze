@@ -29,7 +29,7 @@ PrefsPage {
                 shown: SharedState.offeredRenderers.includes(modelData.key)
             }
         }
-        MenuPref {
+        ListMenuPref {
             label: "Geometry Style"
             pref: "geometry_shading_mode"
             options: [
@@ -42,7 +42,7 @@ PrefsPage {
                 {text: "Hidden Line Invisible", value: "hiddenlineinvisible"},
             ]
         }
-        MenuPref {
+        ListMenuPref {
             label: "Geometry Background"
             pref: "geometry_bg"
             options: [
@@ -70,7 +70,7 @@ PrefsPage {
     Group {
         text: "Downloads"
 
-        MenuPref {
+        ListMenuPref {
             label: "Download Resolution"
             pref: "matx_resolution"
             options: [
