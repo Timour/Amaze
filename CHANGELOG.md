@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.0.15
+
+- The comment in `toolbar/Amaze.shelf` says why the Amaze actions are shelf tools: a shelf tool's hotkey works anywhere in Houdini, the viewport too.
+
 ## 2.0.14
 
 - Tooltips are shorter, and Preferences ▸ UI ▸ Show Tooltips turns them off. The Versions window has no tooltip over its list or on its Delete button.
