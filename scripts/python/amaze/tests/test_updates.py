@@ -21,7 +21,7 @@ from amaze import amazetheme, messages  # noqa: E402
 from amaze.actions import library as library_actions  # noqa: E402
 from amaze.core import (guard, library_db, library_policy, library_settings,  # noqa: E402
                         matx_sources, updater, users)
-from amaze.helpers import helpers  # noqa: E402
+from amaze.helpers import helpers, hostos  # noqa: E402
 from amaze.prefs import persistence  # noqa: E402
 from amaze.prefs import prefs as prefs_mod  # noqa: E402
 from amaze.tests import faults, test_support  # noqa: E402
@@ -134,6 +134,13 @@ class UpdateTest(_Install):
         self.reset()
         self.refused(self.found(release()), (helpers, "download_operation", esc_during_download))
         self.refused(self.found(release()), (shutil, "copytree", full_disk("")))
+        test_support.put(self.dir, "Amaze.update/staged/scripts/a.txt", "another Houdini's")
+        with hostos.file_lock(self.install) as held:    # that Houdini is installing now
+            self.assertTrue(held)
+            self.assertEqual(messages.UPDATE_ALREADY_RUNNING, self.refused(self.found(release())))
+        updater.install(self.found(release()), self.install)
+        self.assertEqual(["Amaze", "Amaze.update", "the user's.txt"], sorted(os.listdir(self.dir)),
+                         "another update's folder was removed, or this one's left")
 
     def test_up02_only_a_complete_download_matching_the_release_installs(self):
         payload = release()

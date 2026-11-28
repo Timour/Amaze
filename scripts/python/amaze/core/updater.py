@@ -6,6 +6,7 @@ import os
 import platform
 import re
 import shutil
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -345,16 +346,21 @@ def install(found, into: str = "") -> None:
     into = into or install_root()
     if not into or not os.path.isdir(into):
         raise OSError(messages.INSTALL_LOCATION_UNKNOWN)
-    workspace = into.rstrip("/\\") + ".update"    # beside the install: the swap never crosses a drive
-    from amaze.helpers import helpers
-    try:
-        with helpers.download_operation(messages.DOWNLOADING_UPDATE) as on_bytes:
-            staged = fetch_and_stage(found.url, workspace,
-                                     digest=getattr(found, "digest", ""),
-                                     size=getattr(found, "size", 0), on_bytes=on_bytes)
-        return apply_update(staged, into)    # Esc cannot cancel this: a stopped rename leaves a partial install
-    finally:    # the workspace is always removed
-        shutil.rmtree(workspace, ignore_errors=True)
+    into = into.rstrip("/\\")
+    from amaze.helpers import helpers, hostos
+    with hostos.file_lock(into) as held:    # one update of an install at a time on this computer
+        if not held:
+            raise OSError(messages.UPDATE_ALREADY_RUNNING)
+        workspace = tempfile.mkdtemp(    # beside the install, so the swap never crosses a drive
+            prefix=os.path.basename(into) + ".update.", dir=os.path.dirname(into))
+        try:
+            with helpers.download_operation(messages.DOWNLOADING_UPDATE) as on_bytes:
+                staged = fetch_and_stage(found.url, workspace,
+                                         digest=getattr(found, "digest", ""),
+                                         size=getattr(found, "size", 0), on_bytes=on_bytes)
+            return apply_update(staged, into)    # Esc cannot cancel this: a stopped rename leaves a partial install
+        finally:    # the workspace is always removed
+            shutil.rmtree(workspace, ignore_errors=True)
 
 
 def apply_update(staged: str, install: str, disk=None) -> None:
