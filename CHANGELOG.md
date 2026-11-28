@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.16
+
+- Windows: a new material's files are saved in the one folder named for it. A save could put them in a second folder, named `asset__` and the material's id.
+- Windows: a comment picture whose path leads outside the library is not shown.
+
 ## 2.0.15
 
 - The comment in `toolbar/Amaze.shelf` says why the Amaze actions are shelf tools: a shelf tool's hotkey works anywhere in Houdini, the viewport too.
