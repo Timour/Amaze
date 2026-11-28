@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.0.17
+
+- Library format 3.4: a material's versions keep its COP network. Switching to an older version brings back the COP network it was saved with. A library at format 3.4 opens in Amaze 2.0.17 and later.
+- Two Houdinis adding a version to one material at the same moment both keep their version.
+- Check Library puts a version file back in the material's version list when the list does not name it, with its number and date.
+- A comment you edit keeps the name of the person who wrote it.
+- A `settings.json` this Amaze cannot read, such as one from a newer Amaze, is copied beside itself as `settings.json.unreadable`, and Amaze saves no settings over it.
+- If another Houdini on the computer is installing an Amaze update, Install Update says so and installs nothing.
+- Quitting Houdini during a file move keeps the hearts, comments, icons and captures of the files already moved.
+- Closing the Amaze pane while Online is loading stops its downloads first.
+- The Info pane reads one file at a time. Stepping through large images reads the one you stop on.
+- An Online preview appears on its tile once it has been downloaded whole.
+
 ## 2.0.16
 
 - Windows: a new material's files are saved in the one folder named for it. A save could put them in a second folder, named `asset__` and the material's id.
