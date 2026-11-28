@@ -1,4 +1,4 @@
-"""The Code section's actions that need Houdini: run a snippet, set one on a node. ▸m/layer-plan"""
+"""The Code section's actions that need Houdini: run a snippet, set one on a node. ▸p/layer-plan"""
 
 import traceback
 

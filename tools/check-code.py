@@ -20,7 +20,7 @@ ALLOWED = {    # the layers each layer may use: all below it, but models and hou
     "actions": {"base", "library", "formats", "models", "houdini", "actions"},
     "interface": {"base", "library", "formats", "models", "houdini", "actions", "interface"},
 }
-PACKAGE_LAYER = {    # every module under these packages ▸m/layer-plan
+PACKAGE_LAYER = {    # every module under these packages ▸p/layer-plan
     "dialogs": "interface", "utils": "interface", "pane": "interface",
     "sections": "interface", "qml": "interface",
     "render": "houdini", "preview": "houdini", "prefs": "library", "actions": "actions",
