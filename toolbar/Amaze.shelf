@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <shelfDocument>
   <!-- Ships and auto-registers, but the TAB is a per-machine add, lost
-       on a Houdini upgrade (▸m/first-run). A shelf tool because a Python
-       Panel action cannot take a hotkey; no default binding. ▸r/hotkeys -->
+       on a Houdini upgrade (▸m/first-run). A shelf tool because its hotkey
+       works anywhere in Houdini, the viewport too; no default binding. ▸r/hotkeys -->
 
   <tool name="amaze_capture_hip" label="Capture"
         icon="$AMAZE/scripts/python/amaze/ui/icon_screenshot.svg">
