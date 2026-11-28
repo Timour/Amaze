@@ -119,8 +119,7 @@ class CommentsTest(unittest.TestCase):
                   "text": "[image: still syncing]"}
         self.assertTrue(self.page(self.key, text("one"), coming, {"t": "todo", "label": "two"}))
         before = notes.note_for(self.prefs, self.key)["items"]
-        self.assertTrue(self.page(self.key, text("one"), coming, {"t": "todo", "label": "two"},
-                                  text("three")))
+        self.assertTrue(self.page(self.key, *before, text("three")))
         after = notes.note_for(self.prefs, self.key)["items"]
         self.assertEqual(before, after[:3])
 
@@ -131,16 +130,26 @@ class CommentsTest(unittest.TestCase):
         test_support.reset_database_singletons()
         self.assertEqual(written, bare(notes.note_for(self.prefs, self.key)["items"]))
 
-    def test_cm21_each_item_names_its_author_and_an_unchanged_one_keeps_it(self):
+    def test_cm21_each_item_names_its_author_and_an_edited_one_keeps_it(self):
+        from amaze.pane import comment_document, comments
         first = test_support.FIXTURE_USER
-        self.assertTrue(self.page(self.key, text("the first's"), {"t": "todo", "label": "to do"}))
+        self.assertTrue(self.page(self.key, text("the first's"), {"t": "todo", "label": "to do"},
+                                  {"t": "todo", "label": "kept"}))
         before = notes.note_for(self.prefs, self.key)["items"]
         second = self.prefs.library_user = users.create(self.prefs, "Second")
-        self.assertTrue(self.page(self.key, text("the first's"),
-                                  {"t": "todo", "label": "to do", "done": True}, text("mine")))
-        after = notes.note_for(self.prefs, self.key)["items"]
-        self.assertEqual([(item["id"], first) for item in before] + [(after[2]["id"], second)],
-                         [(item["id"], item["author"]) for item in after])
+        shown = comment_document.CommentDocument(QtGui.QTextDocument())
+        shown.load(self.prefs.dir, self.key, comments.items_of(self.prefs, self.key))
+        line = shown.document.findBlockByNumber(0)
+        shown.insert_text(line.position() + line.length() - 1, -1, ", edited")
+        shown.toggle(1)
+        shown.insert_text(shown.insert_todo(shown.document.characterCount() - 1), -1, "mine")
+        saved = []
+        for _save in range(2):    # the editor sends each item back with its id, a new one too
+            self.assertTrue(self.page(self.key, *shown.serialize()))
+            saved.append([(item["id"], item["author"]) for item in notes.note_for(
+                self.prefs, self.key)["items"]])
+        self.assertEqual([(item["id"], first) for item in before], saved[0][:3])
+        self.assertEqual((second, saved[0]), (saved[0][3][1], saved[1]))
 
     def test_cm22_a_comment_with_nothing_left_is_removed(self):
         self.assertTrue(self.page(self.key, text("gold")))

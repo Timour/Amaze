@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import uuid
 
 from PySide6 import QtCore, QtGui
 
@@ -18,6 +19,7 @@ STATE_UNLOADED = 4    # a picture whose file did not load: text replaces it, `sr
 _STATE = QtGui.QTextFormat.Property.UserProperty.value + 3
 _UNLOADED_SRC = QtGui.QTextFormat.Property.UserProperty.value + 1
 _UNLOADED_TEXT = QtGui.QTextFormat.Property.UserProperty.value + 2
+_ITEM_ID = QtGui.QTextFormat.Property.UserProperty.value + 4    # the id of a block's item
 PICTURE_INSET = 24    # px of the editor's width a picture leaves free
 PICTURE_LEAST = 80    # px: a picture is never narrower, however narrow the editor
 
@@ -40,6 +42,11 @@ def is_image_block(block) -> bool:
 
 def block_done(block) -> bool:
     return block_state(block) == STATE_DONE
+
+
+def block_id(block) -> str:
+    """The id of the item the block is part of; a new block takes the one above, as its state."""
+    return str(block.blockFormat().property(_ITEM_ID) or "")
 
 
 def block_label(block) -> str:
@@ -253,23 +260,42 @@ class CommentDocument(QtCore.QObject):
                 if not self._make_image(cursor, src):    # not synced yet, or deleted: its text ▸p/comment-images
                     self._insert_unloaded_text(cursor, src,
                                                item.get("text") or "[image: %s]" % os.path.basename(src))
+                self._mark(cursor.block(), item.get("id"))
             elif item.get("t") == "todo":
                 done = bool(item.get("done"))
                 if not first:
                     cursor.insertBlock()
                 self._set_todo(cursor.block(), done)
                 cursor.insertText(item.get("label", ""), label_format(done))
+                self._mark(cursor.block(), item.get("id"))
             else:
                 for line in str(item.get("text", "")).split("\n"):
                     if not first:
                         cursor.insertBlock()
                     self._set_state(cursor.block(), STATE_PLAIN)
                     cursor.insertText(line, label_format(False))
+                    self._mark(cursor.block(), item.get("id"))
                     first = False
             first = False
         self.document.clearUndoRedoStacks()    # the load is not an edit ▸r/programmatic-load-is-undoable
         self.states_changed.emit()
         return cursor.position()
+
+    def _stamp(self, stamps: list) -> None:
+        """Each (block, id) `serialize` gave out put on its block, in the last edit for undo."""
+        if not stamps:
+            return
+        cursor = QtGui.QTextCursor(self.document)
+        cursor.joinPreviousEditBlock()
+        for block, ident in stamps:
+            self._mark(block, ident)
+        cursor.endEditBlock()
+
+    def _mark(self, block, ident) -> None:
+        """`block` made a part of the item `ident`, in its format so that undo takes it back."""
+        block_format = QtGui.QTextBlockFormat()
+        block_format.setProperty(_ITEM_ID, str(ident or ""))
+        QtGui.QTextCursor(block).mergeBlockFormat(block_format)
 
     def clear(self) -> None:
         self.library_dir, self.note_key = "", ""
@@ -278,13 +304,24 @@ class CommentDocument(QtCore.QObject):
         self.states_changed.emit()
 
     def serialize(self) -> list:
-        """The document as the store's item list; adjacent plain lines join into one text item."""
-        items = []
-        text_lines = []
+        """The document as the store's item list, each with its id; a new item gets one here."""
+        items, text_lines, taken, stamps = [], [], set(), []    # text_lines: (block or None, line)
+
+        def add(item, blocks) -> None:
+            """`item` with the id its blocks carry; a new id for a new item or a taken one."""
+            blocks = [one for one in blocks if one is not None]
+            ident = next((block_id(one) for one in blocks if block_id(one)), "")
+            if not ident or ident in taken:    # a block below takes the id of the one above it
+                ident = uuid.uuid4().hex
+            taken.add(ident)
+            stamps.extend((one, ident) for one in blocks if block_id(one) != ident)
+            items.append(dict(item, id=ident))
 
         def flush_text():
-            if text_lines and any(line.strip() for line in text_lines):
-                items.append({"t": "text", "text": "\n".join(text_lines).strip("\n")})
+            lines = [line for _block, line in text_lines]
+            if any(line.strip() for line in lines):    # adjacent plain lines are one item
+                add({"t": "text", "text": "\n".join(lines).strip("\n")},
+                    [one for one, _line in text_lines])
             text_lines.clear()
 
         block = self.document.begin()
@@ -292,27 +329,31 @@ class CommentDocument(QtCore.QObject):
             picture = unloaded_picture(block)
             if picture is not None:    # its file may appear later: the item is saved unchanged
                 flush_text()
-                items.append(picture)
+                add(picture, [block])
                 typed = block.text().replace(picture["text"], "", 1)
                 if typed.strip():
-                    text_lines.append(typed)
+                    text_lines.append((None, typed))
             elif is_image_block(block):
                 flush_text()
                 src = image_src(block)
-                if src:
-                    items.append({"t": "image", "src": src,
-                                  "text": "[image: %s]"    # what a build with no image support shows ▸p/comment-images
-                                          % os.path.basename(src)})
+                if src:    # its text is what a build with no image support shows ▸p/comment-images
+                    add({"t": "image", "src": src,
+                         "text": "[image: %s]" % os.path.basename(src)}, [block])
                 typed = block.text().replace("￼", "")    # text typed in a picture's block; the image is U+FFFC
                 if typed.strip():
-                    text_lines.append(typed)
+                    text_lines.append((None, typed))
             elif is_todo_block(block):
                 flush_text()
                 label = block_label(block)
                 if label:
-                    items.append({"t": "todo", "label": label, "done": block_done(block)})
+                    add({"t": "todo", "label": label, "done": block_done(block)}, [block])
             else:
-                text_lines.append(block.text())
+                ident = block_id(block)
+                if ident and ident != next((block_id(one) for one, _line in text_lines
+                                            if one is not None and block_id(one)), ident):
+                    flush_text()    # the line of another item
+                text_lines.append((block, block.text()))
             block = block.next()
         flush_text()
+        self._stamp(stamps)
         return items

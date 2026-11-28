@@ -32,8 +32,8 @@ def _split(key: str) -> tuple:
 
 
 def normalise_items(items) -> list:
-    """The valid text, todo and image items, each with its `id` and its author; others dropped."""
-    kept = []
+    """The valid text, todo and image items, each with its own id and author; others dropped."""
+    kept, ids = [], set()
     for item in items if isinstance(items, list) else []:
         if not isinstance(item, dict):
             continue
@@ -57,15 +57,13 @@ def normalise_items(items) -> list:
             one = {"t": "text", "text": text}
         else:
             continue
-        one["id"] = str(item.get("id") or uuid.uuid4().hex)
+        one["id"] = str(item.get("id") or "")
+        if not one["id"] or one["id"] in ids:    # an id names one item: a second one is new
+            one["id"] = uuid.uuid4().hex
+        ids.add(one["id"])
         one["author"] = str(item.get("author") or "")
         kept.append(one)
     return kept
-
-
-def _same_item(old: dict, new: dict) -> bool:
-    """Whether `new` is `old` sent back by the editor: same kind and text; `done` is not compared."""
-    return all(old.get(field) == new.get(field) for field in ("t", "text", "label", "src"))
 
 
 def _document(preferences, database: str):
@@ -104,17 +102,15 @@ def _stage(held, ident: str, items) -> bool:
         return False
     stored = [item for item in ((held.get(SECTION, ident) or {}).get("items") or [])
               if isinstance(item, dict)]
-    pool, kept = list(stored), []
+    by_id, kept = {str(item.get("id")): item for item in stored}, []
     for item in normalise_items([dict(item) for item in (items or [])
                                  if isinstance(item, dict)]):
-        if not item.get("author"):    # an unchanged item keeps its stored id, author and fields
-            same = next((old for old in pool if _same_item(old, item)), None)
-            if same is not None:
-                pool.remove(same)
-                item = dict(same, **item)    # a field only a newer Amaze knows stays
-                item["id"], item["author"] = str(same.get("id")), str(same.get("author") or "")
-            else:
-                item["author"] = author
+        same = by_id.get(item["id"])
+        if same is not None:    # edited or not: its author, and fields only a newer Amaze knows
+            item = dict(same, **item)
+            item["author"] = str(same.get("author") or "")
+        else:    # a new item: an imported one keeps its author, a typed one is the user's
+            item["author"] = item["author"] or author
         kept.append(item)
     for at, old in enumerate(stored):    # an item only a newer Amaze knows stays, after its neighbour
         if _newer(old):

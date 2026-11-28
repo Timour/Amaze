@@ -36,7 +36,8 @@ def brick(n=1, **record) -> tuple:
     entry = {"type": "asset", "section": "material", "id": mid,
              "record": dict({"id": mid, "name": "Brick %d" % n, "categories": ["Walls"],
                              "textures": [TEXTURE], "made_by_a_newer_amaze": "kept"}, **record),
-             "note": {"items": [{"t": "text", "text": "rough"}, {"t": "image", "src": PICTURE}]},
+             "note": {"items": [{"t": "text", "text": "rough", "author": "exporter"},
+                                {"t": "image", "src": PICTURE}]},
              "files": {"mat": at + mid + ".mat"}, "textures": {TEXTURE: at + "textures/0_b.png"},
              "comment_pictures": {PICTURE: at + "comments/p.png"}}
     return entry, {at + mid + ".mat": b"nodes %d" % n, at + "textures/0_b.png": b"brick texture",
@@ -306,6 +307,7 @@ class PackageTest(_Library):
         key = notes.note_key("material", asset.mat_id)
         items = notes.note_for(self.prefs, key)["items"]
         self.assertEqual(["rough", PICTURE], [i.get("text") or i.get("src") for i in items])
+        self.assertEqual("exporter", items[0]["author"])    # who wrote it, not who imported it
         with open(notes.image_path(self.lib, key, PICTURE), "rb") as handle:
             self.assertEqual(b"pasted picture", handle.read())
 
