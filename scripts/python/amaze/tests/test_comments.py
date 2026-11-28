@@ -213,7 +213,7 @@ class CommentsTest(unittest.TestCase):
         root = test_support.scratch_dir("amaze_cm_files_")
         self.addCleanup(shutil.rmtree, root, True)
         top, deep = (test_support.put(root, name, b"png") for name in ("a/top.png", "a/sub/deep.png"))
-        a, sub = (hostos.storage_path_key(os.path.join(root, *parts)) for parts in (("a",), ("a", "sub")))
+        a, sub = (hostos.canonical_path_key(os.path.join(root, *parts)) for parts in (("a",), ("a", "sub")))
         folders = file_library.FileFolders(self.prefs)
         for path in (a, sub):
             self.assertTrue(folders.add_folder(path))
@@ -317,8 +317,12 @@ class CommentsTest(unittest.TestCase):
             held.put(notes.SECTION, ident, page)
             found = notes.note_for(self.prefs, notes.note_key("material", ident))
             self.assertTrue(all(isinstance(item, dict) for item in found.get("items", [])))
-        for src in ("../../outside.png", "/outside.png", "$AMAZEASSET/../../outside.png"):
-            self.assertEqual("", notes.image_path(self.prefs.dir, self.key, src))
+        outside = ["../../outside.png", "/outside.png", "$AMAZEASSET/../../outside.png"]
+        if os.name == "nt":    # another drive in the path: joined, it leaves the folder it is joined to
+            other = "Y:" if self.prefs.dir.upper().startswith("Z") else "Z:"
+            outside[:0] = ["$AMAZEASSET/%s/outside.png" % other, other + "outside.png"]
+        for src in outside:
+            self.assertEqual("", notes.image_path(self.prefs.dir, self.key, src), src)
 
     def test_cm30_a_picture_taken_out_of_a_comment_goes_to_the_trash(self):
         kept, taken = self.picture(self.key), self.picture(self.key)

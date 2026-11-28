@@ -223,9 +223,14 @@ def image_path(library_dir: str, key: str, src: str) -> str:
     """A comment picture's file, in its asset's folder for `$AMAZEASSET/`; "" for one outside."""
     if not src or os.path.isabs(src) or ".." in src.replace("\\", "/").split("/"):
         return ""
-    if not src.startswith(texstore.OWN_PREFIX):
-        return os.path.join(library_dir or "", src)
-    database, ident = _split(key)
-    if not database or not material.is_safe_asset_id(ident):
+    folder, parts = library_dir or "", [src]
+    if src.startswith(texstore.OWN_PREFIX):
+        database, ident = _split(key)
+        if not database or not material.is_safe_asset_id(ident):
+            return ""
+        folder, parts = (material.listed_dir(library_dir, database, ident),
+                         src[len(texstore.OWN_PREFIX):].split("/"))
+    try:    # Windows: `/x` is not isabs from Python 3.13 and `Z:` restarts a join ▸r/isabs-rooted
+        return hostos.contained_join(folder, *parts)
+    except hostos.PathOutsideBase:
         return ""
-    return texstore.resolve(src, None, material.listed_dir(library_dir, database, ident))
