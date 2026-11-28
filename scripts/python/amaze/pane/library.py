@@ -35,6 +35,11 @@ def _flush_saves_on_close(schedule, *_destroyed) -> None:
     library_db.flush()
 
 
+def _stop_online_on_close(online, *_destroyed) -> None:
+    """On pane close: stop its Online model's workers and wait, before Qt deletes the model with it."""
+    online.shutdown()    # a QThread freed while it runs aborts Houdini ▸r/model-contracts
+
+
 class Library:
     """Every way onto a library, one sequence; the pane holds it as `library`. ▸o/section-api"""
 
@@ -458,13 +463,11 @@ class Library:
             multifilterproxy_model.MultiFilterProxyModel(pane), pane.code_model)
 
         pane.matx_online_model = matx_library.MatxOnlineLibrary(    # the online MaterialX browser, with MaterialLibrary's role numbers
-            preferences=pane.prefs
-        )
+            pane, preferences=pane.prefs)    # this pane's own, so Qt deletes it with the pane
+        pane.destroyed.connect(functools.partial(_stop_online_on_close, pane.matx_online_model))
         pane.matx_sorted_model, pane.matx_selection_model = self._grid_proxy(
             multifilterproxy_model.MultiFilterProxyModel(pane), pane.matx_online_model)
-        pane.matx_source_model = matx_library.MatxSidebarModel(
-            pane.matx_online_model
-        )
+        pane.matx_source_model = matx_library.MatxSidebarModel(pane.matx_online_model, pane)
         pane.matx_online_model.progress_changed.connect(    # preview downloads update the same bar as texture/geo thumbs
             pane._on_online_preview_progress
         )

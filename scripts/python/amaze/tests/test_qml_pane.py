@@ -1,5 +1,6 @@
 """The Amaze pane builds on the main thread and Qt deletes all of it when it closes."""
 import os
+import time
 import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")   # the first QApplication picks the platform ▸p/first-app-picks-the-platform
@@ -9,7 +10,20 @@ import shiboken6
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 import hou  # noqa: E402,F401
+from amaze.core import matx_sources  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
+
+
+class _Listing(matx_sources.MatxSource):
+    """An online source whose listing runs until its thread is asked to stop."""
+
+    name = "Listing"
+
+    def list_materials(self, search="", offset=0, limit=60):
+        deadline = time.monotonic() + 10.0
+        while not QtCore.QThread.currentThread().isInterruptionRequested() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        return []
 
 
 class TheQmlPaneOpensAndCloses(unittest.TestCase):
@@ -18,14 +32,19 @@ class TheQmlPaneOpensAndCloses(unittest.TestCase):
         panel = test_support.fixture_qml_pane(self)
         self.assertIsNotNone(panel.view.rootObject(), "the pane's QML did not load")
 
-        parts = (panel, panel.view, panel.state, panel.pane)
+        online = panel.pane.matx_online_model
+        online._sources = [_Listing()]
+        online.reload(force=True)    # the pane is closed during this listing
+        listing = online._workers[-1]
+        parts = (panel, panel.view, panel.state, panel.pane, online, panel.pane.matx_source_model)
         main = QtWidgets.QApplication.instance().thread()
         self.assertTrue(all(part.thread() == main for part in parts), "a part lives off the main thread")
         panel.close()
         panel.deleteLater()
         QtCore.QCoreApplication.sendPostedEvents(None, QtCore.QEvent.Type.DeferredDelete)    # Qt's own loop, no collector
+        self.assertFalse(listing.isRunning(), "the online listing ran on after its pane closed")
         self.assertEqual([False] * len(parts), [shiboken6.isValid(part) for part in parts],
-                         "the pane, its QML view, its state or its engine outlived the close")
+                         "the pane, its QML view, its state, its engine or its online models outlived the close")
 
     def test_qm16_qt_acts_once_on_a_click_on_a_sidebar_row(self):
         panel = test_support.fixture_qml_pane(self)
