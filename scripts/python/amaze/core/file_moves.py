@@ -253,6 +253,7 @@ class _MoveWorker(QtCore.QThread):
         self.pairs = list(pairs)
         self.copying, self.replace = copying, replace
         self._canceled = False
+        self.result = None    # the Result once run ends: a quit re-keys from it, not from the signal
 
     def cancel(self) -> None:
         self._canceled = True
@@ -277,6 +278,7 @@ class _MoveWorker(QtCore.QThread):
         except Exception as exc:                          # noqa: BLE001 - logged; `move_finished` is still emitted
             debug.event("move", "move failed", error=str(exc))
             result = Result([], [], [(source, str(exc)) for source, _dest in self.pairs])
+        self.result = result
         self.move_finished.emit(result)
 
 
@@ -307,14 +309,22 @@ class _MoveEngine(QtCore.QObject):
         if self._job is not None:
             self._job[1](done, total)
 
-    def _on_move_finished(self, result) -> None:
-        if self._job is None:
-            return
-        preferences, _ticked, on_finished, copying = self._job
+    def _on_move_finished(self, _result) -> None:
+        self._settle(report=True)
+
+    def _settle(self, report: bool) -> None:
+        """Re-key the ended move's files once, then call its `on_finished` when `report`."""
+        worker, job = self._worker, self._job
+        if worker is None or job is None or worker.result is None:
+            return    # still running, or already settled
+        self._job = None    # settled: a move_finished still in the queue finds nothing to do
+        preferences, _ticked, on_finished, copying = job
         if not copying:    # a copy is a new file: what Amaze stores stays with the original
-            rekey_moved_files(preferences, result.moved)    # on the GUI thread, where the stores are written
+            rekey_moved_files(preferences, worker.result.moved)    # on the GUI thread, where the stores are written
+        if not report:
+            return
         try:
-            on_finished(result)
+            on_finished(worker.result)
         except RuntimeError:    # the calling panel was deleted; the files and their keys have moved
             pass
 
@@ -324,9 +334,10 @@ class _MoveEngine(QtCore.QObject):
             self._worker, self._job = None, None
 
     def shutdown(self) -> None:
-        """Stop the move, THEN wait; safe twice and with nothing running."""
+        """Stop the move, THEN wait, then re-key what it moved; safe twice and with nothing running."""
         if self._worker is not None:
             workers.stop([self._worker], "move")    # one that will not stop is kept in `_unstoppable`
+            self._settle(report=False)    # a quit never delivers the queued move_finished
         self._worker, self._job = None, None
 
 

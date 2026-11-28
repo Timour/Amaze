@@ -141,7 +141,7 @@ class WhatAMoveDoesTest(_Folders):
         test_support.with_fixture_user(prefs.dir)
         other = users.create(prefs, "Other")
         self.assertTrue(locations.register(prefs, self.root))
-        old, new = captures.file_key(prefs, self.plate), captures.file_key(prefs, self.moved_to)
+        old = captures.file_key(prefs, self.plate)
         held = library_db.document(prefs, locations.FILES)
         held.put(locations.COMMENTS, old, {"items": [{"t": "text", "text": "kept"}]})
         held.put(locations.ICONS, old, {"name": "activity"})
@@ -151,19 +151,43 @@ class WhatAMoveDoesTest(_Folders):
             self.assertTrue(locations.set_favourite(prefs, self.plate, True))
         test_support.write_text(captures.file_path(prefs, old), "picture")
 
-        def data(key):
+        def data(path):
+            key = captures.file_key(prefs, path)
             return (bool(held.get(locations.COMMENTS, key)), bool(held.get(locations.ICONS, key)),
                     captures.exists(captures.file_path(prefs, key)),
                     sorted(user for user, own in held.everyones(locations.FAVORITES).items() if key in own))
+        kept = (True, True, True, sorted([other, test_support.FIXTURE_USER]))
         file_moves.mover.start([(self.plate, self.moved_to)], prefs, lambda *_: None, lambda _r: None)
         _wait_for_the_mover()
-        self.assertEqual((True, True, True, sorted([other, test_support.FIXTURE_USER])), data(new))
+        self.assertEqual(kept, data(self.moved_to))
         copied = os.path.join(self.a, "plate.exr")
         file_moves.mover.start([(self.moved_to, copied)], prefs, lambda *_: None, lambda _r: None,
                                copying=True)
         _wait_for_the_mover()
         self.assertEqual("plate", _read(copied))
-        self.assertEqual((False, False, False, []), data(captures.file_key(prefs, copied)))
+        self.assertEqual((False, False, False, []), data(copied))
+        last, quit_to = os.path.join(self.a, "last.exr"), os.path.join(self.root, "plate.exr")
+        test_support.write_text(last, "last")
+        real = file_moves._move_one
+
+        def held_on_last(source, dest, tick, stopped):
+            while source == last and not stopped():    # held until Houdini quits mid-move
+                time.sleep(0.01)
+            if stopped():
+                raise file_moves.Stopped()
+            return real(source, dest, tick, stopped)
+        with mock.patch.object(file_moves, "_move_one", held_on_last), \
+                mock.patch.object(file_moves, "rekey_moved_files",
+                                  wraps=file_moves.rekey_moved_files) as rekey:
+            file_moves.mover.start([(self.moved_to, quit_to), (last, last + ".b")], prefs,
+                                   lambda *_: None, lambda _r: None)
+            deadline = time.monotonic() + 5
+            while not os.path.exists(quit_to) and time.monotonic() < deadline:
+                time.sleep(0.01)
+            file_moves.mover.shutdown()    # the quit: no event is delivered before it
+            _app.processEvents()    # the queued move_finished, after the quit's re-key
+        self.assertEqual(kept, data(quit_to), "a quit mid-move left the moved file's data behind")
+        self.assertEqual(1, rekey.call_count, "the move was re-keyed twice")
 
     def test_fm21_a_move_tells_what_moved_what_was_skipped_and_what_failed_and_why(self):
         taken, gone = os.path.join(self.a, "taken.exr"), os.path.join(self.a, "gone.exr")
