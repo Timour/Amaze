@@ -313,11 +313,12 @@ class IntoTheSceneTest(_Folders):
 
     def test_fi25_copy_path_spells_each_path_as_write_paths_as_one_per_line(self):
         home = hou.text.expandString("$HOME")
+        b, under = hostos.canonical_path_key(self.b), self.key(home)    # Windows keeps temp under home
         for style, first in (("home", "$HOME/plate.exr"), ("absolute", self.key(home) + "plate.exr")):
             self.pane.prefs.path_style = style
             pane_files.Files(self.pane).copy_paths(self.rows(os.path.join(home, "plate.exr"), self.b))
-            self.assertEqual(first + "\n" + hostos.canonical_path_key(self.b),
-                             QtGui.QGuiApplication.clipboard().text())
+            second = "$HOME/" + b[len(under):] if style == "home" and b.startswith(under) else b
+            self.assertEqual(first + "\n" + second, QtGui.QGuiApplication.clipboard().text())
 
     def test_fi26_the_hip_row_follows_save_open_and_new(self):
         self.addCleanup(hou.hipFile.clear, suppress_save_prompt=True)

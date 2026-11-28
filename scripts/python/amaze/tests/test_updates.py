@@ -314,8 +314,8 @@ class OpeningTest(unittest.TestCase):
                                                  persistence._Persistence.save):
             self.pane.library.reload()
             with open(settings, encoding="utf-8") as handle:
-                stayed = (self.pane.library.models_dir, json.load(handle)["directory"],
-                          list(self.asked))
+                stayed = (self.pane.library.models_dir,
+                          persistence._decode_path(json.load(handle)["directory"]), list(self.asked))
             test_support.pump_until(lambda: self.asked, 2)
         self.assertEqual((self.first, self.first, []), stayed, "it opened, or asked at once")
         self.assertEqual([messages.LIBRARY_NEEDS_NEWER_AMAZE % library_settings.version_label(

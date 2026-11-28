@@ -135,7 +135,7 @@ class SettingsFileTest(_Settings):
             block = saved["users"][ANNA]
             self.assertEqual((one.dir, one.cache_dir, True, "list", [home + "/a"]), (
                 persistence._decode_path(saved["directory"]), persistence._decode_path(saved["cache_dir"]),
-                block["show_info"], block["view_mode"], block["file_folders"]),
+                block["show_info"], block["view_mode"], persistence._decode_paths(block["file_folders"])),
                 "after pane two's %s save" % save)
         rival, real_write, racing = settings_store.SettingsFile(self.settings), \
             hostos.write_json_atomic, []

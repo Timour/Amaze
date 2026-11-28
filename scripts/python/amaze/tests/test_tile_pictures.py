@@ -586,8 +586,8 @@ class PicturesTest(_Library):
         with patcher, mock.patch.object(scene_captures, "scene_viewer", lambda: Viewer()):
             taken = scene_captures.capture_open_scene(self.prefs)    # the shelf tool
         key = captures.file_key(self.prefs, scene)
-        self.assertEqual(os.path.join(self.dir, "files", hashlib.sha1(key.encode()).hexdigest()
-                                      + ".png"), taken)
+        self.assertEqual(hostos.comparable_path(os.path.join(self.dir, "files", hashlib.sha1(
+            key.encode()).hexdigest() + ".png")), hostos.comparable_path(taken))
         grid = file_library.FileFiles(self.prefs)
         grid.set_folder(shots)
         self.assertEqual(taken, grid.capture_path(grid.row_for_path(scene)), "the tile reads another")

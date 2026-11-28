@@ -63,10 +63,11 @@ class _Pane(unittest.TestCase):
         return test_support.apply_library(self, holder, folder, user=user, state=state_)
 
     def switch_settings(self) -> tuple:
-        """The library, user and Library list settings.json names now."""
+        """The library, user and Library list settings.json names now, decoded: `~/` is home."""
         with open(os.path.join(self.pane.prefs.path, "settings.json"), encoding="utf-8") as handle:
             stored = json.load(handle)
-        return stored.get("directory"), stored.get("library_user"), stored.get("libraries")
+        return (persistence._decode_path(stored.get("directory")), stored.get("library_user"),
+                persistence._decode_paths(stored.get("libraries")))
 
     def rows(self, folder: str, name: str = MATERIALS) -> dict:
         return guard.Guard(folder).read(name).document.get("assets") or {}

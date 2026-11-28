@@ -86,6 +86,10 @@ if [ -n "${AMAZE_HOUDINI:-}" ] || ! command -v hython >/dev/null 2>&1; then
         # the platforms diverge.
         PATH="$HFS/bin:$PATH"
         export PATH
+        # Not HFS: hython.exe sets its own, and one inherited at its start makes Octane's
+        # builder filter refuse every node, as a Houdini started by hand never does
+        # ▸r/octane-filter-inherited-hfs
+        export -n HFS
     else
         cd "$HFS"
         source houdini_setup
