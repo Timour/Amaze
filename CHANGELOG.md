@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.0.14
+
+- Tooltips are shorter, and Preferences ▸ UI ▸ Show Tooltips turns them off. The Versions window has no tooltip over its list or on its Delete button.
+- The sidebar, View, Filter and Comments menus have an icon on each row, as the tile menus do.
+- In the sidebar menus, Add is now Add Category, and Add Location in File.
+- A greyed-out menu row keeps its icon the same grey as its text under the pointer.
+
 ## 2.0.13
 
 - Save to Amaze and Customize: Return accepts the window while a drop-down menu has the focus, as it does from a text field.
