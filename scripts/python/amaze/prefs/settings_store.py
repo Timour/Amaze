@@ -12,6 +12,10 @@ from amaze.helpers import hostos
 FILENAME = "settings.json"    # machine-local: it holds the library's path and is never copied to another machine
 
 READ, FRESH, UNREADABLE = "read", "fresh", "blind"    # parsed; missing; present but unreadable: no writes
+LAYOUT = {  # the top-level keys and the type each must have; another type makes the file unreadable
+    "directory": str, "libraries": list, "shared_settings": dict, "library_user": str,
+    "cache_dir": str, "users": dict,
+}
 
 _GONE = object()    # a key a document does not hold
 COMBINE, FIELDS = "combine", "fields"    # a list: this pane's, then the other's; a table: field by field
@@ -66,6 +70,18 @@ def _merged(ours, theirs, base, read, path: tuple = ()):
     return ours    # both changed it: ours is kept
 
 
+def _document(raw: bytes) -> dict:
+    """The settings document in `raw`; ValueError when it is not in the layout this Amaze reads."""
+    loaded = json.loads(raw.decode("utf-8-sig"))
+    if not isinstance(loaded, dict):
+        raise ValueError("settings hold %s, not a table" % type(loaded).__name__)
+    wrong = sorted(key for key, kind in LAYOUT.items()
+                   if key in loaded and not isinstance(loaded[key], kind))
+    if wrong:    # a newer Amaze's layout: a save would replace these keys with defaults
+        raise ValueError("settings hold %s of another type" % ", ".join(wrong))
+    return loaded
+
+
 class _NotRead(OSError):
     """settings.json is there but could not be read now."""
 
@@ -84,10 +100,7 @@ class SettingsFile:
             try:
                 with open(self.path, "rb") as handle:
                     raw = handle.read()
-                loaded = json.loads(raw.decode("utf-8-sig"))
-                if not isinstance(loaded, dict):
-                    raise ValueError("settings hold %s, not a table" % type(loaded).__name__)
-                self._table, self._raw, self.state = loaded, raw, READ
+                self._table, self._raw, self.state = _document(raw), raw, READ
             except (OSError, ValueError) as exc:
                 self.state = UNREADABLE
                 hostos.preserve_unreadable(self.path, why="settings")
@@ -119,10 +132,9 @@ class SettingsFile:
         if raw == self._raw:
             return copy.deepcopy(self._table)
         try:
-            loaded = json.loads(raw.decode("utf-8-sig"))
+            return _document(raw)
         except ValueError:
             return False
-        return loaded if isinstance(loaded, dict) else False
 
     def _merge(self, staged: dict, theirs: dict) -> None:
         merged = _merged(dict(staged), theirs, self._base, self._table)

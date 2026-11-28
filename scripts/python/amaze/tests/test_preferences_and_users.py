@@ -81,14 +81,16 @@ class SettingsFileTest(_Settings):
                     cut.save()
                 self.assertIn(self.on_disk(), (before, after),
                               "cut at step %d of %d%s" % (step, counting.steps, " torn" * torn))
-        self.write("{ ruined")
-        with test_support.captured_log():
-            ruined = self.prefs()
-            ruined.view_mode = "list"
-            ruined.save()
-        self.assertEqual(b"{ ruined", self.on_disk(), "an unreadable file was written over")
-        with open(self.settings + ".unreadable", "rb") as handle:
-            self.assertEqual(b"{ ruined", handle.read(), "no copy of it was kept")
+        for ruin in ("{ ruined", json.dumps({"directory": 5, "libraries": ["/a/"]})):    # a newer layout
+            self.write(ruin)
+            with test_support.captured_log():
+                ruined = self.prefs()
+                ruined.view_mode = "list"
+                ruined.save()
+            self.assertEqual(ruin.encode(), self.on_disk(), "an unreadable file was written over")
+            with open(self.settings + ".unreadable", "rb") as handle:
+                self.assertEqual(ruin.encode(), handle.read(), "no copy of it was kept")
+            os.remove(self.settings + ".unreadable")
 
     def test_pr20_every_setting_saved_reads_back_the_same(self):
         p = self.prefs()
@@ -173,10 +175,6 @@ class SettingsFileTest(_Settings):
         p.save()
         saved = self.stored()
         self.assertEqual(({"kept": 1}, 2), (saved["later"], saved["users"][ANNA]["later_field"]))
-        self.write({"directory": 5, "later": 1})
-        with test_support.captured_log():
-            self.prefs().save()
-        self.assertEqual(("", 1), (self.stored()["directory"], self.stored()["later"]), "the next start")
 
     def test_pr23_view_state_is_per_user_and_none_is_saved_without_one(self):
         self.write({"library_user": ANNA, "users": {ANNA: {"view_mode": "list"},

@@ -147,16 +147,6 @@ USER_KEYS = {  # per-user view state under `users.<uid>`: stored key -> (propert
     "addon_betas": ("addon_betas", "_addon_betas", False),
 }  # five more per-user keys are handled separately beside every loop over this table
 
-LAYOUT = {  # settings.json's top-level keys and the type each must have; a wrong type: settings unused
-    "directory": str, "libraries": list, "shared_settings": dict, "library_user": str,
-    "cache_dir": str, "users": dict,
-}
-
-
-def usable(data: dict) -> bool:
-    """Whether a settings document matches `LAYOUT`: each `LAYOUT` key present has its type."""
-    return all(isinstance(data[key], kind) for key, kind in LAYOUT.items() if key in data)
-
 
 class _Persistence:
     """The save and load methods of `Prefs`, as a mixin without state, used only by `Prefs`."""
@@ -427,12 +417,8 @@ class _Persistence:
             debug.event("prefs", "settings unreadable - opening without a "
                         "library", path=self.path)
             return False  # the store kept the `.unreadable` copy; writes are blocked for the session
-        data = store.whole_document()
+        data = store.whole_document()    # in settings_store.LAYOUT, or the store calls it unreadable
         self.data = dict(data)  # a copy: refresh_data() mutates it, and the store's document must not change
-        if not usable(data):
-            debug.event("prefs", "settings.json is in no layout this Amaze reads - "
-                        "opening as on a first run", path=self.path)
-            return False  # the defaults are kept; an unknown key stays in the file
         shared = data.get("shared_settings", {})
         self._library_user = data.get("library_user", "").strip()  # the user, before any per-user read: it selects which `users.<uid>` block is loaded
         self._users_blocks = {
