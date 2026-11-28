@@ -450,6 +450,7 @@ class _ReadEngine(QtCore.QObject):
     def __init__(self) -> None:
         super().__init__()
         self._threads = []    # a running QThread must keep a reference until it ends ▸r/model-contracts
+        self.stops = 0    # how often shutdown stopped every read: a Reader starts no ask kept before it
 
     def start(self, worker: _ReadWorker) -> None:
         """Start `worker` and keep it until its `finished` arrives on this thread."""
@@ -465,6 +466,7 @@ class _ReadEngine(QtCore.QObject):
         """Stop every read, THEN wait for each; safe twice and with nothing running."""
         workers.stop(self._threads, "info")
         self._threads = []
+        self.stops += 1
 
 
 engine = workers.install(__name__, _ReadEngine, QtCore.QCoreApplication.instance())
@@ -478,33 +480,53 @@ class Reader(QtCore.QObject):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._token = 0    # the newest ask's number; an answer with another number is dropped
-        self._worker = None
+        self._worker = None    # the one running read, kept until its thread ends
+        self._pending = None    # (key, job) of the newest ask, started once the running read ends
+        self._stops = 0    # engine.stops when the running read started
 
     def ask(self, key: str, request: Request) -> None:
-        """Start the read of `request` for `key`; an answer on its way for an earlier key is dropped."""
+        """Read `request` for `key`; an answer on its way for an earlier key is dropped."""
         self.start(key, functools.partial(_rows, request))
 
     def start(self, key: str, job) -> None:
-        """Run `job(cancelled)` off the UI thread for `key`; an earlier answer is dropped."""
+        """Run `job(cancelled)` off the UI thread for `key`, after the running read ends."""
         self.stop()
+        self._pending = (key, job)    # replaces an older ask that has not started
+        self._next()
+
+    def _next(self) -> None:
+        """Start the pending ask when no read runs: a read no cancel reaches never runs beside another."""
+        if self._worker is not None or self._pending is None:
+            return
+        (key, job), self._pending = self._pending, None
         worker = _ReadWorker(self._token, key, job)
         worker.answered.connect(self._answered)    # queued: the worker emits on its own thread
+        worker.finished.connect(self._ended)    # one read at a time, so it is this worker's
         self.destroyed.connect(worker.cancel)    # a deleted Reader stops its read
-        self._worker = worker
+        self._worker, self._stops = worker, engine.stops
         engine.start(worker)
+
+    def _ended(self) -> None:
+        """The running read ended: the pending ask starts, unless a quit stopped every read."""
+        worker, self._worker = self._worker, None
+        try:
+            self.destroyed.disconnect(worker.cancel)
+        except (AttributeError, RuntimeError, TypeError):
+            pass    # no worker, its C++ side is gone, or it was never connected
+        if self._stops != engine.stops:
+            self._pending = None    # engine.shutdown ran: no thread starts after it
+        self._next()
 
     def stop(self) -> None:
         """Drop every read on its way; nothing is emitted afterwards."""
         self._token += 1
-        worker, self._worker = self._worker, None
-        if worker is not None:
+        self._pending = None
+        if self._worker is not None:
             try:
-                worker.cancel()
-                self.destroyed.disconnect(worker.cancel)
-            except (RuntimeError, TypeError):
-                pass    # its C++ side is gone, or it was never connected
+                self._worker.cancel()    # it stays the running read until its thread ends
+            except RuntimeError:
+                pass    # its C++ side is gone
 
     def _answered(self, token: int, key: str, answer) -> None:
         if token == self._token:
-            self._worker = None
             self.ready.emit(key, answer)

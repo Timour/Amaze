@@ -188,6 +188,31 @@ class FactsTest(_Info):
         self.assertTrue(gate.calls[1][2].is_set(), "quitting did not stop the read")
         test_support.pump_until(lambda: False, 0.2)
         self.assertEqual([], got)
+        for key in "xy":    # y is kept while x ends, and the quit comes first
+            reader.ask(key, file_info.Request(file_info.KIND_SIZES, ("/" + key,)))
+            self.assertTrue(test_support.pump_until(lambda: len(gate.calls) == 3, 2.0))
+        file_info.engine.shutdown()
+        test_support.pump_until(lambda: False, 0.2)
+        self.assertEqual(3, len(gate.calls), "a read started after the quit stopped every read")
+
+        stepping, release, asked, shown = file_info.Reader(), threading.Event(), [], []
+        stepping.ready.connect(lambda key, rows: shown.append(key))
+        self.addCleanup(release.set)
+
+        def decode(request, cancelled=None):    # a large EXR's decode, which no cancel reaches
+            asked.append(request.paths[0])
+            release.wait(5.0)
+            return []
+        with mock.patch.object(file_info, "read", decode):
+            for key in "def":    # stepping through three files while the first decodes
+                stepping.ask(key, file_info.Request(file_info.KIND_SIZES, ("/" + key,)))
+                test_support.pump_until(lambda: asked, 2.0)
+            test_support.pump_until(lambda: False, 0.2)
+            self.assertEqual((["/d"], 1), (asked, len(file_info.engine._threads)),
+                             "a second decode ran beside the first")
+            release.set()
+            self.assertTrue(test_support.pump_until(lambda: shown, 3.0))
+        self.assertEqual((["/d", "/f"], ["f"]), (asked, shown))
 
         info, gate = test_support.fixture_pane(self).info, self.gated(file_info, [("Read", "rows")])
         subject = file_info.Subject("c", "c", "", request=file_info.Request(file_info.KIND_SIZES, ("/c",)))
