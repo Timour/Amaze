@@ -55,6 +55,14 @@ def simready(testcase) -> tuple:
     return matx_sources.SimReadySource(), record, textures
 
 
+class _CutOff(io.FileIO):
+    """A file whose first write stops halfway, as when Houdini quits during it."""
+
+    def write(self, data):
+        super().write(data[: len(data) // 2])
+        raise OSError("cut off")
+
+
 class _Fetch:
     """A source whose fetch writes a document into the folder it is given, or fails as told."""
 
@@ -138,6 +146,26 @@ class OnlineSourceTest(unittest.TestCase):
                     produce, error = None, "stopped"
                 self.assertTrue(error and produce is None)
                 self.assertEqual([], os.listdir(os.path.dirname(dest)), "a folder stayed")
+        archive, picture = io.BytesIO(), b"\xff\xd8 a tile's picture"
+        with zipfile.ZipFile(archive, "w") as bundle:
+            bundle.writestr("brick.jpg", picture)
+        info = zipfile.ZipFile(archive).getinfo("brick.jpg")
+        test_support.serve(self, test_support.ranges_of(archive.getvalue()))
+        tile = self.record(preview={"offset": info.header_offset, "size": info.compress_size,
+                                    "crc": info.CRC}, thumb_member="brick.jpg", package=URL)
+        hosted, store = matx_sources.MatxSource(), matx_sources.AmazeSource()
+        hosted.PREVIEWS, store._open_package = URL, lambda url: zipfile.ZipFile(archive)
+        previews = os.path.join(self.dir, "previews")
+        for source in (hosted, store):    # an online tile's preview, cut off halfway, then whole
+            with self.subTest(type(source).__name__):
+                with mock.patch.object(matx_sources, "open", _CutOff, create=True), \
+                        self.assertRaises(OSError):
+                    source.read_thumb_to(tile, os.path.join(previews, "brick.jpg"))
+                self.assertEqual([], os.listdir(previews), "a part of the picture stayed")
+                source.read_thumb_to(tile, os.path.join(previews, "brick.jpg"))
+                with open(os.path.join(previews, "brick.jpg"), "rb") as handle:
+                    self.assertEqual(picture, handle.read())
+                os.remove(os.path.join(previews, "brick.jpg"))
 
     def test_on10_only_https_and_only_a_verified_certificate(self):
         self.assertEqual("", matx_sources._checked_url("http://example.invalid/a.zip"))

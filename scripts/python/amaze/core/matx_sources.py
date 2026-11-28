@@ -310,6 +310,13 @@ def download(url: str, dest_path: str, on_bytes=None, ceiling=None) -> str:
     return dest_path
 
 
+def write_preview(path: str, data: bytes) -> None:
+    """A tile's picture into `path` through a unique scratch beside it, so no reader sees a part."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with hostos.scratch_beside(path) as scratch, open(scratch, "wb") as handle:
+        handle.write(data)
+
+
 def _as_text(value) -> str:
     """Whatever a source gave us, as a display string."""
     if value is None:
@@ -458,9 +465,7 @@ class MatxSource:
         data = blob[skip:skip + size]
         if not skip or len(data) != size or zlib.crc32(data) != int(place["crc"]):
             raise ValueError("the hosted picture for %s is not the one listed" % record.title)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "wb") as handle:
-            handle.write(data)
+        write_preview(path, data)
 
 
 
@@ -1422,10 +1427,7 @@ class AmazeSource(MatxSource):
         if not member:
             raise ValueError("no thumbnail member for " + record.title)
         bundle = self._open_package(record.payload["package"])
-        data = bundle.read(member)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "wb") as handle:
-            handle.write(data)
+        write_preview(path, bundle.read(member))
 
 
 class SimReadySource(MatxSource):
