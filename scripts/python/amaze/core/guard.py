@@ -65,6 +65,15 @@ DATABASES = {
 }
 
 
+_after_steps: list = []
+
+
+def after_steps(listener) -> None:
+    """Have `listener(library_dir, steps)` told after each change's steps are on disk."""
+    if listener not in _after_steps:
+        _after_steps.append(listener)
+
+
 class Refused(Exception):
     """A read or a change Guard does not allow; its message is the reason."""
 
@@ -294,19 +303,26 @@ class Guard:
 
     def _apply(self, steps: list) -> None:
         """Carry out journal steps; each is skipped when a run before this one already did it."""
-        for step in steps:
-            source = self._relative(step["from"]) if "from" in step else ""
-            target = self._relative(step["to"])
-            try:
-                if step["op"] == "swap" and self.disk.exists(source):
-                    self.disk.swap(source, target)
-                elif step["op"] == "move" and self.disk.exists(source) and not self.disk.exists(
-                        target):    # a trash target is new in its change: one that exists was moved already
-                    self.disk.move(source, target)
-                elif step["op"] == "remove" and self.disk.exists(target):
-                    self.disk.remove(target)
-            except FileNotFoundError:
-                continue    # removed between the check and the step: another run did it
+        try:
+            for step in steps:
+                source = self._relative(step["from"]) if "from" in step else ""
+                target = self._relative(step["to"])
+                try:
+                    if step["op"] == "swap" and self.disk.exists(source):
+                        self.disk.swap(source, target)
+                    elif step["op"] == "move" and self.disk.exists(source) and not self.disk.exists(
+                            target):    # a trash target is new in its change: one that exists was moved already
+                        self.disk.move(source, target)
+                    elif step["op"] == "remove" and self.disk.exists(target):
+                        self.disk.remove(target)
+                except FileNotFoundError:
+                    continue    # removed between the check and the step: another run did it
+        finally:    # told even when a step failed: the ones before it are on disk
+            for listener in list(_after_steps):
+                try:
+                    listener(self.dir, steps)
+                except Exception as exc:                     # noqa: BLE001 - the change stands
+                    debug.event("guard", "a listener failed after a change", error=str(exc))
 
     def _quietly(self, act, *args) -> bool:
         try:

@@ -6,7 +6,7 @@ from collections import OrderedDict
 
 from PySide6 import QtCore, QtGui
 
-from amaze.core import debug, workers
+from amaze.core import debug, material, workers
 from amaze.helpers import hostos
 
 CACHE_PNG_QUALITY = 80    # the zlib level only - PNG is lossless, so the image is the same at any level
@@ -45,7 +45,7 @@ class _FileLoader(QtCore.QThread):
 def _encoded(image, dest: str, source: str):
     """`image` as a PNG in a scratch beside `dest`: (scratch, dest), or None, logged, if it fails."""
     try:
-        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        material.make_folders(dest)
         scratch = hostos.unique_scratch(dest)
     except (OSError, hostos.WriteOutsideSandbox) as exc:
         why = str(exc)

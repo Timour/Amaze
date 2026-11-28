@@ -7,7 +7,7 @@ import hou
 
 from amaze import messages
 from amaze.core import captures
-from amaze.core import debug, guard, library_db
+from amaze.core import debug, guard, library_db, material
 from amaze.helpers import hostos
 
 MAX_THUMB_EDGE = 1024  # the captured image's long edge, in pixels
@@ -172,7 +172,7 @@ def capture_viewport(out: str, viewer=None, user: str = "") -> str:
     started = time.time()
     folder = os.path.dirname(out)
     try:
-        os.makedirs(folder, exist_ok=True)    # a snippet's or color's first file makes its folder
+        material.make_folders(out)    # a snippet's or color's first file makes its folder
     except OSError as exc:
         raise CaptureRefused(messages.CAPTURE_FOLDER_FAILED % (folder, exc))
 

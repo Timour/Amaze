@@ -1,11 +1,13 @@
 """One asset record (Material) and constants shared by the library modules."""
 
 from __future__ import annotations
+import datetime
+import itertools
 import os
 import uuid
-import datetime
+from typing import NamedTuple
 
-from amaze.core import library_files, renderers
+from amaze.core import guard, library_files, renderers
 
 REDSHIFT_TERMINALS = ("redshift_material", "redshift_usd_material")
 
@@ -53,7 +55,17 @@ def section_folder(library_dir: str, section: str, area: str = "") -> str:
 
 
 FOLDER_NAME_LENGTH = 40    # of a folder's name part, so a texture path stays short enough for Windows
-_folder_index: dict = {}    # section folder -> (its mtime, {asset id: folder name})
+
+
+class _Listed(NamedTuple):
+    """A section folder's asset folders: the folder's time when listed, {id: name}, a change number."""
+    time: int
+    names: dict    # replaced, never changed in place: another thread may be reading it
+    change: int
+
+
+_folder_index: dict = {}    # section folder -> _Listed; Amaze's own changes settle it ▸r/ntfs-folder-mtime
+_changes = itertools.count(1)
 
 
 def folder_name(name, asset_id) -> str:
@@ -63,14 +75,19 @@ def folder_name(name, asset_id) -> str:
     return "%s%s%s" % (head or "asset", library_files.FOLDER_SEPARATOR, asset_id)
 
 
+def _key(base: str) -> str:
+    return os.path.normcase(os.path.normpath(str(base)))
+
+
 def _folders(base: str) -> dict:
-    """{asset id: folder name} in a section folder, listed again when the folder changes."""
+    """{asset id: folder name} in a section folder: as Amaze changed it, listed again on another's."""
     stamp = _stamp_of(base)
     if not stamp:
         return {}
-    held = _folder_index.get(base)
-    if held is not None and held[0] == stamp:
-        return held[1]
+    key = _key(base)
+    held = _folder_index.get(key)
+    if held is not None and held.time == stamp:
+        return held.names
     found = {}
     try:
         names = os.listdir(base)
@@ -80,13 +97,67 @@ def _folders(base: str) -> dict:
         owner = library_files.folder_id(name)
         if owner:
             found[owner] = name
-    _folder_index[base] = (stamp, found)
+    _folder_index[key] = _Listed(stamp, found, next(_changes))
     return found
+
+
+def _settle(base: str, name: str) -> None:
+    """The listing of `base` with its asset folder `name` as the disk has it now."""
+    key, owner = _key(base), library_files.folder_id(name)
+    held = _folder_index.get(key)
+    if held is None or not owner:
+        return    # never listed: the next lookup lists the folder as it is
+    known = held.names.get(owner)
+    there = os.path.isdir(os.path.join(base, name))
+    if there and (known is None or (known != name and not os.path.isdir(os.path.join(base, known)))):
+        names = dict(held.names, **{owner: name})
+    elif not there and known == name:
+        names = {held_id: held_name for held_id, held_name in held.names.items() if held_id != owner}
+    else:
+        return
+    _folder_index[key] = held._replace(names=names, change=next(_changes))
+
+
+def _settle_path(path: str) -> None:
+    """The asset folder `path` is, or is in, settled in its section's listing."""
+    here = os.path.normpath(str(path))
+    for _depth in range(6):    # an asset's deepest file is a few folders down
+        parent = os.path.dirname(here)
+        if parent == here:
+            return
+        if _key(parent) in _folder_index:
+            _settle(parent, os.path.basename(here))
+            return
+        here = parent
+
+
+def _steps_applied(library_dir: str, steps: list) -> None:
+    for step in steps:
+        for end in ("from", "to"):
+            if step.get(end):
+                _settle_path(os.path.join(library_dir, step[end]))
+
+
+guard.after_steps(_steps_applied)    # a rename, a trash or a file put through Guard
+
+
+def make_folders(path: str) -> None:
+    """Make the folders file `path` goes in; an asset folder made here is in the listing at once."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    _settle_path(os.path.dirname(path))
+
+
+def forget_folders() -> None:
+    """List every section folder again on its next lookup: another session's change was read."""
+    _folder_index.clear()
 
 
 def folders_stamp(preferences, section: str) -> int:
     """A number that changes whenever a section's asset folders are added, renamed or removed."""
-    return _stamp_of(section_folder(preferences.dir, section))
+    base = section_folder(preferences.dir, section)
+    _folders(base)
+    held = _folder_index.get(_key(base))
+    return held.change if held is not None else 0
 
 
 def asset_ids_with_folders(preferences, section: str) -> dict:
@@ -130,6 +201,7 @@ def claim_asset_dir(preferences, section: str, asset_id, name) -> str:
     """The asset's folder, made as `<name>__<id>` when it has none: a first save names it."""
     found = asset_dir(preferences, section, asset_id, name)
     os.makedirs(found, exist_ok=True)
+    _settle_path(found)
     return found
 
 
@@ -144,6 +216,7 @@ def release_asset_dir(preferences, section: str, asset_id) -> None:
             os.rmdir(here)    # only an empty folder goes
         except OSError:
             pass
+    _settle_path(folder)
 
 
 def payload_path(preferences, asset_id, suffix: str, section: str, name: str = "") -> str:

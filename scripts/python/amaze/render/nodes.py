@@ -228,7 +228,7 @@ def ensure_asset_folder(preferences, path: str) -> None:
     except ValueError:  # another drive, a UNC share or an empty path: never inside ▸r/relpath-valueerror
         raise hostos.PathOutsideBase("%r does not stay inside %r" % (folder, root))
     hostos.contained_join(root, inside)  # also checks a library folder not created yet
-    os.makedirs(folder, exist_ok=True)
+    material.make_folders(path)
 
 
 def capture_builder(node) -> dict:

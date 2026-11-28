@@ -771,22 +771,29 @@ class ThroughThePreferencesTest(_Settings):
             self.assertEqual(shown, library_settings.version_label(found), found)
 
     def test_ls36_each_asset_has_its_own_named_folder_and_a_rename_moves_it(self):
-        own = material.claim_asset_dir(self.prefs, MATERIALS, "A1", "Brick")
-        self.assertEqual(os.path.join(self.dir, "materials", "Brick__A1"), own)
+        for ident, still in (("A1", False), ("A2", True)):    # NTFS keeps a folder's time ▸r/ntfs-folder-mtime
+            with self.subTest(folder_time_held_still=still), mock.patch.object(
+                    material, "_stamp_of",
+                    (lambda base: int(os.path.isdir(base))) if still else material._stamp_of):
+                self.named_folder_follows_a_rename(ident)
+
+    def named_folder_follows_a_rename(self, ident: str) -> None:
+        own = material.claim_asset_dir(self.prefs, MATERIALS, ident, "Brick")
+        self.assertEqual(os.path.join(self.dir, "materials", "Brick__" + ident), own)
         self.assertEqual((own, own, os.path.join(own, library_files.VERSIONS)), (
-            os.path.dirname(material.payload_path(self.prefs, "A1", ".mat", MATERIALS)),
-            os.path.dirname(tile_icons.thumbnail_path(self.prefs, "A1", MATERIALS)),
-            versions.versions_dir(self.prefs, "A1")))
-        put(own, "A1.mat", b"nodes of A1")
-        put(own, "A1.json", asset_record.encode({"format": asset_record.FORMAT,
-                                                 asset_record.METADATA: {"name": "Brick"}}))
+            os.path.dirname(material.payload_path(self.prefs, ident, ".mat", MATERIALS)),
+            os.path.dirname(tile_icons.thumbnail_path(self.prefs, ident, MATERIALS)),
+            versions.versions_dir(self.prefs, ident)))
+        put(own, ident + ".mat", b"nodes of " + ident.encode())
+        put(own, ident + ".json", asset_record.encode({"format": asset_record.FORMAT,
+                                                       asset_record.METADATA: {"name": "Brick"}}))
         held = library_db.document(self.prefs, MATERIALS)
-        held.put(ASSETS, "A1", {"name": "Stone"})
+        held.put(ASSETS, ident, {"name": "Stone"})
         self.assertTrue(library_db.save(self.prefs, MATERIALS))
-        moved = os.path.join(self.dir, "materials", "Stone__A1")
+        moved = os.path.join(self.dir, "materials", "Stone__" + ident)
         self.assertEqual((False, moved), (os.path.exists(own),
-                                          material.asset_dir(self.prefs, MATERIALS, "A1")))
-        self.assertEqual("Stone", asset_record.read(os.path.join(moved, "A1.json"))[
+                                          material.asset_dir(self.prefs, MATERIALS, ident)))
+        self.assertEqual("Stone", asset_record.read(os.path.join(moved, ident + ".json"))[
             asset_record.METADATA]["name"])
         snippets, row, snippet = self.snippet("Loop")
         loop = os.path.join(snippets.preferences.dir, "code", "Loop__" + snippet)

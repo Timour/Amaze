@@ -834,6 +834,13 @@ An asset is two files in its own folder, `<section>/<name>__<id>/`:
 Recoverable with vanilla Houdini without the plugin, but not portable
 outside Houdini (not `.mtlx`/`.usda`).
 
+The folder is found by its id, through one listing per section folder in `core/material.py`.
+Every asset folder Amaze makes, renames or removes is put in that listing as it happens: a
+first save's `claim_asset_dir` and `release_asset_dir`, `material.make_folders` for any
+other file's folders, and each change Guard applies (`guard.after_steps`). A section
+folder's modified time only tells of another program's change, because two changes in one
+clock tick leave it as it was; a database read from another session drops the listings.
+
 **Format 3 wrote two more**, `.interface` (Python from `asCode()`) and
 `.builder.json`, and kept the metadata in `.stamp.json`. Only
 `core/library_conversion.py` reads them, from a package in an older

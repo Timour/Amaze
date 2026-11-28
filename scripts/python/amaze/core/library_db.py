@@ -354,6 +354,9 @@ def refresh(preferences=None) -> dict:
         for held in found.opened().values():
             alert_database_problem(key, held)
             alert_collisions(key, held)
+    if any(moved.values()):    # another session saved: its asset folders may be new ▸r/ntfs-folder-mtime
+        from amaze.core import material
+        material.forget_folders()
     return moved
 
 
@@ -380,6 +383,8 @@ def held_libraries() -> list:
 def release(preferences=None) -> None:
     """Drop the cached databases: on a switch to another library folder, or in a test."""
     recheck_folders()
+    from amaze.core import material
+    material.forget_folders()
     if preferences is None:
         _libraries.clear()
         _alerted.clear()

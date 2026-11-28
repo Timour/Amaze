@@ -114,7 +114,7 @@ TAKE, RECORD = "take", "record"    # a staged file: (TAKE, target, written) or (
 def staged_write(target: str, write) -> tuple:
     """`write(scratch)` fills a scratch beside `target`, staged as (TAKE, target, scratch)."""
     hostos.check_sandbox(target)
-    os.makedirs(os.path.dirname(target), exist_ok=True)
+    material.make_folders(target)
     scratch = hostos.unique_scratch(target)
     try:
         write(scratch)

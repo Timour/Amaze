@@ -137,6 +137,13 @@ class SavingTest(unittest.TestCase):
         return len(added), found
 
     def test_sl01_a_new_asset_is_saved_whole_or_leaves_nothing(self):
+        for still in (False, True):    # NTFS mostly leaves a folder's time as it was ▸r/ntfs-folder-mtime
+            with self.subTest(folder_time_held_still=still), mock.patch.object(
+                    material, "_stamp_of", lambda base: int(os.path.isdir(base))) if still \
+                    else mock.patch.object(material, "_stamp_of", material._stamp_of):
+                self.saved_whole_or_nothing()
+
+    def saved_whole_or_nothing(self) -> None:
         counting = faults.FaultDisk()
         whole = self.arrived(counting)
         own = "materials/sl_brick__<id>/"
