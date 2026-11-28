@@ -85,8 +85,6 @@ def convert(held, user: str = "") -> int:
         for owned in sorted(os.listdir(base)) if os.path.isdir(base) else ():
             owner = library_files.folder_id(owned)
             path = os.path.join(base, owned, owner + library_files.RECORD_SUFFIX) if owner else ""
-            wanted = asset_record.in_this_format(path) if path else b""
-            if wanted:
-                change.put_file(held.inside(path), wanted)
-                records += 1
+            if path and os.path.isfile(path) and not asset_record.unreadable(path):
+                records += asset_record.put_sections(change, held, path, {})
     return records + len(change.commit())

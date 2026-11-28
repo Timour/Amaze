@@ -216,9 +216,7 @@ def _record(change, held, own: str, asset_id: str, row: dict) -> bool:
         return False    # no files of its own: nothing to rebuild a lost database from
     if asset_record.unreadable(path):
         return False
-    sections, found = record_sections(held, row), asset_record.read(path)
-    if any(found[name] != value for name, value in sections.items()):
-        change.put_file(held.guard.inside(path), asset_record.with_sections(path, sections))
+    asset_record.put_sections(change, held.guard, path, record_sections(held, row))
     return True
 
 

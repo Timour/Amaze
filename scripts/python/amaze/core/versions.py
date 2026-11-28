@@ -2,22 +2,22 @@
 
 from __future__ import annotations
 
-import contextlib
 import filecmp
 import json
 import os
-import tempfile
 import time
 
-from amaze.core import asset_files, asset_record, debug, library_files, material, users
+from amaze.core import asset_files, asset_record, debug, guard, library_files, material, users
 from amaze.core.material import RECORD_SUFFIX
 from amaze.helpers import hostos
 
 _KINDS = tuple((suffix, suffix == ".mat")    # the kinds a version archives; only .mat is required
                for suffix in library_files.VERSION_SUFFIXES)
 
-SOURCE_KINDS = dict(zip(("mat", "json", "thumbnail"),    # `asset_files()` kind -> archive suffix
-                        library_files.VERSION_SUFFIXES))    # the .json is archived as its builder alone
+SOURCE_KINDS = dict(zip(("mat", "json", "thumbnail", "cop"),    # `asset_files()` kind -> suffix
+                        library_files.VERSION_SUFFIXES))    # the .json: `_archive_document`
+NETWORK_FIELDS = ("cop_net",)    # the row's fields that describe its network files: per version
+DATE = "%Y-%m-%d %H:%M"    # a ledger row's date
 
 
 def versions_dir(preferences, mat_id: str) -> str:
@@ -44,52 +44,60 @@ def read_ledger(preferences, mat_id: str) -> dict:
 
 def ledger_in(path: str, mat_id: str = "") -> dict:
     """The ledger at `path`: empty when absent, empty and marked `unreadable` when it cannot be read."""
-    if not os.path.exists(path):
-        return {"active": 0, "versions": []}
+    return _ledger_read(path, mat_id)[0]
+
+
+def _ledger_read(path: str, mat_id: str = "") -> tuple:
+    """(the ledger at `path` as `ledger_in` reads it, the bytes it was read from or None)."""
+    raw = None
     try:
-        with open(path, encoding="utf-8-sig") as handle:
-            data = json.load(handle)
+        with open(path, "rb") as handle:
+            raw = handle.read()
+        data = json.loads(raw.decode("utf-8-sig"))
         if not isinstance(data, dict) or \
                 not isinstance(data.get("versions"), list):
             raise ValueError("not a ledger")
-        return data
+        return data, raw
+    except FileNotFoundError:
+        return {"active": 0, "versions": []}, None
     except (OSError, ValueError) as exc:
         debug.event("versions", "ledger unreadable - versions hidden "
                     "this session", mat_id=str(mat_id), error=str(exc))
-        return {"active": 0, "versions": [], "unreadable": True}
+        return {"active": 0, "versions": [], "unreadable": True}, raw
 
 
 def _ledger_bytes(ledger: dict) -> bytes:
     return json.dumps(ledger, indent=1).encode("utf-8")
 
 
-def _commit_files(preferences, writes: dict, removals=(), why: str = "", trashed=()) -> bool:
-    """{path: bytes} written, `removals` removed and `trashed` trashed as ONE commit via guard.py."""
-    from amaze.core import guard, library_db
+def _inside(held, path: str) -> str:
+    """`path` relative to the library `held` guards; Refused for one outside it."""
+    relative = held.inside(path)
+    if not relative:
+        raise guard.Refused("%s is outside the library" % path)
+    return relative
+
+
+def _put_ledger(change, held, path: str, ledger: dict, raw) -> None:
+    """The ledger at `path` into `change`; the commit refuses it if the file moved since `raw`."""
+    change.put_file(_inside(held, path), _ledger_bytes(ledger), was=raw)
+
+
+def _commit(preferences, fill, why: str) -> bool:
+    """`fill(change, guard)` reads and puts one change, committed whole; again if a file moves."""
+    from amaze.core import library_db
     held = library_db.guard_of(preferences)
-    change = held.change(library_db.user(preferences))
-    try:
-        for path, data in writes.items():
-            relative = held.inside(path)
-            if not relative:
-                debug.event("versions", "not written - outside the library", why=why, path=path)
-                return False
-            change.put_file(relative, data)
-        for path in removals:
-            change.remove(held.inside(path))
-        for path in trashed:
-            change.trash(held.inside(path))
+
+    def attempt():
+        change = held.change(library_db.user(preferences))
+        fill(change, held)
         change.commit()
-    except (OSError, guard.Refused) as exc:
+    try:
+        guard.retried(attempt)
+    except (OSError, guard.Refused) as exc:    # Moved too, once the files kept moving
         debug.event("versions", "not written - nothing changed", why=why, error=str(exc))
         return False
     return True
-
-
-def _write_ledger(preferences, mat_id: str, ledger: dict) -> bool:
-    return _commit_files(preferences,
-                         {_ledger_path(preferences, mat_id): _ledger_bytes(ledger)},
-                         why="ledger")
 
 
 def version_count(preferences, mat_id: str) -> int:
@@ -127,29 +135,15 @@ def _base_paths(preferences, mat_id: str) -> dict:
     return {suffix: owned[kind] for kind, suffix in SOURCE_KINDS.items() if kind in owned}
 
 
-def _builder_of(paths: dict) -> dict:
-    """The builder a set of files holds in its `.json`; {} for none."""
-    return asset_record.builder_section(
-        asset_record.read(paths.get(RECORD_SUFFIX) or "")[asset_record.BUILDER])
-
-
-@contextlib.contextmanager
-def _staged_record(paths: dict, document: dict):
-    """`paths` with its `.json` swapped for a scratch holding `document`; the scratch removed after."""
-    handle, scratch = tempfile.mkstemp(prefix="amaze_version_", suffix=RECORD_SUFFIX)
-    try:
-        with os.fdopen(handle, "wb") as stream:
-            stream.write(asset_record.encode(document))
-        yield dict(paths, **{RECORD_SUFFIX: scratch})
-    finally:
-        hostos.discard_scratch(scratch)
-
-
-def _archive_document(sources: dict) -> dict:
-    """What a version's `<stem>.json` holds: the builder alone, never the metadata."""
-    builder = _builder_of(sources)
-    return {"format": asset_record.FORMAT, asset_record.BUILDER: builder} if builder \
-        else {"format": asset_record.FORMAT}
+def _archive_document(paths: dict) -> dict:
+    """What a version's `<stem>.json` holds of the files `paths`: the builder, NETWORK_FIELDS."""
+    found = asset_record.read(paths.get(RECORD_SUFFIX) or "")
+    metadata = found[asset_record.METADATA]
+    sections = {asset_record.BUILDER: asset_record.builder_section(found[asset_record.BUILDER]),
+                asset_record.METADATA: {field: metadata[field] for field in NETWORK_FIELDS
+                                        if metadata.get(field)}}
+    return dict({name: data for name, data in sections.items() if data},
+                format=asset_record.FORMAT)
 
 
 def file_stem(mat_id: str, number: int) -> str:
@@ -177,67 +171,61 @@ def _archive_paths(preferences, mat_id: str, number: int) -> dict:
     return {kind: os.path.join(folder, stem + kind) for kind, _required in _KINDS}
 
 
-def _copy_set(preferences, sources: dict, targets: dict, ledger=None) -> bool:
-    """Copy every present kind, and `ledger` as (path, document), as ONE commit via guard.py."""
-    writes, vacated = {}, []
+def _put_set(change, held, sources: dict, targets: dict, new: bool) -> None:
+    """Each kind but the record put from `sources` at `targets`; one `sources` lacks is trashed."""
     for kind, required in _KINDS:
         source = sources.get(kind)
-        present = source and os.path.exists(source)
-        if required and not present:
-            debug.event("versions", "no %s to copy - copy stopped" % kind, source=source)
-            return False
-        if not present:
-            if targets.get(kind) and os.path.exists(targets[kind]):
-                vacated.append(targets[kind])    # the targets match the sources: it is removed too
+        if kind == RECORD_SUFFIX:
+            continue    # each caller puts the record it needs
+        if not (source and os.path.exists(source)):
+            if required:
+                raise guard.Refused("no %s to copy from %s" % (kind, source))
+            if os.path.exists(targets[kind]):    # the targets match the sources: it goes too
+                change.trash(_inside(held, targets[kind]))
             continue
-        try:
-            with open(source, "rb") as handle:
-                writes[targets[kind]] = handle.read()
-        except OSError as exc:
-            debug.event("versions", "copy failed - nothing changed", source=source,
-                        error=str(exc))
-            return False
-    if ledger is not None:
-        writes[ledger[0]] = _ledger_bytes(ledger[1])
-    return _commit_files(preferences, writes, vacated, why="version files")
+        with open(source, "rb") as handle:    # a new version's file is refused once one is there
+            change.put_file(_inside(held, targets[kind]), handle.read(),
+                            None if new else guard.UNCHECKED)
+
+
+def _author(preferences) -> str:
+    """The writer's name, stored in a row at write time; empty when no user is known."""
+    try:
+        writer = users.current(preferences)
+        return users.name_for(preferences, writer) if writer else ""
+    except (AttributeError, OSError):
+        return ""
 
 
 def create_version(preferences, mat_id: str, name: str = "", source_paths: dict = None) -> int:
-    """Archive the base, saved BEFORE the call, as a new active version; its number, 0 on failure."""
-    ledger = read_ledger(preferences, mat_id)
-    if ledger.get("unreadable"):
-        debug.event("versions", "version not created - ledger unreadable",
-                    mat_id=str(mat_id))
+    """Archive the base, saved BEFORE the call, as a new active version; its number, 0 if not."""
+    from amaze.core import library_db
+    library_db.flush(preferences)    # the base's record gets its row's pending changes first
+    sources, made = source_paths or _base_paths(preferences, mat_id), []
+
+    def fill(change, held):
+        ledger, raw = _ledger_read(_ledger_path(preferences, mat_id), mat_id)
+        if ledger.get("unreadable"):
+            raise guard.Refused("the version list does not read")
+        number = _highest(ledger) + 1
+        while any(os.path.exists(path)    # a leftover file is never overwritten
+                  for path in _archive_paths(preferences, mat_id, number).values()):
+            debug.event("versions", "a version file is already on disk - taking "
+                                    "the next number", mat_id=str(mat_id), n=number)
+            number += 1
+        ledger["versions"].append({"n": number, "name": name or version_label({"n": number}),
+                                   "author": _author(preferences), "date": time.strftime(DATE)})
+        ledger["active"] = ledger["highest"] = number
+        targets = _archive_paths(preferences, mat_id, number)
+        _put_set(change, held, sources, targets, new=True)
+        change.put_file(_inside(held, targets[RECORD_SUFFIX]),
+                        asset_record.encode(_archive_document(sources)), was=None)
+        _put_ledger(change, held, _ledger_path(preferences, mat_id), ledger, raw)
+        made[:] = [number]
+    if not _commit(preferences, fill, "version files"):
         return 0
-    number = _highest(ledger) + 1
-    sources = source_paths or _base_paths(preferences, mat_id)
-    while any(os.path.exists(path)    # a leftover file is never overwritten
-              for path in _archive_paths(preferences, mat_id, number).values()):
-        debug.event("versions", "a version file is already on disk - taking "
-                                "the next number", mat_id=str(mat_id), n=number)
-        number += 1
-    author = ""    # the writer's name, stored in the row at write time
-    try:
-        writer = users.current(preferences)
-        if writer:
-            author = users.name_for(preferences, writer)
-    except (AttributeError, OSError):
-        pass
-    ledger["versions"].append({
-        "n": number,
-        "name": name or version_label({"n": number}),
-        "author": author,
-        "date": time.strftime("%Y-%m-%d %H:%M"),
-    })
-    ledger["active"] = ledger["highest"] = number
-    with _staged_record(sources, _archive_document(sources)) as staged:
-        copied = _copy_set(preferences, staged, _archive_paths(preferences, mat_id, number),
-                           ledger=(_ledger_path(preferences, mat_id), ledger))
-    if not copied:
-        return 0
-    debug.event("versions", "version created", mat_id=str(mat_id),
-                n=number)
-    return number
+    debug.event("versions", "version created", mat_id=str(mat_id), n=made[0])
+    return made[0]
 
 
 def _base_is_archived(preferences, mat_id: str, ledger: dict, base: dict = None) -> bool:
@@ -247,10 +235,10 @@ def _base_is_archived(preferences, mat_id: str, ledger: dict, base: dict = None)
         return False
     archive = _archive_paths(preferences, mat_id, row.get("n", 0))
     base = base or _base_paths(preferences, mat_id)
-    if _builder_of(base) != _builder_of(archive):
+    if _archive_document(base) != _archive_document(archive):
         return False
     for kind, _required in _KINDS:
-        if kind in (".png", RECORD_SUFFIX):    # the render is updated separately; the builder is compared above
+        if kind in (".png", RECORD_SUFFIX):    # the render is kept separately; the record is above
             continue
         base_path, archive_path = base.get(kind), archive.get(kind)
         in_base = bool(base_path) and os.path.exists(base_path)
@@ -297,38 +285,46 @@ def switch_active(preferences, mat_id: str, number: int, base_paths: dict = None
                                 "be archived",
                     mat_id=str(mat_id), n=number)
         return False
-    ledger = read_ledger(preferences, mat_id)    # keep_base may add a row and change `active`
-    row = _row_for(ledger, number)
-    if row is None:
+    held, mat_id = library_db.document(preferences, library_files.MATERIALS), str(mat_id)
+    was = held.get("assets", mat_id)
+    if not isinstance(was, dict):
         return False
-    ledger["active"] = int(number)
-    if not _restore(preferences, mat_id, int(number), base, ledger):
-        debug.event("versions", "switch not made - nothing changed", mat_id=str(mat_id),
-                    n=int(number))
+    kept = _archive_document(_archive_paths(preferences, mat_id, number)).get(
+        asset_record.METADATA, {})
+    with library_db.library_for(preferences).holding():    # saved below with the files, at once
+        edited = held.edit("assets", mat_id, **{
+            field: kept.get(field) or {} for field in NETWORK_FIELDS
+            if (was.get(field) or {}) != (kept.get(field) or {})})
+    saved = held.save(also=lambda change: _restore(change, held, preferences, mat_id, int(number),
+                                                   base))
+    if not saved:
+        if edited:
+            with library_db.library_for(preferences).holding():
+                held.put("assets", mat_id, was)    # the row as it was, the files not switched
+        debug.event("versions", "switch not made - nothing changed", mat_id=mat_id,
+                    n=int(number), reason=saved.reason, detail=saved.detail)
         return False
     debug.event("versions", "active version switched",
-                mat_id=str(mat_id), n=number)
+                mat_id=mat_id, n=number)
     return True
 
 
-def _restore(preferences, mat_id: str, number: int, base: dict, ledger: dict) -> bool:
-    """Copy one archive over the base and write the ledger, as one commit; the metadata is kept."""
+def _restore(change, held, preferences, mat_id: str, number: int, base: dict) -> None:
+    """`also` of a switch: the archive over the base, the row's record, the list naming it."""
+    from amaze.core import library_db
+    ledger, raw = _ledger_read(_ledger_path(preferences, mat_id), mat_id)    # again on each try
+    row = held.get("assets", mat_id)
+    if ledger.get("unreadable") or _row_for(ledger, number) is None or not isinstance(row, dict):
+        raise guard.Refused("version %d of %s is gone" % (number, mat_id))
+    ledger["active"] = number
     archive = _archive_paths(preferences, mat_id, number)
-    named = (_ledger_path(preferences, mat_id), ledger)
+    _put_set(change, held.guard, archive, base, new=False)
     target = base.get(RECORD_SUFFIX) or asset_record.path_for(
         preferences, mat_id, library_files.MATERIALS)
-    with asset_record.LOCK:    # no metadata write happens between the read and the copy
-        document = {"format": asset_record.FORMAT}
-        found = asset_record.read(target)
-        builder = _builder_of(archive)
-        for kept in (asset_record.METADATA, asset_record.NAMES):
-            if found[kept]:
-                document[kept] = found[kept]
-        if builder:
-            document[asset_record.BUILDER] = builder
-        with _staged_record(archive, document) as staged:
-            return _copy_set(preferences, staged, dict(base, **{RECORD_SUFFIX: target}),
-                             ledger=named)
+    asset_record.put_sections(change, held.guard, target, dict(
+        library_db.record_sections(held, row),
+        **{asset_record.BUILDER: _archive_document(archive).get(asset_record.BUILDER, {})}))
+    _put_ledger(change, held.guard, _ledger_path(preferences, mat_id), ledger, raw)
 
 
 def record_render(preferences, mat_id: str) -> bool:
@@ -359,7 +355,8 @@ def record_base(preferences, mat_id: str, kind: str, source: str = "") -> bool:
             return True
         with open(source, "rb") as handle:
             data = handle.read()
-        if not _commit_files(preferences, {target: data}, why="active slot"):
+        if not _commit(preferences, lambda change, held: change.put_file(
+                _inside(held, target), data), "active slot"):
             return False
     except (OSError, hostos.PathOutsideBase) as exc:    # best-effort: it follows a save, never raises
         debug.event("versions", "base not recorded to the active slot",
@@ -375,32 +372,61 @@ def rename_version(preferences, mat_id: str, number: int, name: str) -> bool:
     name = str(name or "").strip()
     if not name:
         return False
-    ledger = read_ledger(preferences, mat_id)
-    if ledger.get("unreadable"):
-        return False
-    row = _row_for(ledger, number)
-    if row is None:
-        return False
-    row["name"] = name
-    return _write_ledger(preferences, mat_id, ledger)
+
+    def fill(change, held):
+        ledger, raw = _ledger_read(_ledger_path(preferences, mat_id), mat_id)
+        row = _row_for(ledger, number)
+        if row is None:    # an unreadable list has no row
+            raise guard.Refused("version %s is not in the version list" % number)
+        row["name"] = name
+        _put_ledger(change, held, _ledger_path(preferences, mat_id), ledger, raw)
+    return _commit(preferences, fill, "rename version")
 
 
 def delete_version(preferences, mat_id: str, number: int) -> bool:
     """Trash version `number`'s files and take out its row as one commit; never the active one."""
-    ledger = read_ledger(preferences, mat_id)
-    row = _row_for(ledger, number)
-    if row is None or int(number) == int(ledger.get("active", 0) or 0):    # an unreadable one has no row
-        debug.event("versions", "version not deleted", mat_id=str(mat_id), n=number)
-        return False
-    ledger["highest"] = _highest(ledger)    # a deleted number is never given out again
-    ledger["versions"].remove(row)
-    files = [path for path in _archive_paths(preferences, mat_id, number).values()
-             if os.path.exists(path)]
-    if not _commit_files(preferences, {_ledger_path(preferences, mat_id): _ledger_bytes(ledger)},
-                         why="delete version", trashed=files):
+    def fill(change, held):
+        ledger, raw = _ledger_read(_ledger_path(preferences, mat_id), mat_id)
+        row = _row_for(ledger, number)
+        if row is None or int(number) == int(ledger.get("active", 0) or 0):    # unreadable: no row
+            raise guard.Refused("version %s is not one to delete" % number)
+        ledger["highest"] = _highest(ledger)    # a deleted number is never given out again
+        ledger["versions"].remove(row)
+        for path in _archive_paths(preferences, mat_id, number).values():
+            if os.path.exists(path):
+                change.trash(_inside(held, path))
+        _put_ledger(change, held, _ledger_path(preferences, mat_id), ledger, raw)
+    if not _commit(preferences, fill, "delete version"):
         return False
     debug.event("versions", "version deleted", mat_id=str(mat_id), n=number)
     return True
+
+
+def put_back(change, held, networks: list) -> int:
+    """Each network `<id>_<n>.mat` its list lacks added to the list, with n and its file's date."""
+    added, folders = 0, {}
+    for path in networks:
+        folders.setdefault(os.path.dirname(path), []).append(path)
+    for folder, paths in sorted(folders.items()):
+        owner = library_files.folder_id(os.path.basename(os.path.dirname(folder)))
+        ledger, raw = _ledger_read(os.path.join(folder, library_files.LEDGER), owner)
+        if ledger.get("unreadable"):
+            continue    # never written over
+        rows = len(ledger["versions"])
+        listed = {int(row.get("n", 0)) for row in ledger["versions"]}
+        for path in sorted(paths):
+            number = library_files.version_number(os.path.basename(path), owner, (".mat",))
+            if number is None or number in listed or not os.path.isfile(path):
+                continue    # listed meanwhile, or gone
+            date = time.strftime(DATE, time.localtime(os.path.getmtime(path)))
+            ledger["versions"].append({"n": number, "date": date})
+            listed.add(number)
+        if len(ledger["versions"]) > rows:
+            added += len(ledger["versions"]) - rows
+            ledger["versions"].sort(key=lambda row: int(row.get("n", 0)))    # oldest first
+            ledger["highest"] = _highest(ledger)
+            _put_ledger(change, held, os.path.join(folder, library_files.LEDGER), ledger, raw)
+    return added
 
 
 def version_file(preferences, mat_id: str, number: int) -> str:

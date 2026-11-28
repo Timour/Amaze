@@ -17,7 +17,7 @@ from PySide6 import QtWidgets  # noqa: E402
 
 from amaze import messages  # noqa: E402
 from amaze.core import asset_record, check_library, guard, library_db, library_files  # noqa: E402
-from amaze.core import library_policy, locations, users  # noqa: E402
+from amaze.core import library_policy, locations, users, versions  # noqa: E402
 from amaze.helpers import hostos  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
@@ -85,6 +85,7 @@ def lay_out(folder: str) -> None:
     put(folder, "materials/Brick__A1/versions/versions.json", json.dumps({"versions": [{"n": 1}]}))
     put(folder, "materials/Brick__A1/versions/A1_1.mat", b"first")
     put(folder, "materials/Brick__A1/versions/A1_9.mat", b"no ledger row")
+    put(folder, "materials/Brick__A1/versions/A1_8.png", b"a picture with no network")
     put(folder, "materials/Brick__A1/A1 2.png", b"picture")    # a sync copy that matches
     put(folder, "materials/Brick__A1/A1 2.mat", b"other nodes")    # a sync copy that differs
     old = put(folder, "materials/Brick__A1/A1.mat.x1" + guard.SCRATCH, b"half")
@@ -200,7 +201,7 @@ class NothingIsLostTest(_Library):
 
     def test_cl07_unknown_files_and_unlisted_code_or_colors_folders_go_only_once_named(self):
         unnamed = ("materials/notes.txt", "stuff/thing.bin",
-                   "materials/Brick__A1/versions/A1_9.mat", "colors/Old__K9/K9.png")
+                   "materials/Brick__A1/versions/A1_8.png", "colors/Old__K9/K9.png")
         shown = check_library.survey(self.dir)
         offered = {key[1] for key, _label in check_library.confirmable(shown)}
         self.assertNotIn("materials/Bare__U2", offered, "a folder Recover lists was offered")
@@ -366,10 +367,16 @@ class WhatTheReportSaysTest(_Library):
         self.assertIn(("materials/Brick__A1/A1 2.mat", "differs"), found["conflicts"])
         self.assertEqual(1, sum(1 for path in found["leftovers"] if path.endswith(guard.SCRATCH)))
 
-    def test_cl24_a_version_file_its_ledger_does_not_list_is_an_orphan(self):
-        found = check_library.survey(self.dir)["orphans"]
-        self.assertIn("materials/Brick__A1/versions/A1_9.mat", found)
-        self.assertNotIn("materials/Brick__A1/versions/A1_1.mat", found)
+    def test_cl24_a_version_its_list_does_not_name_is_put_back_and_any_other_file_reported(self):
+        folder, stamp = self.at("materials", "Brick__A1", "versions"), time.time() - 86400
+        os.utime(os.path.join(folder, "A1_9.mat"), (stamp, stamp))
+        found = check_library.survey(self.dir)
+        self.assertEqual(["materials/Brick__A1/versions/A1_8.png"], found["orphans"])
+        check_library.fix_safe(self.dir, None, found, USER)
+        dated = time.strftime(versions.DATE, time.localtime(stamp))    # no name: Version 9
+        self.assertEqual([{"n": 1}, {"n": 9, "date": dated}], versions.ledger_in(
+            os.path.join(folder, library_files.LEDGER))["versions"])
+        self.assertEqual(found["orphans"], check_library.survey(self.dir)["orphans"])
 
     def test_cl25_uncategorized_fills_rows_without_a_category_and_their_records(self):
         self.assertEqual(1, check_library.uncategorized(self.dir, USER))

@@ -24,7 +24,7 @@ for tests are in the [README](README.md).
 
 ## Wrong output
 
-- VS-20 Wrong output: Select in the Versions window puts that version on the material, whole: its network, builder and picture; nothing of the version shown before stays. Cancel changes nothing.
+- VS-20 Wrong output: Select in the Versions window puts that version on the material, whole: its network, builder, picture and COP companion with the companion's name in the row; nothing of the version shown before stays. Cancel changes nothing.
 - VS-21 Wrong output: Changing a material's name, category, tags or comments makes no new version.
 - VS-22 Wrong output: A fresh render goes into the active version only, and only while that version holds the material; every other version keeps its own picture.
 - VS-24 Wrong output: After a switch, saving over that material is not refused as changed elsewhere.

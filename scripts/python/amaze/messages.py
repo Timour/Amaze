@@ -317,6 +317,8 @@ BUTTONS_FIX_ALL_TRASH = ('Move to Trash', 'Skip These', 'Cancel')
 
 FIXED_RECOVERED = '%s added to the database.'
 
+FIXED_RELISTED = '%s put back in the version list.'
+
 FIXED_UNCATEGORIZED = '%s put in Uncategorized.'
 
 FIXED_REMOVED = '%s removed from the database.'
@@ -334,6 +336,7 @@ CHECK_DATABASE_SHRUNK = 'The %s database holds %d, under half of the %d its newe
 CHECK_ROWS_WITHOUT_FILES = '%s in %s %s no files. A file still syncing looks the same.'
 CHECK_UNLISTED_FOLDERS = '%s in no database; %d of them can be recovered from their own record.'
 CHECK_ORPHANS = '%s that no database or version list names.'
+CHECK_UNLISTED_VERSIONS = '%s on disk that the version list does not name.'
 CHECK_LEFTOVERS_FOUND = "%s left over from Amaze's own work."
 CHECK_CONFLICTS_KEPT = '%s from a sync service, left where they are: each differs from its original, or has none.'
 CHECK_UNKNOWN_FOUND = 'Not known to Amaze: %s.'

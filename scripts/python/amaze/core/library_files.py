@@ -41,7 +41,7 @@ RECORD_SUFFIX = ".json"    # `<id>.json`: metadata and builder, `core/asset_reco
 PICTURE_SUFFIX = ".png"    # `<id>.png`: the asset's one picture, rendered or captured
 ASSET_SUFFIXES = (".mat", RECORD_SUFFIX)    # `repair.ASSET_SIDECARS`
 COMPANION_TAIL = "_cop"    # `<id>_cop.mat`, a material's companion COP network
-VERSION_SUFFIXES = (".mat", RECORD_SUFFIX, PICTURE_SUFFIX)
+VERSION_SUFFIXES = (".mat", RECORD_SUFFIX, PICTURE_SUFFIX, COMPANION_TAIL + ".mat")    # `<id>_<n>`
 
 SCRATCH_TAILS = (".writing", ".capturing", ".tmp", ".temp", ".new", ".part",    # a write by Amaze that stopped partway
                  ".partial", ".lock", ".swp", "~", ".repairing", ".rollback")

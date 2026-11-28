@@ -33,6 +33,8 @@ DAILY_BACKUP_DAYS = 30
 BACKUP_SPACING_S = 30 * 60    # a save sooner than this after the newest backup makes no new one
 TRASH_DAYS = 30
 SHRUNK_FLOOR = 4    # a database this small or smaller in its backup is never called shrunk
+COMMIT_TRIES = 3    # reads of a file that keeps moving before a change gives up
+UNCHECKED = object()    # `Change.put_file` without the bytes its content was made from
 
 
 class Kind:
@@ -80,6 +82,16 @@ class Refused(Exception):
 
 class Moved(Refused):
     """The file differs from what the ticket read: read it again, merge, and try once more."""
+
+
+def retried(attempt, again=None, tries: int = COMMIT_TRIES):
+    """`attempt()` commits a change; after a Moved, `again()` reads anew and it runs once more."""
+    for left in reversed(range(tries)):
+        try:
+            return attempt()
+        except Moved:
+            if (again is not None and again() is False) or not left:
+                raise
 
 
 class Disk:
@@ -388,8 +400,12 @@ class Guard:
         if not raw:
             return
         target = self.path(BACKUP_DIR, name + UNREADABLE_MARK + hashlib.sha256(raw).hexdigest()[:8])
-        if not self.disk.exists(target):
-            self._quietly(self.disk.write, target, raw)
+        if self.disk.exists(target):
+            return    # put in place by a rename, so a copy under its own name is whole
+        scratch = "%s.%s%s" % (target, uuid.uuid4().hex[:8], SCRATCH)
+        if not (self._quietly(self.disk.write, scratch, raw)
+                and self._quietly(self.disk.swap, scratch, target)) and self.disk.exists(scratch):
+            self._quietly(self.disk.remove, scratch)
 
     def backups(self, name: str) -> list:
         """(file name, when) of each backup of one database, newest first."""
@@ -539,6 +555,7 @@ class Change:
         self._replacing = set()    # forced names whose old bytes are a plain backup, not an undo copy
         self._kept = set()    # names backed up however recent their newest backup
         self._files = {}    # relative path -> bytes
+        self._read_as = {}    # relative path -> the bytes it was read as, None for no file
         self._taken = {}    # relative path -> a file already written whole, moved into place
         self._removals = []
         self._trashed = []
@@ -563,11 +580,14 @@ class Change:
         self._forced[name] = encode(document)
         self._replacing.add(name)
 
-    def put_file(self, relative: str, data: bytes) -> None:
-        """Any other file in the library, written whole."""
+    def put_file(self, relative: str, data: bytes, was=UNCHECKED) -> None:
+        """Any other file, written whole; `was`: the bytes `data` was made from, None: no file."""
         if str(relative).replace("\\", "/").split("/")[-1] in DATABASES:
             raise Refused("a database is written with `put`")
         self._files[str(relative)] = bytes(data)
+        self._read_as.pop(str(relative), None)    # the last put of a path is the one written
+        if was is not UNCHECKED:
+            self._read_as[str(relative)] = was
 
     def take(self, relative: str, written: str) -> None:
         """A file already written whole at `written` (Houdini's own save) put at `relative`."""
@@ -599,6 +619,7 @@ class Change:
                 raise OSError("a change recorded in the library is still waiting to be applied")
             steps, tickets, written = [], {}, []
             try:
+                self._files_as_read()
                 writes = self._changed_databases()
                 for name, (old, data) in writes.items():
                     if old and name in self._replacing and _parse(old, DATABASES[name])[0] is None:
@@ -630,11 +651,13 @@ class Change:
                 if len(steps) == 1:
                     guard._apply(steps)    # one rename is atomic by itself
                 elif steps:
-                    journal = guard.path(JOURNAL)
-                    scratch = "%s.%s%s" % (journal, uuid.uuid4().hex[:8], SCRATCH)
-                    disk.write(scratch, json.dumps({"steps": steps}).encode("utf-8"))
-                    written = []    # from here journal recovery handles the scratch files
-                    disk.swap(scratch, journal)
+                    journal, scratch = guard.path(JOURNAL), "%s.%s%s" % (
+                        JOURNAL, uuid.uuid4().hex[:8], SCRATCH)
+                    written.append(scratch)    # before the write, like every other scratch
+                    disk.write(guard._relative(scratch),
+                               json.dumps({"steps": steps}).encode("utf-8"))
+                    disk.swap(guard._relative(scratch), journal)
+                    written = []    # the journal names the scratch files: its recovery swaps them
                     self.journaled = True
                     try:
                         guard._apply(steps)
@@ -650,6 +673,14 @@ class Change:
             for name in tickets:
                 guard._prune_backups(name)
             return tickets
+
+    def _files_as_read(self) -> None:
+        """Moved, before any write, when a file holds other bytes than `put_file` was told."""
+        disk = self.guard.disk
+        for relative, was in self._read_as.items():
+            path = self.guard._relative(relative)
+            if (disk.read(path) if disk.exists(path) else None) != was:
+                raise Moved("%s changed since it was read" % relative)
 
     def _changed_databases(self) -> dict:
         """{name: (old bytes or None, new bytes)} for each database that really changes."""

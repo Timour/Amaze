@@ -122,6 +122,18 @@ class StoreTest(unittest.TestCase):
         self.assertEqual(4, versions.create_version(self.prefs, GOLD))
         self.assertEqual(b"another computer's version 3", read(stray))
         self.assertEqual([1, 2, 4], [row["n"] for row in versions.list_versions(self.prefs, GOLD)])
+        real = guard.Change.commit
+
+        def raced(change):    # another session makes its version between this read and commit
+            if raced.once:
+                raced.once = False
+                self.assertEqual(5, versions.create_version(self.prefs, GOLD))
+            return real(change)
+        raced.once = True
+        with mock.patch.object(guard.Change, "commit", raced):
+            self.assertEqual(6, versions.create_version(self.prefs, GOLD))
+        self.assertEqual([1, 2, 4, 5, 6],
+                         [row["n"] for row in versions.list_versions(self.prefs, GOLD)])
 
     def test_vs04_a_version_list_that_cannot_be_read_is_never_written_over(self):
         with open(self.ledger(), "wb") as handle:
@@ -168,10 +180,10 @@ class StoreTest(unittest.TestCase):
                          sorted(after[path] for path in trashed))
 
     def listed_in_place(self) -> bool:
-        """Whether every version the list names has all of its files in its folder."""
+        """Whether every version the list names has all of its files: none has a companion here."""
         return all(os.path.exists(self.archive(row["n"], suffix))
                    for row in versions.list_versions(self.prefs, GOLD)
-                   for suffix in library_files.VERSION_SUFFIXES)
+                   for suffix in (".mat", ".json", ".png"))
 
     def test_vs07_deleting_a_version_is_applied_whole_or_not_at_all(self):
         def act(prefs):
@@ -235,16 +247,24 @@ class StoreTest(unittest.TestCase):
     def test_vs20_select_puts_the_whole_version_on_the_material(self):
         os.remove(self.files["thumbnail"])
         self.network(b"network 3", "builder 3")
+        companion, net = test_support.put(os.path.dirname(self.files["cop"]), os.path.basename(
+            self.files["cop"]), b"cops of 3"), {"name": "plate", "type": "copnet"}
+        library_db.document(self.prefs, MATERIALS).edit("assets", GOLD, cop_net=net)
+        self.assertTrue(library_db.save(self.prefs, MATERIALS))
         self.assertEqual(3, versions.create_version(self.prefs, GOLD))
         model = library.MaterialLibrary(preferences=self.prefs)
-        self.assertTrue(model.switch_version(model.find_asset_row_by_id(GOLD), 2))
-        self.assertEqual((b"network 2", "builder 2", read(self.archive(2, ".png"))), (
+        row = model.find_asset_row_by_id(GOLD)
+        self.assertTrue(model.switch_version(row, 2))
+        self.assertEqual((b"network 2", "builder 2", read(self.archive(2, ".png")), False, {}), (
             read(self.files["mat"]), self.builder(self.files["json"]),
-            read(self.files["thumbnail"])))
-        self.assertTrue(model.switch_version(model.find_asset_row_by_id(GOLD), 3))
-        self.assertEqual((b"network 3", "builder 3", False), (
+            read(self.files["thumbnail"]), os.path.exists(companion), model._assets[row].cop_net))
+        self.assertTrue(model.switch_version(row, 3))
+        self.assertEqual((b"network 3", "builder 3", False, b"cops of 3", net, net), (
             read(self.files["mat"]), self.builder(self.files["json"]),
-            os.path.exists(self.files["thumbnail"])))
+            os.path.exists(self.files["thumbnail"]), read(companion), model._assets[row].cop_net,
+            library_db.guard_of(self.prefs).read(MATERIALS).document["assets"][GOLD]["cop_net"]))
+        self.assertEqual(library_files.VERSION, library_files.classify(os.path.relpath(
+            self.archive(3, library_files.COMPANION_TAIL + ".mat"), self.prefs.dir))[0])
 
     def test_vs21_a_metadata_change_makes_no_version(self):
         library_db.document(self.prefs, MATERIALS).edit(

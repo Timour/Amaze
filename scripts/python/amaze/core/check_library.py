@@ -41,9 +41,10 @@ def survey(library_dir: str, preferences=None) -> dict:
     listing, out_of_place, unreadable = _walk(library_dir)
     spent = _spent_folders(library_dir, listing, ids)
     accounted = ids | {library_files.folder_id(library_files.split(one)[-1]) for one in spent}
+    orphans, unlisted_versions = _versions_unlisted(library_dir, listing)
     findings = {"directory": library_dir, "databases": databases, "unreadable_folders": unreadable,
-                "missing_files": {}, "no_category": {}, "unlisted": [],
-                "orphans": _orphan_versions(library_dir, listing), "trash": held.trash_held()}
+                "missing_files": {}, "no_category": {}, "unlisted": [], "orphans": orphans,
+                "unlisted_versions": unlisted_versions, "trash": held.trash_held()}
     for section in LISTS:
         if section in ASSET_SECTIONS:
             _assets(findings, section, rows.get(section, {}), listed.get(section, set()), listing,
@@ -161,10 +162,10 @@ def _inline_folders(findings: dict, section: str, listing: dict, ids: set) -> No
                                          "names": {}})
 
 
-def _orphan_versions(library_dir: str, listing: dict) -> list:
-    """Each version file its folder's ledger does not list."""
-    found = []
-    suffixes = library_files.VERSION_SUFFIXES
+def _versions_unlisted(library_dir: str, listing: dict) -> tuple:
+    """Unlisted version files: (those of no readable version, each readable version's `.mat`)."""
+    from amaze.core import versions
+    orphans, unlisted = [], []
     for folder, names in listing.items():
         parts = library_files.split(folder)
         if len(parts) != 3:
@@ -173,11 +174,29 @@ def _orphan_versions(library_dir: str, listing: dict) -> list:
             continue
         owner = library_files.folder_id(parts[1])
         numbers = _ledger_numbers(os.path.join(library_dir, *parts))
-        if owner and numbers is not None:
-            found += ["%s/%s" % (folder, name) for name, (kind, _detail) in sorted(names.items())
-                      if kind == library_files.VERSION
-                      and library_files.version_number(name, owner, suffixes) not in numbers]
-    return found
+        if not owner or numbers is None:
+            continue
+        files = {}    # each unlisted number -> its files
+        for name, (kind, _detail) in sorted(names.items()):
+            number = library_files.version_number(name, owner, library_files.VERSION_SUFFIXES)
+            if kind == library_files.VERSION and number not in numbers:
+                files.setdefault(number, []).append(name)
+        for number, found in sorted(files.items()):
+            network = versions.file_stem(owner, number) + ".mat"
+            if network in found and _readable_version(os.path.join(library_dir, *parts), network):
+                unlisted.append("%s/%s" % (folder, network))
+            else:
+                orphans += ["%s/%s" % (folder, name) for name in found]
+    return orphans, unlisted
+
+
+def _readable_version(folder: str, network: str) -> bool:
+    """Whether a version can be put back: its network holds bytes and its record, if any, reads."""
+    try:
+        return os.path.getsize(os.path.join(folder, network)) > 0 and not asset_record.unreadable(
+            os.path.join(folder, network[:-len(".mat")] + library_files.RECORD_SUFFIX))
+    except OSError:
+        return False
 
 
 def _ledger_numbers(folder: str):
@@ -300,6 +319,9 @@ def report_lines(findings: dict) -> list:
         saved = sum(1 for one in unlisted if one["record"])
         lines.append(messages.CHECK_UNLISTED_FOLDERS % (
             wording.count(len(unlisted), "asset folder"), saved))
+    if findings["unlisted_versions"]:
+        lines.append(messages.CHECK_UNLISTED_VERSIONS % wording.count(
+            len(findings["unlisted_versions"]), "version"))
     if findings["orphans"]:
         lines.append(messages.CHECK_ORPHANS % wording.count(len(findings["orphans"]), "file"))
     if findings["leftovers"] or findings["leftover_folders"]:
@@ -347,7 +369,8 @@ def summary(findings: dict) -> dict:
     parts = (    # (what Repair can fix, whether that part could be checked)
         (sum(1 for entry in findings["databases"] if entry["state"] in MENDS), True),
         (sum(len(rows) for rows in findings["missing_files"].values()) + len(findings["unlisted"])
-         + len(findings["orphans"]) + len(findings["leftovers"]) + len(findings["leftover_folders"])
+         + len(findings["orphans"]) + len(findings["unlisted_versions"])
+         + len(findings["leftovers"]) + len(findings["leftover_folders"])
          + len(findings["unknown"]), lists_ok and not findings["unreadable_folders"]),
         (refs, lists_ok and findings["files_checked"]
          and not (findings["locations_unreachable"] and not refs)))
@@ -571,8 +594,8 @@ def uncategorized(library_dir: str, user: str = "") -> int:
                 metadata = dict(asset_record.read(record)[asset_record.METADATA] or {},
                                 categories=keys)
                 names = {key: document["categories"][key]["name"] for key in keys}
-                change.put_file(held.inside(record), asset_record.with_sections(record, {
-                    asset_record.METADATA: metadata, asset_record.NAMES: names}))
+                asset_record.put_sections(change, held, record, {
+                    asset_record.METADATA: metadata, asset_record.NAMES: names})
         change.put(reading.ticket, document)
         change.commit()
         done += len(loose)
@@ -601,9 +624,26 @@ def fix_light(library_dir: str, user: str = "") -> dict:
     return {"uncategorized": uncategorized(library_dir, user)}
 
 
+def relist(library_dir: str, shown: dict, user: str = "") -> int:
+    """Each version the check showed outside its list put back, unless listed since; how many."""
+    from amaze.core import versions
+    if not shown["unlisted_versions"]:
+        return 0
+    held = _guard(library_dir)
+    networks = [os.path.join(library_dir, *library_files.split(one))
+                for one in shown["unlisted_versions"]]
+
+    def attempt():    # a list that moved under it is read again
+        change = held.change(user)
+        added = versions.put_back(change, held, networks)
+        change.commit()
+        return added
+    return guard.retried(attempt)
+
+
 def fix_safe(library_dir: str, preferences, shown: dict, user: str = "") -> dict:
-    """What loses nothing: recover, the light fixes, set aside, favorites of gone files."""
-    done = {"recovered": recover(library_dir, user)}
+    """What loses nothing: recover, relist versions, the light fixes, set aside, gone favorites."""
+    done = {"recovered": recover(library_dir, user), "relisted": relist(library_dir, shown, user)}
     done.update(fix_light(library_dir, user))
     if preferences is not None and hostos.canonical_path_key(str(getattr(preferences, "dir", ""))) \
             == hostos.canonical_path_key(library_dir):    # the Files section is the open library's

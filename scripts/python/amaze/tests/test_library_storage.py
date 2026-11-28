@@ -1,6 +1,7 @@
 """Library storage: one test per requirement in docs/requirements/library-storage.md."""
 
 import datetime
+import hashlib
 import json
 import os
 import shutil
@@ -388,6 +389,13 @@ class LibraryFilesTest(_Library):
             self.assertFalse(document.save(also=lambda change: change.put_file("x.mat", b"x")))
             self.assertEqual(broken, self.bytes_of(MATERIALS))
             self.assertFalse(os.path.exists(self.at("x.mat")))
+        broken = b'{"cut": "while its copy was written"'
+        put(self.dir, MATERIALS, broken)
+        with self.assertRaises(faults.Cut):
+            guard.Guard(self.dir, disk=faults.FaultDisk(cut_at=1, torn=True)).read(MATERIALS)
+        self.guard.read(MATERIALS)
+        self.assertEqual(broken, self.bytes_of(guard.BACKUP_DIR, MATERIALS + guard.UNREADABLE_MARK
+                                               + hashlib.sha256(broken).hexdigest()[:8]))
         put(self.dir, NODES, b"")
         self.assertEqual(guard.CORRUPT, self.guard.read(NODES).verdict)
         self.assertFalse(any(name.startswith(NODES) for name in os.listdir(
@@ -565,8 +573,9 @@ class LibraryFilesTest(_Library):
         self.assertFalse(os.path.exists(self.at(guard.JOURNAL)))
 
     def test_ls17_a_failed_write_leaves_the_library_as_it_was_and_says_so(self):
-        for full_from in (2, 3, 4):
-            held = guard.Guard(self.dir, disk=faults.FaultDisk(full_from=full_from), now=self.clock)
+        for disk in [faults.FaultDisk(full_from=one) for one in (2, 3, 4)] + [
+                faults.FaultDisk(busy=guard.JOURNAL)]:    # the last: no journal put in place
+            held = guard.Guard(self.dir, disk=disk, now=self.clock)
             before = state(self.dir)
             change = held.change("u1")
             change.put(held.read(MATERIALS).ticket, assets(3, "tile"))
@@ -576,7 +585,7 @@ class LibraryFilesTest(_Library):
                 change.commit()
             scratches = [name for _root, _dirs, names in os.walk(self.dir)
                          for name in names if name.endswith(guard.SCRATCH)]
-            self.assertEqual([], scratches, "write %d failed and left a scratch" % full_from)
+            self.assertEqual([], scratches, "write %d failed and left a scratch" % disk.writes)
             self.assertEqual(before, state(self.dir))
         library = documents.Library(self.dir, "u1", now=self.clock,
                                     disk=faults.FaultDisk(full_from=1))
@@ -631,6 +640,26 @@ class TwoSessionsTest(_TwoUsers):
         self.assertEqual((False, documents.MOVED), (outcome.ok, outcome.reason))
         self.assertNotIn("E9", self.on_disk()[ASSETS], "a save overwrote a file that kept changing")
         self.assertIn("R%d" % disk.races, self.on_disk()[ASSETS])
+        prefs = types.SimpleNamespace(dir=test_support.with_fixture_user(self.dir),
+                                      library_user=test_support.FIXTURE_USER)
+        self.addCleanup(library_db.release, prefs)
+        own = material.claim_asset_dir(prefs, MATERIALS, "A1", "Brick")
+        put(own, "A1.json", asset_record.encode({asset_record.BUILDER: {"type": "old"}}))
+        real = guard.Change.commit
+
+        def raced(change):    # another session saves the network between this read and commit
+            if not raced.done:
+                raced.done = put(own, "A1.json", asset_record.encode(
+                    {asset_record.BUILDER: {"type": "new"}}))
+            return real(change)
+        raced.done = ""
+        with library_db.library_for(prefs).holding():    # saved below, not at once
+            library_db.document(prefs, MATERIALS).edit(ASSETS, "A1", tags=["mine"])
+        with mock.patch.object(guard.Change, "commit", raced):
+            self.assertTrue(library_db.save(prefs, MATERIALS))
+        found = asset_record.read(os.path.join(own, "A1.json"))
+        self.assertEqual(("new", ["mine"]), (found[asset_record.BUILDER]["type"],
+                                             found[asset_record.METADATA]["tags"]))
 
     def test_ls04_one_field_changed_by_two_users_keeps_one_and_names_the_other(self):
         self.anna.edit(ASSETS, "A1", name="Anna's name")
@@ -734,7 +763,8 @@ class ThroughThePreferencesTest(_Settings):
             ASSETS: {"A1": {"name": "Brick", "later_field": [1, 2]}, "A2": {"name": "Oak"}}})
         library_db.document(self.prefs, MATERIALS).edit(ASSETS, "A2", name="Touched")
         self.assertTrue(notes.set_note(self.prefs, notes.note_key("material", "A1"), [
-            {"t": "text", "text": "one"}, {"t": "todo", "label": "two", "done": True}]))
+            {"t": "text", "text": "one", "id": "t1"},
+            {"t": "todo", "label": "two", "done": True, "id": "t2"}]))
         library_db.flush(self.prefs)
         after = library_db.guard_of(self.prefs).read(MATERIALS).document
         items = {item["id"]: item for item in after[notes.SECTION]["A1"]["items"]}
@@ -762,8 +792,15 @@ class ThroughThePreferencesTest(_Settings):
                          "library_policy.py names a number the code does not write")
         self.assertTrue(prefs_mod.create_library(self.dir))
         self.assertEqual(library_settings.THIS_AMAZE, library_settings.library_formats(self.dir))
-        self.assertEqual("3.3", library_settings.version_label(
-            library_settings.library_formats(self.dir)), "category ids: three steps above 3.0")
+        self.assertEqual("3.4", library_settings.version_label(
+            library_settings.library_formats(self.dir)), "version companions: four steps up")
+        test_support.set_library_version(test_support.with_fixture_user(self.dir), 6)    # one behind
+        test_support.reset_database_singletons()
+        before = {path: data for path, data in state(self.dir).items() if path != guard.MASTER}
+        self.assertTrue(library_actions.update(self.prefs))
+        self.assertEqual((library_settings.THIS_AMAZE, before), (
+            library_settings.library_formats(self.dir),
+            {path: data for path, data in state(self.dir).items() if path != guard.MASTER}))
         version, database, record = library_policy.FORMAT_3_0
         for found, shown in (((version, database + 1, record), "3.1"),
                              ((version + 1, database + 1, record + 2), "3.4"),

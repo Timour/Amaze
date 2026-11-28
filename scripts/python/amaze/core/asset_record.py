@@ -22,26 +22,28 @@ def path_for(preferences, mat_id, section: str) -> str:
 
 
 def _load(path: str) -> tuple:
-    """(document, error): absent is ({}, ""), corrupt/unreadable is ({}, why) and logged."""
+    """(document, error, bytes): absent is ({}, "", None); corrupt or unreadable is logged."""
+    raw = None
     try:
-        with open(path, encoding="utf-8-sig") as handle:
-            document = json.load(handle)
+        with open(path, "rb") as handle:
+            raw = handle.read()
+        document = json.loads(raw.decode("utf-8-sig"))
     except FileNotFoundError:
-        return {}, ""
+        return {}, "", None
     except (OSError, ValueError) as exc:
         debug.event("library", "asset record corrupt/unreadable - read as empty",
                     file=path, error=str(exc))
-        return {}, str(exc)
+        return {}, str(exc), raw
     if not isinstance(document, dict):
         debug.event("library", "asset record corrupt/unreadable - read as empty",
                     file=path, error="not an object")
-        return {}, "not an object"
-    return category_conversion.record(document), ""
+        return {}, "not an object", raw
+    return category_conversion.record(document), "", raw
 
 
 def read(path: str) -> dict:
     """{metadata, builder}, each a dict, empty where absent; never raises into an import."""
-    document, _error = _load(path)
+    document = _load(path)[0]
     return {name: dict(document[name]) if isinstance(document.get(name), dict) else {}
             for name in SECTIONS}
 
@@ -51,12 +53,15 @@ def encode(document: dict) -> bytes:
     return (json.dumps(document, indent=1, sort_keys=True) + "\n").encode("utf-8")
 
 
-def with_sections(path: str, sections: dict) -> bytes:
-    """The bytes of `path`'s record with `sections` replaced; an empty section is removed."""
+def put_sections(change, held, path: str, sections: dict) -> bool:
+    """The record at `path` with `sections` replaced, checked against its read; False if same."""
     for section in sections:
         if section not in SECTIONS:
             raise ValueError("an asset record has no %r section" % section)
-    found, why = _load(path)
+    relative = held.inside(path)
+    if not relative:
+        raise ValueError("%s is outside the library" % path)
+    found, why, raw = _load(path)
     if why:    # an unreadable record is never written over: its metadata is the database's backup
         raise ValueError("%s does not read (%s), so it is not written over" % (path, why))
     document = dict(found)
@@ -66,20 +71,11 @@ def with_sections(path: str, sections: dict) -> bytes:
         else:
             document.pop(section, None)
     document["format"] = FORMAT
-    return encode(document)
-
-
-def in_this_format(path: str) -> bytes:
-    """The bytes a record should hold in this Amaze's format; b"" when it does, or does not read."""
-    try:
-        with open(path, "rb") as handle:
-            now = handle.read()
-    except OSError:
-        return b""
-    if unreadable(path):
-        return b""    # never written over
-    wanted = with_sections(path, {})
-    return b"" if wanted == now else wanted
+    data = encode(document)
+    if data == raw:
+        return False
+    change.put_file(relative, data, was=raw)
+    return True
 
 
 def guard_for(path: str):
@@ -100,11 +96,8 @@ def write_section(path: str, section: str, data: dict, user: str = "") -> None:
         if why:    # an unreadable record is never overwritten
             raise OSError("%s does not read (%s), so it was not written" % (path, why))
         held = guard_for(path)
-        relative = held.inside(path)
-        if not relative:
-            raise ValueError("%s is no asset record of a library" % path)
         change = held.change(user)
-        change.put_file(relative, with_sections(path, {section: data}))
+        put_sections(change, held, path, {section: data})
         change.commit()
 
 
@@ -127,13 +120,13 @@ def staged_write(target: str, write) -> tuple:
 def add_staged(change, held, staged: list, sections=None) -> None:
     """Each staged file into `change`; `sections` fills these sections of every record."""
     for kind, target, what in staged:
+        if kind != TAKE:
+            put_sections(change, held, target, dict(what, **(sections or {})))
+            continue
         relative = held.inside(target)
         if not relative:
             raise ValueError("%s is outside the library" % target)
-        if kind == TAKE:
-            change.take(relative, what)
-        else:
-            change.put_file(relative, with_sections(target, dict(what, **(sections or {}))))
+        change.take(relative, what)
 
 
 def discard(staged: list) -> None:
@@ -146,14 +139,17 @@ def discard(staged: list) -> None:
 def commit_staged_files(preferences, staged: list) -> None:
     """Commit an asset's staged files as one change, its row unchanged; OSError when it fails."""
     from amaze.core import guard, library_db
-    held = library_db.guard_of(preferences)
-    change = held.change(library_db.user(preferences))
-    try:
+    held, made = library_db.guard_of(preferences), []
+
+    def attempt():    # a record that moved under it is read again
+        made.append(held.change(library_db.user(preferences)))
         with LOCK:
-            add_staged(change, held, staged)
-            change.commit()
+            add_staged(made[-1], held, staged)
+            made[-1].commit()
+    try:
+        guard.retried(attempt)
     except BaseException as exc:
-        if not change.journaled:    # a written journal finishes the change on the next open
+        if not (made and made[-1].journaled):    # a written journal finishes it at the next open
             discard(staged)
         if isinstance(exc, (guard.Refused, ValueError)):
             raise OSError(str(exc)) from exc

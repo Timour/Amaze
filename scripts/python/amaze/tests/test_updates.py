@@ -266,7 +266,7 @@ class UpdateTest(_Install):
                                library_version=library_policy.LIBRARY_VERSION,
                                formats=(library_policy.DATABASE_FORMAT + 1,
                                         library_policy.RECORD_FORMAT))
-        self.assertEqual(messages.UPDATE_LIBRARY_AVAILABLE % ("9.9", "3.4"),
+        self.assertEqual(messages.UPDATE_LIBRARY_AVAILABLE % ("9.9", "3.5"),
                          updater.offer_line(newer, library))
         unread = updater.Update(updater.NEWER, version="9.9", sentence="newer")
         self.assertEqual("newer", updater.offer_line(unread, library))

@@ -10,7 +10,6 @@ from amaze.core import debug, guard
 
 BY, AT = "_by", "_at"    # on every shared entry: who changed it last, and when
 STAMPS = (BY, AT)
-SAVE_TRIES = 3    # reads of a file that keeps moving before a save gives up
 SAVE_DELAY_MS = 300    # how long a caller's timer waits after the last change before it saves
 
 SAVED, UNCHANGED, NO_USER, MOVED, DENIED = "", "unchanged", "no-user", "moved", "denied"
@@ -343,33 +342,39 @@ class Document:
         if not user:
             return Saved(False, NO_USER)
         merged = False
-        for _attempt in range(SAVE_TRIES):
+
+        def attempt():
             change = self.guard.change(user)
             if self._dirty:
                 change.put(self._ticket, self._whole())
-            try:
-                if also is not None:
-                    also(change)    # a file it refuses refuses the whole save
-                tickets = change.commit()
-            except guard.Moved:
-                reading = self.guard.read(self.name)
-                if not reading.writable:
-                    self.verdict, self.why, self._ticket = reading.verdict, reading.why, None
-                    debug.event("documents", "save stopped - the file can no longer be read",
-                                file=self.name, verdict=reading.verdict)
-                    return Saved(False, reading.verdict, reading.why, merged)
-                self._merge(reading.document)
-                self._ticket = reading.ticket
-                merged = True
-                continue
-            except (guard.Refused, OSError, ValueError) as exc:
-                return Saved(False, DENIED, str(exc), merged)
-            self._ticket = tickets.get(self.name, self._ticket)
-            self._base = copy.deepcopy(self._data)
-            self._dirty = False
-            self.verdict = guard.FINE
-            return Saved(True, UNFINISHED if change.waiting else SAVED, change.waiting, merged)
-        return Saved(False, MOVED, merged=merged)
+            if also is not None:
+                also(change)    # a file it refuses refuses the whole save; it reads its files anew
+            return change, change.commit()
+
+        def again() -> bool:
+            nonlocal merged
+            reading = self.guard.read(self.name)
+            if not reading.writable:
+                self.verdict, self.why, self._ticket = reading.verdict, reading.why, None
+                debug.event("documents", "save stopped - the file can no longer be read",
+                            file=self.name, verdict=reading.verdict)
+                return False
+            self._merge(reading.document)
+            self._ticket, merged = reading.ticket, True
+            return True
+        try:
+            change, tickets = guard.retried(attempt, again)
+        except guard.Moved:
+            if not self.writable:
+                return Saved(False, self.verdict, self.why, merged)
+            return Saved(False, MOVED, merged=merged)
+        except (guard.Refused, OSError, ValueError) as exc:
+            return Saved(False, DENIED, str(exc), merged)
+        self._ticket = tickets.get(self.name, self._ticket)
+        self._base = copy.deepcopy(self._data)
+        self._dirty = False
+        self.verdict = guard.FINE
+        return Saved(True, UNFINISHED if change.waiting else SAVED, change.waiting, merged)
 
 
 class Library:

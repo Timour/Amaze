@@ -952,6 +952,7 @@ class AssetLibrary(grid_engine.GridEngine,
         mat = self._assets[row]
         if not versions.switch_active(self.preferences, mat.mat_id, number):
             return False
+        self.apply_refresh()    # the row's fields a version keeps, saved with its files
         self._content_state[str(mat.mat_id)] = self._content_stat(
             mat.mat_id)
         self._drop_content_label_caches(mat.mat_id)

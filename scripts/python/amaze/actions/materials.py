@@ -100,9 +100,6 @@ def update_asset_content(model, row: int, node: hou.Node) -> str:
         return ""
     model._content_state[str(mat.mat_id)] = model._content_stat(  # our own write is the new baseline for this id
         mat.mat_id)
-    if keeps_versions:
-        versions.create_version(model.preferences, mat.mat_id)  # the new state as the active version
-        model._versions_changed(mat)
     mat.cop_net = handler.cop_info
     keep_textures(mat, handler.texture_inventory)    # the new content's references replace the old
     if renderer:
@@ -127,6 +124,9 @@ def update_asset_content(model, row: int, node: hou.Node) -> str:
                 )
     model._add_thumb_paths(row)  # the engine discard inside is what makes the repaint fetch the freshly rendered PNG
     model.save()    # the gate passed above: the row's change waits for the timer with the rest
+    if keeps_versions:    # after the row and its companion are settled: the version keeps both
+        versions.create_version(model.preferences, mat.mat_id)  # the new state, active
+        model._versions_changed(mat)
     nodes.stamp_asset_id(node, mat.mat_id)
     return renderer
 

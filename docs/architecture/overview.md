@@ -382,8 +382,8 @@ adapter, and return the uniform one if no adapter does better.
 
 ### 4c. The **Database Engine**: guard, documents, library_db {#o/keyed-store}
 
-Library format 3.3 (library version 6, database format 6, record format 2,
-`Current Library Format: 3.3`) keeps six databases at the library root, each a
+Library format 3.4 (library version 7, database format 6, record format 2,
+`Current Library Format: 3.4`) keeps six databases at the library root, each a
 JSON document of named sections, every section a table keyed by id or key:
 
 | File | Sections |
@@ -403,6 +403,11 @@ change of several files is being applied.
   files is applied through a journal. A file another program finishes, a render, a
   viewport capture or a download, is written to a scratch and taken in by the guard
   (`Guard.put_whole`, `guard.put_rendered`, or a staged file in the asset's own save).
+  A file written from what was read of it, an asset's `<id>.json`
+  (`asset_record.put_sections`) or a version list, is put with those bytes
+  (`Change.put_file`'s `was`); the commit checks them under its lock as it checks
+  a ticket, and raises `Moved` when the file changed, and the writer reads it
+  again and makes its change again (`guard.retried`, which `Document.save` uses too).
   Its requirements and their tests: `docs/requirements/library-storage.md`.
 - **`core/documents.py`** holds each database as keyed sections and
   merges two users' changes per entry and per field.
@@ -830,7 +835,7 @@ contexts never reference each other; a release where nothing takes the row is a 
 
 An asset is two files in its own folder, `<section>/<name>__<id>/`:
 `<id>.mat`, a Houdini-native node archive (via `saveItemsToFile`), and
-`<id>.json`, its `metadata`, its `builder` and its categories' names (library format 3.3).
+`<id>.json`, its `metadata`, its `builder` and its categories' names (library format 3.4).
 Recoverable with vanilla Houdini without the plugin, but not portable
 outside Houdini (not `.mtlx`/`.usda`).
 
@@ -862,24 +867,35 @@ reproduces byte-identically without executing a line.
 
     materials/<name>__<id>/versions/versions.json
     materials/<name>__<id>/versions/<id>_<n>.mat
-    materials/<name>__<id>/versions/<id>_<n>.json    (the builder alone)
+    materials/<name>__<id>/versions/<id>_<n>.json    (the builder and the cop_net)
     materials/<name>__<id>/versions/<id>_<n>.png
+    materials/<name>__<id>/versions/<id>_<n>_cop.mat    (when the material had a companion)
 
 Only materials keep versions, in `versions/` inside the material's own
 folder, so a rename or a delete moves them with it. Every file of a
 version is named `<id>_<n>` (`versions.file_stem`): the id the folder is
 named by and an increasing number. `core/library_files.py` names a
-version file as one with that stem and a version suffix. Check Library
-reads every asset folder, `versions/` included, and reports a version
-file its `versions.json` does not list as an orphan. Snippets and node
-setups keep no versions; the 3.0 conversion moves their old version
-stores to the trash.
+version file as one with that stem and a version suffix. A version's
+`.json` holds the builder and the row's `cop_net` (`versions.NETWORK_FIELDS`,
+the name the `.mat` gives its companion), never the rest of the metadata, so
+a name or tag edit never makes two versions differ and a version found on disk
+is whole without its list. Selecting a version puts its companion and its
+`cop_net` on the material, row and files in one save; a version without a
+companion moves the material's own to the trash. Check Library reads every
+asset folder, `versions/` included: a version its `versions.json` does not
+list (from another computer, its list replaced by a sync) is put back in the
+list by Fix Safe and Fix All, with its number and its file's date and no name;
+a version file that cannot be one (no network, or a record that does not
+read) is reported as an orphan. Snippets and node setups keep no versions; the
+3.0 conversion moves their old version stores to the trash.
 
 A version's `author` in `versions.json` is the name of the artist's
 **Library User** (the `library_user` preference) when it was written,
 never a machine or account name read from the system. What prevents two
 writers using one filename is skipping any number already on disk before
-writing (`versions.create_version`).
+writing (`versions.create_version`); every write of `versions.json` passes
+the bytes it was read from, so a list another session changed in between
+is read again and the change made again (`guard.retried`).
 
 ### The library's policy — `DataBase.json` ▸ `policy`
 
@@ -893,7 +909,7 @@ offers Overwrite. The value is stored in the library, so two machines
 using one library have the same value. A policy that cannot be read
 allows no save-over at all (`library_settings.policy_readable`, LS-20),
 checked in the function every caller calls. `library` holds the
-library's version (6, shown with the database and record formats as `3.3`).
+library's version (7, shown with the database and record formats as `3.4`).
 
 ### Housekeeping semantics (settled 2026-07-31)
 
@@ -918,13 +934,14 @@ contracts other code and the docs rely on:
   and nothing is trashed while a part could not be checked
   (`holding_back`). A 2.0 library is not checked until it is converted.
 - **Fix Safe loses nothing and trashes nothing**: it recovers unlisted asset
-  folders from their own records, puts rows with no category in
+  folders from their own records, puts versions their list does not name back
+  in it (`check_library.relist`), puts rows with no category in
   Uncategorized, and sets aside locations that are not there with their
   favorites. **Fix All** also mends the databases that cannot be read,
   removes the named rows whose files are gone, and trashes Amaze's own
   leftovers (scratch past an hour, `check_library.SCRATCH_MIN_AGE`, and a sync
   copy whose bytes equal the original's) and the named unknown files and
-  orphan versions. A sync copy that differs, or whose original is absent, is
+  orphan version files. A sync copy that differs, or whose original is absent, is
   listed and kept.
 - **Stars are per user IN THE LIBRARY**: each section's database holds
   `favorites` {user: {id: true}}, `files.json` the File stars; a user writes
@@ -968,7 +985,7 @@ so a script can fail on it).
 | `…/<id>_cop.mat` | a material's companion COP network |
 | `…/<id>.png` | **the asset's only picture**: a render or a capture, each replacing the other in place (`tile_icons.thumbnail_path`). The Icon menu's Image face shows it; Generic and Custom are composed for display and write no file. Code and Colors rows paint their own preview and have a picture file only once one is captured |
 | `…/textures/` | a material's own copy of every file its network references, written in its `.mat` as `$AMAZEASSET/textures/<file>`; a different file of a taken name is numbered (`texstore.copy_into_library`, at save). At load each `$AMAZEASSET/` path is written into the scene once, in the Write Paths As style (`texstore.resolve_parms`). Check Library does not enter it |
-| `…/versions/` | a material's version store (*Where version files live*): each version's `.mat`, its `.json` holding the builder ALONE (so a metadata edit never makes two versions differ), its `.png`, and the version list `versions.json`. The BASE files are always the active version's - losing this folder loses the history, never the material |
+| `…/versions/` | a material's version store (*Where version files live*): each version's `.mat`, its `.json` holding the builder and the `cop_net` ALONE (so a metadata edit never makes two versions differ), its `.png`, its `_cop.mat` when it has a companion, and the version list `versions.json`. The BASE files are always the active version's - losing this folder loses the history, never the material |
 | `…/comments/` | the pictures pasted into the asset's comments, `<32 hex>.<ext>`, each named in its item's `src` as `$AMAZEASSET/comments/<file>` (`notes.copy_image_into_library`). The comment text stays in the section's database |
 | any other file in it | the asset's own, of any name: a downloaded source. An online import downloads into a temporary folder; the save copies each file the network reads into `textures/` and every other file, such as the `.mtlx` or the USD, here at the top, in the same change as the row (`add_asset`'s `sources`). A 2.0 `matX/` package the conversion moved into the first material using it, and copied into the others, keeps its own folders here |
 | `files/<40 hex>.png` | a File row's scene capture, by the SHA-1 of its key |
